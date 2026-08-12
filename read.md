@@ -1,11 +1,22 @@
 # Evsys
 
-This repository evaluates the retrieval quality of Composio's `COMPOSIO_SEARCH_TOOLS` tool through two distinct methods:
+This repository evaluates the retrieval quality of Composio's `COMPOSIO_SEARCH_TOOLS` tool through three complementary methods:
 
 1. **Single-tool query retrieval** — samples tools from selected toolkits, asks Gemini to create explicit and implicit natural-language queries, and measures whether each original tool returns as a primary or related result.
-2. **Multi-tool workflow retrieval** — evaluates a Markdown ground-truth suite of use cases with one or more expected tool slugs, reporting precision, recall, latency, and workflow-level misses.
+2. **Multi-tool workflow retrieval** — evaluates a Markdown ground-truth (The markdown file provided)
+3. **Synthetic multi-tool stress test** — uses curated coherent toolkit families, Gemini feasibility/subset selection, and full audit logs to generate realistic workflows beyond the manager-provided cases.
 
-Both evaluators record two latency fields: `api_search_latency_sec` is the duration of the successful search API call only, while `end_to_end_latency_sec` includes failed retries and retry backoff.
+All evaluators record two latency fields: `api_search_latency_sec` is the duration of the successful search API call only, while `end_to_end_latency_sec` includes failed retries and retry backoff.
+
+## Methods tried and current results
+
+| Method | What it tests | Current result | Key takeaway |
+|---|---|---|---|
+| Single-tool explicit vs. implicit retrieval | Gemini generates one query per sampled tool, with and without an app name. The evaluator measures primary hits, related-only hits, misses, and latency. | 90 queries: 62.2% primary hit rate and 33.3% complete-miss rate. Explicit queries achieved 64.4% primary hits vs. 60.0% for implicit queries. | Naming the app helped modestly; GitHub retrieval was materially weaker than Gmail and Slack. |
+| Manager-provided multi-tool workflows | 100 realistic, ground-truth workflows. The evaluator aggregates tool slugs across every Composio result entry and measures coverage/recall, precision, extras, and latency. | 33.9% average all-result recall and 38.3% precision. Average API/Search latency was 3.35 seconds. | Retrieval degrades sharply as workflows require more tools: 71.4% recall for 1-3 expected tools, falling to 20.3% for 13+ tools. |
+| Synthetic coherent multi-tool stress test | Curated toolkit families are sampled; Gemini creates a feasible workflow and confirms the required subset of supplied candidates. Full generation and search audit artifacts are saved. | Implemented; no results have been generated yet. | This extends the fixed 100-workflow benchmark without relying on arbitrary toolkit combinations. |
+
+Detailed artifacts are available in [the single-tool report](src/single_tool_search_eval_report.md) and [the multi-tool report](src/evaluation/composio_search_eval_report.md). Synthetic-run artifacts will be written to `synthetic_multi_tool_evaluation/` after its first run.
 
 ## Setup
 
@@ -24,9 +35,6 @@ Open either notebook in Jupyter and run its cells in order:
 
 - `notebooks/01_single_tool_search_evaluation.ipynb`
 - `notebooks/02_multi_tool_search_evaluation.ipynb`
+- `notebooks/03_synthetic_multi_tool_evaluation.ipynb`
 
-The second evaluator expects `top-100-eval-use-cases.md` in the repository root. Results are intentionally ignored by Git.
-
-## Security
-
-Never commit `.env` or paste live keys into source code. `.env.example` documents the expected variable names.
+The second evaluator expects `top-100-eval-use-cases.md` in the repository root. The synthetic evaluator writes its audit, raw search responses, CSV, and Markdown report to `synthetic_multi_tool_evaluation/`; only its Gemini cache is ignored by Git.
