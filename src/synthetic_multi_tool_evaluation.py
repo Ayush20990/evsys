@@ -42,7 +42,7 @@ RANDOM_SEED = 42
 GEMINI_RPM, COMPOSIO_CALL_DELAY_SEC = 15, 0.5
 USER_ID = "synthetic-multi-tool-eval-user"
 
-OUTPUT_DIR = Path("synthetic_multi_tool_evaluation")
+OUTPUT_DIR = Path(__file__).resolve().parent / "synthetic_multi_tool_evaluation"
 RAW_RESULTS_DIR = OUTPUT_DIR / "raw_search_results"
 CACHE_PATH = OUTPUT_DIR / "generation_cache.json"
 AUDIT_PATH = OUTPUT_DIR / "generation_audit.json"

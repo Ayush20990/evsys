@@ -47,11 +47,12 @@ NUM_TOOLKITS_TO_SAMPLE = 50
 TOOLS_PER_TOOLKIT, RANDOM_SEED = 20, 12
 SEARCH_TOP_K, GEMINI_RPM, COMPOSIO_CALL_DELAY_SEC = 6, 15, 0.5
 
-CACHE_PATH = Path("query_cache.json")
-RESULTS_CSV_PATH = Path("search_eval_results.csv")
-DUMP_JSON_PATH = Path("full_run_dump.json")
-SUMMARY_MD_PATH = Path("summary_report.md")
-SUMMARY_HTML_PATH = Path("summary_report.html")
+OUTPUT_DIR = Path(__file__).resolve().parent / "single_tool_evaluation"
+CACHE_PATH = OUTPUT_DIR / "query_cache.json"
+RESULTS_CSV_PATH = OUTPUT_DIR / "search_eval_results.csv"
+DUMP_JSON_PATH = OUTPUT_DIR / "full_run_dump.json"
+SUMMARY_MD_PATH = OUTPUT_DIR / "summary_report.md"
+SUMMARY_HTML_PATH = OUTPUT_DIR / "summary_report.html"
 
 DEBUG_DUMP_FIRST_RESPONSE, RAW_RESPONSE_MAX_CHARS = True, 20000
 USER_ID = "search-tool-eval-user"
@@ -411,6 +412,7 @@ def write_summary_reports(rows, toolkits):
 
 def main():
     if not COMPOSIO_API_KEY or not GEMINI_API_KEY: raise ValueError("Set COMPOSIO_API_KEY and GEMINI_API_KEY in .env")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     random.seed(RANDOM_SEED)
     toolkits = select_toolkits(ALL_TOOLKITS, NUM_TOOLKITS_TO_SAMPLE)
     composio, gclient = Composio(api_key=COMPOSIO_API_KEY), genai.Client(api_key=GEMINI_API_KEY)
