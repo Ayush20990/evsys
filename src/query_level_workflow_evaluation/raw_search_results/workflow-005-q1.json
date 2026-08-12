@@ -3,19 +3,17 @@
     "query_id": "workflow-005-q1",
     "workflow_id": 5,
     "workflow_task": "Manage a partner-operations pipeline across Gmail, ClickUp, and Notion: create outreach drafts and task handoffs, inspect and update existing handoffs, scan recent email threads against CRM records, and write evidence-supported CRM status updates.",
-    "query": "create gmail outreach draft",
+    "query": "search and read recent Gmail email threads",
+    "intent": "Scan incoming email threads to review communication history with partners.",
     "requirement_groups": [
       {
         "acceptable_tool_slugs": [
-          "GMAIL_CREATE_EMAIL_DRAFT"
+          "GMAIL_LIST_THREADS",
+          "GMAIL_FETCH_EMAILS"
         ],
-        "purpose": "create outreach email draft"
+        "purpose": "Search and retrieve recent Gmail threads"
       }
     ],
-    "supporting_tools": [
-      "GMAIL_GET_DRAFT"
-    ],
-    "rationale": "Searches for tool to create email drafts in Gmail for outreach.",
     "candidate_tools": [
       "CLICKUP_CREATE_TASK",
       "CLICKUP_GET_TASK",
@@ -37,57 +35,59 @@
     ]
   },
   "request": {
-    "query": "create gmail outreach draft"
+    "query": "search and read recent Gmail email threads"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "create gmail outreach draft",
+          "use_case": "search and read recent Gmail email threads",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Prerequisite]: Determine new draft vs in-thread reply and gather to/cc/bcc/subject/body/is_html; for replies keep thread_id aligned to the same mailbox context and consider leaving subject unset to preserve threading, using GMAIL_SEARCH_PEOPLE (only if recipient needs disambiguation).",
-            "[Optional (if batching drafts or worried about losing IDs)] [Prerequisite]: Checkpoint inputs and returned draft identifiers using COMPOSIO_REMOTE_WORKBENCH (persist state between runs).",
-            "[Required] [Step]: Create the draft using GMAIL_CREATE_EMAIL_DRAFT (include thread_id only when intentionally replying) and save the returned draft identifier for downstream actions.",
-            "[Optional (for validation before edits/sending)] [Next Step]: Read back the stored draft using GMAIL_GET_DRAFT (use a detailed format when validating MIME/HTML/body).",
-            "[Optional (if content/recipients must change)] [Next Step]: Replace the stored draft using GMAIL_UPDATE_DRAFT (re-supply all fields you want to keep).",
-            "[Optional (only after explicit approval to send)] [Step]: Send the finalized stored draft using GMAIL_SEND_DRAFT (uses the saved draft identifier).",
-            "[Fallback (if draft identifier is missing or draft calls fail)] [Fallback]: Recover by paging GMAIL_LIST_DRAFTS, confirm the target via GMAIL_GET_DRAFT, then retry; if draft flow remains blocked, send a fresh email using GMAIL_SEND_EMAIL."
+            "[Optional (if label scoping reduces noise)] [Prerequisite]: Review available labels using GMAIL_LIST_LABELS (pick label IDs to narrow search).",
+            "[Required] [Prerequisite]: Validate mailbox read access using GMAIL_GET_PROFILE (fail fast on HTTP 403 insufficient-scope before searching).",
+            "[Required] [Step]: Discover recent candidate conversations using GMAIL_LIST_THREADS (use meeting/project keywords; keep verbose=false; collect threads[].id/snippet and data.nextPageToken).",
+            "[Required (if data.nextPageToken present/non-empty)] [Next Step]: Continue GMAIL_LIST_THREADS pagination using page_token until nextPageToken is missing/empty or enough threads are gathered (dedupe by threads[].id).",
+            "[Required] [Step]: Retrieve context for selected items using GMAIL_FETCH_MESSAGE_BY_THREAD_ID (extract only fields needed for triage; sort messages by internalDate/messageTimestamp for recency).",
+            "[Optional (if thread payload is too large/truncated or you need one email)] [Next Step]: Pull specific items using GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID (target message IDs from the hydrated thread).",
+            "[Optional (after review and explicit confirmation)] [Next Step]: Organize outcomes using GMAIL_MODIFY_THREAD_LABELS (apply/remove labels on chosen threads).",
+            "[Fallback (if thread search is empty/too noisy)] [Fallback]: Search at message level using GMAIL_FETCH_EMAILS (tighten query; paginate via data.nextPageToken), then group by messages[].threadId and hydrate chosen threads with GMAIL_FETCH_MESSAGE_BY_THREAD_ID."
           ],
           "known_pitfalls": [
-            "[GMAIL_CREATE_EMAIL_DRAFT] Response contains multiple identifiers\u2014use the draft identifier at data.id for GMAIL_GET_DRAFT/GMAIL_UPDATE_DRAFT/GMAIL_SEND_DRAFT (not data.message.id).",
-            "[GMAIL_CREATE_EMAIL_DRAFT] 400 validation errors occur for malformed recipients (invalid address; cc/bcc not passed as lists/arrays).",
-            "[GMAIL_CREATE_EMAIL_DRAFT] 403 or 400 with FAILED_PRECONDITION can occur when authorization scopes are missing or mail access is not enabled.",
-            "[GMAIL_UPDATE_DRAFT] Update behaves like a full replace; passing empty strings can trigger 400\u2014omit fields you want preserved.",
-            "[GMAIL_SEND_DRAFT] Sends exactly what is stored (no recipient overrides); some drafts may return FAILED_PRECONDITION\u2014recreate via GMAIL_CREATE_EMAIL_DRAFT and retry sending."
+            "[GMAIL_GET_PROFILE] HTTP 403 insufficient-scope blocks reads; requires fixing Gmail connection scopes outside the tool call.",
+            "[GMAIL_LIST_THREADS] data.nextPageToken may appear even with small page sizes; stopping after the first page can miss most matches.",
+            "[GMAIL_LIST_THREADS] verbose=true can create very large/offloaded outputs; snippets are display-only and may include markup-like encodings.",
+            "[GMAIL_FETCH_EMAILS] max_results is capped (commonly 500) and may return lightweight previews; fetch full details via GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID when needed.",
+            "[GMAIL_FETCH_MESSAGE_BY_THREAD_ID] messages[] ordering is not guaranteed and large threads may be truncated/offloaded or error (e.g., 404 NOT_FOUND); recover by fetching key messages with GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID."
           ],
           "reference_workbench_snippets": [
             {
-              "description": "Extract draft identifier, message identifier, and thread identifier from a create-draft response",
-              "code": "```python\ndraft_id=resp[\"data\"][\"id\"]\nmessage_id=resp[\"data\"][\"message\"][\"id\"]\nthread_id=resp[\"data\"][\"message\"][\"threadId\"]\n```"
+              "description": "Minimal pattern: paginate threads then hydrate selected threads",
+              "code": "```python\nthreads=[]\npage_token=None\nwhile len(threads)<100:\n  args={'max_results':min(100,100-len(threads)),'verbose':False}\n  if page_token: args['page_token']=page_token\n  r,_=run_composio_tool('GMAIL_LIST_THREADS',args)\n  d=(r.get('data') or {})\n  threads.extend(d.get('threads') or [])\n  page_token=d.get('nextPageToken')\n  if not page_token: break\nseen=set(); uniq=[]\nfor t in threads:\n  i=t.get('id')\n  if i and i not in seen:\n    seen.add(i); uniq.append(t)\nhydrated=[]\nfor t in uniq:\n  tr,_=run_composio_tool('GMAIL_FETCH_MESSAGE_BY_THREAD_ID',{'thread_id':t.get('id')})\n  hydrated.append(tr)\n```"
             },
             {
-              "description": "Inspect stored content using message text and MIME type",
-              "code": "```python\nr,e=run_composio_tool(\"GMAIL_GET_DRAFT\",{\"draft_id\":draft_id,\"format\":\"full\"})\nmsg=r.get(\"data\",{}).get(\"message\",{})\nmt=msg.get(\"payload\",{}).get(\"mimeType\")\ntext=msg.get(\"messageText\",\"\") or \"\"\nprint(mt)\nprint(len(text))\n```"
+              "description": "Parse stored tool response data and sort hydrated thread messages",
+              "code": "```python\nimport json\nobj=json.load(handle)\ndata=obj.get('data') or {}\nmsgs=data.get('messages') or []\nmsgs=sorted(msgs,key=lambda m:int(m.get('internalDate') or 0))\nids=[m.get('id') or m.get('messageId') for m in msgs if (m.get('id') or m.get('messageId'))]\ncount=len(ids)\n```"
             }
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "GMAIL_CREATE_EMAIL_DRAFT"
+            "GMAIL_LIST_THREADS",
+            "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"
           ],
           "related_tool_slugs": [
-            "GMAIL_GET_DRAFT",
-            "GMAIL_UPDATE_DRAFT",
-            "GMAIL_SEND_DRAFT",
-            "GMAIL_LIST_DRAFTS",
-            "GMAIL_SEARCH_PEOPLE",
-            "GMAIL_SEND_EMAIL"
+            "GMAIL_GET_PROFILE",
+            "GMAIL_FETCH_EMAILS",
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+            "GMAIL_LIST_LABELS",
+            "GMAIL_MODIFY_THREAD_LABELS",
+            "GMAIL_GET_ATTACHMENT"
           ],
           "toolkits": [
             "gmail"
           ],
-          "plan_id": "cdbeebf4541749dabc0c138b960be8db"
+          "plan_id": "4bbe2898de18448580923540adb5eb0c"
         }
       ],
       "toolkit_connection_statuses": [
@@ -99,66 +99,75 @@
         }
       ],
       "tool_schemas": {
-        "GMAIL_CREATE_EMAIL_DRAFT": {
+        "GMAIL_LIST_THREADS": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_CREATE_EMAIL_DRAFT",
-          "description": "Creates a Gmail email draft. While all fields are optional per the Gmail API, practical validation requires at least one of recipient_email, cc, or bcc and at least one of subject or body. Supports To/Cc/Bcc recipients, subject, plain/HTML body (ensure `is_html=True` for HTML), attachments, and threading. Returns a draft_id that must be used as-is with GMAIL_SEND_DRAFT \u2014 synthetic or stale IDs will fail. When creating a draft reply to an existing thread (thread_id provided), leave subject empty to stay in the same thread; setting a subject will create a NEW thread instead. HTTP 429 may occur on rapid creation/send sequences; apply exponential backoff.",
+          "tool_slug": "GMAIL_LIST_THREADS",
+          "description": "Retrieves a list of email threads from a Gmail account, identified by `user_id` (email address or 'me'), supporting filtering and pagination. Spam and trash are excluded by default unless explicitly targeted via `label:spam` or `label:trash` in the query.",
           "input_schema": {
             "type": "object",
             "properties": {
-              "cc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "cc.recipient1@example.com",
-                    "CC User <cc.recipient2@example.com>"
-                  ]
-                ],
-                "description": "Carbon Copy (CC) recipients' email addresses. Each must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). Plain names without email addresses are NOT valid. Optional for drafts (recipients can be added later before sending)."
-              },
-              "bcc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "bcc.recipient@example.com",
-                    "BCC User <bcc.user@example.com>"
-                  ]
-                ],
-                "description": "Blind Carbon Copy (BCC) recipients' email addresses. Each must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'Bob Jones <user@example.com>'). Plain names without email addresses are NOT valid. Optional for drafts (recipients can be added later before sending)."
-              },
-              "body": {
+              "query": {
                 "type": "string",
+                "default": "",
                 "examples": [
-                  "Hello Team,\n\nPlease find the attached report for your review.\n\nBest regards,\nYour Name",
-                  "<h1>Meeting Confirmation</h1><p>This email confirms our meeting scheduled for next Tuesday.</p>"
+                  "is:unread",
+                  "from:john.doe@example.com",
+                  "subject:important"
                 ],
-                "description": "Email body content (plain text or HTML); `is_html` must be True if HTML. Optional - drafts can be created without a body and edited later before sending. Can also be provided as 'message_body'."
+                "description": "Filter for threads, using Gmail search query syntax (e.g., 'from:user@example.com is:unread'). Supported operators include `from:`, `to:`, `subject:`, `label:`, `is:unread`, `has:attachment`, `after:`, `before:`. Dates must use `YYYY/MM/DD` format; date operators are UTC-based. Exact subject phrases require quotes (e.g., `subject:'meeting notes'`)."
               },
-              "is_html": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The user's email address or 'me' to specify the authenticated Gmail account."
+              },
+              "verbose": {
                 "type": "boolean",
                 "default": false,
                 "examples": [
                   true,
                   false
                 ],
-                "description": "Set to True if `body` is already formatted HTML. When False, plain text newlines are auto-converted to <br/> tags. Both modes result in HTML email; this flag controls whether the body content is treated as raw HTML or plain text that gets HTML formatting applied."
+                "description": "If false, returns threads with basic fields (id, snippet, historyId). If true, returns threads with complete message details including headers, body, attachments, and metadata for each message in the thread. Combining `verbose=true` with large `max_results` produces very large responses; keep `max_results` modest when verbose is enabled."
               },
-              "subject": {
+              "page_token": {
                 "type": "string",
+                "default": "",
                 "examples": [
-                  "Project Update Q3",
-                  "Meeting Reminder"
+                  "abcPageToken123"
                 ],
-                "description": "Email subject line. Optional - drafts can be created without a subject and edited later before sending. When creating a draft reply to an existing thread (thread_id provided), leave this empty to stay in the same thread. Setting a subject will create a NEW thread instead."
+                "description": "Token from a previous response to retrieve a specific page of results; omit for the first page."
               },
+              "max_results": {
+                "type": "integer",
+                "default": 10,
+                "maximum": 500,
+                "minimum": 1,
+                "examples": [
+                  "10",
+                  "50",
+                  "100"
+                ],
+                "description": "Maximum number of threads to return. Hard cap is ~500 per call. For full mailbox coverage, loop using `nextPageToken` via `page_token` until absent."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_FETCH_MESSAGE_BY_THREAD_ID": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+          "description": "Retrieves messages from a Gmail thread using its `thread_id`, where the thread must be accessible by the specified `user_id`. Returns a `messages` array; `thread_id` is not echoed in the response. Message order is not guaranteed \u2014 sort by `internalDate` to find oldest/newest. Check `labelIds` per message to filter drafts. Concurrent bulk calls may trigger 403 `userRateLimitExceeded` or 429; cap concurrency ~10 and use exponential backoff.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "thread_id"
+            ],
+            "properties": {
               "user_id": {
                 "type": "string",
                 "default": "me",
@@ -166,438 +175,128 @@
                   "me",
                   "user@example.com"
                 ],
-                "description": "User's email address or 'me' for the authenticated user."
+                "description": "The email address of the user."
               },
               "thread_id": {
                 "type": "string",
                 "examples": [
-                  "17f45ec49a9c3f1b"
+                  "19bf77729bcb3a44",
+                  "msg-f:19bf77729bcb3a44"
                 ],
-                "description": "ID of an existing Gmail thread to reply to; omit for new thread. If the thread ID is invalid or inaccessible, the draft will be created as a new thread instead of failing."
+                "description": "Hexadecimal thread ID from Gmail API (e.g., '19bf77729bcb3a44'). Obtain from GMAIL_LIST_THREADS or GMAIL_FETCH_EMAILS. Prefixes like 'msg-f:' or 'thread-f:' are auto-stripped. Legacy Gmail web UI IDs (e.g., 'FMfcgzQfBZdVqKZcSVBhqwWLKWCtDdWQ') are NOT supported - use the API thread ID instead. Deduplicate thread_ids before calling when multiple listed messages share the same threadId to avoid redundant calls."
               },
-              "attachment": {
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "title": "FileUploadable",
-                    "required": [
-                      "name",
-                      "mimetype",
-                      "s3key"
-                    ],
-                    "properties": {
-                      "name": {
-                        "type": "string",
-                        "title": "Name",
-                        "examples": [
-                          "document.pdf",
-                          "image.jpg",
-                          "report.docx"
-                        ],
-                        "description": "The filename that will be used when uploading the file to the destination service"
-                      },
-                      "s3key": {
-                        "type": "string",
-                        "title": "S3Key",
-                        "examples": [
-                          "47563/gmail/GET_ATTACHMENT/response/12345"
-                        ],
-                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
-                      },
-                      "mimetype": {
-                        "type": "string",
-                        "title": "Mimetype",
-                        "examples": [
-                          "application/pdf",
-                          "image/jpeg",
-                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        ],
-                        "description": "The MIME type of the file"
-                      }
-                    },
-                    "file_uploadable": true
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "title": "FileUploadable",
-                      "required": [
-                        "name",
-                        "mimetype",
-                        "s3key"
-                      ],
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "title": "Name",
-                          "examples": [
-                            "document.pdf",
-                            "image.jpg",
-                            "report.docx"
-                          ],
-                          "description": "The filename that will be used when uploading the file to the destination service"
-                        },
-                        "s3key": {
-                          "type": "string",
-                          "title": "S3Key",
-                          "examples": [
-                            "47563/gmail/GET_ATTACHMENT/response/12345"
-                          ],
-                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
-                        },
-                        "mimetype": {
-                          "type": "string",
-                          "title": "Mimetype",
-                          "examples": [
-                            "application/pdf",
-                            "image/jpeg",
-                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          ],
-                          "description": "The MIME type of the file"
-                        }
-                      },
-                      "file_uploadable": true
-                    }
-                  }
-                ],
-                "description": "File(s) to attach to the email. Accepts a single file or a list of files. Total message size including base64-encoded attachments must be under 25 MB; use shareable links (e.g., Google Drive) for larger files."
-              },
-              "recipient_email": {
+              "page_token": {
                 "type": "string",
+                "default": "",
                 "examples": [
-                  "john.doe@example.com",
-                  "John Doe <john.doe@example.com>"
+                  "CiAKGhIKJdealEffectivelyPageToken"
                 ],
-                "description": "Primary recipient's email address. Must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). A plain name without an email address (e.g., 'John Doe') is NOT valid - the '@' symbol and domain are required. Optional for drafts (recipients can be added later before sending). Use extra_recipients if you want to send to multiple recipients."
-              },
-              "extra_recipients": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "jane.doe@example.com",
-                    "Jane Doe <jane.doe@example.com>"
-                  ]
-                ],
-                "description": "Additional 'To' recipients' email addresses (not Cc or Bcc). Each must be a valid email address (e.g., 'user@example.com'), display name format (e.g., 'Jane Doe <user@example.com>'), or 'me' for the authenticated user. Plain names without email addresses are NOT valid. Should only be used if recipient_email is also provided."
+                "description": "Opaque page token for fetching a specific page of messages if results are paginated. Iterate calls by passing the returned `nextPageToken` until it is absent; stopping early will miss messages in long threads."
               }
             }
           },
           "hasFullSchema": true
         },
-        "GMAIL_GET_DRAFT": {
+        "GMAIL_GET_PROFILE": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_GET_DRAFT",
-          "description": "Retrieves a single Gmail draft by its ID. Use this to fetch and inspect draft content before sending via GMAIL_SEND_DRAFT. The format parameter controls the level of detail returned.",
+          "tool_slug": "GMAIL_GET_PROFILE",
+          "description": "Retrieves Gmail profile information (email address, aggregate messagesTotal/threadsTotal, historyId) for a user. messagesTotal counts individual emails; threadsTotal counts conversations; neither is per-label \u2014 use GMAIL_FETCH_EMAILS with label filters for label-specific counts. The returned historyId seeds incremental sync via GMAIL_LIST_HISTORY; if historyIdTooOld is returned, rescan with GMAIL_FETCH_EMAILS before resuming. Response may be wrapped under a top-level data field; unwrap before reading fields. A successful call confirms mailbox connectivity but not full mailbox access if granted scopes are narrow. Use the returned email address to dynamically identify the authenticated account rather than hard-coding it.",
           "input_schema": {
             "type": "object",
-            "required": [
-              "draft_id"
-            ],
             "properties": {
-              "format": {
-                "type": "string",
-                "default": "full",
-                "examples": [
-                  "full",
-                  "metadata",
-                  "minimal",
-                  "raw"
-                ],
-                "description": "Format for the draft message: 'minimal' (ID/labels only), 'full' (complete data with parsed payload), 'raw' (base64url-encoded RFC 2822 format), 'metadata' (ID/labels/headers only)."
-              },
               "user_id": {
                 "type": "string",
                 "default": "me",
                 "examples": [
-                  "me",
-                  "user@example.com"
+                  "user@example.com",
+                  "me"
                 ],
-                "description": "The user's email address. The special value `me` can be used to indicate the authenticated user."
-              },
-              "draft_id": {
-                "type": "string",
-                "examples": [
-                  "r99885592323229922",
-                  "r-8388446164079304564"
-                ],
-                "description": "The ID of the draft to retrieve. Draft IDs are typically alphanumeric strings (e.g., 'r99885592323229922'). Use GMAIL_LIST_DRAFTS to retrieve valid draft IDs."
+                "description": "The email address of the Gmail user whose profile is to be retrieved, or the special value 'me' to indicate the currently authenticated user. Prefer 'me' unless explicitly targeting another account; passing a raw email address that does not match the connected account may fail or access the wrong mailbox."
               }
             }
           },
           "hasFullSchema": true
         },
-        "GMAIL_UPDATE_DRAFT": {
+        "GMAIL_FETCH_EMAILS": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_UPDATE_DRAFT",
-          "description": "Updates (replaces) an existing Gmail draft's content in-place by draft ID. This action replaces the entire draft content with the new message - it does not patch individual fields. All fields are optional; if not provided, you should provide complete draft content to avoid data loss.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "draft_id"
-            ],
-            "properties": {
-              "cc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "cc.recipient1@example.com",
-                    "CC User <cc.recipient2@example.com>"
-                  ]
-                ],
-                "description": "Carbon Copy (CC) recipients' email addresses. Each must be a valid email address or display name format."
-              },
-              "bcc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "bcc.recipient@example.com",
-                    "BCC User <bcc.user@example.com>"
-                  ]
-                ],
-                "description": "Blind Carbon Copy (BCC) recipients' email addresses. Each must be a valid email address or display name format."
-              },
-              "body": {
-                "type": "string",
-                "examples": [
-                  "Hello Team,\n\nPlease find the attached report.\n\nBest regards",
-                  "<h1>Meeting Confirmation</h1><p>This confirms our meeting.</p>"
-                ],
-                "description": "Email body content (plain text or HTML); is_html must be True if HTML. If not provided, previous body is preserved. Can also be provided as 'message_body'."
-              },
-              "is_html": {
-                "type": "boolean",
-                "default": false,
-                "examples": [
-                  true,
-                  false
-                ],
-                "description": "Set to True if body is already formatted HTML. When False, plain text newlines are auto-converted to <br/> tags."
-              },
-              "subject": {
-                "type": "string",
-                "examples": [
-                  "Project Update Q3",
-                  "Meeting Reminder"
-                ],
-                "description": "Email subject line. If not provided, previous subject is preserved."
-              },
-              "user_id": {
-                "type": "string",
-                "default": "me",
-                "examples": [
-                  "me",
-                  "user@example.com"
-                ],
-                "description": "User's email address or 'me' for the authenticated user."
-              },
-              "draft_id": {
-                "type": "string",
-                "examples": [
-                  "r-8388446164079304564",
-                  "r1234567890123456789"
-                ],
-                "description": "The ID of the draft to update. Must be a valid draft ID from GMAIL_LIST_DRAFTS or GMAIL_CREATE_EMAIL_DRAFT."
-              },
-              "thread_id": {
-                "type": "string",
-                "examples": [
-                  "17f45ec49a9c3f1b"
-                ],
-                "description": "ID of an existing Gmail thread. If provided, the draft will be part of this thread."
-              },
-              "attachment": {
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "title": "FileUploadable",
-                    "required": [
-                      "name",
-                      "mimetype",
-                      "s3key"
-                    ],
-                    "properties": {
-                      "name": {
-                        "type": "string",
-                        "title": "Name",
-                        "examples": [
-                          "document.pdf",
-                          "image.jpg",
-                          "report.docx"
-                        ],
-                        "description": "The filename that will be used when uploading the file to the destination service"
-                      },
-                      "s3key": {
-                        "type": "string",
-                        "title": "S3Key",
-                        "examples": [
-                          "47563/gmail/GET_ATTACHMENT/response/12345"
-                        ],
-                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
-                      },
-                      "mimetype": {
-                        "type": "string",
-                        "title": "Mimetype",
-                        "examples": [
-                          "application/pdf",
-                          "image/jpeg",
-                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        ],
-                        "description": "The MIME type of the file"
-                      }
-                    },
-                    "file_uploadable": true
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "title": "FileUploadable",
-                      "required": [
-                        "name",
-                        "mimetype",
-                        "s3key"
-                      ],
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "title": "Name",
-                          "examples": [
-                            "document.pdf",
-                            "image.jpg",
-                            "report.docx"
-                          ],
-                          "description": "The filename that will be used when uploading the file to the destination service"
-                        },
-                        "s3key": {
-                          "type": "string",
-                          "title": "S3Key",
-                          "examples": [
-                            "47563/gmail/GET_ATTACHMENT/response/12345"
-                          ],
-                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
-                        },
-                        "mimetype": {
-                          "type": "string",
-                          "title": "Mimetype",
-                          "examples": [
-                            "application/pdf",
-                            "image/jpeg",
-                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          ],
-                          "description": "The MIME type of the file"
-                        }
-                      },
-                      "file_uploadable": true
-                    }
-                  }
-                ],
-                "description": "File(s) to attach to the draft. Accepts a single file or a list of files. Replaces any existing attachments."
-              },
-              "recipient_email": {
-                "type": "string",
-                "examples": [
-                  "john.doe@example.com",
-                  "John Doe <john.doe@example.com>"
-                ],
-                "description": "Primary recipient's email address. Must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). Optional - if not provided, previous recipients are preserved."
-              },
-              "extra_recipients": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "jane.doe@example.com",
-                    "Jane Doe <jane.doe@example.com>"
-                  ]
-                ],
-                "description": "Additional 'To' recipients' email addresses. Each must be a valid email address or display name format. Should only be used if recipient_email is also provided."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "GMAIL_SEND_DRAFT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_SEND_DRAFT",
-          "description": "Sends an existing draft email AS-IS to recipients already defined within the draft. IMPORTANT: This ...",
+          "tool_slug": "GMAIL_FETCH_EMAILS",
+          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optiona...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_SEND_DRAFT"
+                "GMAIL_FETCH_EMAILS"
               ]
             }
           }
         },
-        "GMAIL_LIST_DRAFTS": {
+        "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_LIST_DRAFTS",
-          "description": "Retrieves a paginated list of email drafts from a user's Gmail account. Use verbose=true to get full...",
+          "tool_slug": "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+          "description": "Fetches a specific email message by its ID, provided the `message_id` exists and is accessible to th...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_LIST_DRAFTS"
+                "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"
               ]
             }
           }
         },
-        "GMAIL_SEARCH_PEOPLE": {
+        "GMAIL_LIST_LABELS": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_SEARCH_PEOPLE",
-          "description": "Searches contacts by matching the query against names, nicknames, emails, phone numbers, and organiz...",
+          "tool_slug": "GMAIL_LIST_LABELS",
+          "description": "Retrieves all system and user-created labels for a Gmail account in a single unpaginated response. P...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_SEARCH_PEOPLE"
+                "GMAIL_LIST_LABELS"
               ]
             }
           }
         },
-        "GMAIL_SEND_EMAIL": {
+        "GMAIL_MODIFY_THREAD_LABELS": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_SEND_EMAIL",
-          "description": "Sends an email via Gmail API using the authenticated user's Google profile display name. Sends immed...",
+          "tool_slug": "GMAIL_MODIFY_THREAD_LABELS",
+          "description": "Adds or removes specified existing label IDs from a Gmail thread, affecting all its messages; ensure...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_SEND_EMAIL"
+                "GMAIL_MODIFY_THREAD_LABELS"
+              ]
+            }
+          }
+        },
+        "GMAIL_GET_ATTACHMENT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_GET_ATTACHMENT",
+          "description": "Retrieves a specific attachment by ID from a message in a user's Gmail mailbox, requiring valid mess...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_GET_ATTACHMENT"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T20:51:31.944Z",
-        "current_time_utc_epoch_seconds": 1786567891,
+        "current_time_utc": "2026-08-12T21:30:47.983Z",
+        "current_time_utc_epoch_seconds": 1786570247,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "ants",
+        "id": "earn",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"ants\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"earn\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -607,6 +306,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_K_mRj5l6nE93"
+    "log_id": "log_Qu-XorOlIlxE"
   }
 }

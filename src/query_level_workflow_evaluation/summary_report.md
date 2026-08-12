@@ -1,167 +1,134 @@
 # Query-Level Workflow Benchmark
 
 ## Method
-Each human workflow is decomposed into agent-like search queries, with the query count scaled to the candidate pool size instead of a fixed cap. Ground truth per query is one or more requirement groups (any one tool within a group satisfies it; all groups are required). Queries that miss a group get a secondary judged-recall pass checking whether an actually-returned, unlabeled tool would still plausibly satisfy it.
+Ground truth is built in two separate passes so neither leaks into the other: stage A blindly decomposes each task into search queries (no tool pool visible); stage B labels each query against the candidate pool's real tool descriptions (not just slugs). Ground truth per query is one or more requirement groups (any one tool within a group satisfies it; all groups are required); a query can also come back with no matching candidate tool at all, which is recorded rather than forced. Query count scales with the candidate-pool size instead of a fixed cap. Queries that miss a group get a secondary judged-recall pass checking whether an actually-returned, unlabeled tool would still plausibly satisfy it.
 
 ## Summary
-- **Workflows accepted:** 25
-- **Query-level test cases:** 82
-- **Rejected workflow decompositions:** 0
-- **Average primary recall (strict):** 54.1%
-- **Average retrieval recall (strict):** 66.7%
-- **Any-required-group hit rate:** 73.2%
-- **Average judged recall (strict + plausible unlabeled hits, same denominator as strict recall):** 81.3%
-- **Queries sent through the judge pass (recall < 1):** 33/82
+- **Workflows accepted:** 9
+- **Query-level test cases (scored):** 29
+- **Unlabelable queries (valid decomposition, no candidate tool fit -- not scored):** 3
+- **Rejected workflow decompositions/labelings:** 1
+- **Average primary recall (strict):** 46.6%
+- **Average retrieval recall (strict):** 67.2%
+- **Any-required-group hit rate:** 79.3%
+- **Average judged recall (strict + plausible unlabeled hits, same denominator as strict recall):** 75.9%
+- **Queries sent through the judge pass (recall < 1):** 13/29
 
 ## Latency
 API/Search latency is the successful call only; end-to-end includes failed attempts and retry backoff.
 
 | Metric | API/Search (s) | End-to-end (s) |
 |---|---:|---:|
-| Average | 2.77 | 2.77 |
-| Median (P50) | 2.50 | 2.50 |
-| P95 | 4.61 | 4.61 |
-| Maximum | 8.63 | 8.63 |
+| Average | 2.75 | 2.75 |
+| Median (P50) | 2.62 | 2.62 |
+| P95 | 3.70 | 3.70 |
+| Maximum | 6.73 | 6.73 |
 
 ## Failure Examples
 These are query-level candidates for manual review, not automatic product-bug conclusions. `judged_recall` is a plausibility check, not a second ground truth.
 
-### workflow-006-q2 — recall 0.0%
-- **Query:** search campaigns and add contact to campaign
-- **Missed purposes:** `find the relevant campaign; add the contact to the campaign`
-- **Missed (any-of groups):** `SALESFORCE_SEARCH_CAMPAIGNS; SALESFORCE_ADD_CONTACT_TO_CAMPAIGN`
+### workflow-001-q2 — recall 0.0%
+- **Query:** create automated email and workflow
+- **Missed purposes:** `create or prepare the review-only automated confirmation email; create the confirmation workflow`
+- **Missed (any-of groups):** `HUBSPOT_CLONE_MARKETING_EMAIL | HUBSPOT_CREATE_OR_UPDATE_DRAFT_VERSION; HUBSPOT_CREATE_WORKFLOW`
 - **Judged recall:** 0.0%
-- **Primary returned:** `EMELIA_LIST_CAMPAIGNS; EMELIA_ADD_CONTACT_TO_CAMPAIGN`
-
-### workflow-007-q4 — recall 0.0%
-- **Query:** send and receive SMS messages
-- **Missed purposes:** `send SMS messages; receive and get inbound SMS messages`
-- **Missed (any-of groups):** `CLICKSEND_CREATE_SMS_SEND; CLICKSEND_GET_SMS_INBOUND`
-- **Judged recall:** 50.0% (group 1 <- MSG91_SEND_SMS (high))
-- **Primary returned:** `BREVO_CREATE_SMS_CAMPAIGN; MSG91_SEND_SMS`
-
-### workflow-015-q1 — recall 0.0%
-- **Query:** fetch pending invoice emails and get attachments
-- **Missed purposes:** `retrieve email messages; download invoice file attachments`
-- **Missed (any-of groups):** `GMAIL_FETCH_EMAILS; GMAIL_GET_ATTACHMENT`
-- **Judged recall:** 100.0% (group 1 <- GOOGLESUPER_FETCH_EMAILS (high); group 2 <- GOOGLESUPER_GET_ATTACHMENT (high))
-- **Primary returned:** `SUPPORTBEE_FETCH_EMAILS; GOOGLESUPER_FETCH_EMAILS; GOOGLESUPER_GET_ATTACHMENT`
-
-### workflow-019-q2 — recall 0.0%
-- **Query:** retrieve and read the candidate's existing resume document from storage
-- **Missed purposes:** `Locate the resume file in Google Drive; Fetch the contents of the resume document`
-- **Missed (any-of groups):** `GOOGLEDRIVE_FIND_FILE; GOOGLEDRIVE_DOWNLOAD_FILE | GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT`
-- **Judged recall:** 0.0%
-- **Primary returned:** `BREEZY_HR_GET_CANDIDATE_RESUME`
-
-### workflow-023-q2 — recall 0.0%
-- **Query:** update tickets with AI triage notes, tags, and enrich with requester context
-- **Missed purposes:** `add private AI triage notes and tags to tickets; enrich tickets with requester and order context`
-- **Missed (any-of groups):** `ZENDESK_UPDATE_ZENDESK_TICKET; ZENDESK_GET_USER`
-- **Judged recall:** 50.0% (group 1 <- ZENDESK_UPDATE_TICKETS_TAGS (medium))
-- **Primary returned:** `ZENDESK_UPDATE_TICKETS_TAGS`
+- **Primary returned:** `GOOGLESHEETS_BATCH_GET; GMAIL_SEND_EMAIL; GOOGLESHEETS_UPSERT_ROWS`
 
 ### workflow-001-q1 — recall 0.0%
-- **Query:** create a review-only marketing email and clone it for the launch
-- **Missed purposes:** `clone the confirmation email for the event registration flow`
-- **Missed (any-of groups):** `HUBSPOT_CLONE_MARKETING_EMAIL`
+- **Query:** check payment link capabilities and configuration
+- **Missed purposes:** `check permissions and scopes for payment link features`
+- **Missed (any-of groups):** `HUBSPOT_LIST_GRANTED_SCOPES`
 - **Judged recall:** 0.0%
-- **Primary returned:** `MAILCHIMP_REPLICATE_CAMPAIGN`
+- **Primary returned:** `STRIPE_UPDATE_PAYMENT_LINK; STRIPE_GET_PAYMENT_LINK`
 
-### workflow-001-q2 — recall 0.0%
-- **Query:** create a disabled automation workflow for event registration
-- **Missed purposes:** `create the disabled confirmation workflow in HubSpot`
-- **Missed (any-of groups):** `HUBSPOT_CREATE_WORKFLOW`
+### workflow-001-q3 — recall 0.0%
+- **Query:** verify asset status and test inertness
+- **Missed purposes:** `verify the status and configuration of the created assets`
+- **Missed (any-of groups):** `HUBSPOT_GET_WORKFLOW_BY_ID | HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL`
 - **Judged recall:** 0.0%
-- **Primary returned:** `CALENDLY_UPDATE_EVENT_TYPE`
+- **Primary returned:** `BLAZEMETER_GET_WORKSPACES_ASSETS2; BLAZEMETER_VALIDATE_WORKSPACES_ASSETS; WEBFLOW_GET_ASSET; DATABRICKS_CLEANROOMS_CLEAN_ROOM_ASSETS_GET`
 
-### workflow-008-q1 — recall 0.0%
-- **Query:** add summarized text entries to an existing Google Doc
-- **Missed purposes:** `insert summarized text into Google Docs`
-- **Missed (any-of groups):** `GOOGLEDOCS_INSERT_TEXT_ACTION`
-- **Judged recall:** 100.0% (group 1 <- GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN (high))
-- **Primary returned:** `GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN`
-
-### workflow-008-q2 — recall 0.0%
-- **Query:** update google document with transcript summary data
-- **Missed purposes:** `update document content with new text`
-- **Missed (any-of groups):** `GOOGLEDOCS_INSERT_TEXT_ACTION`
-- **Judged recall:** 100.0% (group 1 <- GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN (high))
-- **Primary returned:** `GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT; GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN`
-
-### workflow-009-q1 — recall 0.0%
-- **Query:** search and generate stock image assets
-- **Missed purposes:** `search for stock images`
-- **Missed (any-of groups):** `COMPOSIO_SEARCH_IMAGE`
+### workflow-001-q4 — recall 0.0%
+- **Query:** create custom object registration ledger
+- **Missed purposes:** `create a custom-object registration ledger schema`
+- **Missed (any-of groups):** `HUBSPOT_CREATE_OBJECT_SCHEMA`
 - **Judged recall:** 0.0%
-- **Primary returned:** `GEMINI_GENERATE_IMAGE`
+- **Primary returned:** `ZENDESK_CREATE_CUSTOM_OBJECT_RECORD; HIGHLEVEL_CREATE_OBJECT_RECORD`
 
-### workflow-009-q2 — recall 0.0%
-- **Query:** send generated media files via email
-- **Missed purposes:** `send generated files through email`
-- **Missed (any-of groups):** `GMAIL_SEND_EMAIL`
-- **Judged recall:** 100.0% (group 1 <- OUTLOOK_SEND_EMAIL (high))
-- **Primary returned:** `SALESFORCE_SEND_EMAIL; OUTLOOK_SEND_EMAIL`
-
-### workflow-010-q1 — recall 0.0%
-- **Query:** query existing bank account transactions and company ledger entities
-- **Missed purposes:** `query existing ledger and transaction entities`
-- **Missed (any-of groups):** `QUICKBOOKS_QUERY_ENTITIES`
-- **Judged recall:** 100.0% (group 1 <- QUICKBOOKS_GET_GENERAL_LEDGER_REPORT (high))
-- **Primary returned:** `ZOHO_BOOKS_LIST_BANK_ACCOUNTS; QUICKBOOKS_GET_GENERAL_LEDGER_REPORT`
-
-### workflow-013-q3 — recall 0.0%
-- **Query:** send outreach email for marketing and press engagement
-- **Missed purposes:** `send outreach emails to contacts`
-- **Missed (any-of groups):** `GMAIL_SEND_EMAIL`
-- **Judged recall:** 0.0%
-- **Primary returned:** `SENDGRID_SEND_A_TEST_MARKETING_EMAIL; HUBSPOT_CLONE_MARKETING_EMAIL`
-
-### workflow-015-q2 — recall 0.0%
-- **Query:** upload invoice files to cloud storage
-- **Missed purposes:** `save invoice attachments to cloud storage`
-- **Missed (any-of groups):** `GOOGLEDRIVE_UPLOAD_FROM_URL`
-- **Judged recall:** 100.0% (group 1 <- GOOGLEDRIVE_UPLOAD_FILE (high))
+### workflow-003-q2 — recall 0.0%
+- **Query:** upload file to OneDrive
+- **Missed purposes:** `upload modified file content back to OneDrive`
+- **Missed (any-of groups):** `ONE_DRIVE_UPDATE_FILE_CONTENT`
+- **Judged recall:** 100.0% (group 1 <- ONE_DRIVE_ONEDRIVE_UPLOAD_FILE (high))
 - **Primary returned:** `GOOGLEDRIVE_UPLOAD_FILE; ONE_DRIVE_ONEDRIVE_UPLOAD_FILE`
 
-### workflow-017-q4 — recall 0.0%
-- **Query:** send an email regarding infrastructure issues
-- **Missed purposes:** `Send the support email`
-- **Missed (any-of groups):** `GMAIL_SEND_EMAIL | GMAIL_SEND_DRAFT`
-- **Judged recall:** 0.0%
-- **Primary returned:** `JIRA_SEND_NOTIFICATION_FOR_ISSUE`
+### workflow-005-q5 — recall 0.0%
+- **Query:** write evidence-supported updates in Notion CRM records
+- **Missed purposes:** `Update Notion CRM records with status updates`
+- **Missed (any-of groups):** `NOTION_UPDATE_PAGE`
+- **Judged recall:** 100.0% (group 1 <- NOTION_UPDATE_ROW_DATABASE (high))
+- **Primary returned:** `NOTION_UPDATE_ROW_DATABASE; NOTION_UPDATE_BLOCK`
 
-### workflow-018-q1 — recall 0.0%
-- **Query:** search for remote data engineering contract job listings on LinkedIn
-- **Missed purposes:** `execute searches for job listings on LinkedIn`
-- **Missed (any-of groups):** `LINKEDIN_PROXY_EXECUTE`
-- **Judged recall:** 0.0%
-- **Primary returned:** `COMPOSIO_SEARCH_WEB`
+### workflow-002-q2 — recall 50.0%
+- **Query:** create or update structured dataset content in Notion
+- **Missed purposes:** `Create a new page in Notion for the structured dataset`
+- **Missed (any-of groups):** `NOTION_CREATE_NOTION_PAGE`
+- **Judged recall:** 50.0%
+- **Primary returned:** `NOTION_FETCH_DATABASE; NOTION_QUERY_DATABASE_WITH_FILTER; NOTION_UPSERT_ROW_DATABASE`
 
-### workflow-020-q4 — recall 0.0%
-- **Query:** manage zoho crm records
-- **Missed purposes:** `execute queries or actions against Zoho CRM`
-- **Missed (any-of groups):** `ZOHO_PROXY_EXECUTE`
-- **Judged recall:** 100.0% (group 1 <- ZOHO_CREATE_ZOHO_RECORD (high))
-- **Primary returned:** `ZOHO_LIST_MODULES; ZOHO_GET_MODULE_FIELDS; ZOHO_SEARCH_ZOHO_RECORDS`
+### workflow-004-q2 — recall 50.0%
+- **Query:** publish carousel content to LinkedIn with a first comment
+- **Missed purposes:** `add first comment to LinkedIn post`
+- **Missed (any-of groups):** `LINKEDIN_CREATE_COMMENT_ON_POST`
+- **Judged recall:** 50.0%
+- **Primary returned:** `LINKEDIN_CREATE_LINKED_IN_POST`
 
-### workflow-020-q5 — recall 0.0%
-- **Query:** manage quickbooks billing data
-- **Missed purposes:** `execute operations for billing records in QuickBooks`
-- **Missed (any-of groups):** `QUICKBOOKS_PROXY_EXECUTE`
-- **Judged recall:** 0.0%
-- **Primary returned:** `QUICKBOOKS_QUERY_ENTITIES; QUICKBOOKS_GET_TRANSACTION_LIST_REPORT`
+### workflow-005-q2 — recall 50.0%
+- **Query:** search and retrieve ClickUp tasks and Notion CRM records
+- **Missed purposes:** `Retrieve Notion CRM records`
+- **Missed (any-of groups):** `NOTION_QUERY_DATABASE_WITH_FILTER | NOTION_SEARCH_NOTION_PAGE`
+- **Judged recall:** 50.0%
+- **Primary returned:** `CLICKUP_GET_VIEW_TASKS; CLICKUP_GET_TASKS`
 
-### workflow-022-q1 — recall 0.0%
-- **Query:** fetch unread emails and process alerts
-- **Missed purposes:** `retrieve unread email messages for triage`
-- **Missed (any-of groups):** `GMAIL_FETCH_EMAILS`
-- **Judged recall:** 100.0% (group 1 <- INSTANTLY_LIST_EMAILS (medium))
-- **Primary returned:** `STACK_EXCHANGE_GET_USER_UNREAD_NOTIFICATIONS; BENCHMARK_EMAIL_GET_NOTIFICATION; INSTANTLY_COUNT_UNREAD_EMAILS`
+### workflow-007-q6 — recall 50.0%
+- **Query:** configure sms sending and receiving
+- **Missed purposes:** `configure receiving sms`
+- **Missed (any-of groups):** `CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND | CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND`
+- **Judged recall:** 50.0%
+- **Primary returned:** `CLICKSEND_CREATE_SMS_SEND`
 
-### workflow-022-q2 — recall 0.0%
-- **Query:** look up CRM trial records and organizations
-- **Missed purposes:** `find CRM trial and organization records`
-- **Missed (any-of groups):** `AIRTABLE_LIST_RECORDS | PIPEDRIVE_SEARCH_ORGANIZATIONS`
-- **Judged recall:** 0.0%
-- **Primary returned:** `SALESFORCE_SEARCH_ACCOUNTS; SALESFORCE_SEARCH_OPPORTUNITIES; SALESFORCE_GET_ACCOUNT; SALESFORCE_GET_OPPORTUNITY; CAPSULE_CRM_LIST_PARTIES; CAPSULE_CRM_RUN_FILTER_QUERY`
+### workflow-007-q7 — recall 50.0%
+- **Query:** manage calendar access and events
+- **Missed purposes:** `manage calendar events`
+- **Missed (any-of groups):** `GOOGLECALENDAR_BATCH_EVENTS`
+- **Judged recall:** 100.0% (group 2 <- GOOGLECALENDAR_CREATE_EVENT (high))
+- **Primary returned:** `GOOGLECALENDAR_FIND_FREE_SLOTS; GOOGLECALENDAR_FIND_EVENT; GOOGLECALENDAR_CREATE_EVENT`
+
+### workflow-010-q2 — recall 50.0%
+- **Query:** undo remove incorrect quickbooks ledger entry
+- **Missed purposes:** `remove or undo incorrect ledger entries`
+- **Missed (any-of groups):** `QUICKBOOKS_EXECUTE_BATCH_OPERATION`
+- **Judged recall:** 50.0%
+- **Primary returned:** `NETSUITE_DELETE_JOURNAL_ENTRY; QUICKBOOKS_CREATE_JOURNAL_ENTRY`
+
+### workflow-010-q3 — recall 50.0%
+- **Query:** record customer payment quickbooks financial report
+- **Missed purposes:** `verify financial reports`
+- **Missed (any-of groups):** `QUICKBOOKS_GET_REPORTS`
+- **Judged recall:** 50.0%
+- **Primary returned:** `QUICKBOOKS_QUERY_ENTITIES; QUICKBOOKS_CREATE_PAYMENT`
+
+## Unlabelable Queries
+Stage A produced a genuine sub-intent that stage B found no candidate tool for. Not scored -- reviewed here instead of silently dropped.
+
+### workflow-007-q3
+- **Query:** fetch github activity
+- **Intent:** Retrieve GitHub contributions, pull requests, and activity logs for productivity tracking.
+
+### workflow-007-q4
+- **Query:** check linkedin updates
+- **Intent:** Gather professional network notifications and signals from LinkedIn.
+
+### workflow-008-q1
+- **Query:** fetch public video transcripts
+- **Intent:** This query searches for a tool capable of retrieving transcript data from public videos to build the knowledge base.

@@ -3,17 +3,22 @@
     "query_id": "workflow-010-q3",
     "workflow_id": 10,
     "workflow_task": "Reconcile an organization's QuickBooks bank-account ledger by querying existing transactions, removing or undoing incorrect entries, posting corrected ledger activity, creating adjustment entries, recording a customer payment, and verifying financial reports.",
-    "query": "get financial reports to verify ledger reconciliation",
+    "query": "record customer payment quickbooks financial report",
+    "intent": "Record a customer payment and verify the resulting financial reports to ensure accurate reconciliation.",
     "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "QUICKBOOKS_EXECUTE_BATCH_OPERATION"
+        ],
+        "purpose": "record customer payment"
+      },
       {
         "acceptable_tool_slugs": [
           "QUICKBOOKS_GET_REPORTS"
         ],
-        "purpose": "retrieve financial reports for verification"
+        "purpose": "verify financial reports"
       }
     ],
-    "supporting_tools": [],
-    "rationale": "The final step of the workflow requires verifying financial reports after reconciling the ledger.",
     "candidate_tools": [
       "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
       "QUICKBOOKS_EXECUTE_BATCH_OPERATION",
@@ -24,58 +29,49 @@
     ]
   },
   "request": {
-    "query": "get financial reports to verify ledger reconciliation"
+    "query": "record customer payment quickbooks financial report"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "get financial reports to verify ledger reconciliation",
+          "use_case": "record customer payment quickbooks financial report",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Prerequisite]: Define one reporting period (start/end) and one as-of cutoff, and apply consistently across period reports using QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT/QUICKBOOKS_GET_REPORT_CASH_FLOW vs snapshot reports using QUICKBOOKS_GET_BALANCE_SHEET_REPORT/QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT/QUICKBOOKS_GET_REPORT_AGED_PAYABLES.",
-            "[Required] [Step]: Retrieve operating results for the period using QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT (keep accounting_method consistent across the packet).",
-            "[Required] [Step]: Retrieve financial position at the cutoff using QUICKBOOKS_GET_BALANCE_SHEET_REPORT (use this as the point-in-time anchor for the packet).",
-            "[Required] [Step]: Retrieve cash movement for the period using QUICKBOOKS_GET_REPORT_CASH_FLOW.",
-            "[Required] [Step]: Retrieve receivables snapshot using QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT (use the same cutoff via report_date).",
-            "[Required] [Step]: Retrieve payables snapshot using QUICKBOOKS_GET_REPORT_AGED_PAYABLES (use the same cutoff via report_date).",
-            "[Optional (if statement lines need posting-level drill-down)] [Next Step]: Pull account activity using QUICKBOOKS_GET_GENERAL_LEDGER_REPORT (scope to relevant accounts and a bounded date window).",
-            "[Optional (if you need a comprehensive line-item listing or to cross-check totals)] [Next Step]: Pull detailed rows using QUICKBOOKS_GET_TRANSACTION_LIST_REPORT or QUICKBOOKS_GET_REPORT_TRIAL_BALANCE (reshape Columns/Rows before aggregating).",
-            "[Fallback (if report variants/options are unclear)] [Fallback]: Discover supported report names/options using QUICKBOOKS_GET_REPORTS, then rerun the chosen report tool with clarified inputs."
+            "[Required] [Prerequisite (if invoice internal id unknown)]: Locate the target invoice using QUICKBOOKS_QUERY_ENTITIES (filter by invoice reference number; capture Invoice.Id, CustomerRef, and open Balance).",
+            "[Optional (if reference-number search is ambiguous)] [Prerequisite]: Browse candidates using QUICKBOOKS_LIST_INVOICES, then confirm the exact match using QUICKBOOKS_QUERY_ENTITIES (re-capture Invoice.Id and Balance).",
+            "[Optional (if payment method id is required by your setup)] [Prerequisite]: Determine the payment method identifier using QUICKBOOKS_GET_PAYMENT_METHOD (select the intended method for the received payment).",
+            "[Required] [Step]: Record the received payment using QUICKBOOKS_CREATE_PAYMENT (set customer reference, total amount, optional payment date, and lines that apply the payment via lines[].LinkedTxn with TxnType=\"Invoice\" and TxnId=Invoice.Id).",
+            "[Optional (if creating many payments)] [Step]: Submit multiple creates using QUICKBOOKS_EXECUTE_BATCH_OPERATION (batch payment creations; each payment still links via lines[].LinkedTxn).",
+            "[Optional (for verification)] [Next Step]: Re-read the invoice using QUICKBOOKS_READ_INVOICE (confirm Balance reduced as expected; note updated SyncToken for later updates).",
+            "[Optional (for audit/troubleshooting)] [Next Step]: Fetch the created payment using QUICKBOOKS_GET_PAYMENT (confirm it is linked/applied to the intended invoice and unapplied amount is as expected).",
+            "[Fallback (if QUICKBOOKS_CREATE_PAYMENT fails validation for eCheck/ACH flows)] [Fallback]: Create the payment using QUICKBOOKS_CREATE_ECHECK_PAYMENT (still apply it with lines[].LinkedTxn pointing to the invoice TxnId)."
           ],
           "known_pitfalls": [
-            "[QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT] report_date is an as-of snapshot (not a range); mixing cutoffs with period statements can skew comparisons.",
-            "[QUICKBOOKS_GET_REPORT_CASH_FLOW] Header can default to an unexpected macro window; validate Header.StartPeriod/Header.EndPeriod before using totals.",
-            "[QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT] Preset periods may normalize; confirm effective dates via Header.StartPeriod/Header.EndPeriod and read section Summary.ColData for totals.",
-            "[QUICKBOOKS_GET_GENERAL_LEDGER_REPORT] Amount-related columns may be missing even when requested; switch to QUICKBOOKS_GET_TRANSACTION_LIST_REPORT if amounts aren\u2019t present in Columns.",
-            "[QUICKBOOKS_GET_TRANSACTION_LIST_REPORT] Large windows can be too big for inline previews; expect offloaded full responses and parse the complete Rows/Row/ColData payload."
+            "[QUICKBOOKS_QUERY_ENTITIES] Large result sets can appear truncated in logs; rely on the structured QueryResponse payload rather than rendered output.",
+            "[QUICKBOOKS_QUERY_ENTITIES] Invoice queries can return large payloads; keep filters narrowly scoped to avoid oversized responses/timeouts.",
+            "[QUICKBOOKS_QUERY_ENTITIES] Filtering by non-queryable fields can return 400; prefer supported fields (e.g., document/reference number) and filter client-side if needed.",
+            "[QUICKBOOKS_CREATE_PAYMENT] If lines[].LinkedTxn has a wrong/missing TxnType or TxnId, the payment may be created but remain unapplied.",
+            "[QUICKBOOKS_CREATE_PAYMENT] Total amount must equal the sum of line Amount values; mismatches can trigger validation errors or misapplication."
           ],
-          "reference_workbench_snippets": [
-            {
-              "description": "Flatten report-shaped responses by mapping each Data row ColData to Columns.Column titles",
-              "code": "```python\ndef flatten(report):\n    cols=[c.get('ColTitle','') for c in report.get('Columns',{}).get('Column',[])]\n    out=[]\n    def walk(n):\n        if isinstance(n,list):\n            for x in n: walk(x)\n        elif isinstance(n,dict):\n            if n.get('type')=='Data':\n                vals=[(cd.get('value') if isinstance(cd,dict) else cd) for cd in (n.get('ColData') or [])]\n                out.append(dict(zip(cols,vals)))\n            for x in ((n.get('Rows') or {}).get('Row') or []):\n                walk(x)\n    walk(((report.get('Rows') or {}).get('Row') or []))\n    return out\n```"
-            }
-          ],
-          "difficulty": "medium",
+          "difficulty": "easy",
           "primary_tool_slugs": [
-            "QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT",
-            "QUICKBOOKS_GET_BALANCE_SHEET_REPORT",
-            "QUICKBOOKS_GET_REPORT_CASH_FLOW",
-            "QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT",
-            "QUICKBOOKS_GET_REPORT_AGED_PAYABLES"
+            "QUICKBOOKS_QUERY_ENTITIES",
+            "QUICKBOOKS_CREATE_PAYMENT"
           ],
           "related_tool_slugs": [
-            "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
-            "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT",
-            "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE",
-            "QUICKBOOKS_GET_REPORTS",
-            "QUICKBOOKS_GET_PROFIT_AND_LOSS_DETAIL_REPORT"
+            "QUICKBOOKS_EXECUTE_BATCH_OPERATION",
+            "QUICKBOOKS_LIST_INVOICES",
+            "QUICKBOOKS_READ_INVOICE",
+            "QUICKBOOKS_GET_PAYMENT_METHOD",
+            "QUICKBOOKS_GET_PAYMENT",
+            "QUICKBOOKS_CREATE_ECHECK_PAYMENT"
           ],
           "toolkits": [
             "quickbooks"
           ],
-          "plan_id": "28e781d24dd44e5dbe763dd9199311b1"
+          "plan_id": "8284304582f04d378bd6edb4ad905247"
         }
       ],
       "toolkit_connection_statuses": [
@@ -87,594 +83,348 @@
         }
       ],
       "tool_schemas": {
-        "QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT": {
+        "QUICKBOOKS_QUERY_ENTITIES": {
           "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT",
-          "description": "Generate a Profit and Loss report showing company income and expenses over a period. Use when you need to analyze profitability, revenue, costs, and net income for a specific date range.",
+          "tool_slug": "QUICKBOOKS_QUERY_ENTITIES",
+          "description": "Execute SQL-like queries on QuickBooks Online entities. Supports all entity types (Customer, Invoice, Bill, Payment, Purchase, Account, etc.) with WHERE clauses, pattern matching, ordering, and pagination. IMPORTANT: Many fields are NOT queryable in WHERE clauses including PrivateNote, AccountRef, CurrencyRef, DepartmentRef, ClassRef, etc. Use queryable fields like Id, TxnDate, PaymentType, DisplayName instead. For non-queryable field filtering, query by date range and filter client-side. See parameter description for full list of queryable vs non-queryable fields. Use entity-specific query tools when available for typed responses.",
           "input_schema": {
             "type": "object",
+            "required": [
+              "query"
+            ],
             "properties": {
-              "end_date": {
+              "query": {
                 "type": "string",
-                "description": "Report end date in YYYY-MM-DD format. If not provided, defaults to today's date."
-              },
-              "class_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "List of class IDs to filter the report. If not provided, the report includes all classes. Each ID should be the Class.Id value from the Class object (e.g., ['1', '3'])."
-              },
-              "date_macro": {
-                "enum": [
-                  "Today",
-                  "Yesterday",
-                  "This Week",
-                  "Last Week",
-                  "This Week-to-date",
-                  "Last Week-to-date",
-                  "Next Week",
-                  "Next 4 Weeks",
-                  "This Month",
-                  "Last Month",
-                  "This Month-to-date",
-                  "Last Month-to-date",
-                  "Next Month",
-                  "This Fiscal Quarter",
-                  "Last Fiscal Quarter",
-                  "This Fiscal Quarter-to-date",
-                  "Last Fiscal Quarter-to-date",
-                  "Next Fiscal Quarter",
-                  "This Fiscal Year",
-                  "Last Fiscal Year",
-                  "This Fiscal Year-to-date",
-                  "Last Fiscal Year-to-date",
-                  "Next Fiscal Year"
+                "examples": [
+                  "SELECT * FROM Customer MAXRESULTS 5",
+                  "SELECT * FROM Customer WHERE DisplayName LIKE '%Smith%' MAXRESULTS 10",
+                  "SELECT * FROM Invoice WHERE TotalAmt > '100' ORDERBY TxnDate",
+                  "SELECT COUNT(*) FROM Bill WHERE DueDate < '2024-01-01'",
+                  "SELECT * FROM Payment WHERE TxnDate >= '2024-01-01' AND TxnDate <= '2024-12-31'",
+                  "SELECT * FROM Purchase WHERE TxnDate >= '2024-01-01' AND PaymentType = 'Check'",
+                  "SELECT * FROM Customer WHERE Id IN ('1', '2', '3') MAXRESULTS 10"
                 ],
-                "type": "string",
-                "description": "Predefined date range. Use if you want the report to cover a standard report date range; otherwise, use the start_date and end_date to cover an explicit report date range."
-              },
-              "sort_order": {
-                "enum": [
-                  "ascend",
-                  "descend"
-                ],
-                "type": "string",
-                "description": "The sort order."
-              },
-              "start_date": {
-                "type": "string",
-                "description": "Report start date in YYYY-MM-DD format. If not provided, defaults to the start of the current fiscal year."
-              },
-              "vendor_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "List of vendor IDs to filter the report. If not provided, the report includes all vendors. Each ID should be the Vendor.Id value from the Vendor object (e.g., ['1', '5', '20'])."
-              },
-              "report_date": {
-                "type": "string",
-                "description": "Start date to use for the report, in the format YYYY-MM-DD."
-              },
-              "customer_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "List of customer IDs to filter the report. If not provided, the report includes all customers. Each ID should be the Customer.Id value from the Customer object (e.g., ['1', '2', '10'])."
-              },
-              "department_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "One or more comma separated department IDs. Filters report contents to include information for specified departments if so configured in the company file. "
-              },
-              "accounting_method": {
-                "enum": [
-                  "Cash",
-                  "Accrual"
-                ],
-                "type": "string",
-                "description": "The accounting method used in the report. "
-              },
-              "summarize_column_by": {
-                "enum": [
-                  "Total",
-                  "Month",
-                  "Week",
-                  "Days",
-                  "Quarter",
-                  "Year",
-                  "Customers",
-                  "Vendors",
-                  "Classes",
-                  "Departments",
-                  "Employees",
-                  "ProductsAndServices"
-                ],
-                "type": "string",
-                "description": "The criteria by which to group the report results."
+                "description": "SQL-like query string to retrieve data from QuickBooks Online entities. Generic query tool supporting all entity types: Customer, Invoice, Bill, Payment, Purchase, Account, Vendor, Employee, Item, and more. \n\nQuery syntax: SELECT [fields] FROM [EntityName] [WHERE conditions] [ORDERBY field] [STARTPOSITION n] [MAXRESULTS n] \n\nNOTE: QuickBooks API returns ALL fields regardless of SELECT clause - field projections are not supported. \n\nSupported operators: = < > <= >= != LIKE (% wildcard) IN AND ORDERBY MAXRESULTS (max 1000, default 100) STARTPOSITION COUNT. \n\nCRITICAL: OR operator is NOT supported for most QuickBooks entities (including Item, Account, and many others). If you attempt to use OR in a query, the API will return a QueryParserError. Use IN operator instead for matching multiple specific values (e.g., 'WHERE Id IN (\"1\", \"2\", \"3\")' instead of 'WHERE Id = \"1\" OR Id = \"2\"'). For pattern matching across multiple terms with LIKE (e.g., finding items containing 'Larkspur' in FullyQualifiedName OR Description), query without the WHERE clause or with a broader filter, then filter results client-side. \n\nCRITICAL QUERY FIELD RESTRICTIONS: Top-level entity references like CustomerRef, VendorRef are queryable on transactions (e.g., 'SELECT * FROM Invoice WHERE CustomerRef = \"123\"'). NON-QUERYABLE fields: PrivateNote, AccountRef, CurrencyRef, DepartmentRef, ClassRef on any entity; nested references like Line[].ItemRef. Using these in WHERE causes QueryValidationError. \n\nWORKAROUND: Query by date range and filter results client-side, or use entity-specific GET actions. \n\nPurchase entity queryable fields: Id, TxnDate, PaymentType, DocNumber, TotalAmt, PrintStatus. NOT queryable: AccountRef, CurrencyRef, DepartmentRef, ClassRef, PrivateNote. \n\nThese lists are common examples, not exhaustive. Consult the QuickBooks API documentation or test incrementally to discover all queryable fields. Reference fields are generally NOT queryable unless explicitly documented. \n\nIMPORTANT: Use entity-specific query tools when available (e.g., QueryAccount for Account entities) as they provide typed responses. This generic tool returns untyped data and should be used only when no specific query tool exists."
               }
             }
           },
           "hasFullSchema": true
         },
-        "QUICKBOOKS_GET_BALANCE_SHEET_REPORT": {
+        "QUICKBOOKS_CREATE_PAYMENT": {
           "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_BALANCE_SHEET_REPORT",
-          "description": "Generate a Balance Sheet report showing company assets, liabilities, and equity at a point in time. Use when you need to understand the financial position with what the company owns versus what it owes.",
+          "tool_slug": "QUICKBOOKS_CREATE_PAYMENT",
+          "description": "Creates a payment record in QuickBooks Online. The Payment entity records payment from customers against single or multiple invoices and credit memos. Use this action when recording customer payments, whether full payment of an invoice or partial payment across multiple invoices.",
           "input_schema": {
             "type": "object",
+            "required": [
+              "customer_id",
+              "total_amt",
+              "lines"
+            ],
             "properties": {
-              "date_macro": {
-                "enum": [
-                  "Today",
-                  "Yesterday",
-                  "This Week",
-                  "Last Week",
-                  "This Week-to-date",
-                  "Last Week-to-date",
-                  "Next Week",
-                  "Next 4 Weeks",
-                  "This Month",
-                  "Last Month",
-                  "This Month-to-date",
-                  "Last Month-to-date",
-                  "Next Month",
-                  "This Fiscal Quarter",
-                  "Last Fiscal Quarter",
-                  "This Fiscal Quarter-to-date",
-                  "Last Fiscal Quarter-to-date",
-                  "Next Fiscal Quarter",
-                  "This Fiscal Year",
-                  "Last Fiscal Year",
-                  "This Fiscal Year-to-date",
-                  "Last Fiscal Year-to-date",
-                  "Next Fiscal Year"
-                ],
-                "type": "string",
-                "description": "Predefined date range. Use if you want the report to cover a standard report date range; otherwise, use the start_date and end_date to cover an explicit report date range."
-              },
-              "sort_order": {
-                "enum": [
-                  "ascend",
-                  "descend"
-                ],
-                "type": "string",
-                "description": "The sort order."
-              },
-              "report_date": {
-                "type": "string",
-                "description": "Start date to use for the report, in the format YYYY-MM-DD."
-              },
-              "department_ids": {
+              "lines": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                  "type": "object",
+                  "required": [
+                    "Amount",
+                    "LinkedTxn"
+                  ],
+                  "properties": {
+                    "Amount": {
+                      "type": "number",
+                      "description": "Amount being applied to the linked transaction. Must be positive and not exceed the outstanding balance."
+                    },
+                    "LinkedTxn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "TxnId",
+                          "TxnType"
+                        ],
+                        "properties": {
+                          "TxnId": {
+                            "type": "string",
+                            "description": "ID of the transaction (Invoice or CreditMemo) that this payment line is applied to."
+                          },
+                          "TxnType": {
+                            "type": "string",
+                            "description": "Type of the linked transaction. Valid values: 'Invoice', 'CreditMemo'."
+                          }
+                        },
+                        "description": "Linked transaction that the payment line item is applied to."
+                      },
+                      "description": "List of transactions (Invoices or CreditMemos) that this payment line is applied to. Typically contains one item per line."
+                    }
+                  },
+                  "description": "Individual line item of a payment indicating which transactions are being paid."
                 },
-                "description": "One or more comma separated department IDs. Filters report contents to include information for specified departments if so configured in the company file. "
+                "description": "List of payment line items specifying which invoices or credit memos the payment is applied to. Each line item must contain Amount and LinkedTxn fields. Example: [{'Amount': 50.0, 'LinkedTxn': [{'TxnId': '11', 'TxnType': 'Invoice'}]}]"
               },
-              "accounting_method": {
-                "enum": [
-                  "Cash",
-                  "Accrual"
-                ],
+              "txn_date": {
                 "type": "string",
-                "description": "The accounting method used in the report. "
+                "description": "Date of the payment transaction in YYYY-MM-DD format (e.g., '2024-01-15'). If not specified, the current date is used."
               },
-              "summarize_column_by": {
-                "enum": [
-                  "Total",
-                  "Month",
-                  "Week",
-                  "Days",
-                  "Quarter",
-                  "Year",
-                  "Customers",
-                  "Vendors",
-                  "Classes",
-                  "Departments",
-                  "Employees",
-                  "ProductsAndServices"
-                ],
+              "total_amt": {
+                "type": "number",
+                "description": "Total amount of the payment. This should equal the sum of all Line item amounts. Must be a positive number (e.g., 50.0, 100.0)."
+              },
+              "customer_id": {
                 "type": "string",
-                "description": "The criteria by which to group the report results."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "QUICKBOOKS_GET_REPORT_CASH_FLOW": {
-          "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_REPORT_CASH_FLOW",
-          "description": "Generate a cash flow report in QuickBooks showing cash inflows and outflows categorized by operating, investing, and financing activities. Use when you need to analyze cash movement and liquidity over a specified period.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "date_macro": {
-                "enum": [
-                  "Today",
-                  "Yesterday",
-                  "This Week",
-                  "Last Week",
-                  "This Week-to-date",
-                  "Last Week-to-date",
-                  "Next Week",
-                  "Next 4 Weeks",
-                  "This Month",
-                  "Last Month",
-                  "This Month-to-date",
-                  "Last Month-to-date",
-                  "Next Month",
-                  "This Fiscal Quarter",
-                  "Last Fiscal Quarter",
-                  "This Fiscal Quarter-to-date",
-                  "Last Fiscal Quarter-to-date",
-                  "Next Fiscal Quarter",
-                  "This Fiscal Year",
-                  "Last Fiscal Year",
-                  "This Fiscal Year-to-date",
-                  "Last Fiscal Year-to-date",
-                  "Next Fiscal Year"
-                ],
-                "type": "string",
-                "description": "Predefined date range. Use if you want the report to cover a standard report date range; otherwise, use the start_date and end_date to cover an explicit report date range."
-              },
-              "sort_order": {
-                "enum": [
-                  "ascend",
-                  "descend"
-                ],
-                "type": "string",
-                "description": "The sort order."
-              },
-              "report_date": {
-                "type": "string",
-                "description": "Start date to use for the report, in the format YYYY-MM-DD."
-              },
-              "department_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "One or more comma separated department IDs. Filters report contents to include information for specified departments if so configured in the company file. "
-              },
-              "accounting_method": {
-                "enum": [
-                  "Cash",
-                  "Accrual"
-                ],
-                "type": "string",
-                "description": "The accounting method used in the report. "
-              },
-              "summarize_column_by": {
-                "enum": [
-                  "Total",
-                  "Month",
-                  "Week",
-                  "Days",
-                  "Quarter",
-                  "Year",
-                  "Customers",
-                  "Vendors",
-                  "Classes",
-                  "Departments",
-                  "Employees",
-                  "ProductsAndServices"
-                ],
-                "type": "string",
-                "description": "The criteria by which to group the report results."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT": {
-          "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT",
-          "description": "Generate an aged receivables report showing outstanding customer balances by age. Use when tracking overdue invoices and managing accounts receivable aging.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "arpaid": {
-                "enum": [
-                  "All",
-                  "Paid",
-                  "Unpaid"
-                ],
-                "type": "string",
-                "description": "Filters customers by payment status. Use 'All' for all customers, 'Paid' for customers with fully paid balances, or 'Unpaid' for customers with outstanding balances. Default is 'Unpaid'."
-              },
-              "date_macro": {
-                "type": "string",
-                "description": "Predefined date macro like 'Today', 'This Month', etc. Alternative to report_date for specifying the report date using a macro."
-              },
-              "num_periods": {
-                "type": "integer",
-                "maximum": 10,
-                "minimum": 1,
-                "description": "Number of aging periods to display in the report. Must be between 1 and 10. Defaults to 4 if not specified. Each period shows receivables within that age range."
-              },
-              "report_date": {
-                "type": "string",
-                "description": "Date for the aged receivables report in YYYY-MM-DD format. Defaults to today if not provided. This is the as-of date for calculating aging."
-              },
-              "aging_method": {
-                "enum": [
-                  "Report_Date",
-                  "Current"
-                ],
-                "type": "string",
-                "description": "Method for calculating aging. 'Report_Date' calculates aging from the report date, 'Current' calculates aging from the current date. Defaults to 'Report_Date' if not specified."
-              },
-              "aging_period": {
-                "type": "integer",
-                "minimum": 1,
-                "description": "Number of days per aging period. Must be at least 1. Defaults to 30 days if not specified. For example, with 30 days you get periods like 0-30, 31-60, etc."
-              },
-              "customer_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "One or more comma-separated customer IDs to filter the report. Filters report contents to include information for specified customers only. Provide customer IDs as returned in the Customer.Id attribute."
+                "description": "ID of the customer making the payment. This is the unique identifier for the customer in QuickBooks (e.g., '3', '58'). Use QUICKBOOKS_CREATE_CUSTOMER or QUICKBOOKS_READ_CUSTOMER to get valid customer IDs."
               },
               "minorversion": {
+                "type": "integer",
+                "description": "QuickBooks API minor version number to use for this request (e.g., 65, 70, 75). Allows access to version-specific features. If not specified, uses the default API version."
+              },
+              "private_note": {
                 "type": "string",
-                "description": "API minor version number. Optional - defaults to x-minor-version header if not provided. Use this to access features from specific minor versions of the QuickBooks API."
+                "description": "Private note about the payment. Not visible to the customer. Maximum 4000 characters."
+              },
+              "customer_name": {
+                "type": "string",
+                "description": "Name of the customer. Optional field that helps with readability but not required by the API."
+              },
+              "exchange_rate": {
+                "type": "number",
+                "description": "Exchange rate for the transaction when using multi-currency. Applicable only if multi-currency is enabled. Optional field."
+              },
+              "payment_ref_num": {
+                "type": "string",
+                "description": "Reference number for the payment, such as a check number or transaction ID. Optional field."
+              },
+              "process_payment": {
+                "type": "boolean",
+                "description": "Indicates whether the payment should be processed through QuickBooks Payments. Set to true to process the payment, false otherwise. Optional field."
+              },
+              "ar_account_ref_id": {
+                "type": "string",
+                "description": "ID of the accounts receivable account. Optional field. Use QuickBooks query API to get valid AR account IDs."
+              },
+              "currency_ref_value": {
+                "type": "string",
+                "description": "Currency code for multi-currency environments (e.g., 'USD', 'CAD', 'EUR'). Required if the company file uses multi-currency. Optional otherwise."
+              },
+              "credit_card_payment": {
+                "type": "object",
+                "properties": {
+                  "CCTransId": {
+                    "type": "string",
+                    "description": "Credit card transaction ID."
+                  },
+                  "CreditCardAccountRef": {
+                    "type": "object",
+                    "description": "Reference to the credit card account. Dictionary with 'value' (account ID) and optionally 'name'.",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "Credit card payment details when payment method is credit card.",
+                "additionalProperties": false
+              },
+              "payment_method_ref_id": {
+                "type": "string",
+                "description": "ID of the payment method used (e.g., '1' for Cash, '2' for Check). Optional field. Use QuickBooks query API to get valid payment method IDs."
+              },
+              "deposit_to_account_ref_id": {
+                "type": "string",
+                "description": "ID of the asset account where this payment should be deposited. Optional field. If not provided, uses the default Undeposited Funds account."
               }
             }
           },
           "hasFullSchema": true
         },
-        "QUICKBOOKS_GET_REPORT_AGED_PAYABLES": {
+        "QUICKBOOKS_EXECUTE_BATCH_OPERATION": {
           "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_REPORT_AGED_PAYABLES",
-          "description": "Retrieve an Aged Payables aging summary report from QuickBooks showing outstanding vendor balances grouped by age. Shows amounts owed to vendors categorized by aging periods (e.g., current, 1-30 days, 31-60 days overdue).",
+          "tool_slug": "QUICKBOOKS_EXECUTE_BATCH_OPERATION",
+          "description": "Execute multiple QuickBooks operations in a single request. Operations are performed serially. Supports create, update, delete, and query operations on QuickBooks entities. Use this action to reduce network latency when performing multiple operations. Each operation is executed in order, and each response is correlated to its request via the bId field. Maximum 30 operations per batch. Ideal for bulk data operations or related entity updates.",
           "input_schema": {
             "type": "object",
+            "required": [
+              "BatchItemRequest"
+            ],
             "properties": {
-              "appaid": {
-                "enum": [
-                  "All",
-                  "Paid",
-                  "Unpaid"
-                ],
-                "type": "string",
-                "description": "Filters vendors by payment status. Use 'All' for all vendors, 'Paid' for vendors with fully paid balances, or 'Unpaid' for vendors with outstanding balances. Default is 'Unpaid'."
-              },
-              "date_macro": {
-                "type": "string",
-                "description": "Predefined date macro like 'Today', 'This Month', etc. Alternative to report_date for specifying the report date using a macro."
-              },
-              "vendor_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Filters report contents to include information for specified vendors. Provide one or more comma-separated vendor IDs as returned in the Vendor.Id attribute."
-              },
-              "num_periods": {
-                "type": "integer",
-                "maximum": 10,
-                "minimum": 1,
-                "description": "Number of aging periods to display in the report. Must be between 1 and 10. Defaults to 4 if not specified. Each period shows payables within that age range."
-              },
-              "report_date": {
-                "type": "string",
-                "description": "Date for the aged payables report in YYYY-MM-DD format. Defaults to today if not provided. This is the as-of date for calculating aging."
-              },
-              "aging_method": {
-                "enum": [
-                  "Report_Date",
-                  "Current"
-                ],
-                "type": "string",
-                "description": "Method for calculating aging. 'Report_Date' calculates aging from the report date, 'Current' calculates aging from the current date. Defaults to 'Report_Date' if not specified."
-              },
-              "aging_period": {
-                "type": "integer",
-                "minimum": 1,
-                "description": "Number of days per aging period. Must be at least 1. Defaults to 30 days if not specified. For example, with 30 days you get periods like 0-30, 31-60, etc."
-              },
               "minorversion": {
-                "type": "string",
-                "description": "API minor version number. Optional - defaults to x-minor-version header if not provided. Use this to access features from specific minor versions of the QuickBooks API."
+                "type": "integer",
+                "examples": [
+                  65,
+                  70,
+                  75
+                ],
+                "description": "QuickBooks API minor version number to use for this request (e.g., 65, 70, 75). Allows access to version-specific features. If not specified, uses the default API version from metadata."
+              },
+              "BatchItemRequest": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "bId"
+                  ],
+                  "properties": {
+                    "bId": {
+                      "type": "string",
+                      "examples": [
+                        "bid1",
+                        "bid2",
+                        "createInvoice1"
+                      ],
+                      "description": "Unique identifier for this batch item request. This ID will be included in the response to correlate requests with responses. Use descriptive IDs like 'bid1', 'bid2', 'createCustomer1', etc."
+                    },
+                    "Bill": {
+                      "type": "object",
+                      "description": "Bill entity data for create/update/delete operations on Bill entities.",
+                      "additionalProperties": true
+                    },
+                    "Item": {
+                      "type": "object",
+                      "description": "Item entity data for create/update/delete operations on Item entities.",
+                      "additionalProperties": true
+                    },
+                    "Query": {
+                      "type": "string",
+                      "examples": [
+                        "SELECT * FROM Customer MAXRESULTS 5",
+                        "SELECT * FROM Invoice WHERE Id = '129'"
+                      ],
+                      "description": "SQL-like query string for query operations. Use this instead of operation and entity fields when querying. Example: 'SELECT * FROM Customer MAXRESULTS 5' or 'SELECT * FROM Invoice WHERE TotalAmt > 100'."
+                    },
+                    "Vendor": {
+                      "type": "object",
+                      "description": "Vendor entity data for create/update/delete operations on Vendor entities.",
+                      "additionalProperties": true
+                    },
+                    "Account": {
+                      "type": "object",
+                      "description": "Account entity data for create/update/delete operations on Account entities.",
+                      "additionalProperties": true
+                    },
+                    "Invoice": {
+                      "type": "object",
+                      "description": "Invoice entity data for create/update/delete operations on Invoice entities.",
+                      "additionalProperties": true
+                    },
+                    "Payment": {
+                      "type": "object",
+                      "description": "Payment entity data for create/update/delete operations on Payment entities.",
+                      "additionalProperties": true
+                    },
+                    "Customer": {
+                      "type": "object",
+                      "description": "Customer entity data for create/update/delete operations on Customer entities.",
+                      "additionalProperties": true
+                    },
+                    "operation": {
+                      "enum": [
+                        "create",
+                        "update",
+                        "delete"
+                      ],
+                      "type": "string",
+                      "examples": [
+                        "create",
+                        "update",
+                        "delete"
+                      ],
+                      "description": "Supported batch operation types."
+                    },
+                    "SalesReceipt": {
+                      "type": "object",
+                      "description": "SalesReceipt entity data for create/update/delete operations on SalesReceipt entities.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "description": "Individual batch item request. Each item can be a create, update, delete, or query operation."
+                },
+                "maxItems": 30,
+                "minItems": 1,
+                "description": "List of batch item requests to execute. Each item can be a create, update, delete, or query operation. Operations are performed serially in the order provided. Maximum 30 items per batch request."
               }
             }
           },
           "hasFullSchema": true
         },
-        "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT": {
+        "QUICKBOOKS_LIST_INVOICES": {
           "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
-          "description": "Generate a General Ledger report showing all transactions with debits, credits, and running balances. Use when you need a detailed view of all accounting transactions posted to each account.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "columns": {
-                "type": "string",
-                "description": "Column types to show in the report. Comma-separated list of column names (e.g., 'tx_date,txn_type,doc_num,name,memo,account,debit,credit,balance')."
-              },
-              "sort_by": {
-                "type": "string",
-                "description": "The column type on which to base sorting (e.g., 'tx_date', 'account', 'txn_type'). Default is 'txn_type' if not specified."
-              },
-              "end_date": {
-                "type": "string",
-                "description": "End date for the report period in YYYY-MM-DD format."
-              },
-              "class_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "List of class IDs to filter the report. If not provided, the report includes all classes. Each ID should be the Class.Id value (e.g., ['1', '2'])."
-              },
-              "date_macro": {
-                "enum": [
-                  "Today",
-                  "Yesterday",
-                  "This Week",
-                  "Last Week",
-                  "This Week-to-date",
-                  "Last Week-to-date",
-                  "Next Week",
-                  "Next 4 Weeks",
-                  "This Month",
-                  "Last Month",
-                  "This Month-to-date",
-                  "Last Month-to-date",
-                  "Next Month",
-                  "This Fiscal Quarter",
-                  "Last Fiscal Quarter",
-                  "This Fiscal Quarter-to-date",
-                  "Last Fiscal Quarter-to-date",
-                  "Next Fiscal Quarter",
-                  "This Fiscal Year",
-                  "Last Fiscal Year",
-                  "This Fiscal Year-to-date",
-                  "Last Fiscal Year-to-date",
-                  "Next Fiscal Year"
-                ],
-                "type": "string",
-                "description": "Predefined date range. Use if you want the report to cover a standard report date range; otherwise, use start_date and end_date to cover an explicit report date range."
-              },
-              "sort_order": {
-                "enum": [
-                  "ascend",
-                  "descend"
-                ],
-                "type": "string",
-                "description": "The sort order for rows (ascending or descending). Default is ascending."
-              },
-              "start_date": {
-                "type": "string",
-                "description": "Start date for the report period in YYYY-MM-DD format."
-              },
-              "vendor_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "List of vendor IDs to filter the report. If not provided, the report includes all vendors. Each ID should be the Vendor.Id value (e.g., ['1', '3'])."
-              },
-              "account_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "List of account IDs to filter the report. If not provided, the report includes all accounts. Each ID should be the Account.Id value from the Account object (e.g., ['1', '35', '82'])."
-              },
-              "account_type": {
-                "type": "string",
-                "description": "Account type from which to include transactions (e.g., 'Bank', 'Expense', 'Income')."
-              },
-              "customer_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "List of customer IDs to filter the report. If not provided, the report includes all customers. Each ID should be the Customer.Id value (e.g., ['1', '5'])."
-              },
-              "department_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "List of department IDs to filter the report. If not provided, the report includes all departments. Filters report contents to include information for specified departments if so configured in the company file."
-              },
-              "accounting_method": {
-                "enum": [
-                  "Cash",
-                  "Accrual"
-                ],
-                "type": "string",
-                "description": "The accounting method used in the report (Cash or Accrual)."
-              },
-              "source_account_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "List of source account IDs to filter the report. Each ID should be the Account.Id value for the source account."
-              },
-              "source_account_type": {
-                "type": "string",
-                "description": "Source account type for transaction filtering."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT": {
-          "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT",
-          "description": "Get the Transaction List report showing all transactions in the company. Use when you need a compreh...",
+          "tool_slug": "QUICKBOOKS_LIST_INVOICES",
+          "description": "Tool to list invoices via QuickBooks Query endpoint. Use when retrieving invoices with optional pagi...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT"
+                "QUICKBOOKS_LIST_INVOICES"
               ]
             }
           }
         },
-        "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE": {
+        "QUICKBOOKS_READ_INVOICE": {
           "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE",
-          "description": "Generate a Trial Balance report showing account debits, credits, and balances for a specified period...",
+          "tool_slug": "QUICKBOOKS_READ_INVOICE",
+          "description": "Tool to fetch a QuickBooks invoice by ID or the most recent if no ID provided. Use when needing full...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE"
+                "QUICKBOOKS_READ_INVOICE"
               ]
             }
           }
         },
-        "QUICKBOOKS_GET_REPORTS": {
+        "QUICKBOOKS_GET_PAYMENT_METHOD": {
           "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_REPORTS",
-          "description": "Retrieve QuickBooks reports such as TransactionList, BalanceSheet, ProfitAndLoss, and others. Use wh...",
+          "tool_slug": "QUICKBOOKS_GET_PAYMENT_METHOD",
+          "description": "Read details of a specific payment method by ID in QuickBooks Online. Use when you need to retrieve ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "QUICKBOOKS_GET_REPORTS"
+                "QUICKBOOKS_GET_PAYMENT_METHOD"
               ]
             }
           }
         },
-        "QUICKBOOKS_GET_PROFIT_AND_LOSS_DETAIL_REPORT": {
+        "QUICKBOOKS_GET_PAYMENT": {
           "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_PROFIT_AND_LOSS_DETAIL_REPORT",
-          "description": "Generate a detailed Profit and Loss report showing company income and expenses with transaction-leve...",
+          "tool_slug": "QUICKBOOKS_GET_PAYMENT",
+          "description": "Tool to fetch details of a specific payment by ID in QuickBooks Online. Use when needing payment inf...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "QUICKBOOKS_GET_PROFIT_AND_LOSS_DETAIL_REPORT"
+                "QUICKBOOKS_GET_PAYMENT"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_CREATE_ECHECK_PAYMENT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_CREATE_ECHECK_PAYMENT",
+          "description": "Tool to create an eCheck payment using ACH bank transfer in QuickBooks Payments API. Use when proces...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_CREATE_ECHECK_PAYMENT"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T20:52:29.267Z",
-        "current_time_utc_epoch_seconds": 1786567949,
+        "current_time_utc": "2026-08-12T21:31:39.746Z",
+        "current_time_utc_epoch_seconds": 1786570299,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "ship",
+        "id": "hung",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"ship\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"hung\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -684,6 +434,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_3bosYdmQzNXF"
+    "log_id": "log_7n_oUm8DejjA"
   }
 }

@@ -3,20 +3,16 @@
     "query_id": "workflow-001-q1",
     "workflow_id": 1,
     "workflow_task": "Prepare HubSpot launch assets for a paid event registration flow: assess payment-link feasibility, create a review-only automated confirmation email, create a disabled confirmation workflow, verify the assets remain inert, and attempt to create a custom-object registration ledger.",
-    "query": "create a review-only marketing email and clone it for the launch",
+    "query": "check payment link capabilities and configuration",
+    "intent": "Assess the feasibility and setup options for HubSpot payment links for the paid event registration flow.",
     "requirement_groups": [
       {
         "acceptable_tool_slugs": [
-          "HUBSPOT_CLONE_MARKETING_EMAIL"
+          "HUBSPOT_LIST_GRANTED_SCOPES"
         ],
-        "purpose": "clone the confirmation email for the event registration flow"
+        "purpose": "check permissions and scopes for payment link features"
       }
     ],
-    "supporting_tools": [
-      "HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUBSPOT_ACCOUNT",
-      "HUBSPOT_SEARCH_EMAILS"
-    ],
-    "rationale": "focuses on retrieving and duplicating the marketing email asset for the confirmation workflow.",
     "candidate_tools": [
       "HUBSPOT_CLONE_MARKETING_EMAIL",
       "HUBSPOT_CREATE_OBJECT_SCHEMA",
@@ -31,280 +27,859 @@
     ]
   },
   "request": {
-    "query": "create a review-only marketing email and clone it for the launch"
+    "query": "check payment link capabilities and configuration"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "create a review-only marketing email and clone it for the launch",
+          "use_case": "check payment link capabilities and configuration",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Prerequisite (if campaign_id unknown)]: Locate the source campaign using MAILCHIMP_LIST_CAMPAIGNS (filter with MAILCHIMP_SEARCH_CAMPAIGNS if many results).",
-            "[Optional (to confirm you\u2019re cloning the right campaign)] [Prerequisite]: Review key metadata using MAILCHIMP_GET_CAMPAIGN_INFO.",
-            "[Required] [Step]: Create a new duplicated campaign draft using MAILCHIMP_REPLICATE_CAMPAIGN (capture the new campaign_id).",
-            "[Optional (if subject/from name/other settings must differ)] [Step]: Update the duplicated draft using MAILCHIMP_UPDATE_CAMPAIGN_SETTINGS.",
-            "[Optional (if email body must differ)] [Step]: Replace or edit content on the duplicated draft using MAILCHIMP_SET_CAMPAIGN_CONTENT."
+            "[Optional (if payment link identifier is unknown)] [Prerequisite]: Locate the target using STRIPE_LIST_PAYMENT_LINKS (filter by what you know; paginate when has_more=true).",
+            "[Required] [Prerequisite]: Fetch current configuration using STRIPE_GET_PAYMENT_LINK (confirm status and which settings are editable before changing link behavior).",
+            "[Optional (if you need to confirm what customers will purchase before changing settings)] [Prerequisite]: Inspect items using STRIPE_GET_PAYMENT_LINKS_PAYMENT_LINK_LINE_ITEMS (verify quantities and referenced prices).",
+            "[Optional (if validating amount/cadence or product metadata)] [Prerequisite]: Resolve references using STRIPE_GET_PRICES_PRICE and STRIPE_GET_PRODUCTS_ID (confirm unit amount, recurring details, and product info).",
+            "[Required] [Step]: Apply allowed changes using STRIPE_UPDATE_PAYMENT_LINK (e.g., enable/disable promotion codes, adjust customer info collection, or deactivate via active=false).",
+            "[Optional (for verification before re-sharing the link)] [Next Step]: Re-fetch using STRIPE_GET_PAYMENT_LINK (confirm updated fields match intent).",
+            "[Required (if update fails with persistent 4xx due to immutability/unknown params)] [Fallback]: Retry using STRIPE_POST_V1_PAYMENT_LINKS_THE_PAYMENT_LINK2; if still blocked, create a replacement via STRIPE_CREATE_PAYMENT_LINK and carry over intended line_items/settings."
           ],
           "known_pitfalls": [
-            "[MAILCHIMP_REPLICATE_CAMPAIGN] Replication returns a draft-like campaign (status reflects a saved draft), not a ready-to-send campaign.",
-            "[MAILCHIMP_REPLICATE_CAMPAIGN] The duplicated campaign may have an empty send_time; plan on reviewing/scheduling separately.",
-            "[MAILCHIMP_UPDATE_CAMPAIGN_SETTINGS] Settings changes (e.g., subject/title) are handled separately from body content; don\u2019t expect content updates to modify settings.",
-            "[MAILCHIMP_SET_CAMPAIGN_CONTENT] Content edits require using the duplicated campaign_id returned by MAILCHIMP_REPLICATE_CAMPAIGN, not the source campaign_id."
+            "[STRIPE_LIST_PAYMENT_LINKS] When has_more=true you must paginate; results may be nested (e.g., data.data), so don\u2019t assume a top-level list.",
+            "[STRIPE_UPDATE_PAYMENT_LINK] Some fields are immutable; unsupported fields commonly return 400 invalid_request_error for unknown parameters.",
+            "[STRIPE_UPDATE_PAYMENT_LINK] Request schema can be strict about the identifier key (often expects payment_link rather than a differently named id field).",
+            "[STRIPE_GET_PAYMENT_LINKS_PAYMENT_LINK_LINE_ITEMS] Money values are in the smallest currency unit, and recurring cadence is under price.recurring.*.",
+            "[STRIPE_UPDATE_PAYMENT_LINK] Structured customer-info fields can fail validation (e.g., dropdown option values may need to be strictly alphanumeric) and require payload adjustment."
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "MAILCHIMP_REPLICATE_CAMPAIGN"
+            "STRIPE_UPDATE_PAYMENT_LINK",
+            "STRIPE_GET_PAYMENT_LINK"
           ],
           "related_tool_slugs": [
-            "MAILCHIMP_LIST_CAMPAIGNS",
-            "MAILCHIMP_GET_CAMPAIGN_INFO",
-            "MAILCHIMP_SET_CAMPAIGN_CONTENT",
-            "MAILCHIMP_UPDATE_CAMPAIGN_SETTINGS",
-            "MAILCHIMP_RESEND_CAMPAIGN",
-            "MAILCHIMP_SEARCH_CAMPAIGNS"
+            "STRIPE_LIST_PAYMENT_LINKS",
+            "STRIPE_GET_PAYMENT_LINKS_PAYMENT_LINK_LINE_ITEMS",
+            "STRIPE_POST_V1_PAYMENT_LINKS_THE_PAYMENT_LINK2",
+            "STRIPE_CREATE_PAYMENT_LINK",
+            "STRIPE_GET_PRICES_PRICE",
+            "STRIPE_GET_PRODUCTS_ID"
           ],
           "toolkits": [
-            "mailchimp"
+            "stripe"
           ],
-          "plan_id": "c77a500df97d46dbbf6518777df06bf3"
+          "plan_id": "9d2d250d2c8d441b83ccef7468100b03"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "mailchimp",
+          "toolkit": "stripe",
           "has_active_connection": false,
-          "description": "Mailchimp is an email marketing and automation platform providing campaign templates, audience segmentation, and performance analytics to drive engagement and conversions",
-          "status_message": "No Active connection for toolkit=mailchimp. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"mailchimp\") to create a connection BEFORE executing any mailchimp tools."
+          "description": "Stripe offers online payment infrastructure, fraud prevention, and APIs enabling businesses to accept and manage payments globally",
+          "status_message": "No Active connection for toolkit=stripe. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"stripe\") to create a connection BEFORE executing any stripe tools."
         }
       ],
       "tool_schemas": {
-        "MAILCHIMP_REPLICATE_CAMPAIGN": {
-          "toolkit": "MAILCHIMP",
-          "tool_slug": "MAILCHIMP_REPLICATE_CAMPAIGN",
-          "description": "Replicate a campaign in saved or send status.",
+        "STRIPE_UPDATE_PAYMENT_LINK": {
+          "toolkit": "STRIPE",
+          "tool_slug": "STRIPE_UPDATE_PAYMENT_LINK",
+          "description": "Updates an existing payment link with new configuration details. Use when modifying payment link settings, tax configurations, custom fields, metadata, or post-completion behavior.",
           "input_schema": {
             "type": "object",
             "required": [
-              "campaign_id"
+              "payment_link"
             ],
             "properties": {
-              "campaign_id": {
-                "type": "string",
-                "description": "The unique id for the campaign."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "MAILCHIMP_LIST_CAMPAIGNS": {
-          "toolkit": "MAILCHIMP",
-          "tool_slug": "MAILCHIMP_LIST_CAMPAIGNS",
-          "description": "Get all campaigns in an account.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "enum": [
-                  "regular",
-                  "plaintext",
-                  "absplit",
-                  "rss",
-                  "variate"
-                ],
-                "type": "string",
-                "description": "The campaign type."
-              },
-              "count": {
-                "type": "integer",
-                "default": 10,
-                "description": "The number of records to return. Default value is 10. Maximum value is 1000 "
-              },
-              "fields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "A comma-separated list of fields to return. Reference parameters of sub-objects with dot notation. "
-              },
-              "offset": {
-                "type": "integer",
-                "default": 0,
-                "description": "Used for [pagination](https://mailchimp.com/developer/marketing/docs/methods-parameters/#pagination), this it the number of records from a collection to skip. Default value is 0. "
-              },
-              "status": {
-                "enum": [
-                  "save",
-                  "paused",
-                  "schedule",
-                  "sending",
-                  "sent"
-                ],
-                "type": "string",
-                "description": "The status of the campaign."
-              },
-              "list_id": {
-                "type": "string",
-                "description": "The unique id for the list."
-              },
-              "sort_dir": {
-                "enum": [
-                  "ASC",
-                  "DESC"
-                ],
-                "type": "string",
-                "description": "Determines the order direction for sorted results."
-              },
-              "folder_id": {
-                "type": "string",
-                "description": "The unique folder id."
-              },
-              "member_id": {
-                "type": "string",
-                "description": "Retrieve campaigns sent to a particular list member. Member ID is The MD5 hash of the lowercase version of the list member\u2019s email address. "
-              },
-              "sort_field": {
-                "enum": [
-                  "create_time",
-                  "send_time"
-                ],
-                "type": "string",
-                "description": "Returns files sorted by the specified field."
-              },
-              "exclude_fields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "A comma-separated list of fields to exclude. Reference parameters of sub-objects with dot notation. "
-              },
-              "since_send_time": {
-                "type": "string",
-                "description": "Restrict the response to campaigns sent after the set time. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
-              },
-              "before_send_time": {
-                "type": "string",
-                "description": "Restrict the response to campaigns sent before the set time. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
-              },
-              "since_create_time": {
-                "type": "string",
-                "description": "Restrict the response to campaigns created after the set time. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
-              },
-              "before_create_time": {
-                "type": "string",
-                "description": "Restrict the response to campaigns created before the set time. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
-              },
-              "include_resend_shortcut_eligibility": {
+              "active": {
                 "type": "boolean",
-                "description": "Return the `resend_shortcut_eligibility` field in the response, which tells you if the campaign is eligible for the various Campaign Resend Shortcuts offered. "
+                "description": "Whether the payment link URL is active and can be used."
+              },
+              "metadata": {
+                "type": "object",
+                "description": "Key-value pairs for storing additional information.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "line_items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "ID of the line item to update."
+                    },
+                    "quantity": {
+                      "type": "integer",
+                      "description": "Quantity of the item."
+                    },
+                    "adjustable_quantity": {
+                      "type": "object",
+                      "required": [
+                        "enabled"
+                      ],
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean",
+                          "description": "Whether the quantity can be adjusted by the customer."
+                        },
+                        "maximum": {
+                          "type": "integer",
+                          "description": "Maximum quantity the customer can purchase."
+                        },
+                        "minimum": {
+                          "type": "integer",
+                          "description": "Minimum quantity the customer can purchase."
+                        }
+                      },
+                      "description": "Adjustable quantity configuration for line item.",
+                      "additionalProperties": false
+                    }
+                  },
+                  "description": "Line item update configuration."
+                },
+                "description": "Line items being sold (up to 20)."
+              },
+              "custom_text": {
+                "type": "object",
+                "properties": {
+                  "submit": {
+                    "type": "object",
+                    "required": [
+                      "message"
+                    ],
+                    "properties": {
+                      "message": {
+                        "type": "string",
+                        "description": "Text message to display (max 500 characters)."
+                      }
+                    },
+                    "description": "Custom text message configuration.",
+                    "additionalProperties": false
+                  },
+                  "after_submit": {
+                    "type": "object",
+                    "required": [
+                      "message"
+                    ],
+                    "properties": {
+                      "message": {
+                        "type": "string",
+                        "description": "Text message to display (max 500 characters)."
+                      }
+                    },
+                    "description": "Custom text message configuration.",
+                    "additionalProperties": false
+                  },
+                  "shipping_address": {
+                    "type": "object",
+                    "required": [
+                      "message"
+                    ],
+                    "properties": {
+                      "message": {
+                        "type": "string",
+                        "description": "Text message to display (max 500 characters)."
+                      }
+                    },
+                    "description": "Custom text message configuration.",
+                    "additionalProperties": false
+                  },
+                  "terms_of_service_acceptance": {
+                    "type": "object",
+                    "required": [
+                      "message"
+                    ],
+                    "properties": {
+                      "message": {
+                        "type": "string",
+                        "description": "Text message to display (max 500 characters)."
+                      }
+                    },
+                    "description": "Custom text message configuration.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Custom text to display on the payment page.",
+                "additionalProperties": false
+              },
+              "submit_type": {
+                "type": "string",
+                "description": "Transaction type display: 'auto', 'book', 'donate', 'pay', or 'subscribe'."
+              },
+              "payment_link": {
+                "type": "string",
+                "examples": [
+                  "plink_1ShVrQQvM72TjFrbPxadJ9mD"
+                ],
+                "description": "The ID of the payment link to update."
+              },
+              "restrictions": {
+                "type": "object",
+                "required": [
+                  "completed_sessions"
+                ],
+                "properties": {
+                  "completed_sessions": {
+                    "type": "object",
+                    "required": [
+                      "limit"
+                    ],
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "description": "Maximum allowed completed sessions."
+                      }
+                    },
+                    "description": "Restrictions on completed sessions.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Usage restrictions for the payment link.",
+                "additionalProperties": false
+              },
+              "automatic_tax": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Whether automatic tax calculation is enabled."
+                  },
+                  "liability": {
+                    "type": "object",
+                    "required": [
+                      "type"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "description": "Type of liability account: 'account' or 'self'."
+                      },
+                      "account": {
+                        "type": "string",
+                        "description": "The connected account ID when type is 'account'."
+                      }
+                    },
+                    "description": "Tax liability account configuration.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Automatic tax calculation configuration.",
+                "additionalProperties": false
+              },
+              "custom_fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "key",
+                    "label",
+                    "type"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "Alphanumeric identifier for the custom field."
+                    },
+                    "text": {
+                      "type": "object",
+                      "properties": {
+                        "maximum_length": {
+                          "type": "integer",
+                          "description": "Maximum length for the text field."
+                        },
+                        "minimum_length": {
+                          "type": "integer",
+                          "description": "Minimum length for the text field."
+                        }
+                      },
+                      "description": "Configuration for text-type custom field.",
+                      "additionalProperties": false
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "Type of the custom field: 'text', 'numeric', or 'dropdown'."
+                    },
+                    "label": {
+                      "type": "object",
+                      "required": [
+                        "type",
+                        "custom"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "description": "Type of label, always 'custom'."
+                        },
+                        "custom": {
+                          "type": "string",
+                          "description": "Custom label text."
+                        }
+                      },
+                      "description": "Label for the custom field.",
+                      "additionalProperties": false
+                    },
+                    "numeric": {
+                      "type": "object",
+                      "properties": {
+                        "maximum_length": {
+                          "type": "integer",
+                          "description": "Maximum length for the numeric field."
+                        },
+                        "minimum_length": {
+                          "type": "integer",
+                          "description": "Minimum length for the numeric field."
+                        }
+                      },
+                      "description": "Configuration for numeric-type custom field.",
+                      "additionalProperties": false
+                    },
+                    "dropdown": {
+                      "type": "object",
+                      "required": [
+                        "options"
+                      ],
+                      "properties": {
+                        "options": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "label",
+                              "value"
+                            ],
+                            "properties": {
+                              "label": {
+                                "type": "string",
+                                "description": "Display label for the option."
+                              },
+                              "value": {
+                                "type": "string",
+                                "description": "Value of the option."
+                              }
+                            },
+                            "description": "Option for dropdown custom field."
+                          },
+                          "description": "Array of dropdown options."
+                        }
+                      },
+                      "description": "Configuration for dropdown-type custom field.",
+                      "additionalProperties": false
+                    },
+                    "optional": {
+                      "type": "boolean",
+                      "description": "Whether the field is optional."
+                    }
+                  },
+                  "description": "Custom form field configuration (up to 3 fields)."
+                },
+                "description": "Custom form fields to display (up to 3)."
+              },
+              "name_collection": {
+                "type": "object",
+                "properties": {
+                  "business": {
+                    "type": "object",
+                    "required": [
+                      "enabled"
+                    ],
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean",
+                        "description": "Whether business name collection is enabled."
+                      }
+                    },
+                    "description": "Business name collection configuration.",
+                    "additionalProperties": false
+                  },
+                  "individual": {
+                    "type": "object",
+                    "required": [
+                      "enabled"
+                    ],
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean",
+                        "description": "Whether individual name collection is enabled."
+                      }
+                    },
+                    "description": "Individual name collection configuration.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Configuration for collecting customer names.",
+                "additionalProperties": false
+              },
+              "after_completion": {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "description": "Behavior type: 'hosted_confirmation' or 'redirect'."
+                  },
+                  "redirect": {
+                    "type": "object",
+                    "required": [
+                      "url"
+                    ],
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "description": "URL to redirect to after completion."
+                      }
+                    },
+                    "description": "Redirect configuration.",
+                    "additionalProperties": false
+                  },
+                  "hosted_confirmation": {
+                    "type": "object",
+                    "properties": {
+                      "custom_message": {
+                        "type": "string",
+                        "description": "Custom message to display (max 500 characters)."
+                      }
+                    },
+                    "description": "Hosted confirmation page configuration.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Post-purchase behavior configuration.",
+                "additionalProperties": false
+              },
+              "inactive_message": {
+                "type": "string",
+                "description": "Message displayed when link is inactive (max 500 characters)."
+              },
+              "invoice_creation": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Whether invoice creation is enabled."
+                  },
+                  "invoice_data": {
+                    "type": "object",
+                    "properties": {
+                      "footer": {
+                        "type": "string",
+                        "description": "Invoice footer text."
+                      },
+                      "issuer": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "description": "Type of issuer: 'account' or 'self'."
+                          },
+                          "account": {
+                            "type": "string",
+                            "description": "The connected account ID when type is 'account'."
+                          }
+                        },
+                        "description": "Invoice issuer configuration.",
+                        "additionalProperties": false
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "description": "Metadata for the invoice.",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Invoice description."
+                      },
+                      "custom_fields": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "name",
+                            "value"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "description": "Name of the custom field."
+                            },
+                            "value": {
+                              "type": "string",
+                              "description": "Value of the custom field."
+                            }
+                          },
+                          "description": "Custom field for invoice."
+                        },
+                        "description": "Custom fields to include on the invoice (up to 4)."
+                      },
+                      "account_tax_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "Array of tax ID strings."
+                      }
+                    },
+                    "description": "Invoice generation data.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Invoice creation configuration.",
+                "additionalProperties": false
+              },
+              "customer_creation": {
+                "type": "string",
+                "description": "Customer object creation behavior: 'always' or 'if_required'."
+              },
+              "subscription_data": {
+                "type": "object",
+                "properties": {
+                  "metadata": {
+                    "type": "object",
+                    "description": "Metadata for the subscription.",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Description for the subscription."
+                  },
+                  "trial_settings": {
+                    "type": "object",
+                    "required": [
+                      "end_behavior"
+                    ],
+                    "properties": {
+                      "end_behavior": {
+                        "type": "object",
+                        "required": [
+                          "missing_payment_method"
+                        ],
+                        "properties": {
+                          "missing_payment_method": {
+                            "type": "string",
+                            "description": "Action when payment method is missing: 'cancel', 'create_invoice', or 'pause'."
+                          }
+                        },
+                        "description": "Behavior at the end of the trial period.",
+                        "additionalProperties": false
+                      }
+                    },
+                    "description": "Trial settings configuration.",
+                    "additionalProperties": false
+                  },
+                  "invoice_settings": {
+                    "type": "object",
+                    "properties": {
+                      "issuer": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "description": "Type of issuer: 'account' or 'self'."
+                          },
+                          "account": {
+                            "type": "string",
+                            "description": "The connected account ID when type is 'account'."
+                          }
+                        },
+                        "description": "Subscription invoice issuer configuration.",
+                        "additionalProperties": false
+                      }
+                    },
+                    "description": "Subscription invoice settings.",
+                    "additionalProperties": false
+                  },
+                  "trial_period_days": {
+                    "type": "integer",
+                    "description": "Number of trial days for the subscription."
+                  }
+                },
+                "description": "Subscription configuration for the payment link.",
+                "additionalProperties": false
+              },
+              "tax_id_collection": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Whether tax ID collection is enabled."
+                  },
+                  "required": {
+                    "type": "string",
+                    "description": "Tax ID requirement level. Possible values: 'never' or 'if_supported'."
+                  }
+                },
+                "description": "Configuration for tax ID collection.",
+                "additionalProperties": false
+              },
+              "payment_intent_data": {
+                "type": "object",
+                "properties": {
+                  "metadata": {
+                    "type": "object",
+                    "description": "Metadata for the PaymentIntent.",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Description for the PaymentIntent."
+                  },
+                  "capture_method": {
+                    "type": "string",
+                    "description": "Capture method: 'automatic', 'automatic_async', or 'manual'."
+                  },
+                  "transfer_group": {
+                    "type": "string",
+                    "description": "Transfer group identifier for the PaymentIntent."
+                  },
+                  "setup_future_usage": {
+                    "type": "string",
+                    "description": "Future payment method usage: 'on_session' or 'off_session'."
+                  },
+                  "statement_descriptor": {
+                    "type": "string",
+                    "description": "Statement descriptor for the PaymentIntent (max 22 characters)."
+                  },
+                  "statement_descriptor_suffix": {
+                    "type": "string",
+                    "description": "Statement descriptor suffix (max 22 characters)."
+                  }
+                },
+                "description": "PaymentIntent configuration for the payment link.",
+                "additionalProperties": false
+              },
+              "payment_method_types": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of accepted payment method types."
+              },
+              "allow_promotion_codes": {
+                "type": "boolean",
+                "description": "Whether the payment link accepts promotion codes."
+              },
+              "phone_number_collection": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Whether phone number collection is enabled."
+                  }
+                },
+                "description": "Configuration for phone number collection.",
+                "additionalProperties": false
+              },
+              "payment_method_collection": {
+                "type": "string",
+                "description": "Payment method collection approach: 'always' or 'if_required'."
+              },
+              "billing_address_collection": {
+                "type": "string",
+                "description": "Billing address collection approach: 'auto' or 'required'."
+              },
+              "shipping_address_collection": {
+                "type": "object",
+                "required": [
+                  "allowed_countries"
+                ],
+                "properties": {
+                  "allowed_countries": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "examples": [
+                      [
+                        "US",
+                        "CA",
+                        "GB"
+                      ]
+                    ],
+                    "description": "Array of two-letter ISO 3166-1 alpha-2 country codes for allowed shipping countries."
+                  }
+                },
+                "description": "Configuration for shipping address collection.",
+                "additionalProperties": false
               }
             }
           },
           "hasFullSchema": true
         },
-        "MAILCHIMP_GET_CAMPAIGN_INFO": {
-          "toolkit": "MAILCHIMP",
-          "tool_slug": "MAILCHIMP_GET_CAMPAIGN_INFO",
-          "description": "Get information about a specific campaign.",
+        "STRIPE_GET_PAYMENT_LINK": {
+          "toolkit": "STRIPE",
+          "tool_slug": "STRIPE_GET_PAYMENT_LINK",
+          "description": "Tool to retrieve details of an existing Stripe payment link by ID. Use when you need to get information about a specific payment link.",
           "input_schema": {
             "type": "object",
             "required": [
-              "campaign_id"
+              "payment_link_id"
             ],
             "properties": {
-              "fields": {
+              "expand": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of fields to return. Reference parameters of sub-objects with dot notation. Example: ['id', 'status', 'settings.title', 'recipients.list_id']. If not specified, all fields are returned."
+                "examples": [
+                  [
+                    "line_items"
+                  ],
+                  [
+                    "line_items.data.price"
+                  ]
+                ],
+                "description": "Specifies which fields in the response should be expanded. Supports nested expansion using dot notation up to 4 levels deep."
               },
-              "campaign_id": {
+              "payment_link_id": {
                 "type": "string",
-                "description": "The unique id for the campaign."
-              },
-              "exclude_fields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "A list of fields to exclude from the response. Reference parameters of sub-objects with dot notation. Example: ['_links', 'tracking']. Cannot be used together with 'fields'."
-              },
-              "include_resend_shortcut_eligibility": {
-                "type": "boolean",
-                "description": "Return the `resend_shortcut_eligibility` field in the response, which tells you if the campaign is eligible for the various Campaign Resend Shortcuts offered. "
+                "examples": [
+                  "plink_1ShVhYQvM72TjFrbleaMQpBG",
+                  "plink_1MoC3ULkdIwHu7ixZjtGpVl2"
+                ],
+                "description": "The ID of the payment link to retrieve. Typically starts with 'plink_'."
               }
             }
           },
           "hasFullSchema": true
         },
-        "MAILCHIMP_SET_CAMPAIGN_CONTENT": {
-          "toolkit": "MAILCHIMP",
-          "tool_slug": "MAILCHIMP_SET_CAMPAIGN_CONTENT",
-          "description": "Set the content for a campaign.",
+        "STRIPE_LIST_PAYMENT_LINKS": {
+          "toolkit": "STRIPE",
+          "tool_slug": "STRIPE_LIST_PAYMENT_LINKS",
+          "description": "Retrieves a list of payment links from Stripe, sorted by creation date in descending order by default.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "examples": [
+                  "10",
+                  "25",
+                  "100"
+                ],
+                "description": "Maximum number of items to return (1-100, inclusive). Stripe API defaults to 10 if omitted."
+              },
+              "active": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Filter by active status. `true` for active, `false` for inactive."
+              },
+              "ending_before": {
+                "type": "string",
+                "examples": [
+                  "plink_1O9g9gZ2eZvKYlo2C0gZ2eZv"
+                ],
+                "description": "Object ID for backward pagination; retrieves items created before this ID."
+              },
+              "starting_after": {
+                "type": "string",
+                "examples": [
+                  "plink_1O9g9gZ2eZvKYlo2C0gZ2eZv"
+                ],
+                "description": "Object ID for forward pagination; retrieves items created after this ID."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "STRIPE_GET_PAYMENT_LINKS_PAYMENT_LINK_LINE_ITEMS": {
+          "toolkit": "STRIPE",
+          "tool_slug": "STRIPE_GET_PAYMENT_LINKS_PAYMENT_LINK_LINE_ITEMS",
+          "description": "Tool to retrieve paginated line items for a payment link. Use when you need to get detailed product ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "MAILCHIMP_SET_CAMPAIGN_CONTENT"
+                "STRIPE_GET_PAYMENT_LINKS_PAYMENT_LINK_LINE_ITEMS"
               ]
             }
           }
         },
-        "MAILCHIMP_UPDATE_CAMPAIGN_SETTINGS": {
-          "toolkit": "MAILCHIMP",
-          "tool_slug": "MAILCHIMP_UPDATE_CAMPAIGN_SETTINGS",
-          "description": "Update some or all of the settings for a specific campaign.",
+        "STRIPE_CREATE_PAYMENT_LINK": {
+          "toolkit": "STRIPE",
+          "tool_slug": "STRIPE_CREATE_PAYMENT_LINK",
+          "description": "Tool to create a Stripe Payment Link. Use when you need to generate a hosted checkout page URL that ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "MAILCHIMP_UPDATE_CAMPAIGN_SETTINGS"
+                "STRIPE_CREATE_PAYMENT_LINK"
               ]
             }
           }
         },
-        "MAILCHIMP_RESEND_CAMPAIGN": {
-          "toolkit": "MAILCHIMP",
-          "tool_slug": "MAILCHIMP_RESEND_CAMPAIGN",
-          "description": "Resend a previously sent campaign to specific subscriber segments. This creates a replica of the ori...",
+        "STRIPE_GET_PRICES_PRICE": {
+          "toolkit": "STRIPE",
+          "tool_slug": "STRIPE_GET_PRICES_PRICE",
+          "description": "Retrieves detailed information for a specific Stripe price using its unique ID. Use when you need to...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "MAILCHIMP_RESEND_CAMPAIGN"
+                "STRIPE_GET_PRICES_PRICE"
               ]
             }
           }
         },
-        "MAILCHIMP_SEARCH_CAMPAIGNS": {
-          "toolkit": "MAILCHIMP",
-          "tool_slug": "MAILCHIMP_SEARCH_CAMPAIGNS",
-          "description": "Search all campaigns for the specified query terms. This action searches across campaign titles, sub...",
+        "STRIPE_GET_PRODUCTS_ID": {
+          "toolkit": "STRIPE",
+          "tool_slug": "STRIPE_GET_PRODUCTS_ID",
+          "description": "Retrieves detailed information for an existing Stripe product using its unique product ID. Use when ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "MAILCHIMP_SEARCH_CAMPAIGNS"
+                "STRIPE_GET_PRODUCTS_ID"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T20:50:58.850Z",
-        "current_time_utc_epoch_seconds": 1786567858,
+        "current_time_utc": "2026-08-12T21:30:08.900Z",
+        "current_time_utc_epoch_seconds": 1786570208,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "pass",
+        "id": "tide",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"pass\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"tide\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -314,6 +889,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_F0VSe7pQx02B"
+    "log_id": "log_5nQ1yCO0HFI7"
   }
 }

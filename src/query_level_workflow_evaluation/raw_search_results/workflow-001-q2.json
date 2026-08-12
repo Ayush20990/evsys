@@ -3,19 +3,23 @@
     "query_id": "workflow-001-q2",
     "workflow_id": 1,
     "workflow_task": "Prepare HubSpot launch assets for a paid event registration flow: assess payment-link feasibility, create a review-only automated confirmation email, create a disabled confirmation workflow, verify the assets remain inert, and attempt to create a custom-object registration ledger.",
-    "query": "create a disabled automation workflow for event registration",
+    "query": "create automated email and workflow",
+    "intent": "Create the review-only automated confirmation email and the disabled confirmation workflow in HubSpot.",
     "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "HUBSPOT_CLONE_MARKETING_EMAIL",
+          "HUBSPOT_CREATE_OR_UPDATE_DRAFT_VERSION"
+        ],
+        "purpose": "create or prepare the review-only automated confirmation email"
+      },
       {
         "acceptable_tool_slugs": [
           "HUBSPOT_CREATE_WORKFLOW"
         ],
-        "purpose": "create the disabled confirmation workflow in HubSpot"
+        "purpose": "create the confirmation workflow"
       }
     ],
-    "supporting_tools": [
-      "HUBSPOT_GET_WORKFLOWS"
-    ],
-    "rationale": "specifically targets workflow creation capabilities needed to set up the registration automation.",
     "candidate_tools": [
       "HUBSPOT_CLONE_MARKETING_EMAIL",
       "HUBSPOT_CREATE_OBJECT_SCHEMA",
@@ -30,298 +34,650 @@
     ]
   },
   "request": {
-    "query": "create a disabled automation workflow for event registration"
+    "query": "create automated email and workflow"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "create a disabled automation workflow for event registration",
+          "use_case": "create automated email and workflow",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Prerequisite]: Action using CALENDLY_LIST_EVENT_TYPES (locate the target event type and capture its uri for identification).",
-            "[Optional (if multiple similar event types exist or you want to confirm before changing)] [Prerequisite]: Action using CALENDLY_GET_EVENT_TYPE (verify the chosen event type details match the intended target).",
-            "[Required] [Step]: Action using CALENDLY_UPDATE_EVENT_TYPE (disable the event type by updating it to inactive using the event type identifier).",
-            "[Required] [Next Step]: Action using CALENDLY_UPDATE_EVENT_TYPE (confirm the update response reflects the event type is now inactive)."
+            "[Required] [Prerequisite]: Confirm explicit user approval, audience, and stop-conditions before any outreach using GMAIL_SEND_EMAIL (prevents unintended sends).",
+            "[Optional (if spreadsheet unknown)] [Prerequisite]: Locate the tracking spreadsheet using GOOGLESHEETS_SEARCH_SPREADSHEETS and verify the correct tab using GOOGLESHEETS_GET_SHEET_NAMES (avoid updating the wrong data).",
+            "[Required] [Step]: Read only recipient identifiers plus due/status/last-contacted fields using GOOGLESHEETS_BATCH_GET (use bounded ranges for deterministic mapping).",
+            "[Optional (for safer review)] [Step]: Create a sample message draft using GMAIL_CREATE_EMAIL_DRAFT (validate merge fields and tone before sending).",
+            "[Optional (if reply context gates sending)] [Step]: Fetch a small set of recent thread messages using GMAIL_FETCH_EMAILS (detect replies/unsubscribe signals).",
+            "[Required] [Step]: De-duplicate and validate recipients, then send reminder/follow-up messages using GMAIL_SEND_EMAIL; [Fallback (if Gmail fails or bulk sending is needed)]: Send via RESEND_SEND_BATCH_EMAILS.",
+            "[Required] [Next Step]: Persist sent-state/last-contacted/status using GOOGLESHEETS_UPSERT_ROWS (key by a stable recipient identifier to prevent re-sends)."
           ],
           "known_pitfalls": [
-            "[CALENDLY_UPDATE_EVENT_TYPE] Requires the event type identifier (uuid); when you only have the uri, derive it from the last path segment.",
-            "[CALENDLY_LIST_EVENT_TYPES] Listing can surface multiple similar event types; selecting the wrong uri will disable the wrong event type.",
-            "[CALENDLY_LIST_EVENT_TYPES] The scheduling_url is not the update identifier; prefer the uri when extracting the uuid.",
-            "[CALENDLY_UPDATE_EVENT_TYPE] This flow disables by setting inactive (not a hard delete), so confirm expectations before proceeding."
+            "[GMAIL_SEND_EMAIL] Validation fails unless at least one recipient (to/cc/bcc) and at least one of subject/body is provided.",
+            "[GMAIL_SEND_EMAIL] HTML content requires is_html=true or recipients may see raw markup.",
+            "[GMAIL_SEND_EMAIL] Sends are immediate/irreversible; if write-back fails, reruns can accidentally resend.",
+            "[GOOGLESHEETS_BATCH_GET] Response is grouped by requested ranges (valueRanges/values); header/column order changes can break index-based field mapping.",
+            "[GOOGLESHEETS_UPSERT_ROWS] Bursty writes can hit HTTP 429 per-user quota; retry with exponential backoff."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse a large GOOGLESHEETS_BATCH_GET response (valueRanges/values path).",
+              "code": "```python\nimport json\nobj=json.loads(data)\nvalues=obj['results'][0]['response']['data']['valueRanges'][0]['values']\nheaders=values[0]\nrows=values[1:]\nidx={h:i for i,h in enumerate(headers)}\n```"
+            }
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "CALENDLY_UPDATE_EVENT_TYPE"
+            "GOOGLESHEETS_BATCH_GET",
+            "GMAIL_SEND_EMAIL",
+            "GOOGLESHEETS_UPSERT_ROWS"
           ],
           "related_tool_slugs": [
-            "CALENDLY_LIST_EVENT_TYPES",
-            "CALENDLY_GET_EVENT_TYPE"
+            "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+            "GOOGLESHEETS_GET_SHEET_NAMES",
+            "GMAIL_CREATE_EMAIL_DRAFT",
+            "GMAIL_FETCH_EMAILS",
+            "RESEND_SEND_BATCH_EMAILS"
           ],
           "toolkits": [
-            "calendly"
+            "gmail",
+            "googlesheets",
+            "resend"
           ],
-          "plan_id": "32c5e80d727044debada00e3291ed2b4"
+          "plan_id": "987bace92d2d48d3a81da9c24f04a520"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "calendly",
+          "toolkit": "gmail",
           "has_active_connection": false,
-          "description": "Calendly is an appointment scheduling tool that automates meeting invitations, availability checks, and reminders, helping individuals and teams avoid email back-and-forth",
-          "status_message": "No Active connection for toolkit=calendly. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"calendly\") to create a connection BEFORE executing any calendly tools."
+          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
+          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+        },
+        {
+          "toolkit": "googlesheets",
+          "has_active_connection": false,
+          "description": "Google Sheets is a cloud-based spreadsheet tool enabling real-time collaboration, data analysis, and integration with other Google Workspace apps. STRICT RATE LIMITS apply - max 60 reads/minute and 60 writes/minute. Exceeding this causes errors.",
+          "status_message": "No Active connection for toolkit=googlesheets. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesheets\") to create a connection BEFORE executing any googlesheets tools."
+        },
+        {
+          "toolkit": "resend",
+          "has_active_connection": false,
+          "description": "The universal API for sending emails.",
+          "status_message": "No Active connection for toolkit=resend. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"resend\") to create a connection BEFORE executing any resend tools."
         }
       ],
       "tool_schemas": {
-        "CALENDLY_UPDATE_EVENT_TYPE": {
-          "toolkit": "CALENDLY",
-          "tool_slug": "CALENDLY_UPDATE_EVENT_TYPE",
-          "description": "Tool to update an existing one-on-one event type (kind: solo) in Calendly. Use when you need to modify event type settings such as name, duration, location, or description. NOTE: Currently only supports one-on-one event types.",
+        "GOOGLESHEETS_BATCH_GET": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_BATCH_GET",
+          "description": "Retrieves data from specified cell ranges in a Google Spreadsheet.",
           "input_schema": {
             "type": "object",
             "required": [
-              "uuid"
+              "spreadsheet_id"
             ],
             "properties": {
-              "name": {
-                "type": "string",
+              "ranges": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
                 "examples": [
-                  "15 Minute Meeting",
-                  "30 Minute Consultation",
-                  "Product Demo"
+                  "Sheet1",
+                  "Sheet1!A1:B2",
+                  "Sheet1!A1:Z10000",
+                  "Sheet1!1:2",
+                  "'My Sheet'!A1:Z500",
+                  "A1:B2"
                 ],
-                "description": "The event type name that will be displayed to invitees"
+                "description": "A list of cell ranges in A1 notation from which to retrieve data. If this list is omitted, empty, or contains only empty strings, all data from the first sheet of the spreadsheet will be fetched. Empty strings in the list are automatically filtered out. Supported formats: (1) Bare sheet name like 'Sheet1' to get all data from that sheet, (2) Sheet with range like 'Sheet1!A1:B2', (3) Just cell reference like 'A1:B2' (uses first sheet). For sheet names with spaces or special characters, enclose in single quotes (e.g., \"'My Sheet'\" or \"'My Sheet'!A1:B2\"). IMPORTANT: For large sheets, always use bounded ranges with explicit row limits (e.g., 'Sheet1!A1:Z10000' instead of 'Sheet1!A:Z'). Unbounded column ranges like 'A:Z' on sheets with >10,000 rows may cause timeouts or errors. If you need all data from a large sheet, fetch in chunks of 10,000 rows at a time."
               },
-              "uuid": {
-                "type": "string",
-                "examples": [
-                  "AAAAAAAAAAAAAAAA",
-                  "cdeba4c3-5adb-477d-8972-7317836eb40d",
-                  "https://api.calendly.com/event_types/04856865-014d-43d9-9052-d02de8f1625c"
-                ],
-                "description": "Unique identifier (UUID) of the event type to update. Can be provided as either the full event type URI (e.g., 'https://api.calendly.com/event_types/AAAAAAAAAAAAAAAA') or just the UUID portion (e.g., 'AAAAAAAAAAAAAAAA'). Supports both alphanumeric format (e.g., 'GBGBDCAADAEDCRZ2') and standard UUID format (e.g., 'cdeba4c3-5adb-477d-8972-7317836eb40d'). Use LIST_USER_S_EVENT_TYPES action to retrieve valid event type URIs."
-              },
-              "color": {
-                "type": "string",
-                "pattern": "^#[a-f\\d]{6}$",
-                "examples": [
-                  "#fff200",
-                  "#8247f5"
-                ],
-                "description": "Hexadecimal color value for the scheduling page. Must match pattern ^#[a-f\\d]{6}$ (e.g., '#fff200')"
-              },
-              "active": {
-                "type": "boolean",
-                "examples": [
-                  true,
-                  false
-                ],
-                "description": "Indicates if the event type is active and available for booking"
-              },
-              "locale": {
+              "majorDimension": {
                 "enum": [
-                  "de",
-                  "en",
-                  "es",
-                  "fr",
-                  "it",
-                  "nl",
-                  "pt",
-                  "uk"
+                  "DIMENSION_UNSPECIFIED",
+                  "ROWS",
+                  "COLUMNS"
                 ],
                 "type": "string",
-                "examples": [
-                  "en",
-                  "es",
-                  "fr"
-                ],
-                "description": "Locale for the event type's scheduling page language"
+                "description": "The major dimension for organizing data in results."
               },
-              "duration": {
-                "type": "integer",
-                "maximum": 720,
-                "minimum": 1,
-                "examples": [
-                  15,
-                  30,
-                  45,
-                  60
-                ],
-                "description": "Length of sessions in minutes. Must be between 1 and 720 minutes. Should be one of the duration_options if both are provided."
-              },
-              "locations": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": [
-                    "kind"
-                  ],
-                  "properties": {
-                    "kind": {
-                      "type": "string",
-                      "examples": [
-                        "zoom_conference",
-                        "physical",
-                        "ask_invitee"
-                      ],
-                      "description": "Type of location for the event. Common values: 'zoom_conference', 'google_meet', 'microsoft_teams', 'physical', 'ask_invitee', 'outbound_call', 'inbound_call', 'custom'"
-                    },
-                    "location": {
-                      "type": "string",
-                      "examples": [
-                        "123 Main St, San Francisco, CA 94105",
-                        "Virtual Reality Meeting Space"
-                      ],
-                      "description": "Location address or description (required when kind is 'physical' or 'custom')"
-                    },
-                    "phone_number": {
-                      "type": "string",
-                      "examples": [
-                        "+14155551234"
-                      ],
-                      "description": "Phone number for phone call locations (required when kind is 'outbound_call' or 'inbound_call')"
-                    },
-                    "additional_info": {
-                      "type": "string",
-                      "examples": [
-                        "Building A, Floor 3"
-                      ],
-                      "description": "Additional location information or instructions for invitees"
-                    }
-                  },
-                  "description": "Location configuration for the event type."
-                },
-                "examples": [
-                  [
-                    {
-                      "kind": "zoom_conference"
-                    }
-                  ],
-                  [
-                    {
-                      "kind": "physical",
-                      "additional_info": "Office Building A"
-                    }
-                  ]
-                ],
-                "description": "Configuration information for each possible location where the event can take place"
-              },
-              "description": {
+              "spreadsheet_id": {
                 "type": "string",
                 "examples": [
-                  "A quick 15 minute meeting to discuss your needs"
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
                 ],
-                "description": "The event type description that will be shown on the scheduling page (plain text format)"
+                "maxLength": 200,
+                "description": "The unique identifier of the Google Spreadsheet from which data will be retrieved. This is the ID found in the spreadsheet URL after /d/. You can provide either the spreadsheet ID directly or a full Google Sheets URL (the ID will be extracted automatically)."
               },
-              "duration_options": {
-                "type": "array",
-                "items": {
-                  "type": "integer"
-                },
-                "examples": [
-                  [
-                    15,
-                    30,
-                    45,
-                    60
-                  ]
+              "valueRenderOption": {
+                "enum": [
+                  "FORMATTED_VALUE",
+                  "UNFORMATTED_VALUE",
+                  "FORMULA"
                 ],
-                "description": "Alternative duration choices for flexible meetings. Maximum 4 unique values allowed. Each must be between 1 and 720 minutes."
+                "type": "string",
+                "default": "FORMATTED_VALUE",
+                "description": "How values should be rendered in the output. FORMATTED_VALUE: Values are calculated and formatted (default). UNFORMATTED_VALUE: Values are calculated but not formatted. FORMULA: Values are not calculated; the formula is returned instead."
+              },
+              "dateTimeRenderOption": {
+                "enum": [
+                  "SERIAL_NUMBER",
+                  "FORMATTED_STRING"
+                ],
+                "type": "string",
+                "default": "SERIAL_NUMBER",
+                "description": "How dates and times should be rendered in the output. SERIAL_NUMBER: Dates are returned as serial numbers (default). FORMATTED_STRING: Dates returned as formatted strings."
+              },
+              "empty_strings_filtered": {
+                "type": "boolean",
+                "default": false,
+                "description": "Indicates whether empty strings were filtered from the response."
               }
             }
           },
           "hasFullSchema": true
         },
-        "CALENDLY_LIST_EVENT_TYPES": {
-          "toolkit": "CALENDLY",
-          "tool_slug": "CALENDLY_LIST_EVENT_TYPES",
-          "description": "Tool to list all Event Types associated with a specified User or Organization. Use when you need to retrieve event types for a user or organization. Use scheduling_url from results directly; do not manually construct event type URLs.",
+        "GMAIL_SEND_EMAIL": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_SEND_EMAIL",
+          "description": "Sends an email via Gmail API using the authenticated user's Google profile display name. Sends immediately and is irreversible \u2014 confirm recipients, subject, body, and attachments before calling. At least one of 'to' (or 'recipient_email'), 'cc', or 'bcc' must be provided. At least one of subject or body must be provided. Requires `is_html=True` if the body contains HTML. All common file types including PNG, JPG, PDF, MP4, etc. are supported as attachments. Gmail API limits total message size to ~25 MB after base64 encoding. To reply in an existing thread, use GMAIL_REPLY_TO_THREAD instead. No scheduled send support; enforce timing externally.",
           "input_schema": {
             "type": "object",
             "properties": {
-              "sort": {
+              "cc": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "manager@example.com",
+                    "teamlead@example.com"
+                  ]
+                ],
+                "description": "Carbon Copy (CC) recipients' email addresses. At least one of 'to'/'recipient_email', 'cc', or 'bcc' must be provided."
+              },
+              "bcc": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "auditor@example.com"
+                  ]
+                ],
+                "description": "Blind Carbon Copy (BCC) recipients' email addresses. At least one of 'to'/'recipient_email', 'cc', or 'bcc' must be provided."
+              },
+              "body": {
                 "type": "string",
                 "examples": [
-                  "name:asc",
-                  "created_at:desc"
+                  "Hello team, let's discuss the project updates tomorrow.",
+                  "<h1>Welcome!</h1><p>Thank you for signing up.</p>",
+                  ""
                 ],
-                "description": "Order results by field(s) and direction. Accepts comma-separated list of field:direction values (e.g., 'name:asc,created_at:desc'). Default: name:asc"
+                "description": "Email content (plain text or HTML). Either subject or body must be provided for the email to be sent. If HTML, `is_html` must be `True`."
               },
-              "user": {
-                "type": "string",
-                "examples": [
-                  "https://api.calendly.com/users/BBBBBBBBBBBBBBBB"
-                ],
-                "description": "URI of the user whose event types to list. Exactly one of 'user' or 'organization' must be provided (mutually exclusive)."
-              },
-              "count": {
-                "type": "integer",
-                "examples": [
-                  20,
-                  50,
-                  100
-                ],
-                "description": "Number of results per page."
-              },
-              "active": {
+              "is_html": {
                 "type": "boolean",
-                "description": "Filter by active status. Return only active event types if true, only inactive if false, or all event types if omitted."
+                "default": false,
+                "description": "Set to `True` if the email body contains HTML tags."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Project Update Meeting",
+                  "Your Weekly Newsletter"
+                ],
+                "description": "Subject line of the email. Either subject or body must be provided for the email to be sent."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "user@example.com",
+                  "me"
+                ],
+                "description": "User's email address; the literal 'me' refers to the authenticated user."
+              },
+              "attachment": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "title": "FileUploadable",
+                    "required": [
+                      "name",
+                      "mimetype",
+                      "s3key"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "examples": [
+                          "document.pdf",
+                          "image.jpg",
+                          "report.docx"
+                        ],
+                        "description": "The filename that will be used when uploading the file to the destination service"
+                      },
+                      "s3key": {
+                        "type": "string",
+                        "title": "S3Key",
+                        "examples": [
+                          "47563/gmail/GET_ATTACHMENT/response/12345"
+                        ],
+                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                      },
+                      "mimetype": {
+                        "type": "string",
+                        "title": "Mimetype",
+                        "examples": [
+                          "application/pdf",
+                          "image/jpeg",
+                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        ],
+                        "description": "The MIME type of the file"
+                      }
+                    },
+                    "file_uploadable": true
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "title": "FileUploadable",
+                      "required": [
+                        "name",
+                        "mimetype",
+                        "s3key"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "title": "Name",
+                          "examples": [
+                            "document.pdf",
+                            "image.jpg",
+                            "report.docx"
+                          ],
+                          "description": "The filename that will be used when uploading the file to the destination service"
+                        },
+                        "s3key": {
+                          "type": "string",
+                          "title": "S3Key",
+                          "examples": [
+                            "47563/gmail/GET_ATTACHMENT/response/12345"
+                          ],
+                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                        },
+                        "mimetype": {
+                          "type": "string",
+                          "title": "Mimetype",
+                          "examples": [
+                            "application/pdf",
+                            "image/jpeg",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ],
+                          "description": "The MIME type of the file"
+                        }
+                      },
+                      "file_uploadable": true
+                    }
+                  }
+                ],
+                "description": "File(s) to attach. Accepts a single file or a list of files. IMPORTANT: mimetype MUST contain a '/' separator - single words like 'pdf' or 'new' are invalid. Gmail API limits: total message size must not exceed ~25 MB after base64 encoding. Omit or set to null for no attachment. Empty attachment objects (with all fields empty/whitespace) are treated as no attachment."
+              },
+              "from_email": {
+                "type": "string",
+                "examples": [
+                  "alias@example.com",
+                  "marketing@company.com"
+                ],
+                "description": "Sender email address for the 'From' header. Use this to send from a verified alias configured in Gmail's 'Send mail as' settings. When not provided, the authenticated user's primary email address is used. The alias must be verified in Gmail settings before use."
+              },
+              "recipient_email": {
+                "type": "string",
+                "examples": [
+                  "john@doe.com",
+                  "me"
+                ],
+                "description": "Primary recipient's email address. You can also use 'to' as an alias for this parameter. At least one of 'to'/'recipient_email', 'cc', or 'bcc' must be provided. Use extra_recipients if you want to send to multiple recipients. Use the special value 'me' to send to your own authenticated email address. Must be a full user@domain address; 'me' is not valid here and will fail."
+              },
+              "extra_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "jane.doe@example.com",
+                    "support@example.com"
+                  ]
+                ],
+                "description": "Additional 'To' recipients' email addresses (not Cc or Bcc). Should only be used if recipient_email is also provided."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_UPSERT_ROWS": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_UPSERT_ROWS",
+          "description": "Upsert rows - update existing rows by key, append new ones. Automatically handles column mapping and partial updates. Use for: CRM syncs (match Lead ID), transaction imports (match Transaction ID), inventory updates (match SKU), calendar syncs (match Event ID). Features: - Auto-adds missing columns to sheet - Partial column updates (only update Phone + Status, preserve other columns) - Column order doesn't matter (auto-maps by header name) - Prevents duplicates by matching key column Example inputs: - Contact update: keyColumn='Email', headers=['Email','Phone','Status'], data=[['john@ex.com','555-0101','Active']] - Inventory sync: keyColumn='SKU', headers=['SKU','Stock','Price'], data=[['WIDGET-001',50,9.99],['GADGET-002',30,19.99]] - CRM lead update: keyColumn='Lead ID', headers=['Lead ID','Score','Status'], data=[['L-12345',85,'Hot']] - Partial update: keyColumn='Email', headers=['Email','Phone'] (only updates Phone, preserves Name/Address/etc)",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheetId",
+              "sheetName",
+              "rows"
+            ],
+            "properties": {
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "examples": [
+                  [
+                    [
+                      "john@example.com",
+                      "555-0101",
+                      "Active"
+                    ],
+                    [
+                      "jane@example.com",
+                      "555-0102",
+                      "Pending"
+                    ]
+                  ],
+                  [
+                    [
+                      "WIDGET-001",
+                      50,
+                      9.99
+                    ],
+                    [
+                      "GADGET-002",
+                      30,
+                      19.99
+                    ]
+                  ],
+                  [
+                    [
+                      "L-12345",
+                      "John Doe",
+                      85
+                    ]
+                  ]
+                ],
+                "minItems": 1,
+                "description": "2D array of data rows to upsert. IMPORTANT: If 'headers' is NOT provided, the FIRST row is treated as column headers and remaining rows as data - so you need at least 2 rows (1 header + 1 data). If 'headers' IS provided separately, then ALL rows in this array are treated as data rows. Each row should have the same number of values as headers. If a row has MORE values than headers: with strict_mode=true (default), an error is returned showing which rows are affected; with strict_mode=false, extra values are silently truncated. If a row has FEWER values than headers, an error is returned during execution. Cell values can be strings, numbers, booleans, or null. Example with headers provided: headers=['Email','Status'], rows=[['john@ex.com','Active']] (1 data row). Example without headers: rows=[['Email','Status'],['john@ex.com','Active']] (row 1 = headers, row 2 = data)."
+              },
+              "headers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "Email",
+                    "Phone",
+                    "Status"
+                  ],
+                  [
+                    "Lead ID",
+                    "Name",
+                    "Score"
+                  ],
+                  [
+                    "SKU",
+                    "Stock",
+                    "Price"
+                  ]
+                ],
+                "description": "List of column names for the data. These will be matched against sheet headers. If a column doesn't exist in the sheet, it will be added automatically. Order doesn't need to match sheet order. Can be auto-derived from the first row in 'rows' if not provided. Example inputs: ['Email', 'Phone', 'Status'] for contact updates, ['Lead ID', 'Name', 'Score'] for CRM, ['SKU', 'Stock', 'Price'] for inventory."
+              },
+              "keyColumn": {
+                "type": "string",
+                "examples": [
+                  "Email",
+                  "ID",
+                  "SKU",
+                  "Lead ID",
+                  "Transaction Number"
+                ],
+                "description": "The column NAME (header text) to use as unique identifier for matching rows. Must be an actual header name from the sheet (e.g., 'Email', 'Lead ID', 'SKU'), NOT a column letter (e.g., 'A', 'B', 'C'). If you provide a column letter like 'A', it will be automatically converted to the header name at that column position. If neither 'key_column' nor 'key_column_index' is provided, defaults to the first column (index 0)."
+              },
+              "sheetName": {
+                "type": "string",
+                "examples": [
+                  "Leads",
+                  "Transactions",
+                  "Inventory",
+                  "Sheet1",
+                  "\u5de5\u4f5c\u88681"
+                ],
+                "description": "The name of the sheet/tab within the spreadsheet. Note: Google Sheets creates default sheets with localized names based on account language (e.g., 'Sheet1' for English, '\u5de5\u4f5c\u88681' for Chinese, 'Hoja1' for Spanish, 'Feuille1' for French, 'Planilha1' for Portuguese, '\u041b\u0438\u0441\u04421' for Russian). If you specify a common default name and the sheet is not found, the action will automatically use the first sheet if only one exists."
+              },
+              "strictMode": {
+                "type": "boolean",
+                "default": true,
+                "description": "Controls how rows with mismatched column counts are handled. When True (default), an error is returned if any row has more values than headers - the error message shows exactly which rows are affected and what values would need to be removed. When False, extra values are silently truncated to match the header count. Set to False only if you explicitly want automatic truncation of extra values."
+              },
+              "tableStart": {
+                "type": "string",
+                "default": "A1",
+                "examples": [
+                  "A1",
+                  "C5",
+                  "D10"
+                ],
+                "description": "Cell where the table starts (where headers are located). Defaults to 'A1'. Use this if your table is offset (e.g., 'C5', 'D10')."
+              },
+              "spreadsheetId": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "description": "The ID of the spreadsheet. Must be a non-empty string, typically a 44-character alphanumeric string found in the spreadsheet URL."
+              },
+              "key_column_index": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "examples": [
+                  0,
+                  1,
+                  2
+                ],
+                "description": "The 0-based column index to use as unique identifier for matching rows. Alternative to 'key_column' - will be converted to column name using headers. If neither 'key_column' nor 'key_column_index' is provided, defaults to 0 (first column). Example: 0 for first column, 1 for second column."
+              },
+              "normalization_message": {
+                "type": "string",
+                "description": "Internal field to track input normalization (e.g., row truncation). Not part of API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_SEARCH_SPREADSHEETS": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+          "description": "Search for Google Spreadsheets using various filters including name, content, date ranges, and more.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Budget Report",
+                  "quarterly sales",
+                  "name contains 'Budget'",
+                  "fullText contains 'sales data'",
+                  "sharedWithMe = true"
+                ],
+                "description": "Search query to filter spreadsheets. Behavior depends on the 'search_type' parameter. For advanced searches, use Google Drive query syntax with fields like 'name contains', 'fullText contains', or boolean filters like 'sharedWithMe = true'. DO NOT use spreadsheet IDs as search terms. Leave empty to get all spreadsheets."
+              },
+              "order_by": {
+                "type": "string",
+                "default": "modifiedTime desc",
+                "description": "Sort order (comma-separated list for multi-field sorting). Valid fields: createdTime, folder, modifiedByMeTime, modifiedTime, name, name_natural, quotaBytesUsed, recency, sharedWithMeTime, starred, viewedByMeTime. Append ' desc' for descending order (default is ascending). Examples: 'modifiedTime desc', 'folder,name', 'starred,modifiedTime desc'."
               },
               "page_token": {
                 "type": "string",
-                "description": "Pagination token for retrieving subsequent pages. Check pagination.next_page_token in the response; if non-null, pass it as page_token in the next call. Repeat until next_page_token is null."
+                "description": "Token for retrieving the next page of results. Use the 'next_page_token' value from a previous response to get subsequent pages. Leave empty to get the first page."
               },
-              "organization": {
-                "type": "string",
-                "examples": [
-                  "https://api.calendly.com/organizations/AAAAAAAAAAAAAAAA"
+              "max_results": {
+                "type": "integer",
+                "default": 10,
+                "maximum": 1000,
+                "minimum": 1,
+                "description": "Maximum number of spreadsheets to return (1-1000). Defaults to 10."
+              },
+              "search_type": {
+                "enum": [
+                  "name",
+                  "content",
+                  "both"
                 ],
-                "description": "URI of the organization whose event types to list. Exactly one of 'organization' or 'user' must be provided (mutually exclusive)."
+                "type": "string",
+                "default": "name",
+                "description": "How to search: 'name' searches filenames only (prefix matching from the START of filenames), 'content' uses fullText search which searches file content, name, description, and metadata (Google Drive API limitation: cannot search content exclusively without also matching filenames), 'both' explicitly searches both name OR content with an OR condition. Note: 'name' search only matches from the START of filenames (e.g., 'Budget' finds 'Budget 2024' but NOT 'Q1 Budget')."
               },
-              "admin_managed": {
+              "starred_only": {
                 "type": "boolean",
-                "description": "Filter by admin management status. True for admin-managed only, false to exclude admin-managed, or omitted to include all."
+                "default": false,
+                "description": "Whether to return only starred spreadsheets. Defaults to False."
               },
-              "user_availability_schedule": {
+              "created_after": {
                 "type": "string",
                 "examples": [
-                  "https://api.calendly.com/user_availability_schedules/CCCCCCCCCCCCCCCC"
+                  "2024-01-01T00:00:00Z",
+                  "2024-12-01T12:00:00-08:00"
                 ],
-                "description": "URI of the user's availability schedule. Used with 'user' parameter to filter event types by primary availability schedule."
+                "description": "Return spreadsheets created after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
+              },
+              "modified_after": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01T00:00:00Z",
+                  "2024-12-01T12:00:00-08:00"
+                ],
+                "description": "Return spreadsheets modified after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
+              },
+              "shared_with_me": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to return only spreadsheets shared with the current user. Defaults to False."
+              },
+              "include_trashed": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include spreadsheets in trash. Defaults to False."
+              },
+              "include_shared_drives": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include spreadsheets from shared drives you have access to. Defaults to True."
               }
             }
           },
           "hasFullSchema": true
         },
-        "CALENDLY_GET_EVENT_TYPE": {
-          "toolkit": "CALENDLY",
-          "tool_slug": "CALENDLY_GET_EVENT_TYPE",
-          "description": "Retrieves details for a specific Calendly event type, identified by its UUID, which must be valid and correspond to an existing event type.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "uuid": {
-                "type": "string",
-                "examples": [
-                  "AAAAAAAAAAAAAAAA"
-                ],
-                "description": "Unique identifier (UUID) for the event type. This is a required path parameter - extract the UUID from the event type URI (e.g., for 'https://api.calendly.com/event_types/abc123', use 'abc123')."
-              }
+        "GOOGLESHEETS_GET_SHEET_NAMES": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_GET_SHEET_NAMES",
+          "description": "Lists all worksheet names from a specified Google Spreadsheet (which must exist), useful for discove...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_GET_SHEET_NAMES"
+              ]
             }
-          },
-          "hasFullSchema": true
+          }
+        },
+        "GMAIL_CREATE_EMAIL_DRAFT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_CREATE_EMAIL_DRAFT",
+          "description": "Creates a Gmail email draft. While all fields are optional per the Gmail API, practical validation r...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_CREATE_EMAIL_DRAFT"
+              ]
+            }
+          }
+        },
+        "GMAIL_FETCH_EMAILS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_FETCH_EMAILS",
+          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optiona...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_FETCH_EMAILS"
+              ]
+            }
+          }
+        },
+        "RESEND_SEND_BATCH_EMAILS": {
+          "toolkit": "RESEND",
+          "tool_slug": "RESEND_SEND_BATCH_EMAILS",
+          "description": "Trigger up to 100 batch emails at once. Use when you need to send multiple emails in a single API re...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "RESEND_SEND_BATCH_EMAILS"
+              ]
+            }
+          }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T20:51:01.608Z",
-        "current_time_utc_epoch_seconds": 1786567861,
+        "current_time_utc": "2026-08-12T21:30:11.516Z",
+        "current_time_utc_epoch_seconds": 1786570211,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "cold",
+        "id": "hour",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"cold\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"hour\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -331,6 +687,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_w7FVfYahGv87"
+    "log_id": "log_79_bljRiTYVM"
   }
 }

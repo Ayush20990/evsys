@@ -3,25 +3,16 @@
     "query_id": "workflow-004-q1",
     "workflow_id": 4,
     "workflow_task": "Publish approved carousel content from a Trello workflow to LinkedIn, add a first comment, update Trello status/logs, and adjust the Trello board workflow structure.",
-    "query": "post carousel content to LinkedIn and add a comment",
+    "query": "get approved cards from Trello workflow",
+    "intent": "Retrieve all content cards marked as approved from the designated Trello board and list.",
     "requirement_groups": [
       {
         "acceptable_tool_slugs": [
-          "LINKEDIN_CREATE_LINKED_IN_POST"
+          "TRELLO_GET_LISTS_CARDS_BY_ID_LIST"
         ],
-        "purpose": "publish the carousel post"
-      },
-      {
-        "acceptable_tool_slugs": [
-          "LINKEDIN_CREATE_COMMENT_ON_POST"
-        ],
-        "purpose": "add the first comment"
+        "purpose": "retrieve cards from a specific Trello list"
       }
     ],
-    "supporting_tools": [
-      "LINKEDIN_GET_POST_CONTENT"
-    ],
-    "rationale": "This query covers the LinkedIn publishing portion of the workflow, requiring both post creation and comment addition.",
     "candidate_tools": [
       "LINKEDIN_CREATE_COMMENT_ON_POST",
       "LINKEDIN_CREATE_LINKED_IN_POST",
@@ -36,445 +27,418 @@
     ]
   },
   "request": {
-    "query": "post carousel content to LinkedIn and add a comment"
+    "query": "get approved cards from Trello workflow"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "post carousel content to LinkedIn and add a comment",
+          "use_case": "get approved cards from Trello workflow",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Optional (if posting identity unknown)] [Prerequisite]: Resolve author using LINKEDIN_GET_MY_INFO; if posting as an organization, best-effort confirm eligibility using LINKEDIN_GET_COMPANY_INFO.",
-            "[Required] [Prerequisite]: Get explicit user approval for final commentary (including mentions), visibility, and lifecycleState for LINKEDIN_CREATE_LINKED_IN_POST (default to DRAFT unless publish is explicitly approved).",
-            "[Optional (if images need conversion/normalization)] [Prerequisite]: Prepare per-image bytes plus MIME type using COMPOSIO_REMOTE_WORKBENCH (avoid assumptions about local files being present).",
-            "[Required] [Prerequisite]: For each image, start upload using LINKEDIN_INITIALIZE_IMAGE_UPLOAD, then PUT bytes to the returned upload URL via COMPOSIO_REMOTE_WORKBENCH and retain the returned media reference for attachment.",
-            "[Fallback (if LINKEDIN_INITIALIZE_IMAGE_UPLOAD fails or required fields mismatch)] [Prerequisite]: Use LINKEDIN_REGISTER_IMAGE_UPLOAD per image, PUT bytes to the returned upload URL via COMPOSIO_REMOTE_WORKBENCH, and retain the returned asset reference.",
-            "[Required] [Step]: Create the multi-image post using LINKEDIN_CREATE_LINKED_IN_POST (author/visibility/lifecycleState/commentary + images[] with required per-image fields such as name/mimetype and the attachable reference); store the returned post identifier; if attachments fail validation, retry as text-only (draft/publish per approval).",
-            "[Optional (for verification/debugging)] [Next Step]: Fetch the created entity using LINKEDIN_GET_POST_CONTENT (best-effort; lack of read permission may block retrieval).",
-            "[Optional (if user approves cleanup)] [Next Step]: Remove the created post using LINKEDIN_DELETE_POST."
+            "[Required] [Prerequisite]: Resolve the authenticated member using TRELLO_GET_MEMBERS_ME (get the member identifier for assignment filtering).",
+            "[Required] [Prerequisite]: Confirm the target list identifier using TRELLO_GET_LISTS_BY_ID_LIST (ensure the list exists); [Optional (if only list name is known and board id is available)] [Prerequisite]: Map list name\u2192list identifier using TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD.",
+            "[Required] [Step]: Fetch cards assigned to that member using TRELLO_GET_MEMBERS_CARDS_BY_ID_MEMBER (retain card identifiers and idList when present).",
+            "[Required] [Step]: Filter assigned cards client-side to those whose idList matches the target list identifier(s).",
+            "[Fallback (if idList is missing/ambiguous on returned cards)] [Fallback]: Hydrate each candidate card using TRELLO_GET_CARDS_BY_ID_CARD (read idList) and re-filter.",
+            "[Optional (if list is very large or to reduce per-card hydration)] [Step]: Pull cards in the target list using TRELLO_GET_LISTS_CARDS_BY_ID_LIST and intersect with the member-assigned set by card identifier.",
+            "[Optional (if audit context is needed)] [Next Step]: Retrieve recent history using TRELLO_GET_CARDS_ACTIONS_BY_ID_CARD (explain why a card matches)."
           ],
           "known_pitfalls": [
-            "[LINKEDIN_GET_MY_INFO] Can return 429 (daily throttle); retries may not succeed until the service resets.",
-            "[LINKEDIN_GET_COMPANY_INFO] Can fail with 403 Forbidden when required organization-admin scopes are missing.",
-            "[LINKEDIN_CREATE_LINKED_IN_POST] Attachment validation is strict; non-resolvable images[].s3key or mismatched media references can surface as storage/download 404-style errors.",
-            "[LINKEDIN_CREATE_LINKED_IN_POST] Commentary may fail beyond ~3000 characters; can also return 422-style duplicate-content errors or 426-style version-not-active blocks.",
-            "[LINKEDIN_GET_POST_CONTENT] Can return 403 Forbidden even immediately after creation; treat verification as best-effort, not proof of failure."
-          ],
-          "reference_workbench_snippets": [
-            {
-              "description": "Upload image bytes to a platform-provided upload URL (out-of-band PUT) and accept common success statuses.",
-              "code": "```python\nimport requests\nresp=requests.put(\"<upload_url>\",data=b\"<bytes>\",headers={\"Content-Type\":\"image/png\"},timeout=60)\nprint(resp.status_code)\nassert resp.status_code in (200,201,204)\nresp.raise_for_status()\n```"
-            },
-            {
-              "description": "Parse LINKEDIN_REGISTER_IMAGE_UPLOAD response to extract upload URL and asset reference robustly.",
-              "code": "```python\nd=resp.get(\"data\",{})\nm=(d.get(\"upload_mechanism\") or {}).get(\"com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest\",{})\nupload_url=d.get(\"upload_url\") or m.get(\"uploadUrl\")\nasset_ref=d.get(\"asset_urn\")\nassert upload_url and asset_ref\n```"
-            }
+            "[TRELLO_GET_MEMBERS_CARDS_BY_ID_MEMBER] Card results may be nested under a container (often under a data/cards field) rather than being a top-level array.",
+            "[TRELLO_GET_MEMBERS_CARDS_BY_ID_MEMBER] Returned card objects may not include a reliable idList, requiring follow-up via TRELLO_GET_CARDS_BY_ID_CARD.",
+            "[TRELLO_GET_LISTS_BY_ID_LIST] Validates only a list identifier; if starting from a list name you must map it via TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD (board id required).",
+            "[TRELLO_GET_LISTS_CARDS_BY_ID_LIST] Large lists can yield very large responses; intersect by card identifier and avoid repeated full-list pulls."
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "LINKEDIN_CREATE_LINKED_IN_POST"
+            "TRELLO_GET_MEMBERS_CARDS_BY_ID_MEMBER",
+            "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD"
           ],
           "related_tool_slugs": [
-            "LINKEDIN_GET_MY_INFO",
-            "LINKEDIN_INITIALIZE_IMAGE_UPLOAD",
-            "LINKEDIN_GET_POST_CONTENT",
-            "LINKEDIN_REGISTER_IMAGE_UPLOAD",
-            "LINKEDIN_DELETE_POST",
-            "LINKEDIN_GET_COMPANY_INFO"
+            "TRELLO_GET_MEMBERS_ME",
+            "TRELLO_GET_LISTS_BY_ID_LIST",
+            "TRELLO_GET_CARDS_BY_ID_CARD",
+            "TRELLO_GET_LISTS_CARDS_BY_ID_LIST",
+            "TRELLO_GET_CARDS_ACTIONS_BY_ID_CARD"
           ],
           "toolkits": [
-            "linkedin"
+            "trello"
           ],
-          "plan_id": "56300aac72a44d8fbe03f579c138f353"
+          "plan_id": "d140c961c6a648198a4c0a6bcb2e3362"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "linkedin",
+          "toolkit": "trello",
           "has_active_connection": false,
-          "description": "LinkedIn is a professional networking platform enabling job seekers, companies, and thought leaders to connect, share content, and discover business opportunities",
-          "status_message": "No Active connection for toolkit=linkedin. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"linkedin\") to create a connection BEFORE executing any linkedin tools."
+          "description": "A web-based, kanban-style, list-making application.",
+          "status_message": "No Active connection for toolkit=trello. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"trello\") to create a connection BEFORE executing any trello tools."
         }
       ],
       "tool_schemas": {
-        "LINKEDIN_CREATE_LINKED_IN_POST": {
-          "toolkit": "LINKEDIN",
-          "tool_slug": "LINKEDIN_CREATE_LINKED_IN_POST",
-          "description": "Creates a new post on LinkedIn for the authenticated user or an organization they manage. Requires w_member_social scope for posting as a person, and w_organization_social scope for posting as an organization (with ADMINISTRATOR, DIRECT_SPONSORED_CONTENT_POSTER, or CONTENT_ADMIN role).",
+        "TRELLO_GET_MEMBERS_CARDS_BY_ID_MEMBER": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_MEMBERS_CARDS_BY_ID_MEMBER",
+          "description": "Retrieves cards for a Trello member, specified by ID or username, with options to filter cards and include related data like actions, attachments, and checklists.",
           "input_schema": {
             "type": "object",
             "required": [
-              "author",
-              "commentary"
+              "idMember"
             ],
             "properties": {
-              "author": {
-                "type": "string",
-                "pattern": "^urn:li:(person|organization):[A-Za-z0-9_-]+$",
-                "examples": [
-                  "urn:li:person:F6kGF1Uduq",
-                  "urn:li:person:123456789",
-                  "urn:li:organization:987654321"
-                ],
-                "description": "The URN of the LinkedIn member or organization creating the post. IMPORTANT: Replace placeholder text with actual ID values. For a person: use 'urn:li:person:<actual_person_id>' (e.g., 'urn:li:person:F6kGF1Uduq' or 'urn:li:person:123456789'). Requires w_member_social scope. For an organization: use 'urn:li:organization:<actual_org_id>' (e.g., 'urn:li:organization:987654321'). Requires w_organization_social scope and you must have ADMINISTRATOR, DIRECT_SPONSORED_CONTENT_POSTER, or CONTENT_ADMIN role for the organization. Get your person ID using the GET_MY_INFO action, or get organization IDs from GET_COMPANY_INFO. Do NOT pass literal placeholder text like '{id}' or '{organization_id}'."
-              },
-              "images": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": [
-                    "name",
-                    "mimetype",
-                    "s3key"
-                  ],
-                  "properties": {
-                    "name": {
-                      "type": "string",
-                      "examples": [
-                        "document.pdf",
-                        "image.jpg",
-                        "report.docx"
-                      ],
-                      "description": "The filename that will be used when uploading the file to the destination service"
-                    },
-                    "s3key": {
-                      "type": "string",
-                      "examples": [
-                        "47563/gmail/GET_ATTACHMENT/response/12345"
-                      ],
-                      "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
-                    },
-                    "mimetype": {
-                      "type": "string",
-                      "examples": [
-                        "application/pdf",
-                        "image/jpeg",
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                      ],
-                      "description": "The MIME type of the file"
-                    }
-                  },
-                  "file_uploadable": true
-                },
-                "maxItems": 20,
-                "description": "Array of images to upload and attach to the post. Each element is a Supports 1-20 images. For a single image, use a list with one element. LinkedIn will automatically use the appropriate content type (media for single image, multiImage for 2+ images)."
-              },
-              "container": {
-                "type": "string",
-                "pattern": "^urn:li:[a-zA-Z]+:[A-Za-z0-9_-]+$",
-                "description": "Container entity URN for posting within a specific container (e.g., 'urn:li:group:123456' for group posts). Use this field when posting to a group or other container entity."
-              },
-              "commentary": {
+              "limit": {
                 "type": "string",
                 "examples": [
-                  "Excited to share our new product update!",
-                  "Check out this insightful article: [link]"
+                  "100",
+                  "50"
                 ],
-                "maxLength": 3000,
-                "description": "The main text content of the post. This field supports plain text and @-mentions (e.g., @[LinkedIn Member](urn:li:person:xxxx)). Maximum length: 3000 characters."
+                "description": "Max cards to return (1-1000). Trello's default applies if omitted."
               },
-              "visibility": {
-                "enum": [
-                  "PUBLIC",
-                  "CONNECTIONS",
-                  "LOGGED_IN",
-                  "CONTAINER"
-                ],
+              "since": {
                 "type": "string",
-                "default": "PUBLIC",
-                "description": "Controls who can see the post. 'PUBLIC' makes it visible to everyone, 'CONNECTIONS' to connections only, 'LOGGED_IN' to signed-in LinkedIn members, and 'CONTAINER' for specific group/event posts."
-              },
-              "distribution": {
-                "type": "object",
-                "properties": {
-                  "targetEntities": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "degrees": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "description": "Array of standardized degree URNs for targeting."
-                        },
-                        "locations": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "description": "Deprecated. Array of location URNs for targeting. Use geoLocations instead."
-                        },
-                        "industries": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "description": "Array of industry URNs for targeting."
-                        },
-                        "seniorities": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "description": "Array of seniority level URNs for targeting."
-                        },
-                        "geoLocations": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "description": "Array of geographic location URNs for targeting, e.g., ['urn:li:geo:103644278']."
-                        },
-                        "jobFunctions": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "description": "Array of job function URNs for targeting."
-                        },
-                        "fieldsOfStudy": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "description": "Array of field of study URNs for targeting."
-                        },
-                        "organizations": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          },
-                          "description": "Array of school organization URNs for targeting."
-                        },
-                        "interfaceLocales": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "required": [
-                              "country",
-                              "language"
-                            ],
-                            "properties": {
-                              "country": {
-                                "type": "string",
-                                "maxLength": 2,
-                                "minLength": 2,
-                                "description": "Two-letter uppercase country code (ISO-3166), e.g., 'US', 'GB', 'DE'."
-                              },
-                              "language": {
-                                "type": "string",
-                                "maxLength": 2,
-                                "minLength": 2,
-                                "description": "Two-letter lowercase language code (ISO-639), e.g., 'en', 'es', 'de'."
-                              }
-                            },
-                            "description": "Locale object for interface language targeting."
-                          },
-                          "description": "Array of locale objects for interface language targeting."
-                        },
-                        "staffCountRanges": {
-                          "type": "array",
-                          "items": {
-                            "enum": [
-                              "SIZE_1",
-                              "SIZE_2_TO_10",
-                              "SIZE_11_TO_50",
-                              "SIZE_51_TO_200",
-                              "SIZE_201_TO_500",
-                              "SIZE_501_TO_1000",
-                              "SIZE_1001_TO_5000",
-                              "SIZE_5001_TO_10000",
-                              "SIZE_10001_OR_MORE"
-                            ],
-                            "type": "string",
-                            "description": "Organization staff count range for targeting."
-                          },
-                          "description": "Array of organization staff count ranges for targeting."
-                        }
-                      },
-                      "description": "Targeting criteria for post distribution. The targeted audience must be greater than 300 members."
-                    },
-                    "description": "Array of targeting criteria objects. Each object can specify geoLocations, degrees, industries, seniorities, etc. The targeted audience must be greater than 300 members."
-                  },
-                  "feedDistribution": {
-                    "enum": [
-                      "MAIN_FEED",
-                      "NONE"
-                    ],
-                    "type": "string",
-                    "default": "MAIN_FEED",
-                    "description": "Specifies how the post is distributed on the LinkedIn feed. 'MAIN_FEED' distributes to the main feed, 'NONE' creates Direct Sponsored Content and requires adContext.dscAdAccount."
-                  },
-                  "thirdPartyDistributionChannels": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "description": "Array of third-party channels where the post should be distributed, e.g., Twitter."
-                  }
-                },
-                "description": "Specifies distribution rules for the post, including feed distribution and targeting.",
-                "additionalProperties": false
-              },
-              "lifecycleState": {
-                "type": "string",
-                "default": "PUBLISHED",
                 "examples": [
-                  "PUBLISHED",
-                  "DRAFT",
-                  "PUBLISH_REQUESTED"
+                  "2023-01-15T00:00:00Z",
+                  "null"
                 ],
-                "description": "The state of the post. Use 'PUBLISHED' to post directly, 'DRAFT' to save as a draft, or 'PUBLISH_REQUESTED' if the post requires review before publishing."
+                "description": "Return cards updated after this ISO 8601 date. 'null' or omit for no lower limit."
               },
-              "reshareContext": {
-                "type": "object",
-                "required": [
-                  "parent"
-                ],
-                "properties": {
-                  "parent": {
-                    "type": "string",
-                    "description": "URN of the post being reshared (e.g., 'urn:li:share:6844785523593134080' or 'urn:li:ugcPost:6844785523593134080')."
-                  }
-                },
-                "description": "Context for resharing another post.",
-                "additionalProperties": false
-              },
-              "contentLandingPage": {
+              "before": {
                 "type": "string",
-                "maxLength": 8192,
-                "description": "URL of the landing page that opens when the call-to-action button is clicked. Optional even when contentCallToActionLabel is set."
-              },
-              "contentCallToActionLabel": {
-                "enum": [
-                  "APPLY",
-                  "DOWNLOAD",
-                  "VIEW_QUOTE",
-                  "LEARN_MORE",
-                  "SIGN_UP",
-                  "SUBSCRIBE",
-                  "REGISTER",
-                  "JOIN",
-                  "ATTEND",
-                  "REQUEST_DEMO",
-                  "SEE_MORE",
-                  "BUY_NOW",
-                  "SHOP_NOW"
+                "examples": [
+                  "2023-12-31T23:59:59Z",
+                  "null"
                 ],
-                "type": "string",
-                "description": "Call-to-action button labels for posts."
+                "description": "Return cards updated before this ISO 8601 date. 'null' or omit for no upper limit."
               },
-              "isReshareDisabledByAuthor": {
-                "type": "boolean",
-                "default": false,
-                "description": "Set to true to prevent others from resharing this post."
+              "fields": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "name,due,idBoard",
+                  "all",
+                  "labels,url"
+                ],
+                "description": "Card fields to return. 'all' or comma-separated (e.g., `name`, `due`, `idBoard`, `labels`)."
+              },
+              "filter": {
+                "type": "string",
+                "default": "visible",
+                "examples": [
+                  "open",
+                  "closed",
+                  "all"
+                ],
+                "description": "Card filter: 'all', 'closed', 'none', 'open', or 'visible'. 'visible' means cards on open boards member can see."
+              },
+              "actions": {
+                "type": "string",
+                "examples": [
+                  "commentCard,createCard",
+                  "all",
+                  "updateCard:idList"
+                ],
+                "description": "Filters actions on cards. 'all' or comma-separated Trello action types (e.g., `commentCard`, `createCard`)."
+              },
+              "members": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Include member details on cards: 'true' or 'false'."
+              },
+              "idMember": {
+                "type": "string",
+                "examples": [
+                  "me",
+                  "60d5f2f12f8f7b007f8d9e0a",
+                  "john_doe"
+                ],
+                "description": "The ID or username of the Trello member. Use 'me' for the authenticated user."
+              },
+              "stickers": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Include stickers: 'true' or 'false'."
+              },
+              "checklists": {
+                "type": "string",
+                "default": "none",
+                "examples": [
+                  "all",
+                  "none"
+                ],
+                "description": "Include checklists: 'all' or 'none'."
+              },
+              "attachments": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false",
+                  "cover"
+                ],
+                "description": "Include attachments: 'true' (all), 'false' (none), or 'cover' (card cover only)."
+              },
+              "member_fields": {
+                "type": "string",
+                "default": "avatarHash,fullName,initials,username",
+                "examples": [
+                  "fullName,username",
+                  "all",
+                  "avatarHash,initials"
+                ],
+                "description": "Member fields if 'members' is true. 'all' or comma-separated (e.g., `fullName`, `username`, `initials`)."
+              },
+              "checkItemStates": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Include check item states: 'true' or 'false'."
+              },
+              "attachment_fields": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "name,url,date",
+                  "all"
+                ],
+                "description": "Attachment fields if including attachments. 'all' or comma-separated (e.g., `name`, `url`, `date`)."
               }
             }
           },
           "hasFullSchema": true
         },
-        "LINKEDIN_GET_MY_INFO": {
-          "toolkit": "LINKEDIN",
-          "tool_slug": "LINKEDIN_GET_MY_INFO",
-          "description": "Fetches the authenticated LinkedIn user's profile information including name, headline, profile picture, and other profile details.",
-          "input_schema": {
-            "type": "object",
-            "properties": {}
-          },
-          "hasFullSchema": true
-        },
-        "LINKEDIN_INITIALIZE_IMAGE_UPLOAD": {
-          "toolkit": "LINKEDIN",
-          "tool_slug": "LINKEDIN_INITIALIZE_IMAGE_UPLOAD",
-          "description": "Tool to initialize an image upload to LinkedIn and return a presigned upload URL plus the resulting image URN. Use when you need to prepare an image upload for LinkedIn posts. After calling this tool, upload the image bytes to the returned upload_url via PUT request, then use the image URN in CREATE_LINKED_IN_POST action.",
+        "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD",
+          "description": "Retrieves lists from a specified Trello board, with options to filter lists and include card details.",
           "input_schema": {
             "type": "object",
             "required": [
-              "owner"
+              "idBoard"
             ],
             "properties": {
-              "owner": {
+              "cards": {
+                "type": "string",
+                "default": "none",
+                "examples": [
+                  "none",
+                  "open",
+                  "all",
+                  "closed"
+                ],
+                "description": "Determines which cards should be returned within the lists. Valid values are 'all', 'closed', 'none', or 'open'."
+              },
+              "fields": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "all",
+                  "name,pos",
+                  "idBoard,subscribed"
+                ],
+                "description": "Specifies the fields of the lists to be returned. Use 'all' for all fields, or provide a comma-separated list of specific fields. Valid fields include: closed, idBoard, name, pos, or subscribed."
+              },
+              "filter": {
+                "type": "string",
+                "default": "open",
+                "examples": [
+                  "open",
+                  "all",
+                  "closed"
+                ],
+                "description": "Filters the lists to be returned based on their status. Valid values are 'all', 'closed', 'none', or 'open'."
+              },
+              "idBoard": {
                 "type": "string",
                 "examples": [
-                  "urn:li:person:F6kGF1Uduq",
-                  "urn:li:organization:987654321"
+                  "60d5f2f1c8a8b4002b8f0123",
+                  "TH6F0pTM"
                 ],
-                "description": "Owner URN (person or organization) that will own the uploaded image. Must be in the format 'urn:li:person:{id}' for personal posts or 'urn:li:organization:{id}' for organization posts. Use the GET_MY_INFO action to retrieve the person ID."
+                "description": "The ID of the Trello board. Valid formats: 24-character hexadecimal ID (e.g., '60d5f2f1c8a8b4002b8f0123') OR 8-character shortLink (e.g., 'TH6F0pTM'). Human-readable board names or URL slugs (e.g., 'my-board', 'tech-jcorp') are NOT valid identifiers. In the URL 'trello.com/b/TH6F0pTM/my-board', 'TH6F0pTM' is the valid shortLink, while 'my-board' is just a slug and cannot be used. To find your board ID or shortLink: use TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER to list your boards, or look at the board URL in your browser."
+              },
+              "card_fields": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "all",
+                  "name,desc,due",
+                  "idShort,labels"
+                ],
+                "description": "Specifies the fields of cards to be returned if the 'cards' parameter is not 'none'. Use 'all' for all fields, or provide a comma-separated list of specific fields. Valid fields include: badges, checkItemStates, closed, dateLastActivity, desc, descData, due, email, idAttachmentCover, idBoard, idChecklists, idLabels, idList, idMembers, idMembersVoted, idShort, labels, manualCoverAttachment, name, pos, shortLink, shortUrl, subscribed, or url."
               }
             }
           },
           "hasFullSchema": true
         },
-        "LINKEDIN_GET_POST_CONTENT": {
-          "toolkit": "LINKEDIN",
-          "tool_slug": "LINKEDIN_GET_POST_CONTENT",
-          "description": "Tool to retrieve detailed post content including text, images, videos, and metadata from LinkedIn by...",
+        "TRELLO_GET_MEMBERS_ME": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_MEMBERS_ME",
+          "description": "Tool to retrieve information about the currently authenticated Trello member. Use when you need profile details, settings, or member metadata.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "cards": {
+                "type": "string",
+                "examples": [
+                  "all",
+                  "open",
+                  "visible"
+                ],
+                "description": "Optional parameter to include cards. Accepts 'all', 'none', or card filter values like 'open', 'closed', 'visible'."
+              },
+              "boards": {
+                "type": "string",
+                "examples": [
+                  "all",
+                  "open",
+                  "starred"
+                ],
+                "description": "Optional parameter to include boards. Accepts 'all' or a comma-separated list of board filters."
+              },
+              "fields": {
+                "type": "string",
+                "examples": [
+                  "all",
+                  "fullName,username,email",
+                  "id,bio,avatarUrl"
+                ],
+                "description": "Comma-separated list of member fields to return. Use 'all' for all fields. Valid field names: id, activityBlocked, avatarHash, avatarUrl, avatarSource, bio, bioData, confirmed, fullName, idEnterprise, idEnterprisesDeactivated, idMemberReferrer, idPremOrgsAdmin, initials, memberType, nonPublic, nonPublicAvailable, products, url, username, status, aaId, aaEmail, email, gravatarHash, idBoards, idBoardsPinned, idOrganizations, loginTypes, oneTimeMessagesDismissed, prefs, premiumFeatures, trophies, uploadedAvatarHash."
+              },
+              "actions": {
+                "type": "string",
+                "examples": [
+                  "all",
+                  "commentCard,createCard"
+                ],
+                "description": "Optional parameter to include actions. Accepts 'all' or a comma-separated list of action types."
+              },
+              "boardStars": {
+                "type": "string",
+                "examples": [
+                  "all",
+                  "none"
+                ],
+                "description": "Optional parameter to include board stars. Valid values: 'all' or 'none'."
+              },
+              "customEmoji": {
+                "type": "string",
+                "examples": [
+                  "all",
+                  "none"
+                ],
+                "description": "Optional parameter to include custom emoji. Valid values: 'all' or 'none'."
+              },
+              "boardsInvited": {
+                "type": "string",
+                "examples": [
+                  "all",
+                  "none"
+                ],
+                "description": "Optional parameter to include boards the member is invited to. Valid values: 'all' or 'none'."
+              },
+              "customStickers": {
+                "type": "string",
+                "examples": [
+                  "all",
+                  "none"
+                ],
+                "description": "Optional parameter to include custom stickers. Valid values: 'all' or 'none'."
+              },
+              "boardBackgrounds": {
+                "type": "string",
+                "examples": [
+                  "all",
+                  "none",
+                  "default"
+                ],
+                "description": "Optional parameter to include board backgrounds. Valid values: 'all', 'none', or 'default'."
+              },
+              "customBoardBackgrounds": {
+                "type": "string",
+                "examples": [
+                  "all",
+                  "none"
+                ],
+                "description": "Optional parameter to include custom board backgrounds. Valid values: 'all' or 'none'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TRELLO_GET_LISTS_BY_ID_LIST": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_LISTS_BY_ID_LIST",
+          "description": "Retrieves a Trello list by its unique ID, optionally including details for its cards and parent boar...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "LINKEDIN_GET_POST_CONTENT"
+                "TRELLO_GET_LISTS_BY_ID_LIST"
               ]
             }
           }
         },
-        "LINKEDIN_REGISTER_IMAGE_UPLOAD": {
-          "toolkit": "LINKEDIN",
-          "tool_slug": "LINKEDIN_REGISTER_IMAGE_UPLOAD",
-          "description": "Tool to initialize a native LinkedIn image upload for feed shares and return a presigned upload URL ...",
+        "TRELLO_GET_CARDS_BY_ID_CARD": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_CARDS_BY_ID_CARD",
+          "description": "Retrieves a Trello card by its ID or shortlink, with options to include related data like actions, a...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "LINKEDIN_REGISTER_IMAGE_UPLOAD"
+                "TRELLO_GET_CARDS_BY_ID_CARD"
               ]
             }
           }
         },
-        "LINKEDIN_DELETE_POST": {
-          "toolkit": "LINKEDIN",
-          "tool_slug": "LINKEDIN_DELETE_POST",
-          "description": "Delete a LinkedIn post using the Posts API REST endpoint. Supports both ugcPost and share URN format...",
+        "TRELLO_GET_LISTS_CARDS_BY_ID_LIST": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_LISTS_CARDS_BY_ID_LIST",
+          "description": "Fetches cards from a Trello list by its ID, with options to filter and customize the returned card d...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "LINKEDIN_DELETE_POST"
+                "TRELLO_GET_LISTS_CARDS_BY_ID_LIST"
               ]
             }
           }
         },
-        "LINKEDIN_GET_COMPANY_INFO": {
-          "toolkit": "LINKEDIN",
-          "tool_slug": "LINKEDIN_GET_COMPANY_INFO",
-          "description": "Retrieves organizations where the authenticated user has specific roles (ACLs), to determine their m...",
+        "TRELLO_GET_CARDS_ACTIONS_BY_ID_CARD": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_CARDS_ACTIONS_BY_ID_CARD",
+          "description": "Retrieves the history of actions (e.g., comments, updates, moves) for a Trello card specified by `id...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "LINKEDIN_GET_COMPANY_INFO"
+                "TRELLO_GET_CARDS_ACTIONS_BY_ID_CARD"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T20:51:22.762Z",
-        "current_time_utc_epoch_seconds": 1786567882,
+        "current_time_utc": "2026-08-12T21:30:36.466Z",
+        "current_time_utc_epoch_seconds": 1786570236,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "five",
+        "id": "cent",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"five\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"cent\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -484,6 +448,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_7XLH7YwyEZaL"
+    "log_id": "log_DQKzONz_qci5"
   }
 }

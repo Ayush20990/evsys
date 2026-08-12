@@ -3,19 +3,22 @@
     "query_id": "workflow-010-q2",
     "workflow_id": 10,
     "workflow_task": "Reconcile an organization's QuickBooks bank-account ledger by querying existing transactions, removing or undoing incorrect entries, posting corrected ledger activity, creating adjustment entries, recording a customer payment, and verifying financial reports.",
-    "query": "post corrected ledger activity and create adjustment journal entries",
+    "query": "undo remove incorrect quickbooks ledger entry",
+    "intent": "Remove or undo incorrect entries and post corrected ledger activity along with necessary adjustment entries.",
     "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "QUICKBOOKS_EXECUTE_BATCH_OPERATION"
+        ],
+        "purpose": "remove or undo incorrect ledger entries"
+      },
       {
         "acceptable_tool_slugs": [
           "QUICKBOOKS_CREATE_JOURNAL_ENTRY"
         ],
-        "purpose": "create journal entries for ledger adjustments"
+        "purpose": "post corrected ledger activity and adjustments"
       }
     ],
-    "supporting_tools": [
-      "QUICKBOOKS_EXECUTE_BATCH_OPERATION"
-    ],
-    "rationale": "The workflow involves posting corrected ledger activity and creating adjustment entries.",
     "candidate_tools": [
       "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
       "QUICKBOOKS_EXECUTE_BATCH_OPERATION",
@@ -26,44 +29,33 @@
     ]
   },
   "request": {
-    "query": "post corrected ledger activity and create adjustment journal entries"
+    "query": "undo remove incorrect quickbooks ledger entry"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "post corrected ledger activity and create adjustment journal entries",
-          "execution_guidance": "Found 10 tools for this query. Look at the schemas to know how to use them.",
+          "use_case": "undo remove incorrect quickbooks ledger entry",
+          "execution_guidance": "Found 7 tools for this query. Look at the schemas to know how to use them.",
           "primary_tool_slugs": [
-            "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
-            "NETSUITE_CREATE_JOURNAL_ENTRY",
-            "FREEAGENT_CREATE_A_JOURNAL_SET",
-            "ERPNEXT_SUBMIT_DOCUMENT"
+            "NETSUITE_DELETE_JOURNAL_ENTRY",
+            "QUICKBOOKS_CREATE_JOURNAL_ENTRY"
           ],
           "related_tool_slugs": [
-            "QUICKBOOKS_QUERY_ACCOUNT",
-            "QUICKBOOKS_GET_JOURNAL_ENTRY",
-            "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
             "NETSUITE_GET_JOURNAL_ENTRY",
+            "NETSUITE_LIST_JOURNAL_ENTRIES",
             "NETSUITE_ASYNC_GET_JOB_STATUS",
-            "FREEAGENT_UPDATE_JOURNAL_SETS"
+            "QUICKBOOKS_QUERY_ACCOUNT",
+            "QUICKBOOKS_GET_JOURNAL_ENTRY"
           ],
           "toolkits": [
-            "quickbooks",
             "netsuite",
-            "freeagent",
-            "erpnext"
+            "quickbooks"
           ]
         }
       ],
       "toolkit_connection_statuses": [
-        {
-          "toolkit": "quickbooks",
-          "has_active_connection": false,
-          "description": "Quickbooks is a cloud-based accounting software that helps you manage your finances, track your income and expenses, and get insights into your business",
-          "status_message": "No Active connection for toolkit=quickbooks. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"quickbooks\") to create a connection BEFORE executing any quickbooks tools."
-        },
         {
           "toolkit": "netsuite",
           "has_active_connection": false,
@@ -71,19 +63,50 @@
           "status_message": "No Active connection for toolkit=netsuite. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"netsuite\") to create a connection BEFORE executing any netsuite tools."
         },
         {
-          "toolkit": "freeagent",
+          "toolkit": "quickbooks",
           "has_active_connection": false,
-          "description": "Cloud-based accounting software for freelancers and small businesses",
-          "status_message": "No Active connection for toolkit=freeagent. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"freeagent\") to create a connection BEFORE executing any freeagent tools."
-        },
-        {
-          "toolkit": "erpnext",
-          "has_active_connection": false,
-          "description": "Free and open-source integrated Enterprise Resource Planning software built on Frappe Framework",
-          "status_message": "No Active connection for toolkit=erpnext. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"erpnext\") to create a connection BEFORE executing any erpnext tools."
+          "description": "Quickbooks is a cloud-based accounting software that helps you manage your finances, track your income and expenses, and get insights into your business",
+          "status_message": "No Active connection for toolkit=quickbooks. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"quickbooks\") to create a connection BEFORE executing any quickbooks tools."
         }
       ],
       "tool_schemas": {
+        "NETSUITE_DELETE_JOURNAL_ENTRY": {
+          "toolkit": "NETSUITE",
+          "tool_slug": "NETSUITE_DELETE_JOURNAL_ENTRY",
+          "description": "Tool to delete a journal entry record by ID. Use when you need to remove an existing journal entry from NetSuite.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  123
+                ],
+                "description": "Internal ID of the journal entry record to delete"
+              },
+              "prefer": {
+                "type": "string",
+                "const": "respond-async",
+                "examples": [
+                  "respond-async"
+                ],
+                "description": "Use header 'Prefer: respond-async' to execute asynchronously"
+              },
+              "idempotency_key": {
+                "type": "string",
+                "examples": [
+                  "550e8400-e29b-41d4-a716-446655440000"
+                ],
+                "description": "Idempotency key (UUID) for asynchronous requests; ignored if request is synchronous"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
         "QUICKBOOKS_CREATE_JOURNAL_ENTRY": {
           "toolkit": "QUICKBOOKS",
           "tool_slug": "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
@@ -309,256 +332,52 @@
           },
           "hasFullSchema": true
         },
-        "NETSUITE_CREATE_JOURNAL_ENTRY": {
-          "toolkit": "NETSUITE",
-          "tool_slug": "NETSUITE_CREATE_JOURNAL_ENTRY",
-          "description": "Tool to create a new journal entry record. Use when posting balanced debits and credits to the general ledger.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "body"
-            ],
-            "properties": {
-              "body": {
-                "type": "object",
-                "examples": [
-                  {
-                    "line": {
-                      "items": [
-                        {
-                          "debit": 100,
-                          "account": {
-                            "id": "123"
-                          }
-                        },
-                        {
-                          "credit": 100,
-                          "account": {
-                            "id": "456"
-                          }
-                        }
-                      ]
-                    },
-                    "subsidiary": {
-                      "id": "1"
-                    }
-                  }
-                ],
-                "description": "JSON object matching NetSuite Journal Entry metadata; include all mandatory fields.",
-                "additionalProperties": true
-              },
-              "Prefer": {
-                "type": "string",
-                "const": "respond-async",
-                "examples": [
-                  "respond-async"
-                ],
-                "description": "Use 'respond-async' to run the create operation asynchronously."
-              },
-              "replace": {
-                "type": "string",
-                "examples": [
-                  "line"
-                ],
-                "description": "Comma-separated sublist names to fully replace with those provided."
-              },
-              "X-NetSuite-Idempotency-Key": {
-                "type": "string",
-                "examples": [
-                  "123e4567-e89b-12d3-a456-426614174000"
-                ],
-                "description": "UUID to ensure idempotent async requests; ignored for synchronous calls."
-              },
-              "X-NetSuite-PropertyNameValidation": {
-                "enum": [
-                  "Error",
-                  "Warning",
-                  "Ignore Warning"
-                ],
-                "type": "string",
-                "description": "Controls strictness for property name validation."
-              },
-              "X-NetSuite-PropertyValueValidation": {
-                "enum": [
-                  "Error",
-                  "Warning",
-                  "Ignore Error"
-                ],
-                "type": "string",
-                "description": "Controls strictness for property value validation."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "FREEAGENT_CREATE_A_JOURNAL_SET": {
-          "toolkit": "FREEAGENT",
-          "tool_slug": "FREEAGENT_CREATE_A_JOURNAL_SET",
-          "description": "Tool to create a journal set in FreeAgent. Use when you need to create manual journal entries for accounting corrections or adjustments. All journal entries must balance to zero (total debits equal total credits).",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "description",
-              "journal_entries"
-            ],
-            "properties": {
-              "tag": {
-                "type": "string",
-                "examples": [
-                  "API_TEST",
-                  "MYAPP",
-                  "INTEGRATION"
-                ],
-                "description": "Tag to identify journal sets created by your application. Tagged journal sets can only be edited or deleted via the API."
-              },
-              "dated_on": {
-                "type": "string",
-                "examples": [
-                  "2026-01-15",
-                  "2024-12-31"
-                ],
-                "description": "Date for the journal entries in YYYY-MM-DD format. If not specified, defaults to today's date."
-              },
-              "description": {
-                "type": "string",
-                "examples": [
-                  "Test journal set via API",
-                  "Monthly depreciation adjustment",
-                  "Opening balance correction"
-                ],
-                "description": "Free-text description of the journal set to explain its purpose."
-              },
-              "journal_entries": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": [
-                    "category",
-                    "debit_value"
-                  ],
-                  "properties": {
-                    "user": {
-                      "type": "string",
-                      "examples": [
-                        "https://api.freeagent.com/v2/users/2151294",
-                        "https://api.freeagent.com/v2/users/123456"
-                      ],
-                      "description": "Optional URL of the user associated with this entry (e.g., https://api.freeagent.com/v2/users/123). Use for payroll-related entries."
-                    },
-                    "category": {
-                      "type": "string",
-                      "examples": [
-                        "https://api.freeagent.com/v2/categories/001",
-                        "https://api.freeagent.com/v2/categories/901"
-                      ],
-                      "description": "URL of the accounting category (e.g., https://api.freeagent.com/v2/categories/001). Required for each entry."
-                    },
-                    "debit_value": {
-                      "type": "string",
-                      "examples": [
-                        "100.00",
-                        "-100.00",
-                        "250.50"
-                      ],
-                      "description": "Debit amount as a string (use negative values for credits). Journal entries must balance to zero. Example: '100.00' for debit, '-100.00' for credit."
-                    }
-                  },
-                  "description": "Individual journal entry within a journal set."
-                },
-                "minItems": 2,
-                "description": "Array of journal entry objects. Each entry must have category and debit_value. The sum of all debit_value amounts must equal zero (balanced entries)."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "ERPNEXT_SUBMIT_DOCUMENT": {
-          "toolkit": "ERPNEXT",
-          "tool_slug": "ERPNEXT_SUBMIT_DOCUMENT",
-          "description": "Submit a draft document in ERPNext/Frappe to change its status from Draft to Submitted. Use for submittable DocTypes like Sales Invoice, Purchase Order, Journal Entry, etc. Document must exist in draft state (docstatus=0) before submission.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "doc"
-            ],
-            "properties": {
-              "doc": {
-                "type": "string",
-                "examples": [
-                  "{\"name\":\"SINV-2026-00001\",\"doctype\":\"Sales Invoice\",\"company\":\"My Company\",\"customer\":\"Customer A\",\"posting_date\":\"2026-02-13\",\"docstatus\":0,\"modified\":\"2026-02-13 10:30:15.123456\"}"
-                ],
-                "description": "JSON-stringified complete document object to submit. Must include: (1) 'doctype' field specifying the document type (e.g., 'Journal Entry', 'Sales Invoice'), (2) 'name' field with the document ID, (3) all required fields for the DocType, (4) all child table records if applicable (as arrays of objects), (5) timestamp fields ('modified', 'creation') matching current server state. The document must be in draft state (docstatus=0) and the DocType must be submittable. Fetch the complete document first using GET endpoint to ensure all fields and timestamps are current."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "QUICKBOOKS_QUERY_ACCOUNT": {
-          "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_QUERY_ACCOUNT",
-          "description": "Query Account entities in QuickBooks using SQL-like syntax. IMPORTANT: Queries the Account entity ONLY (chart of accounts). For other entities (Purchase, Invoice, Bill, Payment, etc.), use their respective query actions. NOTE: API returns ALL fields with values regardless of SELECT clause (projections not supported). CRITICAL RESTRICTIONS: Parentheses and OR operator are NOT supported. Use IN operator for multiple values: WHERE AccountType IN ('Bank', 'Credit Card') Supports: WHERE clauses (=, <, >, LIKE, IN), AND operator, pattern matching (%), ORDER BY, pagination (MAXRESULTS up to 1000, STARTPOSITION), COUNT. Common fields: Id, Name, AccountType, AccountSubType, Classification, Active, FullyQualifiedName, CurrentBalance, AcctNum, Description, SubAccount. Examples: - SELECT * FROM Account WHERE AccountType = 'Expense' MAXRESULTS 100 - SELECT * FROM Account WHERE Active = true ORDER BY Name - SELECT * FROM Account WHERE AccountType IN ('Bank', 'Credit Card')",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "query"
-            ],
-            "properties": {
-              "query": {
-                "type": "string",
-                "examples": [
-                  "SELECT * FROM Account",
-                  "SELECT * FROM Account WHERE AccountType = 'Expense' MAXRESULTS 100",
-                  "SELECT * FROM Account WHERE Active = true ORDER BY Name",
-                  "SELECT * FROM Account WHERE Name LIKE '%Checking%' MAXRESULTS 10",
-                  "SELECT COUNT(*) FROM Account WHERE Classification = 'Asset'",
-                  "SELECT * FROM Account WHERE AccountType IN ('Expense', 'Income') MAXRESULTS 100",
-                  "SELECT * FROM Account WHERE Active = true AND AccountType IN ('Bank', 'Credit Card')",
-                  "SELECT * FROM Account ORDER BY Id STARTPOSITION 1 MAXRESULTS 100"
-                ],
-                "description": "SQL-like query string to filter and retrieve Account entities ONLY. Do NOT use for other entities (Purchase, Invoice, Bill, etc.) - use their respective query tools. \n\nQuery syntax: SELECT [fields] FROM Account [WHERE conditions] [ORDER BY field] [STARTPOSITION n] [MAXRESULTS n] \n\nCRITICAL SYNTAX RESTRICTIONS: - Parentheses for grouping are NOT supported - OR operator is NOT supported - use IN instead - Use: WHERE Active = true AND AccountType IN ('Bank', 'Credit Card') \n\nNOTE: QuickBooks API returns ALL fields regardless of SELECT clause. \n\nCommonly queryable fields: Id, Name, AccountType, AccountSubType, Classification, Active, FullyQualifiedName, CurrentBalance, AcctNum, Description, SubAccount. \n\nSupports: - WHERE with operators (=, <, >, <=, >=, IN) - LIKE with % wildcard - AND only (no OR - use IN for multiple values) - ORDER BY for sorting (MUST be two words, not 'ORDERBY'). Sortable fields: Name, Id. Non-sortable: AccountType, AccountSubType, Classification, and others. - MAXRESULTS (max 1000, default 100) and STARTPOSITION - COUNT"
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "QUICKBOOKS_GET_JOURNAL_ENTRY": {
-          "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_JOURNAL_ENTRY",
-          "description": "Tool to read details of a specific QuickBooks journal entry by ID. Use when you need complete journa...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "QUICKBOOKS_GET_JOURNAL_ENTRY"
-              ]
-            }
-          }
-        },
-        "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT": {
-          "toolkit": "QUICKBOOKS",
-          "tool_slug": "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
-          "description": "Generate a General Ledger report showing all transactions with debits, credits, and running balances...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT"
-              ]
-            }
-          }
-        },
         "NETSUITE_GET_JOURNAL_ENTRY": {
           "toolkit": "NETSUITE",
           "tool_slug": "NETSUITE_GET_JOURNAL_ENTRY",
-          "description": "Tool to retrieve a journal entry by internal ID. Use when you have a journal entry ID and need detai...",
+          "description": "Tool to retrieve a journal entry by internal ID. Use when you have a journal entry ID and need detailed journal entry data.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "examples": [
+                  "123"
+                ],
+                "description": "Internal ID of the journal entry to retrieve"
+              },
+              "fields": {
+                "type": "string",
+                "examples": [
+                  "approved,line.items"
+                ],
+                "description": "Comma-separated list of body fields or sublists to return. Example: 'approved,line.items'"
+              },
+              "simpleEnumFormat": {
+                "type": "boolean",
+                "description": "True to return enum fields as internal ID values only"
+              },
+              "expandSubResources": {
+                "type": "boolean",
+                "description": "True to expand sublists/subrecords instead of returning only their links"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NETSUITE_LIST_JOURNAL_ENTRIES": {
+          "toolkit": "NETSUITE",
+          "tool_slug": "NETSUITE_LIST_JOURNAL_ENTRIES",
+          "description": "Tool to list journal entry records. Use when you need to retrieve multiple journal entries with opti...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "NETSUITE_GET_JOURNAL_ENTRY"
+                "NETSUITE_LIST_JOURNAL_ENTRIES"
               ]
             }
           }
@@ -577,30 +396,44 @@
             }
           }
         },
-        "FREEAGENT_UPDATE_JOURNAL_SETS": {
-          "toolkit": "FREEAGENT",
-          "tool_slug": "FREEAGENT_UPDATE_JOURNAL_SETS",
-          "description": "Tool to update a journal set in FreeAgent. Use when you need to modify journal entries, change descr...",
+        "QUICKBOOKS_QUERY_ACCOUNT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_QUERY_ACCOUNT",
+          "description": "Query Account entities in QuickBooks using SQL-like syntax. IMPORTANT: Queries the Account entity ON...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "FREEAGENT_UPDATE_JOURNAL_SETS"
+                "QUICKBOOKS_QUERY_ACCOUNT"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_JOURNAL_ENTRY": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_JOURNAL_ENTRY",
+          "description": "Tool to read details of a specific QuickBooks journal entry by ID. Use when you need complete journa...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_JOURNAL_ENTRY"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T20:52:26.893Z",
-        "current_time_utc_epoch_seconds": 1786567946,
+        "current_time_utc": "2026-08-12T21:31:37.243Z",
+        "current_time_utc_epoch_seconds": 1786570297,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "noon",
+        "id": "blew",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"noon\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"blew\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "Follow these steps carefully to begin the task:",
@@ -610,6 +443,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_GDdKAn1XGMCU"
+    "log_id": "log_8mMdM_uVAAjE"
   }
 }

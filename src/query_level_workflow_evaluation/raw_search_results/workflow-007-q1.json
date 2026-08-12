@@ -3,18 +3,16 @@
     "query_id": "workflow-007-q1",
     "workflow_id": 7,
     "workflow_task": "Aggregate and act on personal productivity signals across email, calendar, GitHub, LinkedIn, and SMS; additionally configure SMS receiving/sending and manage calendar access/events.",
-    "query": "fetch and list email threads",
+    "query": "read recent emails",
+    "intent": "Retrieve incoming emails to extract personal productivity signals and messages.",
     "requirement_groups": [
       {
         "acceptable_tool_slugs": [
-          "GMAIL_FETCH_EMAILS",
-          "GMAIL_LIST_THREADS"
+          "GMAIL_FETCH_EMAILS"
         ],
-        "purpose": "retrieve and list email messages and threads"
+        "purpose": "read recent emails"
       }
     ],
-    "supporting_tools": [],
-    "rationale": "Retrieving productivity signals from email requires fetching or listing email threads.",
     "candidate_tools": [
       "CAL_CONNECT_TO_CALENDAR",
       "CAL_RETRIEVE_CALENDAR_LIST",
@@ -42,29 +40,56 @@
     ]
   },
   "request": {
-    "query": "fetch and list email threads"
+    "query": "read recent emails"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "fetch and list email threads",
-          "execution_guidance": "Found 7 tools for this query. Look at the schemas to know how to use them.",
+          "use_case": "read recent emails",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if reads are empty/unauthorized)] [Prerequisite]: Confirm authenticated mailbox context/scopes using GMAIL_GET_PROFILE (then retry).",
+            "[Optional (if filtering by human label names)] [Prerequisite]: Map label names to label IDs using GMAIL_LIST_LABELS (use IDs in queries/filters).",
+            "[Required] [Step]: List/search messages using GMAIL_FETCH_EMAILS (metadata-first); capture messageId, threadId, and timestamp fields; treat empty results as valid.",
+            "[Required (if nextPageToken present and more coverage needed)] [Next Step]: Paginate using GMAIL_FETCH_EMAILS with page_token until nextPageToken is absent/falsy; merge pages and dedupe by messageId.",
+            "[Optional (if previews/headers are insufficient or attachments needed)] [Next Step]: Hydrate selected items using GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID (prefer metadata; use full only when MIME/body needed); if attachments exist, download via GMAIL_GET_ATTACHMENT using message_id, attachment_id, and a non-empty file_name from hydration.",
+            "[Optional (if conversation context is needed)] [Fallback]: List threads using GMAIL_LIST_THREADS then expand using GMAIL_FETCH_MESSAGE_BY_THREAD_ID and sort by timestamp fields client-side."
+          ],
+          "known_pitfalls": [
+            "[GMAIL_FETCH_EMAILS] Messages can appear under response.data_preview.messages or other wrappers; checking only response.data.messages can look falsely empty.",
+            "[GMAIL_FETCH_EMAILS] Large pulls can trigger HTTP 413 ToolRouterV2_PayloadTooLarge or truncation; keep listing lightweight and hydrate only needed IDs.",
+            "[GMAIL_FETCH_EMAILS] HTTP 403 can occur from missing scopes or wrong mailbox context; validate via GMAIL_GET_PROFILE.",
+            "[GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID] 404 NOT_FOUND can occur if message_id was sourced from a different mailbox context or is otherwise inaccessible.",
+            "[GMAIL_GET_ATTACHMENT] Missing file_name fails validation; wrong attachment_id can return HTTP 400 INVALID_ARGUMENT (invalid attachment token)."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract messages and nextPageToken from nested GMAIL_FETCH_EMAILS responses (data vs data_preview vs wrappers).",
+              "code": "```python\nobj=raw[0] if isinstance(raw,tuple) else raw\nresp=obj.get('response') or obj\nd=(resp.get('data') or resp.get('data_preview') or {})\nmsgs=d.get('messages') or []\ntoken=d.get('nextPageToken') or ''\n```"
+            },
+            {
+              "description": "Decode base64url body data from multipart payload parts returned by GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID.",
+              "code": "```python\nimport base64\n\ndef b64url(s):\n    return base64.urlsafe_b64decode((s or '')+'===').decode('utf-8','replace')\n\ndef parts(msg):\n    ps=((msg.get('payload') or {}).get('parts') or [])\n    out={'text':None,'html':None}\n    for p in ps:\n        mt=(p.get('mimeType') or '').lower()\n        d=((p.get('body') or {}).get('data') or '')\n        if mt=='text/plain' and d: out['text']=b64url(d)\n        if mt=='text/html' and d: out['html']=b64url(d)\n    return out\n```"
+            }
+          ],
+          "difficulty": "easy",
           "primary_tool_slugs": [
-            "GMAIL_LIST_THREADS",
-            "GMAIL_FETCH_EMAILS"
+            "GMAIL_FETCH_EMAILS",
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"
           ],
           "related_tool_slugs": [
+            "GMAIL_GET_PROFILE",
+            "GMAIL_LIST_LABELS",
+            "GMAIL_GET_ATTACHMENT",
             "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
-            "GMAIL_MODIFY_THREAD_LABELS",
-            "GMAIL_REPLY_TO_THREAD",
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
-            "GMAIL_ADD_LABEL_TO_EMAIL"
+            "GMAIL_LIST_THREADS"
           ],
           "toolkits": [
             "gmail"
-          ]
+          ],
+          "plan_id": "f6d28ee19769424eb5757fc47b8c35f8"
         }
       ],
       "toolkit_connection_statuses": [
@@ -76,65 +101,6 @@
         }
       ],
       "tool_schemas": {
-        "GMAIL_LIST_THREADS": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_LIST_THREADS",
-          "description": "Retrieves a list of email threads from a Gmail account, identified by `user_id` (email address or 'me'), supporting filtering and pagination. Spam and trash are excluded by default unless explicitly targeted via `label:spam` or `label:trash` in the query.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "query": {
-                "type": "string",
-                "default": "",
-                "examples": [
-                  "is:unread",
-                  "from:john.doe@example.com",
-                  "subject:important"
-                ],
-                "description": "Filter for threads, using Gmail search query syntax (e.g., 'from:user@example.com is:unread'). Supported operators include `from:`, `to:`, `subject:`, `label:`, `is:unread`, `has:attachment`, `after:`, `before:`. Dates must use `YYYY/MM/DD` format; date operators are UTC-based. Exact subject phrases require quotes (e.g., `subject:'meeting notes'`)."
-              },
-              "user_id": {
-                "type": "string",
-                "default": "me",
-                "examples": [
-                  "me",
-                  "user@example.com"
-                ],
-                "description": "The user's email address or 'me' to specify the authenticated Gmail account."
-              },
-              "verbose": {
-                "type": "boolean",
-                "default": false,
-                "examples": [
-                  true,
-                  false
-                ],
-                "description": "If false, returns threads with basic fields (id, snippet, historyId). If true, returns threads with complete message details including headers, body, attachments, and metadata for each message in the thread. Combining `verbose=true` with large `max_results` produces very large responses; keep `max_results` modest when verbose is enabled."
-              },
-              "page_token": {
-                "type": "string",
-                "default": "",
-                "examples": [
-                  "abcPageToken123"
-                ],
-                "description": "Token from a previous response to retrieve a specific page of results; omit for the first page."
-              },
-              "max_results": {
-                "type": "integer",
-                "default": 10,
-                "maximum": 500,
-                "minimum": 1,
-                "examples": [
-                  "10",
-                  "50",
-                  "100"
-                ],
-                "description": "Maximum number of threads to return. Hard cap is ~500 per call. For full mailbox coverage, loop using `nextPageToken` via `page_token` until absent."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
         "GMAIL_FETCH_EMAILS": {
           "toolkit": "GMAIL",
           "tool_slug": "GMAIL_FETCH_EMAILS",
@@ -231,120 +197,145 @@
           },
           "hasFullSchema": true
         },
-        "GMAIL_FETCH_MESSAGE_BY_THREAD_ID": {
+        "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
-          "description": "Retrieves messages from a Gmail thread using its `thread_id`, where the thread must be accessible by the specified `user_id`. Returns a `messages` array; `thread_id` is not echoed in the response. Message order is not guaranteed \u2014 sort by `internalDate` to find oldest/newest. Check `labelIds` per message to filter drafts. Concurrent bulk calls may trigger 403 `userRateLimitExceeded` or 429; cap concurrency ~10 and use exponential backoff.",
+          "tool_slug": "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+          "description": "Fetches a specific email message by its ID, provided the `message_id` exists and is accessible to the authenticated `user_id`. Spam/trash messages are excluded unless upstream list/search calls used `include_spam_trash=true`. Use `internalDate` (milliseconds since epoch) rather than header `Date` for recency checks.",
           "input_schema": {
             "type": "object",
             "required": [
-              "thread_id"
+              "message_id"
             ],
             "properties": {
+              "format": {
+                "type": "string",
+                "default": "full",
+                "examples": [
+                  "metadata",
+                  "minimal",
+                  "full",
+                  "raw"
+                ],
+                "description": "Format for message content. 'minimal': lightest (ID, thread ID, labels only). 'metadata': headers and message metadata without body content - ideal for summarization, analysis, or when you only need subject/sender/timestamp (recommended for most use cases). 'full': complete MIME structure with 50+ headers, nested parts, and base64url-encoded body data - heavy payload, only use when you need the complete raw MIME structure for parsing attachments or body content. 'raw': entire RFC 2822 formatted message as base64url string."
+              },
               "user_id": {
                 "type": "string",
                 "default": "me",
                 "examples": [
-                  "me",
-                  "user@example.com"
+                  "user@example.com",
+                  "me"
                 ],
-                "description": "The email address of the user."
+                "description": "User's email address or 'me' for the authenticated user."
               },
-              "thread_id": {
+              "message_id": {
                 "type": "string",
                 "examples": [
-                  "19bf77729bcb3a44",
-                  "msg-f:19bf77729bcb3a44"
+                  "19b11732c1b578fd",
+                  "18c5e5b5f5d5e5b5",
+                  "1736ccf5d7b4d452"
                 ],
-                "description": "Hexadecimal thread ID from Gmail API (e.g., '19bf77729bcb3a44'). Obtain from GMAIL_LIST_THREADS or GMAIL_FETCH_EMAILS. Prefixes like 'msg-f:' or 'thread-f:' are auto-stripped. Legacy Gmail web UI IDs (e.g., 'FMfcgzQfBZdVqKZcSVBhqwWLKWCtDdWQ') are NOT supported - use the API thread ID instead. Deduplicate thread_ids before calling when multiple listed messages share the same threadId to avoid redundant calls."
-              },
-              "page_token": {
-                "type": "string",
-                "default": "",
-                "examples": [
-                  "CiAKGhIKJdealEffectivelyPageToken"
-                ],
-                "description": "Opaque page token for fetching a specific page of messages if results are paginated. Iterate calls by passing the returned `nextPageToken` until it is absent; stopping early will miss messages in long threads."
+                "minLength": 1,
+                "description": "The Gmail API message ID (hexadecimal string, typically 15-16 characters like '19b11732c1b578fd'). Must be obtained from Gmail API responses (e.g., List Messages, Search Messages). Do NOT use email subjects, dates, sender names, or custom identifiers. Do NOT use `threadId` (use GMAIL_FETCH_MESSAGE_BY_THREAD_ID for threads), the Message-ID email header, or any fabricated value \u2014 only IDs from Gmail API list/search responses."
               }
             }
           },
           "hasFullSchema": true
         },
-        "GMAIL_MODIFY_THREAD_LABELS": {
+        "GMAIL_GET_PROFILE": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_MODIFY_THREAD_LABELS",
-          "description": "Adds or removes specified existing label IDs from a Gmail thread, affecting all its messages; ensure...",
+          "tool_slug": "GMAIL_GET_PROFILE",
+          "description": "Retrieves Gmail profile information (email address, aggregate messagesTotal/threadsTotal, historyId) for a user. messagesTotal counts individual emails; threadsTotal counts conversations; neither is per-label \u2014 use GMAIL_FETCH_EMAILS with label filters for label-specific counts. The returned historyId seeds incremental sync via GMAIL_LIST_HISTORY; if historyIdTooOld is returned, rescan with GMAIL_FETCH_EMAILS before resuming. Response may be wrapped under a top-level data field; unwrap before reading fields. A successful call confirms mailbox connectivity but not full mailbox access if granted scopes are narrow. Use the returned email address to dynamically identify the authenticated account rather than hard-coding it.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "user@example.com",
+                  "me"
+                ],
+                "description": "The email address of the Gmail user whose profile is to be retrieved, or the special value 'me' to indicate the currently authenticated user. Prefer 'me' unless explicitly targeting another account; passing a raw email address that does not match the connected account may fail or access the wrong mailbox."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_LIST_LABELS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_LIST_LABELS",
+          "description": "Retrieves all system and user-created labels for a Gmail account in a single unpaginated response. P...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_MODIFY_THREAD_LABELS"
+                "GMAIL_LIST_LABELS"
               ]
             }
           }
         },
-        "GMAIL_REPLY_TO_THREAD": {
+        "GMAIL_GET_ATTACHMENT": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_REPLY_TO_THREAD",
-          "description": "Sends a reply within a specific Gmail thread using the original thread's subject; do not provide a c...",
+          "tool_slug": "GMAIL_GET_ATTACHMENT",
+          "description": "Retrieves a specific attachment by ID from a message in a user's Gmail mailbox, requiring valid mess...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_REPLY_TO_THREAD"
+                "GMAIL_GET_ATTACHMENT"
               ]
             }
           }
         },
-        "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID": {
+        "GMAIL_FETCH_MESSAGE_BY_THREAD_ID": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
-          "description": "Fetches a specific email message by its ID, provided the `message_id` exists and is accessible to th...",
+          "tool_slug": "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+          "description": "Retrieves messages from a Gmail thread using its `thread_id`, where the thread must be accessible by...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"
+                "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"
               ]
             }
           }
         },
-        "GMAIL_ADD_LABEL_TO_EMAIL": {
+        "GMAIL_LIST_THREADS": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_ADD_LABEL_TO_EMAIL",
-          "description": "Adds and/or removes specified Gmail labels for a message; ensure `message_id` and all `label_ids` ar...",
+          "tool_slug": "GMAIL_LIST_THREADS",
+          "description": "Retrieves a list of email threads from a Gmail account, identified by `user_id` (email address or 'm...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_ADD_LABEL_TO_EMAIL"
+                "GMAIL_LIST_THREADS"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T20:51:53.511Z",
-        "current_time_utc_epoch_seconds": 1786567913,
+        "current_time_utc": "2026-08-12T21:31:05.720Z",
+        "current_time_utc_epoch_seconds": 1786570265,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "atom",
+        "id": "cold",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"atom\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"cold\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
-        "Follow these steps carefully to begin the task:",
-        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
       ],
       "success": true,
       "error": null
     },
     "error": null,
-    "log_id": "log_YFSmOk-_uFIR"
+    "log_id": "log_OnGj5gCO-H2K"
   }
 }
