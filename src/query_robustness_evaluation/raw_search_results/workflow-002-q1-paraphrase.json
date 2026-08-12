@@ -1,0 +1,314 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-002-q1-paraphrase",
+    "workflow_id": 2,
+    "workflow_task": "Retrieve upcoming Google Calendar meeting events and create or update Notion content containing a large structured dataset, with verification after writing.",
+    "query": "get a schedule of future events from every calendar I have",
+    "required_tools": [
+      "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS"
+    ],
+    "supporting_tools": [],
+    "rationale": "Directly searches for the tool needed to retrieve upcoming meeting events across multiple Google calendars.",
+    "candidate_tools": [
+      "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_CREATE_NOTION_PAGE",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_REPLACE_PAGE_CONTENT",
+      "NOTION_RETRIEVE_PAGE"
+    ],
+    "source_query_id": "workflow-002-q1",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "get a schedule of future events from every calendar I have"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "get a schedule of future events from every calendar I have",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if timezone is unknown)] [Prerequisite]: Read calendar settings using GOOGLECALENDAR_SETTINGS_LIST (use returned timezone to compute correct window bounds).",
+            "[Required (to define window)] [Prerequisite]: Get offset-aware current time using GOOGLECALENDAR_GET_CURRENT_DATE_TIME (derive RFC3339 time_min/time_max; treat window as [time_min,time_max)).",
+            "[Required (to retrieve upcoming items)] [Step]: List upcoming items using GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS (use the window bounds; start with minimal detail; follow nextPageToken pagination and merge pages; if unexpectedly empty, retry once with a slightly wider window).",
+            "[Required (to render agenda)] [Next Step]: Normalize GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS output (prefer summary_view; else unwrap events[i].event; handle start.date vs start.dateTime; keep source calendar_id; de-dup by event_id+start and sort).",
+            "[Optional (if recurring series seems incomplete)] [Next Step]: Expand in-range instances using GOOGLECALENDAR_EVENTS_INSTANCES (same bounds) and merge non-cancelled occurrences.",
+            "[Optional (if full details are needed for a selected item)] [Next Step]: Fetch the event using GOOGLECALENDAR_EVENTS_GET (use event_id plus the originating calendar_id from listing provenance).",
+            "[Fallback (if unified listing is empty/partial or access-limited)] [Fallback]: Enumerate calendars using GOOGLECALENDAR_LIST_CALENDARS then call GOOGLECALENDAR_EVENTS_LIST per calendar_id for the same window (paginate nextPageToken), then merge/de-dup/sort."
+          ],
+          "known_pitfalls": [
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] Missing time_min or time_max triggers input validation errors; always supply both bounds.",
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] With response_detail='minimal', events can be empty while summary_view contains the usable agenda; read summary_view first.",
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] response_detail must match the tool\u2019s allowed enum values; unsupported values fail validation.",
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] 403 PERMISSION_DENIED / ACCESS_TOKEN_SCOPE_INSUFFICIENT can block unified listing; use per-calendar listing or re-auth with broader scopes.",
+            "[GOOGLECALENDAR_GET_CURRENT_DATE_TIME] Timestamp is returned under data.current_datetime; assuming a different key can break window construction."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Defensive extraction for unified listing payloads (data vs data_preview; unwrap events[i].event)",
+              "code": "```python\ndef extract_events(resp):\n  data=resp.get('data') or resp.get('data_preview') or resp\n  return [e.get('event',e) for e in (data.get('events') or [])]\n```"
+            },
+            {
+              "description": "Normalize mixed start.dateTime/start.date strings into tz-aware datetimes",
+              "code": "```python\nfrom datetime import datetime,timezone\n\ndef parse_dt(v):\n  if not v: return None\n  if isinstance(v,dict): v=v.get('dateTime') or v.get('date')\n  if not v: return None\n  dt=datetime.fromisoformat(v.replace('Z','+00:00'))\n  return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+            "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS"
+          ],
+          "related_tool_slugs": [
+            "GOOGLECALENDAR_SETTINGS_LIST",
+            "GOOGLECALENDAR_EVENTS_LIST",
+            "GOOGLECALENDAR_EVENTS_INSTANCES",
+            "GOOGLECALENDAR_EVENTS_GET",
+            "GOOGLECALENDAR_LIST_CALENDARS",
+            "GOOGLECALENDAR_FIND_EVENT"
+          ],
+          "toolkits": [
+            "googlecalendar"
+          ],
+          "plan_id": "d5cd8ba72aca45968816766d64cddb67"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googlecalendar",
+          "has_active_connection": false,
+          "description": "Google Calendar is a time management tool providing scheduling features, event reminders, and integration with email and other apps for streamlined organization",
+          "status_message": "No Active connection for toolkit=googlecalendar. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlecalendar\") to create a connection BEFORE executing any googlecalendar tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLECALENDAR_GET_CURRENT_DATE_TIME": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+          "description": "Gets the current date and time, allowing for a specific timezone offset. Call this tool first before computing relative dates (e.g., 'tomorrow', 'next Monday') to avoid off-by-one-day errors across timezones.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "timezone": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "default": 0,
+                "examples": [
+                  "America/New_York",
+                  "Asia/Kolkata",
+                  "Europe/London",
+                  "Asia/Tokyo",
+                  "America/Los_Angeles",
+                  "Australia/Sydney",
+                  "PST",
+                  "EST",
+                  "GMT",
+                  0,
+                  5.5,
+                  -5,
+                  9
+                ],
+                "description": "Timezone specification. Accepts: (1) IANA timezone identifier (e.g., 'America/New_York', 'Asia/Kolkata', 'Europe/London') - RECOMMENDED, (2) Common timezone abbreviations (e.g., 'PST', 'EST', 'CST', 'GMT', 'UTC') - will be auto-converted to IANA, or (3) Numeric UTC offset in hours (e.g., -5, 5.5). Use positive values for east of UTC, negative for west. Default 0 is UTC."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+          "description": "Return a unified event list across all calendars in the user's calendar list for a given time range. Use when you need a single view of all events across multiple calendars. An inverted or incorrect time range silently returns empty results rather than an error. An empty `items` list means no events matched the filters\u2014adjust `time_min`, `time_max`, or `q` before concluding no events exist.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "time_min",
+              "time_max"
+            ],
+            "properties": {
+              "q": {
+                "type": "string",
+                "description": "Free text search terms to find events that match these terms in any field, except for extended properties. Optional."
+              },
+              "time_max": {
+                "type": "string",
+                "description": "Upper bound (exclusive) for an event's start time to filter by. Must be an RFC3339 timestamp with mandatory time zone offset (e.g., 2011-06-03T10:00:00-07:00 or 2011-06-03T10:00:00Z). If timezone offset is missing, UTC (Z) will be automatically appended. Required."
+              },
+              "time_min": {
+                "type": "string",
+                "description": "Lower bound (inclusive) for an event's end time to filter by. Must be an RFC3339 timestamp with mandatory time zone offset (e.g., 2011-06-03T10:00:00-07:00 or 2011-06-03T10:00:00Z). If timezone offset is missing, UTC (Z) will be automatically appended. Required."
+              },
+              "event_types": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "birthday",
+                    "default",
+                    "focusTime",
+                    "fromGmail",
+                    "outOfOffice",
+                    "workingLocation"
+                  ],
+                  "type": "string",
+                  "description": "Valid event types for Google Calendar API."
+                },
+                "description": "Event types to return. Optional."
+              },
+              "calendar_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Optional list of specific calendar IDs to query. If not provided, all calendars from the user's calendar list will be queried."
+              },
+              "show_deleted": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include deleted events (with status equals 'cancelled') in the result. Optional. The default is False."
+              },
+              "single_events": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to expand recurring events into instances and only return single one-off events and instances of recurring events. Optional. The default is True."
+              },
+              "response_detail": {
+                "enum": [
+                  "minimal",
+                  "full"
+                ],
+                "type": "string",
+                "default": "minimal",
+                "description": "Level of detail in the response. 'minimal' (default) returns only the compact summary_view, omitting the large events array to reduce token usage. 'full' returns both summary_view and the full detailed events array."
+              },
+              "max_results_per_calendar": {
+                "type": "integer",
+                "description": "Maximum number of events returned per calendar. Optional. If not provided, defaults to the API's default (250). Results may be paginated; follow `nextPageToken` in the response until absent to retrieve the complete event list."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLECALENDAR_SETTINGS_LIST": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_SETTINGS_LIST",
+          "description": "Returns all user settings for the authenticated user. Results include multiple settings keyed by id (e.g., `timeZone`); locate a specific setting by its `id` field. `timeZone` values are IANA identifiers (e.g., `America/New_York`) \u2014 use directly in datetime and event logic; align with `timeZone` from GOOGLECALENDAR_GET_CALENDAR for consistent notification times.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "pageToken": {
+                "type": "string",
+                "description": "Token specifying which result page to return."
+              },
+              "syncToken": {
+                "type": "string",
+                "description": "Token obtained from the nextSyncToken field returned on the last page of results from the previous list request. It makes the result of this list request contain only entries that have changed since then. If the syncToken expires, the server will respond with a 410 GONE response code and the client should clear its storage and perform a full synchronization without any syncToken."
+              },
+              "maxResults": {
+                "type": "integer",
+                "maximum": 250,
+                "minimum": 1,
+                "description": "Maximum number of entries returned on one result page. By default the value is 100 entries. The page size can never be larger than 250 entries."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLECALENDAR_EVENTS_LIST": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_EVENTS_LIST",
+          "description": "Returns events on the specified calendar. TIMEZONE WARNING: When using timeMin/timeMax with UTC time...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLECALENDAR_EVENTS_LIST"
+              ]
+            }
+          }
+        },
+        "GOOGLECALENDAR_EVENTS_INSTANCES": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_EVENTS_INSTANCES",
+          "description": "Returns instances of the specified recurring event. Use timeMin/timeMax to constrain the window; omi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLECALENDAR_EVENTS_INSTANCES"
+              ]
+            }
+          }
+        },
+        "GOOGLECALENDAR_EVENTS_GET": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_EVENTS_GET",
+          "description": "Retrieves a SINGLE event by its unique event_id (REQUIRED). This action does NOT list or search even...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLECALENDAR_EVENTS_GET"
+              ]
+            }
+          }
+        },
+        "GOOGLECALENDAR_LIST_CALENDARS": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_LIST_CALENDARS",
+          "description": "Retrieves calendars from the user's Google Calendar list, with options for pagination and filtering....",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLECALENDAR_LIST_CALENDARS"
+              ]
+            }
+          }
+        },
+        "GOOGLECALENDAR_FIND_EVENT": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_FIND_EVENT",
+          "description": "Finds events in a specified Google Calendar using text query, time ranges (event start/end, last mod...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLECALENDAR_FIND_EVENT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:44:50.087Z",
+        "current_time_utc_epoch_seconds": 1786563890,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "gain",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"gain\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_mlSWfr_jH1v9"
+  }
+}

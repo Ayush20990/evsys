@@ -1,0 +1,228 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-007-q3-explicit",
+    "workflow_id": 7,
+    "workflow_task": "Aggregate and act on personal productivity signals across email, calendar, GitHub, LinkedIn, and SMS; additionally configure SMS receiving/sending and manage calendar access/events.",
+    "query": "send a text message through ClickSend and view my past SMS history",
+    "required_tools": [
+      "CLICKSEND_CREATE_SMS_SEND",
+      "CLICKSEND_GET_SMS_HISTORY"
+    ],
+    "supporting_tools": [
+      "CLICKSEND_GET_SMS_RECEIPTS"
+    ],
+    "rationale": "Managing SMS actions requires sending text messages and reviewing delivery history or receipts.",
+    "candidate_tools": [
+      "CAL_CONNECT_TO_CALENDAR",
+      "CAL_RETRIEVE_CALENDAR_LIST",
+      "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND",
+      "CLICKSEND_CREATE_SMS_SEND",
+      "CLICKSEND_DELETE_AUTOMATIONS_SMS_INBOUND",
+      "CLICKSEND_GET_ACCOUNT",
+      "CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND",
+      "CLICKSEND_GET_NUMBERS_SEARCH",
+      "CLICKSEND_GET_SMS_HISTORY",
+      "CLICKSEND_GET_SMS_INBOUND",
+      "CLICKSEND_GET_SMS_RECEIPTS",
+      "CLICKSEND_POST_NUMBERS_BUY",
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_LIST_THREADS",
+      "GOOGLECALENDAR_ACL_INSERT",
+      "GOOGLECALENDAR_ACL_UPDATE",
+      "GOOGLECALENDAR_BATCH_EVENTS",
+      "GOOGLECALENDAR_EVENTS_GET",
+      "GOOGLECALENDAR_EVENTS_LIST",
+      "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+      "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+      "GOOGLECALENDAR_LIST_CALENDARS",
+      "LINKEDIN_PROXY_EXECUTE"
+    ],
+    "source_query_id": "workflow-007-q3",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "send a text message through ClickSend and view my past SMS history"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "send a text message through ClickSend and view my past SMS history",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "Required Prerequisite: Retrieve aggregate usage totals and daily breakdowns using CLICKSEND_GET_STATISTICS_SMS (baseline outbound/inbound counts and spend for the period).",
+            "Required Step: Retrieve message history using CLICKSEND_SMS_HISTORY_GET (apply date range; if results exist, paginate current_page\u2192last_page to collect all records, then filter/group by desired timezone).",
+            "Optional (if you only need outbound/sent traffic): Retrieve sent-only history using CLICKSEND_GET_SMS_HISTORY (use when inbound context is unnecessary).",
+            "Optional (if you need a complete offline dataset or very large pull): Export history using CLICKSEND_SMS_HISTORY_EXPORT_GET (prefer over many-page pulls).",
+            "Optional Next Step (if delivery/inbound troubleshooting is needed): Pull delivery receipts using CLICKSEND_GET_SMS_RECEIPTS and drill down using CLICKSEND_SMS_RECEIPTS_BY_MESSAGE_ID_GET; pull inbound messages using CLICKSEND_GET_SMS_INBOUND for reply/audit context."
+          ],
+          "known_pitfalls": [
+            "[CLICKSEND_GET_STATISTICS_SMS] total.inbound may not include a price field; use .get('price') to avoid KeyError when reading totals.",
+            "[CLICKSEND_SMS_HISTORY_GET] Multi-page results are common (last_page>1); analyzing only page 1 can misattribute volume spikes.",
+            "[CLICKSEND_SMS_HISTORY_GET] Empty windows can return total=0 and last_page=0; treat as no-results and skip pagination.",
+            "[CLICKSEND_SMS_HISTORY_GET] Response nesting may be non-flat (e.g., records under data.data or data.data.data); inspect keys before iterating.",
+            "[CLICKSEND_GET_SMS_HISTORY] Sent-only endpoint; using it alone can miss inbound activity that explains statistic totals (and message bodies may include raw placeholders exactly as sent)."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Safe parsing pattern for CLICKSEND_GET_STATISTICS_SMS totals when some nested keys (e.g., inbound.price) may be absent",
+              "code": "```python\ntotal=stats_data['total']\nout_count=total['outbound']['count']\nout_price=total['outbound'].get('price',0)\nin_count=total['inbound']['count']\nin_price=total['inbound'].get('price',None)\n```"
+            },
+            {
+              "description": "Parse a large saved response and extract the SMS history records list for aggregation (nested data shapes)",
+              "code": "```python\nimport json\nx=json.load(open('response.json'))\nrecords=x['results'][0]['response']['data']['data'].get('data',x['results'][0]['response']['data']['data'])\nprint(len(records))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "CLICKSEND_GET_STATISTICS_SMS",
+            "CLICKSEND_SMS_HISTORY_GET"
+          ],
+          "related_tool_slugs": [
+            "CLICKSEND_SMS_HISTORY_EXPORT_GET",
+            "CLICKSEND_GET_SMS_HISTORY",
+            "CLICKSEND_GET_SMS_INBOUND",
+            "CLICKSEND_GET_SMS_RECEIPTS",
+            "CLICKSEND_GET_ACCOUNT",
+            "CLICKSEND_SMS_RECEIPTS_BY_MESSAGE_ID_GET"
+          ],
+          "toolkits": [
+            "clicksend"
+          ],
+          "plan_id": "b75a8ef1ab8e45d08cb60890862bb7a9"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "clicksend",
+          "has_active_connection": false,
+          "description": "ClickSend is a cloud-based SMS and email marketing platform that enables businesses to send and receive SMS messages, manage contacts, and track campaign performance.",
+          "status_message": "No Active connection for toolkit=clicksend. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"clicksend\") to create a connection BEFORE executing any clicksend tools."
+        }
+      ],
+      "tool_schemas": {
+        "CLICKSEND_GET_STATISTICS_SMS": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_GET_STATISTICS_SMS",
+          "description": "Tool to retrieve SMS messaging statistics for your ClickSend account. Use when you need to view usage metrics, pricing data, and date-based breakdowns of SMS message activity including outbound, inbound, and bounced messages.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "CLICKSEND_SMS_HISTORY_EXPORT_GET": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_SMS_HISTORY_EXPORT_GET",
+          "description": "Tool to export all SMS message history to a CSV file. Downloads a complete export of your SMS history. Use when you need to download all historical SMS messages for analysis, reporting, backup, or archival purposes. Note: This exports all SMS history without filtering - use 'Get SMS History' action first if you need to filter by date, status, or other criteria before deciding to export.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "filename"
+            ],
+            "properties": {
+              "filename": {
+                "type": "string",
+                "examples": [
+                  "sms_history_export.csv",
+                  "sms_export.csv"
+                ],
+                "description": "Filename to download SMS history as (e.g., 'sms_history_export.csv')"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKSEND_GET_SMS_HISTORY": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_GET_SMS_HISTORY",
+          "description": "Tool to retrieve sent SMS message history with filtering and pagination. Use when you need to view p...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKSEND_GET_SMS_HISTORY"
+              ]
+            }
+          }
+        },
+        "CLICKSEND_GET_SMS_INBOUND": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_GET_SMS_INBOUND",
+          "description": "Retrieves inbound SMS messages received by your ClickSend account. Use this tool when you need to: -...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKSEND_GET_SMS_INBOUND"
+              ]
+            }
+          }
+        },
+        "CLICKSEND_GET_SMS_RECEIPTS": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_GET_SMS_RECEIPTS",
+          "description": "Tool to retrieve SMS delivery receipts from your ClickSend account. Use when you need to poll and vi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKSEND_GET_SMS_RECEIPTS"
+              ]
+            }
+          }
+        },
+        "CLICKSEND_GET_ACCOUNT": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_GET_ACCOUNT",
+          "description": "Tool to retrieve authenticated user's account information. Use when you need to view account details...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKSEND_GET_ACCOUNT"
+              ]
+            }
+          }
+        },
+        "CLICKSEND_SMS_RECEIPTS_BY_MESSAGE_ID_GET": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_SMS_RECEIPTS_BY_MESSAGE_ID_GET",
+          "description": "Tool to retrieve a single SMS delivery receipt using the message identifier. Use when you need to ch...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKSEND_SMS_RECEIPTS_BY_MESSAGE_ID_GET"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:47:59.292Z",
+        "current_time_utc_epoch_seconds": 1786564079,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "sink",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"sink\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_mp-7q77A578K"
+  }
+}

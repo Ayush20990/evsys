@@ -1,0 +1,279 @@
+{
+  "query_ground_truth": {
+    "query_id": "synthetic-001-q2",
+    "workflow_id": "synthetic-001",
+    "workflow_task": "As an engineering manager transitioning our sprint tracking infrastructure, I need to verify a complex Jira expression for our new automation rules before setting up our workspaces. Simultaneously, I need to check my authenticated identity in Linear to ensure the correct bot account is authorized, and clean up our project feed by archiving an obsolete status update that is no longer relevant to the team.",
+    "query": "Retrieve the current authenticated user details in Linear to confirm the correct service account is active.",
+    "required_tools": [
+      "LINEAR_GET_CURRENT_USER"
+    ],
+    "supporting_tools": [],
+    "rationale": "Requires the Linear current user retrieval tool to identify the authenticated viewer.",
+    "candidate_tools": [
+      "JIRA_ADD_COMMENT",
+      "LINEAR_ARCHIVE_PROJECT_UPDATE",
+      "JIRA_CREATE_PROJECT",
+      "JIRA_ANALYSE_EXPRESSION",
+      "LINEAR_GET_CURRENT_USER"
+    ],
+    "candidate_toolkits": [
+      "jira",
+      "linear"
+    ],
+    "plausibility_score": 5
+  },
+  "request": {
+    "query": "Retrieve the current authenticated user details in Linear to confirm the correct service account is active."
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Retrieve the current authenticated user details in Linear to confirm the correct service account is active.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Fetch the authenticated profile using LINEAR_GET_CURRENT_USER (capture only needed fields, including a stable user identifier; confirm the returned object shape before extracting).",
+            "[Optional (if identifier/fields are missing or payload is unexpectedly nested)] [Fallback]: Re-query with an explicit selection set using LINEAR_RUN_QUERY_OR_MUTATION (handle common nesting differences like response.data.data.* vs response.data.*).",
+            "[Optional (if you must validate the identity among many users)] [Next Step]: Cross-check the same stable identifier via LINEAR_LIST_LINEAR_USERS (match on the identifier, not display attributes).",
+            "[Optional (if responses are heavily wrapped and need normalization)] [Next Step]: Use COMPOSIO_REMOTE_WORKBENCH to parse/normalize already-fetched payloads (avoid using it as the primary retrieval path)."
+          ],
+          "known_pitfalls": [
+            "[LINEAR_GET_CURRENT_USER] 400/401/403 or \"No active connection found\" indicates missing/misconfigured auth; may also surface as an internal 500 with a tool-router error code.",
+            "[LINEAR_GET_CURRENT_USER] Input is typically an object payload (often {}); non-object inputs can fail validation (e.g., \"Expected object, received number\").",
+            "[LINEAR_RUN_QUERY_OR_MUTATION] 400 BAD_REQUEST / GRAPHQL_VALIDATION_FAILED if the selection set or variables don\u2019t match the schema; successful payloads may be nested under response.data.data.*.",
+            "[LINEAR_GET_CURRENT_USER] User details may appear at different paths (commonly response.data.user, but sometimes within wrapped results); inspect keys before reading fields.",
+            "[COMPOSIO_REMOTE_WORKBENCH] Remote execution can time out (around a few minutes); reserve for parsing/normalization, not additional fetches."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Safely extract stable identifier from LINEAR_GET_CURRENT_USER response",
+              "code": "```python\nuser_key=((res or {}).get('data') or {}).get('user',{}).get('id')\n```"
+            },
+            {
+              "description": "Parse common nested GraphQL responses (user/viewer variants)",
+              "code": "```python\ndef pick(d,*ks):\n    for k in ks:\n        d=(d or {}).get(k)\n    return d\nroot=pick(result,'data','data') or pick(result,'data')\nuser=(root or {}).get('user') or (root or {}).get('viewer')\nuser_key=(user or {}).get('id')\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "LINEAR_GET_CURRENT_USER"
+          ],
+          "related_tool_slugs": [
+            "LINEAR_RUN_QUERY_OR_MUTATION",
+            "LINEAR_LIST_LINEAR_USERS"
+          ],
+          "toolkits": [
+            "linear"
+          ],
+          "plan_id": "ef3d4081f2fc4a2884a28b3743b39ea0"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "linear",
+          "has_active_connection": false,
+          "description": "Linear is a streamlined issue tracking and project planning tool for modern teams, featuring fast workflows, keyboard shortcuts, and GitHub integrations",
+          "status_message": "No Active connection for toolkit=linear. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"linear\") to create a connection BEFORE executing any linear tools."
+        }
+      ],
+      "tool_schemas": {
+        "LINEAR_GET_CURRENT_USER": {
+          "toolkit": "LINEAR",
+          "tool_slug": "LINEAR_GET_CURRENT_USER",
+          "description": "Gets the currently authenticated user's ID, name, email, and other profile information \u2014 this is the account behind the API token, which may be a bot or service account rather than a human user. Use the returned `id` field (nested under `data.viewer`) for downstream Linear operations requiring user ID filtering. To search or compare other workspace members, use LINEAR_LIST_LINEAR_USERS instead.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "LINEAR_RUN_QUERY_OR_MUTATION": {
+          "toolkit": "LINEAR",
+          "tool_slug": "LINEAR_RUN_QUERY_OR_MUTATION",
+          "description": "Execute any GraphQL query or mutation against Linear's API. USE WHEN: No dedicated action exists, need complex filtering, custom fields, or schema discovery. *** INTROSPECTION FIRST - NEVER GUESS FIELD NAMES *** Run introspection before unknown operations: - query { __type(name: \"Issue\") { fields { name } } } - query { __type(name: \"Mutation\") { fields { name } } } Linear uses nested objects (project { id }), NOT scalar IDs (projectId). KEY: All IDs are UUIDs. Filter: { field: { eq: value } }. Pagination: nodes[] + pageInfo.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query_or_mutation"
+            ],
+            "properties": {
+              "variables": {
+                "type": "object",
+                "examples": [
+                  "{}",
+                  "{\"first\": 50}",
+                  "{\"first\": 50, \"after\": \"cursor_string\"}",
+                  "{\"searchTerm\": \"bug fix\"}",
+                  "{\"keyword\": \"authentication\"}",
+                  "{\"teamId\": \"TEAM_UUID\"}",
+                  "{\"projectId\": \"PROJECT_UUID\"}",
+                  "{\"title\": \"New issue\", \"teamId\": \"TEAM_UUID\", \"assigneeId\": \"USER_UUID\"}",
+                  "{\"name\": \"Project Name\", \"teamIds\": [\"TEAM_UUID\"], \"startDate\": \"2024-01-15\", \"targetDate\": \"2024-12-31\"}"
+                ],
+                "description": "Variables for the GraphQL operation as a JSON object. Optional - omit this field or use {} if no variables are needed.\n\n        RULES:\n        - Keys must match variable names in query (without '$' prefix)\n        - Types must align with query definition (String/Int/Boolean/ID/DateTime/arrays)\n        - ID-type variables: Declare as ID in query ($projectId: ID!), but pass as string in variables dict\n          Example: query has \"$teamId: ID!\" -> variables {\"teamId\": \"TEAM_UUID\"}\n        - ID-type variables (e.g., issueId, teamId, stateId) must not be empty strings\n\n        ERROR RECOVERY:\n        - If query with variables fails, test with variables={} first to confirm query syntax is valid\n        - Verify IDs exist by querying for them before using in mutations",
+                "additionalProperties": true
+              },
+              "query_or_mutation": {
+                "type": "string",
+                "examples": [
+                  "query { __type(name: \"Issue\") { fields { name type { name ofType { name } } } } }",
+                  "query { __type(name: \"Notification\") { kind possibleTypes { name } } }",
+                  "query { __type(name: \"Mutation\") { fields { name } } }",
+                  "query { __type(name: \"IssueCreateInput\") { inputFields { name type { name ofType { name } } } } }",
+                  "query { __type(name: \"IssueConnection\") { fields { name type { name } } } }",
+                  "query { notifications(first: 20) { nodes { id type readAt createdAt actor { id name } ... on IssueNotification { issue { id identifier title } comment { id body } } ... on ProjectNotification { project { id name } } } } }",
+                  "query { __type(name: \"Notification\") { fields { name type { name kind } } } }",
+                  "query { __type(name: \"IssueNotification\") { fields { name type { name kind } } } }",
+                  "query { issues(first: 20) { nodes { id title } pageInfo { hasNextPage hasPreviousPage startCursor endCursor } } }",
+                  "query { projects(first: 5) { nodes { name issues { nodes { id title priority } } } } }",
+                  "query { viewer { id name email } }",
+                  "query { teams { nodes { id key name states { nodes { id name type } } } } }",
+                  "query { teams { nodes { id key name labels { nodes { id name isGroup parent { id name } } } } } }",
+                  "query { projects(first: 10) { nodes { id name description lead { id name } teams { nodes { id name } } } } }",
+                  "query { projects(filter: { accessibleTeams: { some: { key: { eq: \"ENG\" } } } }, first: 20) { nodes { id name teams { nodes { key name } } } } }",
+                  "query { projects(filter: { accessibleTeams: { some: { name: { eq: \"Engineering\" } } } }, first: 20) { nodes { id name } } }",
+                  "query { projects(filter: { accessibleTeams: { some: { id: { eq: \"TEAM_UUID\" } } } }, first: 20) { nodes { id name } } }",
+                  "query { team(id: \"TEAM_UUID\") { id name projects { nodes { id name state } } } }",
+                  "query { __type(name: \"ProjectFilter\") { inputFields { name type { name } } } }",
+                  "query { projects(first: 10) { nodes { id name state } } }",
+                  "query { projects(first: 10) { nodes { id name status { name type color } } } }",
+                  "query { issues(first: 20) { nodes { id identifier title state { name } } pageInfo { hasNextPage endCursor } } }",
+                  "query { issues(filter: { state: { name: { eq: \"In Progress\" } } }, first: 20) { nodes { id identifier title } } }",
+                  "query { issues(filter: { state: { name: { nin: [\"Done\", \"Cancelled\"] } } }, first: 20) { nodes { id identifier title state { name } } } }",
+                  "query { issues(filter: { assignee: { id: { eq: \"USER_UUID\" } } }, first: 20) { nodes { id title } } }",
+                  "query { issues(filter: { labels: { name: { eq: \"Bug\" } } }, first: 20) { nodes { id title labels { nodes { name } } } } }",
+                  "query { issues(filter: { labels: { length: { eq: 0 } } }, first: 20) { nodes { id title } } }",
+                  "query { issues(filter: { labels: { every: { name: { contains: \"priority\" } } } }, first: 20) { nodes { id title labels { nodes { name } } } } }",
+                  "query { issues(filter: { or: [{ labels: { name: { eq: \"Bug\" } } }, { labels: { name: { eq: \"Feature\" } } }] }, first: 20) { nodes { id title labels { nodes { name } } } } }",
+                  "query($projectId: ID!, $stateName: String!) { issues(filter: { project: { id: { eq: $projectId } }, state: { name: { eq: $stateName } } }, first: 10, sort: [{ manual: { order: Ascending } }]) { nodes { identifier title sortOrder } } }",
+                  "query { issues(first: 10, sort: [{ manual: { order: Descending } }]) { nodes { id identifier title sortOrder } } }",
+                  "query($projectId: ID!) { documents(filter: { project: { id: { eq: $projectId } } }, first: 50) { nodes { id title } } }",
+                  "query($teamId: ID!) { issues(filter: { team: { id: { eq: $teamId } } }, first: 20) { nodes { id title state { name } } } }",
+                  "query { issues(filter: { title: { contains: \"bug fix\" } }, first: 20) { nodes { id title } } }",
+                  "query($searchTerm: String!) { issues(filter: { title: { contains: $searchTerm } }, first: 20) { nodes { id title } } }",
+                  "query($keyword: String!) { issues(filter: { or: [{ title: { contains: $keyword } }, { description: { contains: $keyword } }] }, first: 50) { nodes { id identifier title description } } }",
+                  "query { issues(filter: { or: [{ priority: { eq: 1 } }, { priority: { eq: 4 } }] }, first: 20) { nodes { id title priority } } }",
+                  "query { issues(filter: { canceledAt: { neq: null } }, first: 20) { nodes { id identifier title canceledAt } } }",
+                  "query { issues(filter: { completedAt: { eq: null } }, first: 20) { nodes { id identifier title } } }",
+                  "query { issues(first: 10) { nodes { id title labels { nodes { id name } } } } }",
+                  "query { issues(first: 20, orderBy: updatedAt) { nodes { id title updatedAt } } }",
+                  "query($teamId: ID!, $date: DateTimeOrDuration!) { issues(filter: { team: { id: { eq: $teamId } }, updatedAt: { gte: $date } }, first: 50) { nodes { id title updatedAt } } }",
+                  "query($startDate: DateTimeOrDuration!, $endDate: DateTimeOrDuration!) { issues(filter: { createdAt: { gte: $startDate, lte: $endDate } }, first: 50) { nodes { id title createdAt } } }",
+                  "query { searchIssues(term: \"PRO-123\", first: 10) { nodes { id identifier title state { name } } } }",
+                  "query($searchTerm: String!) { searchIssues(term: $searchTerm, first: 20) { nodes { id identifier title description } pageInfo { hasNextPage endCursor } } }",
+                  "mutation { issueCreate(input: { title: \"Bug fix\", teamId: \"TEAM_UUID\" }) { success issue { id identifier url } } }",
+                  "mutation { issueUpdate(id: \"ISSUE_UUID\", input: { stateId: \"STATE_UUID\" }) { success issue { id state { name } } } }",
+                  "mutation($issueId: String!, $cycleId: String) { issueUpdate(id: $issueId, input: { cycleId: $cycleId }) { success issue { id identifier cycle { id } } } }",
+                  "mutation { projectUpdate(id: \"PROJECT_UUID\", input: { name: \"Updated Name\", description: \"New description\", leadId: \"USER_UUID\", priority: 2 }) { success project { id name description lead { name } priority } } }",
+                  "mutation { projectUpdateCreate(input: { projectId: \"PROJECT_UUID\", body: \"Weekly progress: completed milestone 1\" }) { success projectUpdate { id body createdAt } } }",
+                  "mutation { projectUpdateCreate(input: { projectId: \"PROJECT_UUID\", body: \"Q1 update: all milestones achieved\", health: onTrack }) { success projectUpdate { id body health } } }",
+                  "query { __type(name: \"ProjectUpdateInput\") { inputFields { name type { name ofType { name } } } } }",
+                  "mutation($name: String!, $teamIds: [String!]!, $startDate: TimelessDate, $targetDate: TimelessDate) { projectCreate(input: { name: $name, teamIds: $teamIds, startDate: $startDate, targetDate: $targetDate }) { success project { id name url startDate targetDate } } }",
+                  "mutation { projectCreate(input: { name: \"New Project\", teamIds: [\"TEAM_UUID\"], description: \"Project description\", leadId: \"USER_UUID\", priority: 2, statusId: \"STATUS_UUID\", startDate: \"2024-01-15\", targetDate: \"2024-12-31\" }) { success project { id name url state statusId priority lead { name } } } }",
+                  "query { __type(name: \"ProjectCreateInput\") { inputFields { name type { name ofType { name } } } } }",
+                  "mutation { favoriteCreate(input: { issueId: \"ISSUE_UUID\" }) { success favorite { id } } }",
+                  "mutation { favoriteCreate(input: { projectId: \"PROJECT_UUID\" }) { success favorite { id } } }",
+                  "mutation { favoriteDelete(id: \"FAVORITE_UUID\") { success } }",
+                  "query { __type(name: \"FavoriteCreateInput\") { inputFields { name type { name } } } }",
+                  "mutation { issueLabelDelete(id: \"LABEL_UUID\") { success entityId } }",
+                  "mutation { commentDelete(id: \"COMMENT_UUID\") { success entityId } }",
+                  "mutation { webhookDelete(id: \"WEBHOOK_UUID\") { success entityId } }",
+                  "mutation { issueDelete(id: \"ISSUE_UUID\") { success entity { id identifier title } } }",
+                  "mutation { projectDelete(id: \"PROJECT_UUID\") { success entity { id name state } } }",
+                  "mutation { issueArchive(id: \"ISSUE_UUID\") { success entity { id identifier archivedAt } } }",
+                  "mutation { commentCreate(input: { issueId: \"ISSUE_UUID\", body: \"Comment text here\" }) { success comment { id body createdAt } } }",
+                  "mutation { commentCreate(input: { issueId: \"ISSUE_UUID\", body: \"Reply to comment\", parentId: \"PARENT_COMMENT_UUID\" }) { success comment { id body parent { id } } } }",
+                  "mutation { commentCreate(input: { projectUpdateId: \"PROJECT_UPDATE_UUID\", body: \"Great progress!\" }) { success comment { id body } } }",
+                  "query { __type(name: \"CommentCreateInput\") { inputFields { name type { name } } } }",
+                  "query { comments(filter: { issue: { team: { key: { eq: \"ENG\" } } } }, first: 20) { nodes { id body issue { identifier team { key } } } } }",
+                  "query { comments(filter: { issue: { team: { id: { eq: \"TEAM_UUID\" } } } }, first: 20) { nodes { id body issue { identifier } } } }",
+                  "query { comments(filter: { issue: { team: { key: { eq: \"PROD\" } } }, body: { contains: \"review\" } }, first: 50) { nodes { id body createdAt } } }",
+                  "query { __type(name: \"CommentFilter\") { inputFields { name type { name } } } }",
+                  "mutation { customViewCreate(input: { name: \"My Custom View\", filterData: {} }) { success customView { id name description shared creator { name } } } }",
+                  "query { customView(id: \"CUSTOM_VIEW_UUID\") { id name description icon color shared slugId creator { name } team { name } } }",
+                  "query { __type(name: \"CustomView\") { fields { name type { name ofType { name } } } } }",
+                  "query { __type(name: \"CustomViewCreateInput\") { inputFields { name type { name ofType { name } } } } }",
+                  "mutation { initiativeCreate(input: { name: \"Q1 Product Roadmap\", description: \"Strategic initiative for Q1\", status: Active }) { success initiative { id name } } }",
+                  "query { initiatives(filter: { status: { eq: \"Active\" } }, first: 10) { nodes { id name description status targetDate owner { name } } } }",
+                  "query { __type(name: \"InitiativeCreateInput\") { inputFields { name type { name kind ofType { name } } } } }",
+                  "query { __type(name: \"InitiativeStatus\") { enumValues { name description } } }",
+                  "mutation { teamUpdate(id: \"TEAM_UUID\", input: { issueEstimationType: \"fibonacci\" }) { success team { id key name issueEstimationType } } }",
+                  "query { __type(name: \"TeamUpdateInput\") { inputFields { name type { name kind } } } }",
+                  "query { cycles(filter: { isActive: { eq: true } }, first: 10) { nodes { id name number startsAt endsAt progress team { name } } } }",
+                  "query { cycles(first: 10) { nodes { id name progress currentProgress } } }",
+                  "query { cycles(first: 10) { nodes { id number name startsAt endsAt completedAt archivedAt createdAt updatedAt } } }",
+                  "query { issues(filter: { canceledAt: { neq: null } }, first: 20) { nodes { id identifier title canceledAt state { name } } } }",
+                  "mutation { fileUpload(contentType: \"application/pdf\", filename: \"document.pdf\", size: 2048) { success uploadFile { uploadUrl assetUrl headers { key value } filename contentType size } } }",
+                  "mutation($contentType: String!, $filename: String!, $size: Int!) { fileUpload(contentType: $contentType, filename: $filename, size: $size) { success uploadFile { uploadUrl assetUrl headers { key value } } } }",
+                  "query { __type(name: \"UploadPayload\") { fields { name type { name ofType { name } } } } }",
+                  "query { __type(name: \"UploadFile\") { fields { name type { name ofType { name } } } } }",
+                  "query($id: String!) { project(id: $id) { id name documentContent { id content contentState } } }",
+                  "query($id: String!) { project(id: $id) { id name documents(first: 20) { nodes { id title content summary icon color creator { name } } } } }",
+                  "mutation { documentCreate(input: { title: \"API Documentation\", content: \"# Overview\\n\\nThis document describes the API.\", projectId: \"PROJECT_UUID\" }) { success document { id title } } }",
+                  "mutation { documentCreate(input: { title: \"Bug Report Details\", content: \"## Steps to Reproduce\\n\\n1. Step one\\n2. Step two\", issueId: \"LIN-123\" }) { success document { id title } } }",
+                  "mutation($input: DocumentCreateInput!) { documentCreate(input: $input) { success document { id title content } } }",
+                  "query { __type(name: \"DocumentCreateInput\") { inputFields { name type { name kind ofType { name } } description } } }",
+                  "mutation { webhookCreate(input: { url: \"https://example.com/webhook\", resourceTypes: [\"Issue\", \"Comment\"], label: \"Team Webhook\", enabled: true, teamId: \"TEAM_UUID\" }) { success webhook { id label url } } }",
+                  "mutation { webhookCreate(input: { url: \"https://example.com/webhook\", resourceTypes: [\"Issue\"], label: \"Global Webhook\", enabled: true, allPublicTeams: true }) { success webhook { id label url } } }",
+                  "query { __type(name: \"WebhookCreateInput\") { inputFields { name type { name kind ofType { name } } description } } }",
+                  "query { integrations { nodes { id service createdAt updatedAt archivedAt organization { id name } team { id key name } creator { id name email } } } }",
+                  "query { __type(name: \"Integration\") { fields { name type { name kind ofType { name } } description } } }"
+                ],
+                "minLength": 1,
+                "description": "GraphQL query or mutation for Linear's API. Must be a non-empty, valid GraphQL query or mutation string.\n\n        RULES (each prevents a silent failure or hard-to-debug error):\n\n        1. INTROSPECTION FIRST: Never guess field/mutation names. Run __type introspection before any uncertain operation.\n        2. INPUT vs OUTPUT naming: Query outputs use nested objects (lead { id name }), but mutation inputs use scalar ID fields (leadId: \"UUID\"). Using lead: { id: \"...\" } in input causes \"Did you mean leadId?\" errors.\n        3. POLYMORPHIC TYPES: Interfaces/unions (e.g., Notification) require inline fragments for subtype-specific fields. Use ... on IssueNotification { issue { id } } instead of querying issue directly on Notification.\n        4. NO totalCount: Connection types have only nodes and pageInfo. totalCount does not exist (unlike GitHub/GitLab).\n        5. DEPRECATED issueSearch: Use issues(filter: {...}) or searchIssues(term: \"text\") instead. issueSearch returns INPUT_ERROR.\n        6. FILTER OPERATORS: Use nin (NOT notIn) for \"not in array\". Use eq/neq/in/nin/contains/gt/gte/lt/lte.\n           STRING CASE SENSITIVITY (CRITICAL): ALL string operators (eq, neq, contains, startsWith, endsWith, etc.) are case-sensitive. Linear provides NO case-insensitive operators (eqCaseInsensitive, containsCaseInsensitive, etc. do NOT exist). For state name matching, query exact state names or use state.type field. For user/entity search, prefer contains with exact casing or query first then filter.\n        7. SORT vs ORDERBY (MUTUALLY EXCLUSIVE - use ONE or the OTHER, NEVER both):\n           - orderBy: Simple enum values for common sorting (createdAt, updatedAt). Example: orderBy: createdAt\n           - sort: Complex objects for manual ordering with granular control. Example: sort: [{ manual: { order: Ascending } }]\n           - CRITICAL: Using both simultaneously causes INPUT_ERROR: \"Cannot use both sort and orderBy options\"\n           - Use Ascending/Descending (capitalized) for sort enums, NOT asc/desc\n        8. LABELS ARE TEAM-SCOPED: No root-level labels query. Access via teams { nodes { labels { nodes { ... } } } }. Never use isGroup:true labels directly.\n        9. LABEL FILTERS: No 'none' operator. Use labels: { length: { eq: 0 } } for issues with no labels. Available: some (default), every, length, null.\n        10. SEARCH: searchIssues(term: \"text\") - term is required String!, NOT 'query'.\n        11. DATE TYPES: Date filters use DateTimeOrDuration! (not DateTime!). TimelessDate=\"YYYY-MM-DD\" for project dates. DateTime=\"2024-01-15T10:30:00Z\".\n        12. ID EXCEPTIONS: team(id:), project(id:), issue(id:), issueUpdate(id:) use String!, not ID!. Entity IDs in filters use ID! type.\n        13. PROJECT.LEAD: Singular User object (nullable), NOT a connection. Use lead { id name }, NOT leads { nodes { ... } }.\n        14. PROJECT.STATE: Scalar String (\"planned\", \"started\", etc.), not an object. Use statusId (not 'state') in ProjectCreateInput/ProjectUpdateInput.\n        15. PROJECT FILTER: Use accessibleTeams.some, NOT 'team'. Example: { accessibleTeams: { some: { key: { eq: \"ENG\" } } } }\n        16. CYCLE.PROGRESS: Scalar Float (0.0-1.0), NOT an object. Use currentProgress for detailed scope data.\n        17. INTEGRATION FIELDS: Only id, service, createdAt, updatedAt, archivedAt, organization, team, creator. No key/name/type/url/description fields.\n        18. DOCUMENTCONTENT vs DOCUMENTS: documentContent is inline content body (no title field). documents is the connection with title/summary metadata.\n        19. DELETE PAYLOADS: Most return DeletePayload { success entityId }. Issue/project deletes return ArchivePayload { success entity { id } }. Use introspection if unsure.\n        20. DOCUMENT CREATE: Requires at least one relation field (projectId, issueId, teamId, etc.) or you get INVALID_INPUT.\n        21. FILE UPLOAD: uploadUrl/assetUrl are nested under uploadFile, NOT direct fields on UploadPayload.\n        22. WEBHOOKS: webhookCreate requires EITHER teamId OR allPublicTeams: true.\n        23. COMMENTS: commentCreate uses issueId (NOT projectId). Use parentId for replies.\n        24. QUERY COMPLEXITY: Max 10,000 points. Use first: 10-25 with nested connections. \"Query too complex\" = reduce pagination or nesting.\n        25. CONNECTIONS: *Connection/*SearchPayload types need nodes wrapper. Other Payloads don't.\n        26. FILTER SYNTAX: { field: { eq: value } }, { or: [...] } (lowercase 'or'). NULL checks: { field: { eq: null } } or { neq: null }.\n        27. INITIATIVE STATUS: Use bare enum in mutations (status: Active), quoted string in filters (status: { eq: \"Active\" }).\n        28. CUSTOMVIEW: Has NO 'url' field (unlike Issue). Use slugId for identification.\n\n        ERROR RECOVERY: On field errors, run __type introspection. On enum errors, introspect the enum. On complexity errors, reduce pagination.\n\n        Docs: https://developers.linear.app/docs/graphql/working-with-the-graphql-api"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "LINEAR_LIST_LINEAR_USERS": {
+          "toolkit": "LINEAR",
+          "tool_slug": "LINEAR_LIST_LINEAR_USERS",
+          "description": "Lists all workspace users (not team-scoped) with their IDs, names, emails, and active status. Display names are non-unique \u2014 use email to disambiguate before extracting an ID. Only assign users with `active: true`. Returned IDs are UUID strings; pass them as-is to fields like `assignee_id` \u2014 never substitute names, emails, or tokens. When joining with other tools, always join on IDs.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "examples": [
+                  "MTY4NzE5NjgwMDAwMA=="
+                ],
+                "description": "Cursor for pagination. Use the `endCursor` from the previous response's `page_info` to fetch the next set of users."
+              },
+              "first": {
+                "type": "integer",
+                "default": 50,
+                "maximum": 250,
+                "minimum": 1,
+                "examples": [
+                  20
+                ],
+                "description": "Number of users to return. In large workspaces, check `page_info.hasNextPage` and paginate using `after`; omitting pagination silently drops users beyond this limit."
+              }
+            }
+          },
+          "hasFullSchema": true
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T20:08:06.959Z",
+        "current_time_utc_epoch_seconds": 1786565286,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "gray",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"gray\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_5Mv4Z3Vv75JD"
+  }
+}

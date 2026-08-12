@@ -1,0 +1,412 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-007-q1-explicit",
+    "workflow_id": 7,
+    "workflow_task": "Aggregate and act on personal productivity signals across email, calendar, GitHub, LinkedIn, and SMS; additionally configure SMS receiving/sending and manage calendar access/events.",
+    "query": "check my Gmail messages from today and see my Google Calendar schedule",
+    "required_tools": [
+      "GMAIL_FETCH_EMAILS",
+      "GOOGLECALENDAR_EVENTS_LIST"
+    ],
+    "supporting_tools": [
+      "GMAIL_LIST_THREADS"
+    ],
+    "rationale": "An agent needs to aggregate productivity signals by retrieving recent emails and checking scheduled calendar events.",
+    "candidate_tools": [
+      "CAL_CONNECT_TO_CALENDAR",
+      "CAL_RETRIEVE_CALENDAR_LIST",
+      "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND",
+      "CLICKSEND_CREATE_SMS_SEND",
+      "CLICKSEND_DELETE_AUTOMATIONS_SMS_INBOUND",
+      "CLICKSEND_GET_ACCOUNT",
+      "CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND",
+      "CLICKSEND_GET_NUMBERS_SEARCH",
+      "CLICKSEND_GET_SMS_HISTORY",
+      "CLICKSEND_GET_SMS_INBOUND",
+      "CLICKSEND_GET_SMS_RECEIPTS",
+      "CLICKSEND_POST_NUMBERS_BUY",
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_LIST_THREADS",
+      "GOOGLECALENDAR_ACL_INSERT",
+      "GOOGLECALENDAR_ACL_UPDATE",
+      "GOOGLECALENDAR_BATCH_EVENTS",
+      "GOOGLECALENDAR_EVENTS_GET",
+      "GOOGLECALENDAR_EVENTS_LIST",
+      "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+      "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+      "GOOGLECALENDAR_LIST_CALENDARS",
+      "LINKEDIN_PROXY_EXECUTE"
+    ],
+    "source_query_id": "workflow-007-q1",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "check my Gmail messages from today and see my Google Calendar schedule"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "check my Gmail messages from today and see my Google Calendar schedule",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Establish a consistent local-day start/end window using GOOGLECALENDAR_GET_CURRENT_DATE_TIME (reuse identical bounds for calendar and email queries).",
+            "[Optional (if the calendar set is unclear)] [Prerequisite]: Enumerate available calendars using GOOGLECALENDAR_LIST_CALENDARS (decide which to include in the recap).",
+            "[Required] [Step]: Retrieve meetings in-window using GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS (singleEvents + sort by start; prefer minimal/compact detail; paginate with nextPageToken).",
+            "[Required] [Step]: Retrieve in-window emails using GMAIL_FETCH_EMAILS (start lightweight with ids_only or include_payload=false/verbose=false; optionally focus queries on important senders/topics; paginate with nextPageToken and dedupe).",
+            "[Optional (if list results need more context)] [Next Step]: Hydrate only a small shortlist using GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID (prefer metadata-style fields); use GMAIL_LIST_THREADS only when thread context is required.",
+            "[Optional (if the user wants post-review triage)] [Next Step]: Apply labels to selected messages using GMAIL_ADD_LABEL_TO_EMAIL (confirm message IDs/labels before modifying).",
+            "[Required] [Fallback]: If all-calendars output looks unexpectedly empty/incomplete, pick a calendar via GOOGLECALENDAR_LIST_CALENDARS then re-list using GOOGLECALENDAR_EVENTS_LIST (same time window)."
+          ],
+          "known_pitfalls": [
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] Day boundaries can shift if timezones diverge; handle all-day events (start.date/end.date) vs timed events (start.dateTime/end.dateTime) and per-event timeZone.",
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] Full event objects can be large and risk truncation/offloading; request minimal/compact detail unless deeper fields are truly needed.",
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] Keyword-style filtering may return events=[] (and an empty summary view); verify the time window by removing/broadening the filter.",
+            "[GMAIL_FETCH_EMAILS] nextPageToken handling is quirky\u2014treat null/empty-string as end-of-pagination to avoid loops or missed pages.",
+            "[GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID] format=full (especially with attachments) can inflate MIME payloads and increase throttling/truncation risk (e.g., 403/429); hydrate only a shortlist with lighter formats."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Load a saved multi-tool JSON result and count successful payloads (useful if inline output was truncated/offloaded).",
+              "code": "```python\nimport sys,json\nobj=json.load(sys.stdin)\nrows=[r.get('response',{}).get('data') for r in obj.get('results',[]) if r.get('response',{}).get('successful')]\nprint(len(rows), list(rows[0].keys()) if rows else None)\n```"
+            },
+            {
+              "description": "Extract counts for event and email lists from a combined results object (calendar + email).",
+              "code": "```python\nimport sys,json\nobj=json.load(sys.stdin)\nres=obj.get('results',[])\nevents=res[0]['response']['data'].get('events',[])\nemails=res[1]['response']['data'].get('messages',[])\nprint(len(emails),len(events))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GMAIL_FETCH_EMAILS",
+            "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS"
+          ],
+          "related_tool_slugs": [
+            "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+            "GOOGLECALENDAR_LIST_CALENDARS",
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+            "GMAIL_ADD_LABEL_TO_EMAIL",
+            "GMAIL_LIST_THREADS",
+            "GOOGLECALENDAR_EVENTS_LIST"
+          ],
+          "toolkits": [
+            "gmail",
+            "googlecalendar"
+          ],
+          "plan_id": "c85888c161784a01b99fb56500b17633"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "gmail",
+          "has_active_connection": false,
+          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
+          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+        },
+        {
+          "toolkit": "googlecalendar",
+          "has_active_connection": false,
+          "description": "Google Calendar is a time management tool providing scheduling features, event reminders, and integration with email and other apps for streamlined organization",
+          "status_message": "No Active connection for toolkit=googlecalendar. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlecalendar\") to create a connection BEFORE executing any googlecalendar tools."
+        }
+      ],
+      "tool_schemas": {
+        "GMAIL_FETCH_EMAILS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_FETCH_EMAILS",
+          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optional full content retrieval. Results are NOT sorted by recency; sort by internalDate client-side. The messages field may be absent or empty (valid no-results state); always null-check before accessing messageId or threadId. Null-check subject and header fields before string operations. For large result sets, prefer ids_only=true or metadata-only listing, then hydrate via GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "from:john@example.com is:unread",
+                  "subject:meeting has:attachment",
+                  "after:2024/01/01 before:2024/02/01",
+                  "is:snoozed",
+                  "is:important OR is:starred",
+                  "label:work -label:spam"
+                ],
+                "description": "Gmail advanced search query (e.g., 'from:user subject:meeting'). Supported operators: 'from:', 'to:', 'subject:', 'label:', 'has:', 'is:', 'in:', 'category:', 'after:YYYY/MM/DD', 'before:YYYY/MM/DD', AND/OR/NOT. IMPORTANT - 'is:' vs 'label:' usage: Use 'is:' for special mail states: is:snoozed, is:unread, is:read, is:starred, is:important. Use 'label:' ONLY for user-created labels (e.g., 'label:work', 'label:projects'). Note: 'muted' may work with both 'is:muted' and 'label:muted' based on community reports. Common mistake: 'label:snoozed' is WRONG - use 'is:snoozed' instead. Use quotes for exact phrases. Omit for no query filter. after:/before: evaluate whole calendar days in UTC; before: is exclusive \u2014 adjust for local timezone to avoid off-by-one-day gaps."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "User's email address or 'me' for the authenticated user. Non-'me' addresses require domain-level delegation; without it, authentication or not-found errors result."
+              },
+              "verbose": {
+                "type": "boolean",
+                "default": true,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "If false, uses optimized concurrent metadata fetching for faster performance (~75% improvement). If true, uses standard detailed message fetching. When false, only essential fields (subject, sender, recipient, time, labels) are guaranteed. Body content and attachment details require verbose=true even when include_payload=true."
+              },
+              "ids_only": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "If true, only returns message IDs from the list API without fetching individual message details. Fastest option for getting just message IDs and thread IDs."
+              },
+              "label_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "INBOX",
+                  "UNREAD",
+                  "Label_123456"
+                ],
+                "description": "Filter by label IDs; only messages with all specified labels are returned (AND logic). Optional - omit or use empty list to fetch all messages without label filtering. System label IDs: 'INBOX', 'SPAM', 'TRASH', 'UNREAD', 'STARRED', 'IMPORTANT', 'CATEGORY_PRIMARY' (alias 'CATEGORY_PERSONAL'), 'CATEGORY_SOCIAL', 'CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS'. For custom/user-created labels, you MUST use the label ID (e.g., 'Label_123456'), NOT the display name. Use the 'listLabels' action to find label IDs for custom labels. Combining label_ids with label: in query applies AND logic across both, which can silently over-restrict results; use one strategy consistently."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Token for retrieving a specific page, obtained from a previous response's `nextPageToken`. Must be a valid opaque token string from a previous API response. Do not pass arbitrary values. Omit for the first page. Loop calls using nextPageToken until it is absent to avoid silently missing messages. resultSizeEstimate is approximate \u2014 do not use as a stopping condition."
+              },
+              "max_results": {
+                "type": "integer",
+                "default": 1,
+                "maximum": 500,
+                "minimum": 1,
+                "examples": [
+                  "10",
+                  "100",
+                  "500"
+                ],
+                "description": "Maximum number of messages to retrieve per page. Default of 1 retrieves only a single message; set higher for practical use. Hard cap is 500 per page."
+              },
+              "include_payload": {
+                "type": "boolean",
+                "default": true,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Set to true to include full message payload (headers, body, attachments); false for metadata only. payload may still be null even when true; use GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID for guaranteed complete content. When payload is present, bodies are base64url-encoded in payload.parts; replace '-'\u2192'+' and '_'\u2192'/' and fix padding before decoding, and check both text/plain and text/html parts."
+              },
+              "include_spam_trash": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Set to true to include messages from 'SPAM' and 'TRASH'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+          "description": "Return a unified event list across all calendars in the user's calendar list for a given time range. Use when you need a single view of all events across multiple calendars. An inverted or incorrect time range silently returns empty results rather than an error. An empty `items` list means no events matched the filters\u2014adjust `time_min`, `time_max`, or `q` before concluding no events exist.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "time_min",
+              "time_max"
+            ],
+            "properties": {
+              "q": {
+                "type": "string",
+                "description": "Free text search terms to find events that match these terms in any field, except for extended properties. Optional."
+              },
+              "time_max": {
+                "type": "string",
+                "description": "Upper bound (exclusive) for an event's start time to filter by. Must be an RFC3339 timestamp with mandatory time zone offset (e.g., 2011-06-03T10:00:00-07:00 or 2011-06-03T10:00:00Z). If timezone offset is missing, UTC (Z) will be automatically appended. Required."
+              },
+              "time_min": {
+                "type": "string",
+                "description": "Lower bound (inclusive) for an event's end time to filter by. Must be an RFC3339 timestamp with mandatory time zone offset (e.g., 2011-06-03T10:00:00-07:00 or 2011-06-03T10:00:00Z). If timezone offset is missing, UTC (Z) will be automatically appended. Required."
+              },
+              "event_types": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "birthday",
+                    "default",
+                    "focusTime",
+                    "fromGmail",
+                    "outOfOffice",
+                    "workingLocation"
+                  ],
+                  "type": "string",
+                  "description": "Valid event types for Google Calendar API."
+                },
+                "description": "Event types to return. Optional."
+              },
+              "calendar_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Optional list of specific calendar IDs to query. If not provided, all calendars from the user's calendar list will be queried."
+              },
+              "show_deleted": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include deleted events (with status equals 'cancelled') in the result. Optional. The default is False."
+              },
+              "single_events": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to expand recurring events into instances and only return single one-off events and instances of recurring events. Optional. The default is True."
+              },
+              "response_detail": {
+                "enum": [
+                  "minimal",
+                  "full"
+                ],
+                "type": "string",
+                "default": "minimal",
+                "description": "Level of detail in the response. 'minimal' (default) returns only the compact summary_view, omitting the large events array to reduce token usage. 'full' returns both summary_view and the full detailed events array."
+              },
+              "max_results_per_calendar": {
+                "type": "integer",
+                "description": "Maximum number of events returned per calendar. Optional. If not provided, defaults to the API's default (250). Results may be paginated; follow `nextPageToken` in the response until absent to retrieve the complete event list."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLECALENDAR_GET_CURRENT_DATE_TIME": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+          "description": "Gets the current date and time, allowing for a specific timezone offset. Call this tool first before computing relative dates (e.g., 'tomorrow', 'next Monday') to avoid off-by-one-day errors across timezones.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "timezone": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "default": 0,
+                "examples": [
+                  "America/New_York",
+                  "Asia/Kolkata",
+                  "Europe/London",
+                  "Asia/Tokyo",
+                  "America/Los_Angeles",
+                  "Australia/Sydney",
+                  "PST",
+                  "EST",
+                  "GMT",
+                  0,
+                  5.5,
+                  -5,
+                  9
+                ],
+                "description": "Timezone specification. Accepts: (1) IANA timezone identifier (e.g., 'America/New_York', 'Asia/Kolkata', 'Europe/London') - RECOMMENDED, (2) Common timezone abbreviations (e.g., 'PST', 'EST', 'CST', 'GMT', 'UTC') - will be auto-converted to IANA, or (3) Numeric UTC offset in hours (e.g., -5, 5.5). Use positive values for east of UTC, negative for west. Default 0 is UTC."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLECALENDAR_LIST_CALENDARS": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_LIST_CALENDARS",
+          "description": "Retrieves calendars from the user's Google Calendar list, with options for pagination and filtering....",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLECALENDAR_LIST_CALENDARS"
+              ]
+            }
+          }
+        },
+        "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+          "description": "Fetches a specific email message by its ID, provided the `message_id` exists and is accessible to th...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"
+              ]
+            }
+          }
+        },
+        "GMAIL_ADD_LABEL_TO_EMAIL": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_ADD_LABEL_TO_EMAIL",
+          "description": "Adds and/or removes specified Gmail labels for a message; ensure `message_id` and all `label_ids` ar...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_ADD_LABEL_TO_EMAIL"
+              ]
+            }
+          }
+        },
+        "GMAIL_LIST_THREADS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_LIST_THREADS",
+          "description": "Retrieves a list of email threads from a Gmail account, identified by `user_id` (email address or 'm...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_LIST_THREADS"
+              ]
+            }
+          }
+        },
+        "GOOGLECALENDAR_EVENTS_LIST": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_EVENTS_LIST",
+          "description": "Returns events on the specified calendar. TIMEZONE WARNING: When using timeMin/timeMax with UTC time...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLECALENDAR_EVENTS_LIST"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:47:38.393Z",
+        "current_time_utc_epoch_seconds": 1786564058,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "what",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"what\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_Jw5V8Yd1FUVD"
+  }
+}

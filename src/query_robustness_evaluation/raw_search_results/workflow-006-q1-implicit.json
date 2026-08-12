@@ -1,0 +1,518 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-006-q1-implicit",
+    "workflow_id": 6,
+    "workflow_task": "Manage Salesforce leads, contacts, campaign membership, campaign attendance statuses, a campaign-based static list, and MQL lead activity reporting.",
+    "query": "find existing prospects and people in the CRM database",
+    "required_tools": [
+      "SALESFORCE_SEARCH_LEADS",
+      "SALESFORCE_SEARCH_CONTACTS"
+    ],
+    "supporting_tools": [
+      "SALESFORCE_RUN_SOQL_QUERY"
+    ],
+    "rationale": "An agent needs to locate specific leads and contacts before managing their campaign memberships or updating statuses.",
+    "candidate_tools": [
+      "SALESFORCE_ADD_CONTACT_TO_CAMPAIGN",
+      "SALESFORCE_CREATE_A_RECORD",
+      "SALESFORCE_CREATE_S_OBJECT_RECORD",
+      "SALESFORCE_DELETE_SOBJECT_COLLECTIONS",
+      "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+      "SALESFORCE_POST_COMPOSITE_SOBJECTS",
+      "SALESFORCE_RUN_SOQL_QUERY",
+      "SALESFORCE_SEARCH_CAMPAIGNS",
+      "SALESFORCE_SEARCH_CONTACTS",
+      "SALESFORCE_SEARCH_LEADS",
+      "SALESFORCE_SOBJECT_ROWS_UPDATE"
+    ],
+    "source_query_id": "workflow-006-q1",
+    "variant_dimension": "implicit"
+  },
+  "request": {
+    "query": "find existing prospects and people in the CRM database"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "find existing prospects and people in the CRM database",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Find candidate contacts by organization domain + role/function using APOLLO_PEOPLE_SEARCH (collect person IDs and minimal profile fields for a shortlist).",
+            "[Optional (if you want to avoid duplicate external enrichment)] [Prerequisite]: Check existing/internal matches using SALESFORCE_SEARCH_CONTACTS or pre-enrich via CRUSTDATA_ENRICH_PERSON_SCREENER (prefer internal records when authoritative).",
+            "[Required (if APOLLO_PEOPLE_SEARCH returns zero candidates)] [Fallback]: Resolve likely organization/domain mismatch using APOLLO_ORGANIZATION_SEARCH, then rerun APOLLO_PEOPLE_SEARCH with the corrected domain and/or less strict role filters to rebuild the shortlist.",
+            "[Required] [Next Step]: Enrich shortlisted people using APOLLO_PEOPLE_ENRICHMENT (extract only required contact fields from the response).",
+            "[Optional (if enriching many people)] [Next Step]: Batch enrich using APOLLO_BULK_PEOPLE_ENRICHMENT, then backfill partial/unmatched results with APOLLO_PEOPLE_ENRICHMENT.",
+            "[Optional (if monitoring credits/quota)] [Next Step]: Inspect usage/limits using APOLLO_VIEW_API_USAGE_STATS before large enrichment runs."
+          ],
+          "known_pitfalls": [
+            "[APOLLO_PEOPLE_ENRICHMENT] Responses can be very large; downstream handling should extract only needed fields rather than processing full profile blobs.",
+            "[APOLLO_PEOPLE_ENRICHMENT] Do not assume contact fields exist for every record; common fields (e.g., person.email) may be missing/null.",
+            "[APOLLO_BULK_PEOPLE_ENRICHMENT] Partial enrichment is possible (some requested people unmatched); treat as a valid outcome and retry misses with APOLLO_PEOPLE_ENRICHMENT.",
+            "[APOLLO_PEOPLE_SEARCH] total_entries: 0 can reflect over-filtering or an incorrect domain signal; verify organization via APOLLO_ORGANIZATION_SEARCH instead of treating it as an execution error."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "APOLLO_PEOPLE_SEARCH",
+            "APOLLO_PEOPLE_ENRICHMENT"
+          ],
+          "related_tool_slugs": [
+            "APOLLO_ORGANIZATION_SEARCH",
+            "APOLLO_BULK_PEOPLE_ENRICHMENT",
+            "SALESFORCE_SEARCH_CONTACTS",
+            "CRUSTDATA_ENRICH_PERSON_SCREENER",
+            "APOLLO_VIEW_API_USAGE_STATS"
+          ],
+          "toolkits": [
+            "apollo",
+            "crustdata",
+            "salesforce"
+          ],
+          "plan_id": "46955f8cbe9b448793ffe3aba6b286e5"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "apollo",
+          "has_active_connection": false,
+          "description": "Apollo provides CRM and lead generation capabilities, helping businesses discover contacts, manage outreach, and track sales pipelines for consistent customer relationship development",
+          "status_message": "No Active connection for toolkit=apollo. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"apollo\") to create a connection BEFORE executing any apollo tools."
+        },
+        {
+          "toolkit": "crustdata",
+          "has_active_connection": false,
+          "description": "CrustData is an AI-powered data intelligence platform that provides real-time company and people data via APIs and webhooks, empowering B2B sales teams, AI SDRs, and investors to act on live signals",
+          "status_message": "No Active connection for toolkit=crustdata. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"crustdata\") to create a connection BEFORE executing any crustdata tools."
+        },
+        {
+          "toolkit": "salesforce",
+          "has_active_connection": false,
+          "description": "Salesforce is a leading CRM platform integrating sales, service, marketing, and analytics to build customer relationships and drive business growth",
+          "status_message": "No Active connection for toolkit=salesforce. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"salesforce\") to create a connection BEFORE executing any salesforce tools."
+        }
+      ],
+      "tool_schemas": {
+        "APOLLO_PEOPLE_SEARCH": {
+          "toolkit": "APOLLO",
+          "tool_slug": "APOLLO_PEOPLE_SEARCH",
+          "description": "Searches Apollo's contact database for people using various filters; results capped at 50,000 records and does not enrich contact data. Combining multiple strict filters (organization_ids, person_titles, person_seniorities) can return zero results \u2014 start broad and narrow iteratively. Result records may have null email, phone, or organization fields.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "examples": [
+                  "1",
+                  "4",
+                  "500"
+                ],
+                "description": "Page number (1-based) for pagination. Max 500 if `per_page` is 100. Iterate until `pagination.total_pages` is reached to avoid missing contacts."
+              },
+              "per_page": {
+                "type": "integer",
+                "examples": [
+                  "10",
+                  "25",
+                  "100"
+                ],
+                "description": "Records per page. Max 100."
+              },
+              "q_keywords": {
+                "type": "string",
+                "examples": [
+                  "Chris",
+                  "machine learning",
+                  "saas sales"
+                ],
+                "description": "Search keywords for profile fields (names, skills, job descriptions, technologies). Use organizational filters (q_organization_domains, person_titles) as primary search criteria, then optionally add a first name here for refinement. Avoid full names (last names are often obfuscated in results). Do not combine names with skill keywords as this creates an AND search that may return no results."
+              },
+              "person_titles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "[\"sales development representative\", \"marketing manager\", \"research analyst\"]"
+                ],
+                "description": "Job titles (e.g., 'software engineer'); matches if any title found, may include similar. Can be a list of titles or a comma-separated string. Each list entry must be a plain string \u2014 do not embed boolean operators (e.g., 'title1 OR title2') in a single string, as this returns zero results."
+              },
+              "organization_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "5e66b6381e05b4008c8331b8"
+                  ]
+                ],
+                "description": "Apollo-specific company IDs to find people within these organizations; obtain from Organization Search. Can be a list or comma-separated string."
+              },
+              "person_locations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "california",
+                    "ireland",
+                    "chicago"
+                  ]
+                ],
+                "description": "Current geographic locations of people (e.g., 'London', 'California', 'Germany'). Can be a list or comma-separated string."
+              },
+              "person_seniorities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "director",
+                    "senior",
+                    "vp"
+                  ]
+                ],
+                "description": "Job seniority levels for current positions (e.g., 'Director', 'VP', 'Senior'). Can be a list or comma-separated string."
+              },
+              "contact_email_status": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "verified",
+                    "likely to engage"
+                  ]
+                ],
+                "description": "Email statuses to filter contacts. Allowed: 'verified', 'unverified', 'likely to engage', 'unavailable'. Can be a list or comma-separated string."
+              },
+              "organization_locations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "texas",
+                    "tokyo",
+                    "spain"
+                  ]
+                ],
+                "description": "Company HQs (e.g., 'Texas', 'Tokyo', 'Spain'); uses primary HQ location. Can be a list or comma-separated string."
+              },
+              "q_organization_domains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "apollo.io",
+                    "microsoft.com"
+                  ]
+                ],
+                "description": "Company domains (e.g., 'apollo.io', 'microsoft.com'); exclude 'www.' or '@' prefixes. Can be a list or comma-separated string."
+              },
+              "organization_num_employees_ranges": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "1,10",
+                    "250,500",
+                    "10000,20000"
+                  ]
+                ],
+                "description": "Org employee count ranges for organizations (e.g., '1,10', '10000,20000'); format as 'min,max' string. Can be a list or semicolon-separated string (e.g., '1,10;250,500')."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "APOLLO_PEOPLE_ENRICHMENT": {
+          "toolkit": "APOLLO",
+          "tool_slug": "APOLLO_PEOPLE_ENRICHMENT",
+          "description": "Enriches and retrieves information for a person from Apollo.io. Requires one of: `id`, `email`, `hashed_email`, `linkedin_url`, or (`first_name` and `last_name` with `organization_name` or `domain`) for matching. `webhook_url` must be provided if `reveal_phone_number` is true. Name-only inputs without `organization_name` or `domain` frequently return no matches.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "examples": [
+                  "587cf802f65125cad923a266"
+                ],
+                "description": "The Apollo ID for the person. Each person in the Apollo database is assigned a unique ID. To find IDs, call the People API Search endpoint and identify the values for person_id."
+              },
+              "name": {
+                "type": "string",
+                "examples": [
+                  "tim zheng"
+                ],
+                "description": "Full name of the person; used for matching instead of or with `first_name` and `last_name`."
+              },
+              "email": {
+                "type": "string",
+                "examples": [
+                  "example@email.com"
+                ],
+                "description": "The email address of the person."
+              },
+              "domain": {
+                "type": "string",
+                "examples": [
+                  "apollo.io",
+                  "microsoft.com"
+                ],
+                "description": "Domain name of the person's organization (e.g., 'apollo.io'). Must be a bare hostname without protocol (http/https) or markup. Exclude 'www.' prefix."
+              },
+              "last_name": {
+                "type": "string",
+                "examples": [
+                  "zheng"
+                ],
+                "description": "The last name of the person."
+              },
+              "first_name": {
+                "type": "string",
+                "examples": [
+                  "tim"
+                ],
+                "description": "The first name of the person."
+              },
+              "webhook_url": {
+                "type": "string",
+                "examples": [
+                  "https://webhook.site/cc4cf44e-e047-4774-8dac-473d28474e40"
+                ],
+                "description": "Publicly accessible URL for Apollo to POST phone number data if `reveal_phone_number` is true. Phone data is delivered asynchronously via POST to this URL and is NOT returned inline in the API response."
+              },
+              "hashed_email": {
+                "type": "string",
+                "examples": [
+                  "8d935115b9ff4489f2d1f9249503cadf"
+                ],
+                "description": "MD5 or SHA-256 hashed email; used for matching if plain email is unavailable."
+              },
+              "linkedin_url": {
+                "type": "string",
+                "examples": [
+                  "http://www.linkedin.com/in/tim-zheng-677ba010"
+                ],
+                "description": "Full URL of the person's LinkedIn profile."
+              },
+              "organization_name": {
+                "type": "string",
+                "examples": [
+                  "apollo"
+                ],
+                "description": "Name of the person's organization; used with name fields for matching."
+              },
+              "reveal_phone_number": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, attempts to enrich with phone numbers; may incur additional API credits and requires `webhook_url`."
+              },
+              "reveal_personal_emails": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, attempts to enrich with personal emails; may incur additional API credits."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "APOLLO_ORGANIZATION_SEARCH": {
+          "toolkit": "APOLLO",
+          "tool_slug": "APOLLO_ORGANIZATION_SEARCH",
+          "description": "Searches Apollo's database for organizations using various filters; consumes credits on every call (unavailable on free plans) \u2014 avoid re-running identical queries and surface quota errors rather than retrying. Retrieves a maximum of 50,000 records; uses `page` (1-500) and `per_page` (1-100) for pagination \u2014 check `total_pages` in the response to iterate. Overly strict filter combinations can return zero results; start broad and narrow iteratively. Empty results and `org_not_found` are valid outcomes, not errors.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "examples": [
+                  "1",
+                  "4",
+                  "500"
+                ],
+                "description": "Page number for paginated results, used with `per_page`. Use `total_pages` from the response to iterate; a single call returns at most 100 records."
+              },
+              "per_page": {
+                "type": "integer",
+                "examples": [
+                  "10",
+                  "50",
+                  "100"
+                ],
+                "description": "Number of organization records per page, used with `page`."
+              },
+              "organization_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "5e66b6381e05b4008c8331b8"
+                ],
+                "description": "Apollo's unique organization IDs to fetch specific companies."
+              },
+              "q_organization_name": {
+                "type": "string",
+                "examples": [
+                  "apollo",
+                  "mining"
+                ],
+                "description": "Organization name; supports partial matching (e.g., 'Apollo' matches 'Apollo Inc.')."
+              },
+              "organization_locations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "texas",
+                  "tokyo",
+                  "spain"
+                ],
+                "description": "Company HQs (city, state, country) to include; filters on primary HQ only."
+              },
+              "organization_not_locations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "minnesota",
+                  "ireland",
+                  "seoul"
+                ],
+                "description": "Company HQs (city, state, country) to exclude; useful for territory management."
+              },
+              "q_organization_domains_list": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "apollo.io",
+                    "composio.dev"
+                  ],
+                  [
+                    "google.com"
+                  ]
+                ],
+                "description": "Company domains to filter by (e.g., 'apollo.io', 'google.com'); exclude 'www.' or '@' prefixes. Normalize domain casing to improve match quality."
+              },
+              "q_organization_keyword_tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "mining",
+                  "sales strategy",
+                  "consulting"
+                ],
+                "description": "Keywords for company industries/specializations (e.g., 'software', 'healthcare')."
+              },
+              "organization_num_employees_ranges": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "1,10",
+                  "250,500",
+                  "10000,20000"
+                ],
+                "description": "Employee count ranges. Each string must be in 'min,max' format (e.g., '1,10')."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "APOLLO_BULK_PEOPLE_ENRICHMENT": {
+          "toolkit": "APOLLO",
+          "tool_slug": "APOLLO_BULK_PEOPLE_ENRICHMENT",
+          "description": "Use to enrich multiple person profiles simultaneously with comprehensive data from Apollo's database...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "APOLLO_BULK_PEOPLE_ENRICHMENT"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_SEARCH_CONTACTS": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_SEARCH_CONTACTS",
+          "description": "Search Salesforce Contact records (not Leads \u2014 use SALESFORCE_SEARCH_LEADS for those) using name, em...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_SEARCH_CONTACTS"
+              ]
+            }
+          }
+        },
+        "CRUSTDATA_ENRICH_PERSON_SCREENER": {
+          "toolkit": "CRUSTDATA",
+          "tool_slug": "CRUSTDATA_ENRICH_PERSON_SCREENER",
+          "description": "The screener_person_enrich endpoint enriches person data by providing additional information based o...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CRUSTDATA_ENRICH_PERSON_SCREENER"
+              ]
+            }
+          }
+        },
+        "APOLLO_VIEW_API_USAGE_STATS": {
+          "toolkit": "APOLLO",
+          "tool_slug": "APOLLO_VIEW_API_USAGE_STATS",
+          "description": "Fetches Apollo API usage statistics and rate limits for the connected team. Use before large enrichm...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "APOLLO_VIEW_API_USAGE_STATS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:47:01.219Z",
+        "current_time_utc_epoch_seconds": 1786564021,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "from",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"from\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_bDAb6LgxFLbx"
+  }
+}

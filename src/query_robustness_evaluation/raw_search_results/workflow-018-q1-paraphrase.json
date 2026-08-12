@@ -1,0 +1,257 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-018-q1-paraphrase",
+    "workflow_id": 18,
+    "workflow_task": "Find recent remote or hybrid contract data-engineering-related job listings in a target region, validate/extract job details from job boards, compile a curated digest, and email it to someone.",
+    "query": "look up contract-based remote data pipeline jobs via LinkedIn",
+    "required_tools": [
+      "LINKEDIN_PROXY_EXECUTE"
+    ],
+    "supporting_tools": [
+      "BROWSER_TOOL_CREATE_TASK"
+    ],
+    "rationale": "Executes targeted queries on LinkedIn to find matching remote and hybrid contract listings.",
+    "candidate_tools": [
+      "BROWSER_TOOL_CREATE_TASK",
+      "BROWSER_TOOL_STOP_TASK",
+      "BROWSER_TOOL_WATCH_TASK",
+      "GMAIL_SEND_EMAIL",
+      "LINKEDIN_PROXY_EXECUTE"
+    ],
+    "source_query_id": "workflow-018-q1",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "look up contract-based remote data pipeline jobs via LinkedIn"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "look up contract-based remote data pipeline jobs via LinkedIn",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if you must confirm authenticated access or tailor keywords)] [Prerequisite]: Fetch account snapshot using LINKEDIN_GET_MY_INFO (verify access; derive seniority/skill terms).",
+            "[Required] [Step]: Discover job-posting candidates using COMPOSIO_SEARCH_WEB (run multiple query variants combining role keywords + target region/work-mode + recency hints; bias toward job-detail style paths).",
+            "[Required] [Next Step]: From COMPOSIO_SEARCH_WEB results.citations, collect url/title/snippet/(if present) published metadata; normalize and dedupe URLs; drop obvious non-posting pages (profiles, hubs/listing pages, aggregators) via domain/path cues.",
+            "[Required] [Step]: Validate the shortlist using COMPOSIO_SEARCH_FETCH_URL_CONTENT (batch URLs, set max_characters cap; record per-URL success/failure from data.statuses[]).",
+            "[Required] [Next Step]: From COMPOSIO_SEARCH_FETCH_URL_CONTENT data.results[], keep only single-posting pages with posting-specific text; extract compact job cards and rank by fit; treat gated/boilerplate-only/truncated pages as low confidence.",
+            "[Optional (if you need consistent structured fields like posted-date parsing)] [Step]: Convert fetched text into strict JSON job cards using COMPOSIO_SEARCH_GROQ_CHAT (validate JSON parse before filtering/ranking).",
+            "[Optional (if results are thin/noisy)] [Next Step]: Refine/expand high-signal keywords using COMPOSIO_SEARCH_TRENDS, then repeat COMPOSIO_SEARCH_WEB \u2192 COMPOSIO_SEARCH_FETCH_URL_CONTENT.",
+            "[Optional (if response volume is too large to process inline)] [Step]: Use COMPOSIO_REMOTE_WORKBENCH to batch-parse citations/pages and generate ranked job cards programmatically.",
+            "[Required] [Fallback]: If most URLs are gated, hubs, or fetch failures, re-run COMPOSIO_SEARCH_WEB with tighter operators (stricter role phrases + stronger job-detail path constraints) and re-validate via COMPOSIO_SEARCH_FETCH_URL_CONTENT."
+          ],
+          "known_pitfalls": [
+            "[COMPOSIO_SEARCH_WEB] results.answer can be generic or contradictory; actionable links are in results.citations, and citations may be empty even when an answer is returned.",
+            "[COMPOSIO_SEARCH_WEB] Recency hints are not guaranteed; verify freshness from citation metadata/snippets or fetched page text rather than assuming the query constraint worked.",
+            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] Page text lives in data.results[] while per-URL outcomes are in data.statuses[] (e.g., error.tag like CRAWL_NOT_FOUND with httpStatusCode 404); don\u2019t assume arrays align by index.",
+            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] max_characters truncation and content_quality_warning/composio_execution_message can yield boilerplate-only text even on \u201csuccess\u201d; treat missing sections as unknown and lower confidence.",
+            "[COMPOSIO_SEARCH_GROQ_CHAT] HTTP 404 invalid_request_error (code model_not_found) can occur for unavailable models, and non-JSON responses can break parsers; retry with an available model and enforce/validate JSON-only output."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Access the i-th tool payload from a multi-tool JSON result consistently",
+              "code": "```python\ndef payload(multi,i):\n    return multi[\"results\"][i][\"response\"][\"data\"]\n```"
+            },
+            {
+              "description": "Align COMPOSIO_SEARCH_FETCH_URL_CONTENT results with statuses when some URLs fail (match by id/url)",
+              "code": "```python\nd=result_data\nm={p.get('id') or p.get('url'):p for p in d.get('results',[])}\npages=[m.get(s.get('id')) for s in d.get('statuses',[]) if s.get('status')=='success']\npages=[p for p in pages if p]\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "COMPOSIO_SEARCH_WEB",
+            "COMPOSIO_SEARCH_FETCH_URL_CONTENT"
+          ],
+          "related_tool_slugs": [
+            "COMPOSIO_SEARCH_TRENDS",
+            "LINKEDIN_GET_MY_INFO",
+            "COMPOSIO_SEARCH_GROQ_CHAT"
+          ],
+          "toolkits": [
+            "composio_search",
+            "linkedin"
+          ],
+          "plan_id": "c1bd37b5e56e4c24b876bf1e9a64c87a"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "composio_search",
+          "has_active_connection": true,
+          "description": "Composio Search provides comprehensive web search across travel (flights, hotels, events), e-commerce (Amazon, Walmart, shopping), financial markets, news, academic research, images, and location services.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        },
+        {
+          "toolkit": "linkedin",
+          "has_active_connection": false,
+          "description": "LinkedIn is a professional networking platform enabling job seekers, companies, and thought leaders to connect, share content, and discover business opportunities",
+          "status_message": "No Active connection for toolkit=linkedin. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"linkedin\") to create a connection BEFORE executing any linkedin tools."
+        }
+      ],
+      "tool_schemas": {
+        "COMPOSIO_SEARCH_WEB": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_WEB",
+          "description": "Perform a web search using the Exa API. Returns a nested structure: narrative summary under results.answer, sources under results.citations (and optionally results.organic_results). Prioritize results.citations as primary evidence over results.answer, which can be vague. Only indexes publicly available content \u2014 no paywalled, login-gated, or private content. No date filters enforced; include recency terms in query and verify dates in snippets manually. Throttle to ~1\u20132 requests/second; bursty queries trigger HTTP 429. Large responses may be stored remotely \u2014 use structure_info to locate results.answer and results.citations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Coffee"
+                ],
+                "description": "The search query for the Composio Exa API. Must be non-empty; using any other parameter name (e.g., 'q') causes an invalid-request error. Include qualifiers (year, region, platform, intent) for better results \u2014 broad queries return generic content; excessive site: or quoted-term filters can return zero results. Add disambiguating terms (city, role, domain) when searching for people or organizations with common names."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_FETCH_URL_CONTENT": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+          "description": "Fetch and extract clean, readable page text (markdown) from public web pages (HTML content) using the Exa API. Use when you need to retrieve actual content from search results or documentation links to extract setup steps, requirements, or citations. Only works with web page URLs - does not support direct links to images, PDFs, or other binary files.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "urls"
+            ],
+            "properties": {
+              "text": {
+                "type": "boolean",
+                "default": true,
+                "description": "Include extracted markdown text content from the page. Defaults to true."
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "https://example.com/article",
+                    "https://docs.python.org/"
+                  ]
+                ],
+                "description": "List of public URLs to web pages (HTML content) to fetch content from. URLs must be valid and publicly accessible. Do not use direct links to images (.jpg, .png, .gif), PDFs, or other binary files - use web page URLs only. Also accepts a single URL string."
+              },
+              "extras": {
+                "type": "object",
+                "description": "Additional content options like imageLinks or links counts (e.g., {'imageLinks': 3, 'links': 5}).",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "summary": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Include AI-generated summary of the page content. Can be boolean or object with query/schema options."
+              },
+              "max_characters": {
+                "type": "integer",
+                "description": "Maximum number of characters to extract from each page. Maps to text.maxCharacters in Exa API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_TRENDS": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_TRENDS",
+          "description": "Discover trending topics, search patterns, and popularity data. Analyzes search interest over time, compares multiple topics, and identifies rising trends. Returns normalized 0\u2013100 relative interest indices (not absolute search volumes) via interest_over_time.timeline_data; values are objects with 'extracted_value' (may be string '<1'). The final timeline entry may have partial_data=true for incomplete periods. Data typically lags ~24\u201348 hours. Response schema varies by data_type: TIMESERIES returns timeline_data, GEO_MAP returns regional breakdowns, RELATED_TOPICS/RELATED_QUERIES return topic/query lists \u2014 parse accordingly. Ideal for market research, content planning, and SEO analysis.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "date": {
+                "type": "string",
+                "examples": [
+                  "today 5-y",
+                  "now 7-d",
+                  "2021-01-01 2023-01-01"
+                ],
+                "description": "Time range for trend data. Predefined ranges: 'now 1-H' (past hour), 'now 4-H' (past 4 hours), 'now 1-d' (past day), 'now 7-d' (past 7 days), 'today 1-m' (past 30 days), 'today 3-m' (past 90 days), 'today 12-m' (past 12 months), 'today 5-y' (past 5 years), 'all' (2004 to present). Custom ranges: 'yyyy-mm-dd yyyy-mm-dd' (e.g., '2021-10-15 2022-05-25') or with hours 'yyyy-mm-ddThh yyyy-mm-ddThh' (e.g., '2022-05-19T10 2022-05-24T22'). Defaults to past 12 months if not specified. Windows longer than ~90 days aggregate data weekly, smoothing short-lived spikes; use shorter windows (e.g., 'now 7-d') alongside longer ones to detect brief surges."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Python programming"
+                ],
+                "description": "The search query for the Google Trends Search API, specifying the trend topic. For TIMESERIES, accepts up to 5 comma-separated topics (e.g., 'Python,JavaScript,Rust'); exceeding 5 returns 'Maximum number of queries accepted is 5'. Overly specific or multi-concept queries may return empty results (organic_results_state='Fully empty') \u2014 use concise single-concept keywords."
+              },
+              "data_type": {
+                "type": "string",
+                "default": "TIMESERIES",
+                "description": "Parameter defines the type of search you want to do. Available options: TIMESERIES - Interest over time (default) - Accepts both single and multiple queries per search. GEO_MAP - Compared breakdown by region - Accepts only multiple queries per search. GEO_MAP_0 - Interest by region - Accepts only single query per search. RELATED_TOPICS - Related topics - Accepts only single query per search. RELATED_QUERIES - Related queries - Accepts only single query per search. TIMESERIES accepts 1\u20135 comma-separated queries; GEO_MAP_0, RELATED_TOPICS, and RELATED_QUERIES accept only a single query \u2014 mismatching causes validation errors or empty results. Response schema differs per type; branch parsing logic accordingly. RELATED_TOPICS/RELATED_QUERIES with multi-term queries may silently fall back to TIMESERIES \u2014 verify results.search_parameters.data_type."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "LINKEDIN_GET_MY_INFO": {
+          "toolkit": "LINKEDIN",
+          "tool_slug": "LINKEDIN_GET_MY_INFO",
+          "description": "Fetches the authenticated LinkedIn user's profile information including name, headline, profile pict...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "LINKEDIN_GET_MY_INFO"
+              ]
+            }
+          }
+        },
+        "COMPOSIO_SEARCH_GROQ_CHAT": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_GROQ_CHAT",
+          "description": "Execute fast LLM inference using Groq's optimized hardware and API. Groq provides ultra-fast inferen...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "COMPOSIO_SEARCH_GROQ_CHAT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:53:58.752Z",
+        "current_time_utc_epoch_seconds": 1786564438,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "snow",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"snow\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) You may call COMPOSIO_MANAGE_CONNECTIONS: Some toolkits lack active connections",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_5wPsqKWspX2K"
+  }
+}

@@ -1,0 +1,227 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-014-q1-explicit",
+    "workflow_id": 14,
+    "workflow_task": "Find software engineering job listings matching role, location, remote-work, and salary criteria, compile the results, and send or provide them to someone.",
+    "query": "search Google for remote software engineer jobs paying 150k or more",
+    "required_tools": [
+      "COMPOSIO_SEARCH_WEB"
+    ],
+    "supporting_tools": [
+      "COMPOSIO_SEARCH_EXA_ANSWER"
+    ],
+    "rationale": "Performs an initial web search to find job listings matching role, location, remote-work, and salary criteria.",
+    "candidate_tools": [
+      "BROWSER_TOOL_CREATE_TASK",
+      "BROWSER_TOOL_WATCH_TASK",
+      "COMPOSIO_SEARCH_EXA_ANSWER",
+      "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+      "COMPOSIO_SEARCH_GROQ_CHAT",
+      "COMPOSIO_SEARCH_NEWS",
+      "COMPOSIO_SEARCH_WEB",
+      "GMAIL_PROXY_EXECUTE",
+      "GMAIL_SEND_EMAIL"
+    ],
+    "source_query_id": "workflow-014-q1",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "search Google for remote software engineer jobs paying 150k or more"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search Google for remote software engineer jobs paying 150k or more",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Decide discovery path: use COMPOSIO_SEARCH_WEB by default; only use SERPAPI_GOOGLE_JOBS_SEARCH if it is configured/runnable (jobs engine + active connection).",
+            "[Optional (if geo scoping is needed)] [Prerequisite]: Resolve and reuse a canonical location using SERPAPI_GET_AVAILABLE_LOCATION_OPTIONS_FOR_GOOGLE_SEARCHES or SERPAPI_LOCATIONS_LIST (avoid invalid/unstable geo strings).",
+            "[Required] [Step]: Run COMPOSIO_SEARCH_WEB with several remote-role keyword variants; collect URLs/snippets from results.citations and prefer first-party employer/ATS links over reposts.",
+            "[Required] [Next Step]: For a shortlist, use COMPOSIO_SEARCH_FETCH_URL_CONTENT to verify remote eligibility and extract requirements/compensation text; if a URL errors (e.g., not found), replace it with another citation.",
+            "[Optional (if you want structured job SERP results or broader coverage)] [Next Step]: Run SERPAPI_GOOGLE_JOBS_SEARCH and extract listings from response.data.jobs_results (or response.data_preview.jobs_results); if next_page_token is returned, paginate by passing it back unchanged until no token remains, then aggregate/dedupe by job_id, else share_link, else title+company_name.",
+            "[Fallback] [Fallback]: If SERPAPI_GOOGLE_JOBS_SEARCH returns only preview/truncated content, use SERPAPI_GET_SEARCH_ARCHIVE to pull the full stored payload and re-extract jobs_results."
+          ],
+          "known_pitfalls": [
+            "[SERPAPI_GOOGLE_JOBS_SEARCH] HTTP 429 \"Your account has run out of searches\" indicates quota exhaustion and typically won\u2019t resolve via retry.",
+            "[SERPAPI_GOOGLE_JOBS_SEARCH] HTTP 400 can occur when location is not a valid geo value; keep remote intent in the query and use location helpers for geo scoping.",
+            "[SERPAPI_GOOGLE_JOBS_SEARCH] HTTP 400 \"Invalid `next_page_token`\" occurs if the token is altered, reused across different queries, or not passed exactly as returned.",
+            "[SERPAPI_GOOGLE_JOBS_SEARCH] Success can still mean no results: data.error plus search_information.jobs_results_state can indicate emptiness; jobs_results may also appear only under data_preview.",
+            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] Page text can be truncated at max_characters and some targets can return HTTP 404; treat as unverified and fetch an alternate citation or raise the character cap."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse batched SERPAPI_GOOGLE_JOBS_SEARCH outputs (data vs data_preview) and capture empty-result signals",
+              "code": "```python\nimport json\nresp=json.loads(RAW_JSON)\nrows=[]\nfor r in resp.get('results',[]):\n d=(r.get('response') or {}).get('data') or (r.get('response') or {}).get('data_preview') or {}\n err=d.get('error'); state=(d.get('search_information') or {}).get('jobs_results_state')\n for j in (d.get('jobs_results') or []):\n  rows.append({'job_id':j.get('job_id'),'title':j.get('title') or j.get('job_title'),'company_name':j.get('company_name'),'share_link':j.get('share_link'),'source_link':j.get('source_link'),'posted_at':(j.get('detected_extensions') or {}).get('posted_at'),'error':err,'state':state})\nlen(rows)\n```"
+            },
+            {
+              "description": "Deduplicate aggregated listings by stable identifiers",
+              "code": "```python\nseen=set(); out=[]\nfor j in jobs:\n k=j.get('job_id') or j.get('share_link') or ((j.get('company_name') or '')+'|'+(j.get('title') or ''))\n if k in seen: continue\n seen.add(k); out.append(j)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "COMPOSIO_SEARCH_WEB"
+          ],
+          "related_tool_slugs": [
+            "SERPAPI_GET_AVAILABLE_LOCATION_OPTIONS_FOR_GOOGLE_SEARCHES",
+            "SERPAPI_LOCATIONS_LIST",
+            "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+            "SERPAPI_GET_SEARCH_ARCHIVE",
+            "SERPAPI_GOOGLE_JOBS_SEARCH",
+            "COMPOSIO_SEARCH_NEWS"
+          ],
+          "toolkits": [
+            "composio_search",
+            "serpapi"
+          ],
+          "plan_id": "34b5e547e76746fda452fcf3db63aee1"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "composio_search",
+          "has_active_connection": true,
+          "description": "Composio Search provides comprehensive web search across travel (flights, hotels, events), e-commerce (Amazon, Walmart, shopping), financial markets, news, academic research, images, and location services.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        },
+        {
+          "toolkit": "serpapi",
+          "has_active_connection": false,
+          "description": "SerpApi provides a real-time API for structured search engine results, allowing developers to scrape, parse, and analyze SERP data for SEO and research",
+          "status_message": "No Active connection for toolkit=serpapi. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"serpapi\") to create a connection BEFORE executing any serpapi tools."
+        }
+      ],
+      "tool_schemas": {
+        "COMPOSIO_SEARCH_WEB": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_WEB",
+          "description": "Perform a web search using the Exa API. Returns a nested structure: narrative summary under results.answer, sources under results.citations (and optionally results.organic_results). Prioritize results.citations as primary evidence over results.answer, which can be vague. Only indexes publicly available content \u2014 no paywalled, login-gated, or private content. No date filters enforced; include recency terms in query and verify dates in snippets manually. Throttle to ~1\u20132 requests/second; bursty queries trigger HTTP 429. Large responses may be stored remotely \u2014 use structure_info to locate results.answer and results.citations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Coffee"
+                ],
+                "description": "The search query for the Composio Exa API. Must be non-empty; using any other parameter name (e.g., 'q') causes an invalid-request error. Include qualifiers (year, region, platform, intent) for better results \u2014 broad queries return generic content; excessive site: or quoted-term filters can return zero results. Add disambiguating terms (city, role, domain) when searching for people or organizations with common names."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SERPAPI_GET_AVAILABLE_LOCATION_OPTIONS_FOR_GOOGLE_SEARCHES": {
+          "toolkit": "SERPAPI",
+          "tool_slug": "SERPAPI_GET_AVAILABLE_LOCATION_OPTIONS_FOR_GOOGLE_SEARCHES",
+          "description": "Tool to get available location options for Google searches. Returns location names, codes, and identifiers that can be used in the location parameter. Use when you need to find valid location values for search queries.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "examples": [
+                  "Austin",
+                  "New York",
+                  "London"
+                ],
+                "description": "Restricts your search to locations that contain the supplied string. For example, 'Austin' will find 'Austin, TX', 'The University of Texas at Austin', etc. If not provided, returns general location options."
+              },
+              "limit": {
+                "type": "integer",
+                "maximum": 10,
+                "minimum": 1,
+                "examples": [
+                  3,
+                  5,
+                  10
+                ],
+                "description": "Limits the number of locations returned. Must be between 1 and 10. If not specified, returns all matching locations up to the maximum of 10."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_FETCH_URL_CONTENT": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+          "description": "Fetch and extract clean, readable page text (markdown) from public web pages (HTML content) using th...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "COMPOSIO_SEARCH_FETCH_URL_CONTENT"
+              ]
+            }
+          }
+        },
+        "SERPAPI_GET_SEARCH_ARCHIVE": {
+          "toolkit": "SERPAPI",
+          "tool_slug": "SERPAPI_GET_SEARCH_ARCHIVE",
+          "description": "Tool to retrieve results from a previous async search using its search ID. Use when you need to fetc...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SERPAPI_GET_SEARCH_ARCHIVE"
+              ]
+            }
+          }
+        },
+        "SERPAPI_GOOGLE_JOBS_SEARCH": {
+          "toolkit": "SERPAPI",
+          "tool_slug": "SERPAPI_GOOGLE_JOBS_SEARCH",
+          "description": "Retrieve Google Jobs Search Results via SerpApi. Returns job SERP data in JSON; key attributes like ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SERPAPI_GOOGLE_JOBS_SEARCH"
+              ]
+            }
+          }
+        },
+        "COMPOSIO_SEARCH_NEWS": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_NEWS",
+          "description": "Search for the latest news articles and current events with smart filtering. Searches news-oriented ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "COMPOSIO_SEARCH_NEWS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:51:03.935Z",
+        "current_time_utc_epoch_seconds": 1786564263,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "wing",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"wing\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) You may call COMPOSIO_MANAGE_CONNECTIONS: Some toolkits lack active connections",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_FC_7qx1Lo9zl"
+  }
+}

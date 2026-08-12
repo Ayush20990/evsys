@@ -1,0 +1,622 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-005-q1-explicit",
+    "workflow_id": 5,
+    "workflow_task": "Manage a partner-operations pipeline across Gmail, ClickUp, and Notion: create outreach drafts and task handoffs, inspect and update existing handoffs, scan recent email threads against CRM records, and write evidence-supported CRM status updates.",
+    "query": "search Notion databases to find partner CRM records",
+    "required_tools": [
+      "NOTION_QUERY_DATABASE_WITH_FILTER",
+      "NOTION_SEARCH_NOTION_PAGE"
+    ],
+    "supporting_tools": [
+      "NOTION_FETCH_DATABASE"
+    ],
+    "rationale": "An agent needs to query and search Notion databases to find existing CRM records and partner pipeline statuses.",
+    "candidate_tools": [
+      "CLICKUP_CREATE_TASK",
+      "CLICKUP_GET_TASK",
+      "CLICKUP_GET_TASKS",
+      "CLICKUP_UPDATE_TASK",
+      "GMAIL_CREATE_EMAIL_DRAFT",
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+      "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+      "GMAIL_GET_DRAFT",
+      "GMAIL_LIST_THREADS",
+      "NOTION_FETCH_DATABASE",
+      "NOTION_FETCH_ROW",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_QUERY_DATABASE_WITH_FILTER",
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_SEARCH_NOTION_PAGE",
+      "NOTION_UPDATE_PAGE"
+    ],
+    "source_query_id": "workflow-005-q1",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "search Notion databases to find partner CRM records"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search Notion databases to find partner CRM records",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required (if database identifier unknown)] [Prerequisite]: Discover candidate databases using NOTION_SEARCH_NOTION_PAGE (filter to databases; paginate via has_more/next_cursor; if empty, retry once with a broader/empty query).",
+            "[Fallback (if discovery is empty/too broad)] [Fallback]: Enumerate accessible databases using NOTION_FETCH_DATA (fetch_type=databases; paginate via start_cursor=next_cursor; if a candidate can\u2019t be confirmed as a normal database, be prepared to query it via NOTION_QUERY_DATA_SOURCE).",
+            "[Required (before building any filters/sorts)] [Prerequisite]: Inspect schema using NOTION_FETCH_DATABASE (confirm exact property names, types, and option labels; if it errors, return to discovery/enum).",
+            "[Optional (to validate expected values quickly)] [Step]: Sample a small set of rows using NOTION_QUERY_DATABASE (small page_size) to confirm property shapes before strict filtering.",
+            "[Required] [Step]: Query rows using NOTION_QUERY_DATABASE_WITH_FILTER (schema-aligned filters/sorts; treat results=[] as valid; paginate with start_cursor=next_cursor while has_more=true; Optional: use COMPOSIO_REMOTE_WORKBENCH to checkpoint/merge/dedupe on large exports).",
+            "[Optional (if key details are in the page body or markdown misses blocks)] [Next Step]: Render selected pages using NOTION_GET_PAGE_MARKDOWN (or expand structure via NOTION_FETCH_BLOCK_CONTENTS).",
+            "[Optional (to verify one match end-to-end)] [Next Step]: Fetch an individual record using NOTION_FETCH_ROW (spot-check returned properties and parsed values)."
+          ],
+          "known_pitfalls": [
+            "[NOTION_SEARCH_NOTION_PAGE] Returns ~100 results per call; missing pagination can hide the intended database, and keyword search can intermittently return empty results (retry once with a broader/empty query).",
+            "[NOTION_FETCH_DATA] Response may expose both results and values arrays; pick one consistently or downstream parsing can silently miss items.",
+            "[NOTION_FETCH_DATABASE] 403/404 object_not_found commonly means the database isn\u2019t shared with the integration; 400 validation_error can indicate a non-database identifier or a data-source-only object.",
+            "[NOTION_QUERY_DATABASE_WITH_FILTER] 400 validation_error if filters/sorts don\u2019t match exact (case-sensitive) property names/types; select/status labels must match exactly.",
+            "[NOTION_GET_PAGE_MARKDOWN] Output may be truncated or omit block structure; use NOTION_FETCH_BLOCK_CONTENTS when markdown appears incomplete."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Workbench pagination pattern for NOTION_QUERY_DATABASE_WITH_FILTER (full export/count).",
+              "code": "```python\ntotal=0\ncursor=None\nwhile True:\n  args={'database_id':'DATABASE_ID','page_size':100}\n  if cursor: args['start_cursor']=cursor\n  r,e=run_composio_tool('NOTION_QUERY_DATABASE_WITH_FILTER',args)\n  d=(r or {}).get('data',{})\n  total+=len(d.get('results',[]))\n  if not d.get('has_more'): break\n  cursor=d.get('next_cursor')\nprint(total)\n```"
+            },
+            {
+              "description": "Parse NOTION_SEARCH_NOTION_PAGE response and extract basic database info.",
+              "code": "```python\ndef extract_databases(resp):\n  data=resp.get('data',resp)\n  out=[]\n  for db in data.get('results',[]):\n    title=''.join(t.get('plain_text','') for t in (db.get('title') or [])).strip() or '(untitled)'\n    out.append({'title':title,'id':db.get('id'),'archived':db.get('archived',False)})\n  return sorted(out,key=lambda x:x['title'].lower())\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "NOTION_SEARCH_NOTION_PAGE",
+            "NOTION_FETCH_DATABASE",
+            "NOTION_QUERY_DATABASE_WITH_FILTER"
+          ],
+          "related_tool_slugs": [
+            "NOTION_QUERY_DATABASE",
+            "NOTION_QUERY_DATA_SOURCE",
+            "NOTION_GET_PAGE_MARKDOWN",
+            "NOTION_FETCH_BLOCK_CONTENTS",
+            "NOTION_FETCH_ROW",
+            "NOTION_FETCH_DATA"
+          ],
+          "toolkits": [
+            "notion"
+          ],
+          "plan_id": "244d3ecf1110490195c6b9951033283b"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "notion",
+          "has_active_connection": false,
+          "description": "Notion centralizes notes, docs, wikis, and tasks in a unified workspace, letting teams build custom workflows for collaboration and knowledge management",
+          "status_message": "No Active connection for toolkit=notion. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"notion\") to create a connection BEFORE executing any notion tools."
+        }
+      ],
+      "tool_schemas": {
+        "NOTION_SEARCH_NOTION_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_SEARCH_NOTION_PAGE",
+          "description": "Searches Notion pages and databases by title. Use specific search terms to find items by title (primary approach). KNOWN LIMITATIONS: (1) Search indexing is not immediate - recently shared items may not appear. (2) Search is not exhaustive - results may be incomplete. (3) Database pages return all custom properties with full nested structures, which can create large responses for databases with many properties - use filter_properties to reduce response size. FALLBACK STRATEGY: If a specific title search returns empty results despite knowing items exist, try an empty query to list all accessible items and filter client-side.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "default": "",
+                "description": "Text to search for in page and database titles. Use specific search terms to find items by title (primary approach). Note: Notion's search has known limitations - indexing is not immediate and recently shared items may not appear. If a specific query returns empty results, try an empty query as a fallback to list all accessible items and filter client-side."
+              },
+              "direction": {
+                "type": "string",
+                "examples": [
+                  "ascending",
+                  "descending"
+                ],
+                "description": "Specifies the sort direction for the results. Required if `timestamp` is provided. Valid values are `ascending` or `descending`."
+              },
+              "page_size": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 100,
+                "minimum": 1,
+                "description": "The number of items to include in the response. Must be an integer between 1 and 100, inclusive. Defaults to 25."
+              },
+              "timestamp": {
+                "type": "string",
+                "description": "The timestamp field to sort the results by. Currently, the only supported value is `last_edited_time`. If provided, `direction` must also be specified."
+              },
+              "filter_value": {
+                "enum": [
+                  "page",
+                  "database"
+                ],
+                "type": "string",
+                "default": "page",
+                "examples": [
+                  "page",
+                  "database"
+                ],
+                "description": "Filters results by object type: 'page' or 'database'. Note: When searching databases, Notion's search may not find recently shared or newly created databases due to indexing delays. If specific database searches return empty results, try an empty query with filter_value='database' as a fallback to list all accessible databases."
+              },
+              "start_cursor": {
+                "type": "string",
+                "description": "An opaque cursor value from a previous response's `next_cursor` field. Must be exactly as returned by the API - do not pass page IDs, database IDs, or any other identifiers. If `None`, empty, or invalid, results start from the beginning."
+              },
+              "filter_property": {
+                "type": "string",
+                "default": "object",
+                "examples": [
+                  "object"
+                ],
+                "description": "The property to filter the search results by. Currently, the only supported value is `object`, which filters by the type specified in `filter_value`. Defaults to `object`."
+              },
+              "filter_properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of property names to include in the response for page results. When specified, only these properties will be returned in each page's 'properties' object, reducing response size. Useful for database pages with many custom properties. If not specified, all properties are returned. Note: This filter is applied client-side after receiving the API response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_FETCH_DATABASE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_DATABASE",
+          "description": "Fetches a Notion database's structural metadata (properties, title, etc.) via its `database_id`, not the data entries; `database_id` must reference an existing database.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "database_id"
+            ],
+            "properties": {
+              "database_id": {
+                "type": "string",
+                "examples": [
+                  "2ec43c10-7ecd-8159-a8f4-ff16630df66c"
+                ],
+                "minLength": 1,
+                "description": "Required. The unique identifier of the Notion database in UUID format (e.g., '2ec43c10-7ecd-8159-a8f4-ff16630df66c') or unhyphenated 32-char hex (e.g., '2ec43c107ecd8159a8f4ff16630df66c'). Must be a DATABASE ID, not a page ID. Linked databases are NOT supported - use the original source database ID. To find database IDs: use NOTION_SEARCH_NOTION_PAGE with filter_value='database', or extract from database URLs (notion.so/{database_id})."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_QUERY_DATABASE_WITH_FILTER": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_QUERY_DATABASE_WITH_FILTER",
+          "description": "Tool to query a Notion database with server-side filtering, sorting, and pagination. Use when you need to retrieve a subset of rows by property, date, status, or other conditions.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "database_id"
+            ],
+            "properties": {
+              "sorts": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "title": "PropertySort",
+                      "required": [
+                        "property",
+                        "direction"
+                      ],
+                      "properties": {
+                        "property": {
+                          "type": "string",
+                          "title": "Property",
+                          "description": "Name or ID of the database property to sort by. Do NOT use for system timestamps (created_time, last_edited_time) - use TimestampSort instead."
+                        },
+                        "direction": {
+                          "enum": [
+                            "ascending",
+                            "descending"
+                          ],
+                          "type": "string",
+                          "title": "Direction",
+                          "description": "Sort direction: ascending or descending"
+                        }
+                      },
+                      "description": "Sort by a database property name or ID (NOT for system timestamps)."
+                    },
+                    {
+                      "type": "object",
+                      "title": "TimestampSort",
+                      "required": [
+                        "timestamp",
+                        "direction"
+                      ],
+                      "properties": {
+                        "direction": {
+                          "enum": [
+                            "ascending",
+                            "descending"
+                          ],
+                          "type": "string",
+                          "title": "Direction",
+                          "description": "Sort direction: ascending or descending"
+                        },
+                        "timestamp": {
+                          "enum": [
+                            "created_time",
+                            "last_edited_time"
+                          ],
+                          "type": "string",
+                          "title": "Timestamp",
+                          "description": "System timestamp field to sort by. Use 'created_time' for page creation time or 'last_edited_time' for last modification time."
+                        }
+                      },
+                      "description": "Sort by a system timestamp field (created or last edited time)."
+                    }
+                  ]
+                },
+                "examples": [
+                  {
+                    "property": "Priority",
+                    "direction": "descending"
+                  },
+                  {
+                    "direction": "ascending",
+                    "timestamp": "last_edited_time"
+                  },
+                  {
+                    "direction": "descending",
+                    "timestamp": "created_time"
+                  }
+                ],
+                "description": "List of sort criteria in order of precedence. Use PropertySort for database properties (with property field) and TimestampSort for system timestamps (with timestamp='created_time' or 'last_edited_time'). IMPORTANT: To sort by page creation or last edited time, you MUST use the TimestampSort format with timestamp='created_time' or timestamp='last_edited_time', NOT property names like 'Created' or 'Last Edited'. Common timestamp field name variations (Created, creation time, Last Edited, etc.) will be automatically converted to the correct format."
+              },
+              "filter": {
+                "type": "object",
+                "examples": [
+                  {
+                    "select": {
+                      "equals": "To Do"
+                    },
+                    "property": "Status"
+                  },
+                  {
+                    "select": {
+                      "equals": "\u2705 Done"
+                    },
+                    "property": "Status"
+                  },
+                  {
+                    "status": {
+                      "equals": "In Progress"
+                    },
+                    "property": "Task Status"
+                  },
+                  {
+                    "title": {
+                      "contains": "Project"
+                    },
+                    "property": "Name"
+                  },
+                  {
+                    "property": "Description",
+                    "rich_text": {
+                      "is_not_empty": true
+                    }
+                  },
+                  {
+                    "select": {
+                      "equals": "High"
+                    },
+                    "property": "Priority"
+                  },
+                  {
+                    "number": {
+                      "greater_than": 10
+                    },
+                    "property": "Count"
+                  },
+                  {
+                    "checkbox": {
+                      "equals": true
+                    },
+                    "property": "Active"
+                  },
+                  {
+                    "date": {
+                      "on_or_before": "2024-12-31"
+                    },
+                    "property": "Due Date"
+                  },
+                  {
+                    "created_time": {
+                      "on_or_after": "2024-01-01"
+                    }
+                  },
+                  {
+                    "last_edited_time": {
+                      "past_week": {}
+                    }
+                  },
+                  {
+                    "rollup": {
+                      "any": {
+                        "rich_text": {
+                          "contains": "example"
+                        }
+                      }
+                    },
+                    "property": "Related Names"
+                  },
+                  {
+                    "rollup": {
+                      "number": {
+                        "greater_than": 5
+                      }
+                    },
+                    "property": "Task Count"
+                  },
+                  {
+                    "property": "Related Items",
+                    "relation": {
+                      "contains": "260beeb0-57b4-80df-acc9-c3620f730dee"
+                    }
+                  },
+                  {
+                    "property": "Related Items",
+                    "relation": {
+                      "is_empty": true
+                    }
+                  },
+                  {
+                    "and": [
+                      {
+                        "select": {
+                          "equals": "Done"
+                        },
+                        "property": "Status"
+                      },
+                      {
+                        "select": {
+                          "equals": "High"
+                        },
+                        "property": "Priority"
+                      }
+                    ]
+                  }
+                ],
+                "description": "PREREQUISITE: Call NOTION_FETCH_DATABASE first to discover property names and types. Filter type keys MUST match the property's actual type in the schema. Each filter object MUST contain exactly ONE filter type key. For multiple conditions, use compound filters: {\"and\": [{\"property\": \"Name\", \"title\": {...}}, {\"property\": \"Description\", \"rich_text\": {...}}]}. 'title' IS A RESERVED PROPERTY NAME: 'title' always refers to the database's built-in primary title column (type 'title', NOT 'select' or 'rich_text'). Even custom properties named 'title' are treated as the built-in title column. FILTER TYPE MUST MATCH SCHEMA TYPE: Property names are NOT reliable indicators of type. A property named 'Status' could be type 'select' in one database but type 'status' in another. 'select' is for dropdowns; 'status' is ONLY for Notion's built-in Status property with workflow groups. SELECT/STATUS/MULTI_SELECT VALUES ARE CASE-SENSITIVE: Option names must match EXACTLY as defined in the database schema, including capitalization and emoji prefixes (e.g., 'Done' not 'done', '\u2705 Done' not 'Done'). Common mistake: using 'done' when the actual option is 'Done'. Check the database schema for exact option names. Valid filter type keys: title, rich_text, number, checkbox, select, multi_select, status, date, people, files, url, email, phone_number, relation, created_by, created_time, last_edited_by, last_edited_time, formula, unique_id, rollup, verification, timestamp. FORMULA FILTERS: Structure: {'property': '<name>', 'formula': {<result_type>: {<condition>: <value>}}}. Result types: 'string' (rich_text conditions), 'number' (numeric conditions), 'date' (date conditions), 'checkbox' (boolean conditions). The result type MUST match the formula's actual output type. If the formula property value shows type 'boolean', use 'checkbox' in the filter (API naming mismatch). Some complex formulas are unfilterable ('Unable to filter based on a formula of unknown type') - use client-side filtering instead. NOTE: 'text' is NOT valid - use 'rich_text' for text properties or 'title' for title properties. SYSTEM TIMESTAMP FILTERS: Use simplified format: {\"created_time\": {\"on_or_after\": \"2024-01-01\"}} - auto-transformed to correct API format. Filter structure for database properties: {\"property\": \"<property_name>\", \"<filter_type>\": {\"<condition>\": \"<value>\"}}. Common conditions by type: title/rich_text: equals, contains, starts_with, ends_with, is_empty, is_not_empty; select/status: equals, does_not_equal, is_empty, is_not_empty; number: equals, does_not_equal, greater_than, less_than, greater_than_or_equal_to, less_than_or_equal_to, is_empty, is_not_empty; checkbox: equals (true/false); date: equals, before, after, on_or_before, on_or_after, is_empty, is_not_empty, past_week, past_month, past_year, next_week, next_month, next_year; relation: contains, does_not_contain (both require a valid page UUID), is_empty, is_not_empty. ROLLUP FILTERS: Require a nested aggregation type wrapper. Do NOT use flat filters like {\"rollup\": {\"contains\": \"value\"}}. Instead use one of: (1) {\"rollup\": {\"any\": {<condition>}}} - matches if ANY related item satisfies condition; (2) {\"rollup\": {\"every\": {<condition>}}} - matches if ALL related items satisfy condition; (3) {\"rollup\": {\"none\": {<condition>}}} - matches if NO related items satisfy condition; (4) {\"rollup\": {\"number\": {<number_condition>}}} - for number rollup aggregations (count, sum, avg, etc.); (5) {\"rollup\": {\"date\": {<date_condition>}}} - for date rollup aggregations (earliest, latest). Inside rollup.any/every/none, use the filter type matching the underlying property type. Compound filters use 'and' or 'or' arrays: {\"and\": [<filter1>, <filter2>]} or {\"or\": [<filter1>, <filter2>]}.",
+                "additionalProperties": true
+              },
+              "page_size": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  25,
+                  50,
+                  100
+                ],
+                "description": "Maximum number of items to return (1\u2013100). Defaults to 100 if omitted."
+              },
+              "database_id": {
+                "type": "string",
+                "examples": [
+                  "260beeb0-57b4-80df-acc9-c3620f730dee",
+                  "1bc5287fa43f80d1bfc8f0b428eedb89"
+                ],
+                "description": "The UUID of the Notion database to query (32 character hex string, with hyphens or without). IMPORTANT: This must be a DATABASE ID, not a page ID. Page IDs and database IDs are different things. If you have a page URL/ID, that is NOT the same as the database ID - inline databases within pages have their own separate database IDs distinct from the parent page ID. Use NOTION_SEARCH_NOTION_PAGE or NOTION_FETCH_DATABASE to discover the correct database ID. The database must be shared with your integration."
+              },
+              "start_cursor": {
+                "type": "string",
+                "examples": [
+                  "67890abc-def0-1234-5678-9abcdef01234",
+                  "s:ff583b4c-9b4f-4302-9db3-f29b070ec3bf:2dff261a-6dfe-8070-a3c8-d7743735a257"
+                ],
+                "description": "Cursor from a prior response's `next_cursor` for fetching the next page. Use the exact cursor value returned by Notion."
+              },
+              "composio_execution_message": {
+                "type": "string",
+                "description": "Internal message about any automatic conversions made during execution."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_QUERY_DATABASE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_QUERY_DATABASE",
+          "description": "Queries a Notion database to retrieve pages (rows). In Notion, databases are collections where each row is a page and columns are properties. Returns paginated results with metadata. Important requirements: - The database must be shared with your integration - Property names in sorts must match existing database properties exactly (case-sensitive) - For timestamp sorting, use 'created_time' or 'last_edited_time' (case-insensitive) - The start_cursor must be the opaque value from a previous response's next_cursor field - Database IDs must be valid 32-character UUIDs (with or without hyphens) Use this action to: - Retrieve all or filtered database entries - Sort results by database properties or page timestamps - Paginate through large result sets - Get database content for processing or display",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "database_id"
+            ],
+            "properties": {
+              "sorts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "property_name",
+                    "ascending"
+                  ],
+                  "properties": {
+                    "ascending": {
+                      "type": "boolean",
+                      "examples": [
+                        true,
+                        false
+                      ],
+                      "description": "Sort direction: True for ascending (A\u2192Z, oldest\u2192newest), False for descending (Z\u2192A, newest\u2192oldest)."
+                    },
+                    "property_name": {
+                      "type": "string",
+                      "examples": [
+                        "Name",
+                        "Title",
+                        "Due Date",
+                        "Priority",
+                        "created_time",
+                        "last_edited_time"
+                      ],
+                      "description": "The name of a database property/column to sort by, or a timestamp field. For database properties: Must match an EXISTING property name in the database EXACTLY (case-sensitive). For page timestamps: Use 'created_time' or 'last_edited_time' to sort by page creation/modification times. Common timestamp aliases are auto-detected (e.g., 'created time', 'creation time', '\u521b\u5efa\u65f6\u95f4', 'last edited', etc.). IMPORTANT: If sorting by a database property (not a timestamp), the property name must exist in that specific database."
+                    }
+                  }
+                },
+                "examples": [
+                  [
+                    {
+                      "ascending": false,
+                      "property_name": "created_time"
+                    }
+                  ],
+                  [
+                    {
+                      "ascending": false,
+                      "property_name": "last_edited_time"
+                    }
+                  ],
+                  [
+                    {
+                      "ascending": true,
+                      "property_name": "Priority"
+                    },
+                    {
+                      "ascending": true,
+                      "property_name": "Due Date"
+                    }
+                  ]
+                ],
+                "description": "List of sort rules to order the database query results. Each sort rule must specify: 'property_name' (name of database property or timestamp field) and 'ascending' (True/False). For database properties: names must match exactly (case-sensitive). For timestamps: use 'created_time' or 'last_edited_time' (case-insensitive). Multiple sorts are applied in the order specified."
+              },
+              "page_size": {
+                "type": "integer",
+                "default": 100,
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  25,
+                  50,
+                  100
+                ],
+                "description": "Number of items (database rows/pages) to return per request. Valid range: 1-100. Default is 100. The API may return fewer items than requested if that's all that's available."
+              },
+              "database_id": {
+                "type": "string",
+                "examples": [
+                  "260beeb0-57b4-80df-acc9-c3620f730dee",
+                  "1bc5287fa43f80d1bfc8f0b428eedb89"
+                ],
+                "minLength": 32,
+                "description": "The UUID of the Notion DATABASE to query (32-character hex string, optionally with hyphens). Query parameters (e.g., ?v=viewid) from Notion URLs are automatically stripped. IMPORTANT: This must be a DATABASE ID, not a page ID. Pages and databases are different object types in Notion. A database is a collection/table that contains pages as rows. If you have a page ID, you cannot use it here. How to obtain a database ID: Use NOTION_SEARCH_NOTION_PAGE with filter_value='database' to list accessible databases, or find it in the Notion URL of a database view (the 32-char ID after the workspace name). Common error: If you receive 'validation_error' with message 'Provided ID is a page, not a database', you have passed a page ID instead of a database ID. Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx or xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              },
+              "start_cursor": {
+                "type": "string",
+                "examples": [
+                  "67890abc-def0-1234-5678-9abcdef01234",
+                  "s:260beeb0-57b4-80df-acc9-c3620f730dee:260beeb0-57b4-80df-acc9-c3620f730dee"
+                ],
+                "description": "An opaque pagination cursor for fetching the next page of results. Use the exact 'next_cursor' field from a previous query response. If omitted, returns the first page."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_QUERY_DATA_SOURCE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_QUERY_DATA_SOURCE",
+          "description": "Tool to query a Notion data source. Use when you need to retrieve pages or child data sources with f...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_QUERY_DATA_SOURCE"
+              ]
+            }
+          }
+        },
+        "NOTION_GET_PAGE_MARKDOWN": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_GET_PAGE_MARKDOWN",
+          "description": "Retrieve a Notion page's full content rendered as Notion-flavored Markdown in a single API call. Use...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_GET_PAGE_MARKDOWN"
+              ]
+            }
+          }
+        },
+        "NOTION_FETCH_BLOCK_CONTENTS": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_BLOCK_CONTENTS",
+          "description": "Retrieves a paginated list of direct, first-level child block objects along with contents for a give...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_FETCH_BLOCK_CONTENTS"
+              ]
+            }
+          }
+        },
+        "NOTION_FETCH_ROW": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_ROW",
+          "description": "Retrieves a Notion database row's properties and metadata; use fetch_block_contents for page content...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_FETCH_ROW"
+              ]
+            }
+          }
+        },
+        "NOTION_FETCH_DATA": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_DATA",
+          "description": "Fetches Notion items (pages and/or databases) from the Notion workspace, use this to get minimal dat...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_FETCH_DATA"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:46:16.817Z",
+        "current_time_utc_epoch_seconds": 1786563976,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "firm",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"firm\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_1GuBAaV1W0-V"
+  }
+}

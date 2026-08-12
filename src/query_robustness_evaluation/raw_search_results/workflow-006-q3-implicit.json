@@ -1,0 +1,296 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-006-q3-implicit",
+    "workflow_id": 6,
+    "workflow_task": "Manage Salesforce leads, contacts, campaign membership, campaign attendance statuses, a campaign-based static list, and MQL lead activity reporting.",
+    "query": "add contact to campaign and modify their attendance status",
+    "required_tools": [
+      "SALESFORCE_ADD_CONTACT_TO_CAMPAIGN"
+    ],
+    "supporting_tools": [
+      "SALESFORCE_SOBJECT_ROWS_UPDATE"
+    ],
+    "rationale": "Adding a contact to a campaign directly corresponds to managing campaign membership and attendance statuses.",
+    "candidate_tools": [
+      "SALESFORCE_ADD_CONTACT_TO_CAMPAIGN",
+      "SALESFORCE_CREATE_A_RECORD",
+      "SALESFORCE_CREATE_S_OBJECT_RECORD",
+      "SALESFORCE_DELETE_SOBJECT_COLLECTIONS",
+      "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+      "SALESFORCE_POST_COMPOSITE_SOBJECTS",
+      "SALESFORCE_RUN_SOQL_QUERY",
+      "SALESFORCE_SEARCH_CAMPAIGNS",
+      "SALESFORCE_SEARCH_CONTACTS",
+      "SALESFORCE_SEARCH_LEADS",
+      "SALESFORCE_SOBJECT_ROWS_UPDATE"
+    ],
+    "source_query_id": "workflow-006-q3",
+    "variant_dimension": "implicit"
+  },
+  "request": {
+    "query": "add contact to campaign and modify their attendance status"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "add contact to campaign and modify their attendance status",
+          "execution_guidance": "Found 4 tools for this query. Look at the schemas to know how to use them.",
+          "primary_tool_slugs": [
+            "SALESFORCE_ADD_CONTACT_TO_CAMPAIGN"
+          ],
+          "related_tool_slugs": [
+            "SALESFORCE_SEARCH_CONTACTS",
+            "SALESFORCE_SEARCH_CAMPAIGNS",
+            "SALESFORCE_SEND_MASS_EMAIL"
+          ],
+          "toolkits": [
+            "salesforce"
+          ]
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "salesforce",
+          "has_active_connection": false,
+          "description": "Salesforce is a leading CRM platform integrating sales, service, marketing, and analytics to build customer relationships and drive business growth",
+          "status_message": "No Active connection for toolkit=salesforce. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"salesforce\") to create a connection BEFORE executing any salesforce tools."
+        }
+      ],
+      "tool_schemas": {
+        "SALESFORCE_ADD_CONTACT_TO_CAMPAIGN": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_ADD_CONTACT_TO_CAMPAIGN",
+          "description": "Adds a contact to a campaign by creating a CampaignMember record to track campaign engagement. Fails if the contact is already a member of the campaign; pre-check membership via SOQL before calling.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "campaign_id",
+              "contact_id"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "default": "Sent",
+                "examples": [
+                  "Sent",
+                  "Responded",
+                  "Registered",
+                  "Attended"
+                ],
+                "description": "The status of the campaign member. Common values include 'Sent', 'Responded'. The available statuses depend on campaign configuration. Value must exactly match a configured CampaignMember Status for the campaign; arbitrary strings will fail. Query the campaign's CampaignMemberStatus records first if unsure of valid values."
+              },
+              "contact_id": {
+                "type": "string",
+                "examples": [
+                  "003XXXXXXXXXXXXXXX"
+                ],
+                "description": "The Salesforce ID of the contact to add to the campaign."
+              },
+              "campaign_id": {
+                "type": "string",
+                "examples": [
+                  "701XXXXXXXXXXXXXXX"
+                ],
+                "description": "The Salesforce ID of the campaign to add the contact to."
+              },
+              "custom_fields": {
+                "type": "object",
+                "examples": [
+                  {
+                    "VIP_Member__c": true,
+                    "Member_Source__c": "Webinar"
+                  },
+                  {
+                    "External_Member_ID__c": "CM-5567"
+                  }
+                ],
+                "description": "Dictionary of custom field API names and their values for CampaignMember. Custom field names typically end with '__c'.",
+                "additionalProperties": true
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_SEARCH_CONTACTS": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_SEARCH_CONTACTS",
+          "description": "Search Salesforce Contact records (not Leads \u2014 use SALESFORCE_SEARCH_LEADS for those) using name, email, phone, account, or title. All parameters support partial/fuzzy matching, so results may include unrelated records; post-filter client-side for exact matches. Partial matches and common names can return multiple contacts \u2014 always confirm the correct contact by its 18-character Id before passing to write operations like SALESFORCE_LOG_CALL or SALESFORCE_CREATE_TASK. A response with totalSize=0 is a valid 'not found' outcome. Provide at least one search criterion; omitting all returns a broad, slow result set. Returned Ids are 18-character strings and must be used as-is in downstream tools.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "John Smith",
+                  "Jane",
+                  "Doe"
+                ],
+                "description": "Search by contact name (first name, last name, or full name). Supports partial matches."
+              },
+              "email": {
+                "type": "string",
+                "examples": [
+                  "john@company.com",
+                  "@gmail.com",
+                  "john"
+                ],
+                "description": "Search by email address. Supports partial matches."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 50,
+                "maximum": 2000,
+                "minimum": 1,
+                "description": "Maximum number of contacts to return. Maximum allowed is 2000; when totalSize exceeds limit, paginate to retrieve full results."
+              },
+              "phone": {
+                "type": "string",
+                "examples": [
+                  "555-1234",
+                  "(555)",
+                  "1234"
+                ],
+                "description": "Search by phone number. Supports partial matches."
+              },
+              "title": {
+                "type": "string",
+                "examples": [
+                  "Manager",
+                  "Director",
+                  "Sales"
+                ],
+                "description": "Search by job title. Supports partial matches."
+              },
+              "fields": {
+                "type": "string",
+                "default": "Id,Name,FirstName,LastName,Email,Phone,MobilePhone,Title,AccountId,Account.Name",
+                "examples": [
+                  "Id,Name,Email,Phone",
+                  "Id,Name,FirstName,LastName,Email,Title,AccountId,Account.Name,CreatedDate"
+                ],
+                "description": "Comma-separated list of Contact fields to retrieve. Custom and non-default fields are excluded unless explicitly listed here."
+              },
+              "account_name": {
+                "type": "string",
+                "examples": [
+                  "Acme Corp",
+                  "Tech Solutions"
+                ],
+                "description": "Search by associated account name. Supports partial matches."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_SEARCH_CAMPAIGNS": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_SEARCH_CAMPAIGNS",
+          "description": "Search for Salesforce campaigns using multiple criteria like name, type, status, date range, or active status. Requires access to the Campaign object (Marketing User feature must be enabled in the org). For complex sorting (multi-field ORDER BY), use SALESFORCE_RUN_SOQL_QUERY instead.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Summer Sale",
+                  "Product Launch",
+                  "Webinar"
+                ],
+                "description": "Search by campaign name. Supports partial matches. Combine with type, status, or date range filters to narrow results when names are non-unique."
+              },
+              "type": {
+                "type": "string",
+                "examples": [
+                  "Email",
+                  "Webinar",
+                  "Trade Show",
+                  "Public Relations"
+                ],
+                "description": "Search by campaign type."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 50,
+                "maximum": 2000,
+                "minimum": 1,
+                "description": "Maximum number of campaigns to return. Check totalSize in the response to determine if results are truncated; issue additional queries if needed."
+              },
+              "fields": {
+                "type": "string",
+                "default": "Id,Name,Type,Status,StartDate,EndDate,IsActive,Description,BudgetedCost,ActualCost,NumberOfContacts,NumberOfLeads",
+                "examples": [
+                  "Id,Name,Type,Status,StartDate,EndDate",
+                  "Id,Name,Type,Status,StartDate,EndDate,IsActive,BudgetedCost,ActualCost"
+                ],
+                "description": "Comma-separated list of Campaign fields to retrieve."
+              },
+              "status": {
+                "type": "string",
+                "examples": [
+                  "Planned",
+                  "In Progress",
+                  "Completed",
+                  "Aborted"
+                ],
+                "description": "Search by campaign status."
+              },
+              "is_active": {
+                "type": "boolean",
+                "description": "Filter by active status. True for active campaigns, False for inactive."
+              },
+              "start_date_to": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31"
+                ],
+                "description": "Upper bound for StartDate (inclusive). Use YYYY-MM-DD."
+              },
+              "start_date_from": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01"
+                ],
+                "description": "Lower bound for StartDate (inclusive). Use YYYY-MM-DD."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_SEND_MASS_EMAIL": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_SEND_MASS_EMAIL",
+          "description": "Sends an email to each recipient immediately and irreversibly, using a template or custom subject/bo...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_SEND_MASS_EMAIL"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:47:21.210Z",
+        "current_time_utc_epoch_seconds": 1786564041,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "hung",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"hung\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "Follow these steps carefully to begin the task:",
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_-4XqXMQe8e1o"
+  }
+}

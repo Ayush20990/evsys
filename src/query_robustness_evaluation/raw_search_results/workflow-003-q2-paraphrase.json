@@ -1,0 +1,516 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-003-q2-paraphrase",
+    "workflow_id": 3,
+    "workflow_task": "Find a spreadsheet in OneDrive, download it, programmatically add comparison summary worksheets/sections, upload the modified workbook back to the same OneDrive item, and verify the cloud copy.",
+    "query": "fetch and store an xlsx document locally from cloud storage",
+    "required_tools": [
+      "ONE_DRIVE_DOWNLOAD_FILE"
+    ],
+    "supporting_tools": [
+      "ONE_DRIVE_GET_ITEM"
+    ],
+    "rationale": "To programmatically add worksheets, the agent must first fetch the actual file content to the local environment.",
+    "candidate_tools": [
+      "ONE_DRIVE_DOWNLOAD_FILE",
+      "ONE_DRIVE_GET_ITEM",
+      "ONE_DRIVE_SEARCH_ITEMS",
+      "ONE_DRIVE_UPDATE_FILE_CONTENT"
+    ],
+    "source_query_id": "workflow-003-q2",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "fetch and store an xlsx document locally from cloud storage"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "fetch and store an xlsx document locally from cloud storage",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Ensure each local PDF or spreadsheet is staged as file_to_upload.s3key before upload using GOOGLEDRIVE_UPLOAD_FILE (uploads require staged content).",
+            "[Optional (if the source file/folder is unknown or you need the most relevant match)] [Prerequisite]: Locate the target using GOOGLEDRIVE_FIND_FILE (query name/fullText; include PDF, .xlsx, and cloud-native spreadsheet types; paginate via pageToken; if using shared drives, enumerate with GOOGLEDRIVE_LIST_SHARED_DRIVES).",
+            "[Optional (if a destination folder must be created)] [Prerequisite]: Create the folder using GOOGLEDRIVE_CREATE_FOLDER (capture folder id for placement).",
+            "[Required] [Step]: Upload the PDF/.xlsx using GOOGLEDRIVE_UPLOAD_FILE (set destination folder when needed; if large or unreliable, use GOOGLEDRIVE_RESUMABLE_UPLOAD).",
+            "[Required] [Step]: Download the selected file using GOOGLEDRIVE_DOWNLOAD_FILE (omit mime_type for binaries; if cloud-native spreadsheet, export to .xlsx using GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE).",
+            "[Optional (if GOOGLEDRIVE_DOWNLOAD_FILE is long-running or times out)] [Fallback]: Complete retrieval using GOOGLEDRIVE_DOWNLOAD_FILE_OPERATION.",
+            "[Optional (for verification before overwrite or downstream processing)] [Next Step]: Validate mimeType, size, parents, trashed, and permissions-relevant fields using GOOGLEDRIVE_GET_FILE_METADATA.",
+            "[Optional (if you must parse/transform downloaded bytes)] [Next Step]: Use COMPOSIO_REMOTE_WORKBENCH to fetch downloaded_file_content.s3url and process results with checkpoints to avoid re-downloads."
+          ],
+          "known_pitfalls": [
+            "[GOOGLEDRIVE_UPLOAD_FILE] Requires file_to_upload.s3key (staged content); otherwise the upload cannot start.",
+            "[GOOGLEDRIVE_FIND_FILE] Filtering only by .xlsx can miss cloud-native spreadsheets; include native spreadsheet types and export when downloading.",
+            "[GOOGLEDRIVE_FIND_FILE] If nextPageToken is returned, you must continue with pageToken or discovery will be incomplete.",
+            "[GOOGLEDRIVE_DOWNLOAD_FILE] Setting mime_type for non-native formats can error; omit it to preserve the original binary.",
+            "[GOOGLEDRIVE_DOWNLOAD_FILE] downloaded_file_content.s3url may be returned instead of inline bytes and can be short-lived; fetch promptly and handle missing s3url defensively."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Fetch downloaded_file_content.s3url bytes for downstream parsing in workbench",
+              "code": "```python\nimport requests\nurl=data['downloaded_file_content']['s3url']\ncontent=requests.get(url).content\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLEDRIVE_UPLOAD_FILE",
+            "GOOGLEDRIVE_FIND_FILE",
+            "GOOGLEDRIVE_DOWNLOAD_FILE"
+          ],
+          "related_tool_slugs": [
+            "GOOGLEDRIVE_GET_FILE_METADATA",
+            "GOOGLEDRIVE_LIST_SHARED_DRIVES",
+            "GOOGLEDRIVE_RESUMABLE_UPLOAD",
+            "GOOGLEDRIVE_DOWNLOAD_FILE_OPERATION",
+            "GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE",
+            "GOOGLEDRIVE_CREATE_FOLDER"
+          ],
+          "toolkits": [
+            "googledrive"
+          ],
+          "plan_id": "483a59befbd5478f8ed8876c68b670f0"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledrive",
+          "has_active_connection": false,
+          "description": "Google Drive is a cloud storage solution for uploading, sharing, and collaborating on files across devices, with robust search and offline access. Special usecases: Sharing google sheets/docs or any G-Suite files with specific emails.",
+          "status_message": "No Active connection for toolkit=googledrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledrive\") to create a connection BEFORE executing any googledrive tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLEDRIVE_UPLOAD_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_UPLOAD_FILE",
+          "description": "Uploads a file (max 5MB) to Google Drive, placing it in the specified folder or root if no valid folder ID is provided. Always creates a new file (never updates existing); use GOOGLEDRIVE_EDIT_FILE to update with a stable file_id. Uploaded files are private by default; configure sharing via GOOGLEDRIVE_ADD_FILE_SHARING_PREFERENCE.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "file_to_upload"
+            ],
+            "properties": {
+              "file_to_upload": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "File to upload to Google Drive (max 5MB). Use a clear filename and accurate MIME type, for example `application/pdf`; incorrect values can cause Drive to convert or misrender the file.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "folder_to_upload_to": {
+                "type": "string",
+                "examples": [
+                  "1duXYCvYC5tIp5B_B1HWLq8LyDYXfMhPU"
+                ],
+                "description": "Optional ID of the target Google Drive folder; can be obtained using 'Find Folder' or similar actions. Invalid or missing IDs silently fall back to Drive root with no error \u2014 resolve the correct folder ID first using GOOGLEDRIVE_FIND_FILE."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDRIVE_FIND_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_FIND_FILE",
+          "description": "The comprehensive Google Drive search tool that handles all file and folder discovery needs. Use this for any file finding task - from simple name searches to complex queries with date filters, MIME types, permissions, custom properties, folder scoping, and more. Searches across My Drive and shared drives with full metadata support. Examples: - Find PDFs: q=\"mimeType = 'application/pdf'\" - Find recent files: q=\"modifiedTime > '2024-01-01T00:00:00'\" - Search by name: q=\"name contains 'report'\" - Files in folder: folderId=\"abc123\" or q=\"'FOLDER_ID' in parents\"",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "examples": [
+                  "name = 'Budget 2024'",
+                  "name = 'Valentine's Day'",
+                  "name contains 'Jan'26 Schedule'",
+                  "name contains 'report'",
+                  "mimeType = 'application/pdf'",
+                  "mimeType = 'application/vnd.google-apps.folder'",
+                  "'FOLDER_ID' in parents",
+                  "modifiedTime > '2024-01-01T00:00:00'",
+                  "modifiedTime > '2024-10-01T14:30:00' and modifiedTime < '2024-10-01T18:00:00'",
+                  "createdTime > '2024-10-02T00:00:00' and createdTime < '2024-10-02T23:59:59'",
+                  "sharedWithMe = true",
+                  "sharedWithMe = true and name contains 'report'",
+                  "sharedWithMe = true and mimeType = 'application/pdf'",
+                  "starred = true and mimeType = 'application/pdf'",
+                  "trashed = false",
+                  "'user@example.com' in owners",
+                  "'user@example.com' in writers",
+                  "fullText contains 'quarterly results'",
+                  "name contains 'report' and not name contains 'draft'",
+                  "(mimeType contains 'image/' or mimeType contains 'video/')",
+                  "name contains 'invoice' and modifiedTime > '2024-01-01T00:00:00' and trashed = false"
+                ],
+                "description": "Query string to filter file results. Accepts both simple text searches and full Google Drive query syntax.\n\n        **Simple Text Search:** Bare text (e.g., \"SAM RFP\") is auto-converted to fullText search. Bare email addresses are auto-converted to owner search.\n\n        **Full Query Syntax:** 'field operator value' combined with 'and', 'or', 'not'\n\n        **Operators:** =, !=, <, >, <=, >=, contains, in\n\n        **Common Fields:**\n        - `name` - File name (exact match with = or partial match with contains)\n        - `fullText` - File content search\n        - `mimeType` - File type (e.g., 'application/pdf', 'application/vnd.google-apps.folder')\n        - `modifiedTime`, `createdTime` - Dates (RFC 3339: '2024-01-01T00:00:00')\n        - `parents` - Folder IDs containing the file\n        - `owners`, `writers` - User email addresses (MUST use 'in' operator, NOT colon syntax)\n        - `properties`, `appProperties` - Custom metadata\n\n        **Boolean Filter Fields (sharedWithMe, trashed, starred):**\n        These fields require explicit `= true` or `= false` syntax:\n        - `sharedWithMe = true` - Find files shared with you by others\n        - `sharedWithMe = false` - Find files NOT shared with you (your own files)\n        - `trashed = true` - Find files in trash\n        - `trashed = false` - Exclude trashed files from results\n        - `starred = true` - Find starred/favorited files\n        - `starred = false` - Find non-starred files\n\n        Combine with other conditions using 'and':\n        - \"sharedWithMe = true and name contains 'report'\" - Find shared files with 'report' in name\n        - \"sharedWithMe = true and mimeType = 'application/pdf'\" - Find shared PDF files\n        - \"starred = true and modifiedTime > '2024-01-01T00:00:00'\" - Find recently modified starred files\n\n        **Query Complexity Limits:**\n        Queries with many OR clauses (typically >5-10) may fail with 'The query is too complex' error.\n\n        **Name Field Usage:**\n        Wildcards (*) are NOT supported. Use 'contains' operator for partial matching.\n\n        **User Email Searches:**\n        - CORRECT: \"'user@example.com' in owners\" or \"'user@example.com' in writers\" or \"'user@example.com' in readers\"\n        - INCORRECT: \"owner:user@example.com\" (colon syntax is NOT supported and will cause errors)\n        - Always use the 'in' operator with quoted email addresses for user-based searches\n\n        **Special Syntax:**\n        - Dates: RFC 3339 format (time zone defaults to UTC)\n        - Apostrophes/quotes in values: Automatically escaped. You can write \"name = 'Jan'26'\" or \"name = 'Valentine's Day'\" without manual escaping.\n        - Grouping: Use parentheses for OR: \"(mimeType contains 'image/' or mimeType contains 'video/')\"\n        - Custom properties: \"properties has { key='department' and value='sales' }\"\n\n        **IMPORTANT - Root Folder ('My Drive'):**\n        'My Drive' is NOT a searchable folder name. To work with the root folder, use the 'root' alias: folder_id='root' or \"'root' in parents\" in your query.\n        "
+              },
+              "fields": {
+                "type": "string",
+                "examples": [
+                  "*",
+                  "files(id,name,mimeType)",
+                  "id,name,mimeType",
+                  "nextPageToken,files(id,name,mimeType)",
+                  "files(id,name,modifiedTime,size,webViewLink)",
+                  "nextPageToken,files(id,name,parents,permissions)"
+                ],
+                "description": "Selector specifying which fields to include in a partial response. Use '*' for all fields.\n\n**Default Behavior (Recommended for Discovery):**\nWhen omitted, returns essential file discovery fields: id, name, mimeType, size, modifiedTime, createdTime, parents, webViewLink, trashed, starred. This lightweight default is optimized for file search/discovery use cases without verbose permission or capability metadata.\n\n**Format:** For file fields, use 'files(field1,field2,...)' format. For example: 'files(id,name,mimeType)'.\nTop-level response fields (kind, nextPageToken, incompleteSearch) can be used directly.\n\n**Note:** Bare field names like 'id,name,mimeType' will be automatically wrapped in 'files()' for convenience.\nThe 'editors' field is not valid in Drive API v3; use 'permissions' instead for access control information."
+              },
+              "spaces": {
+                "type": "string",
+                "default": "drive",
+                "examples": [
+                  "drive",
+                  "appDataFolder",
+                  "photos",
+                  "drive,appDataFolder"
+                ],
+                "description": "A comma-separated list of spaces to query. Supported values are 'drive', 'appDataFolder' and 'photos'."
+              },
+              "corpora": {
+                "enum": [
+                  "user",
+                  "drive",
+                  "domain",
+                  "allDrives"
+                ],
+                "type": "string",
+                "default": "allDrives",
+                "examples": [
+                  "user",
+                  "domain",
+                  "drive",
+                  "allDrives"
+                ],
+                "description": "Specifies which collections of files to search. Defaults to 'allDrives' (searches My Drive + all accessible shared drives).\n\n        **Values:**\n        - `user` - Search only user's personal My Drive\n        - `domain` - Search all files shared within Google Workspace domain\n        - `drive` - Search specific shared drive (requires 'driveId' parameter and 'includeItemsFromAllDrives' must be true)\n        - `allDrives` - Search My Drive + all accessible shared drives (DEFAULT, requires 'includeItemsFromAllDrives' to be true)\n\n        **When to Use:**\n        - Personal files only: Use 'user'\n        - Organization-wide: Use 'domain'\n        - Specific shared drive: Use 'drive' with 'driveId'\n        - Maximum coverage: Use 'allDrives' (auto-enables supportsAllDrives and includeItemsFromAllDrives)\n        "
+              },
+              "driveId": {
+                "type": "string",
+                "description": "ID of the shared drive to search. When provided, 'corpora' will automatically be set to 'drive' (mutually exclusive with corpora='allDrives'). Required if 'corpora' is 'drive'."
+              },
+              "orderBy": {
+                "type": "string",
+                "examples": [
+                  "modifiedTime desc",
+                  "createdTime",
+                  "name",
+                  "name_natural",
+                  "viewedByMeTime desc",
+                  "quotaBytesUsed desc",
+                  "folder,modifiedTime desc,name",
+                  "starred desc,name",
+                  "recency desc"
+                ],
+                "description": "Comma-separated sort keys. Ascending by default; add 'desc' for descending. Cannot be used when query (q) contains fullText search terms.\n\n        **Valid Keys:**\n        - `createdTime`, `modifiedTime`, `modifiedByMeTime` - Dates\n        - `viewedByMeTime`, `sharedWithMeTime` - Activity dates\n        - `name`, `name_natural` - File name (natural: file1, file2, file10)\n        - `folder` - Folder hierarchy\n        - `quotaBytesUsed` - Storage size (NOTE: 'size' is NOT valid, use 'quotaBytesUsed')\n        - `starred` - Starred status\n        - `recency` - Recent activity (combines view time and modification time for relevance-based sorting)\n\n        **Important:** 'size' is NOT a valid sort key. Use 'quotaBytesUsed' to sort by file size.\n\n        **Restriction:** Sorting is not supported when the query contains fullText searches (e.g., \"fullText contains 'keyword'\"). Omit orderBy when using fullText queries.\n        "
+              },
+              "pageSize": {
+                "type": "integer",
+                "default": 100,
+                "maximum": 1000,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50,
+                  100,
+                  500,
+                  1000
+                ],
+                "description": "The maximum number of files to return per page."
+              },
+              "folder_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                  "root"
+                ],
+                "description": "ID of a specific folder to search within. This automatically adds \"'folder_id' in parents\" to the query. Can be combined with the 'q' parameter to further filter results within the folder. Use 'root' to search within the user's root folder (My Drive). Note: 'My Drive' is not a searchable folder name - use 'root' alias instead."
+              },
+              "pageToken": {
+                "type": "string",
+                "description": "The token for continuing a previous list request on the next page. IMPORTANT: This must be the exact opaque string from a previous response's 'nextPageToken' field - do not modify, truncate, URL-encode, or construct tokens manually. Invalid or corrupted tokens will result in API errors."
+              },
+              "include_labels": {
+                "type": "string",
+                "examples": [
+                  "label_abc123",
+                  "label_xyz789,label_def456",
+                  "priority_label,status_label,department_label"
+                ],
+                "description": "A comma-separated list of label IDs to include in the `labelInfo` part of the response for each file. Empty strings are automatically treated as omitted."
+              },
+              "pagetoken_dropped": {
+                "type": "boolean",
+                "default": false,
+                "description": "Indicates whether the page token was dropped from the request."
+              },
+              "supportsAllDrives": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether the requesting application supports both My Drives and shared drives. If 'includeItemsFromAllDrives' is true, this must also be true."
+              },
+              "original_email_query": {
+                "type": "string",
+                "description": "The original email query before transformation."
+              },
+              "editors_field_removed": {
+                "type": "boolean",
+                "default": false,
+                "description": "Indicates whether the editors field was removed from the request."
+              },
+              "email_query_transformed": {
+                "type": "boolean",
+                "default": false,
+                "description": "Indicates whether an email query was transformed into a search filter."
+              },
+              "orderby_size_transformed": {
+                "type": "boolean",
+                "default": false,
+                "description": "Indicates whether the orderBy size value was transformed."
+              },
+              "original_bare_text_query": {
+                "type": "string",
+                "description": "The original bare text query before transformation."
+              },
+              "includeItemsFromAllDrives": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether both My Drive and shared drive items should be included in results. Must be true when corpora is 'drive' or 'allDrives'. If true, 'supportsAllDrives' should also be true."
+              },
+              "emailaddress_field_removed": {
+                "type": "boolean",
+                "default": false,
+                "description": "Indicates whether the email address field was removed from the request."
+              },
+              "original_invalid_pagetoken": {
+                "type": "string",
+                "description": "The original invalid page token that was dropped."
+              },
+              "bare_text_query_transformed": {
+                "type": "boolean",
+                "default": false,
+                "description": "Indicates whether a bare text query was transformed into a search filter."
+              },
+              "include_permissions_for_view": {
+                "type": "string",
+                "examples": [
+                  "published"
+                ],
+                "description": "Specifies which additional view's permissions to include in the response. Must be either omitted entirely or set to 'published'. Empty strings are automatically treated as omitted."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDRIVE_DOWNLOAD_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_DOWNLOAD_FILE",
+          "description": "Downloads a file from Google Drive by its ID. For Google Workspace documents (Docs, Sheets, Slides), optionally exports to a specified `mime_type`. For other file types, downloads in their native format regardless of mime_type. Examples: Export a Google Doc to plain text: {\"file_id\": \"1N2o5xQWmAbCdEfGhIJKlmnOPq\", \"mime_type\": \"text/plain\"} Download a Google Sheet as CSV: {\"file_id\": \"1ZyXwVuTsRqPoNmLkJiHgFeDcB\", \"mime_type\": \"text/csv\"}",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "fileId"
+            ],
+            "properties": {
+              "fileId": {
+                "type": "string",
+                "examples": [
+                  "1aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"
+                ],
+                "description": "The unique identifier of the file to be downloaded from Google Drive. Must be a valid Google Drive file ID containing only alphanumeric characters, hyphens, and underscores. File paths with slashes (/) are not valid. This ID can typically be found in the file's URL in Google Drive or obtained from API calls that list files."
+              },
+              "mime_type": {
+                "enum": [
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  "application/vnd.oasis.opendocument.text",
+                  "application/rtf",
+                  "application/pdf",
+                  "text/plain",
+                  "application/zip",
+                  "application/epub+zip",
+                  "text/html",
+                  "text/markdown",
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                  "application/vnd.oasis.opendocument.spreadsheet",
+                  "text/csv",
+                  "text/tab-separated-values",
+                  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                  "application/vnd.oasis.opendocument.presentation",
+                  "image/jpeg",
+                  "image/png",
+                  "image/svg+xml",
+                  "application/vnd.google-apps.script+json",
+                  "application/vnd.google-apps.vid"
+                ],
+                "type": "string",
+                "examples": [
+                  "application/pdf",
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  "text/csv"
+                ],
+                "description": "ONLY for Google Workspace documents (Docs, Sheets, Slides, Drawings). Specifies the export format. Has NO effect on regular files (PDFs, images, videos, Office documents, etc.) - they are always downloaded in their native format. Google Forms and Maps cannot be downloaded as they do not support exports through the Drive API. If omitted for Google Workspace files, defaults to PDF. Different Workspace types support different formats. Use application/pdf for universal compatibility."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDRIVE_GET_FILE_METADATA": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_GET_FILE_METADATA",
+          "description": "Tool to get a file's metadata by ID. Use to verify `mimeType`, `parents`, and `trashed` status before destructive operations (delete/move/export), or to confirm `mimeType='application/vnd.google-apps.document'` before calling GOOGLEDOCS_* tools (non-native files require GOOGLEDRIVE_DOWNLOAD_FILE). Only returns metadata visible to the connected account; public access requires GOOGLEDRIVE_ADD_FILE_SHARING_PREFERENCE. High-frequency calls risk `403 rateLimitExceeded`; apply exponential backoff.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "fileId"
+            ],
+            "properties": {
+              "fields": {
+                "type": "string",
+                "description": "Comma-separated list of fields to include in the response. Use this for partial responses to request only specific metadata fields. Common fields: id, name, mimeType, webViewLink, webContentLink, createdTime, modifiedTime, size, quotaBytesUsed, parents, owners, permissions. Use '*' to return all available fields. Note: The deprecated v2 field 'alternateLink' is automatically migrated to 'webViewLink'. Example: 'id,name,mimeType,webViewLink,createdTime,modifiedTime'. Most fields (webViewLink, parents, owners, size, modifiedTime, etc.) are omitted by default \u2014 explicitly list required fields or use '*' (increases latency). `md5Checksum` is null for native Google Workspace files (Docs/Sheets/Slides); use `mimeType` to classify items \u2014 folders use `mimeType='application/vnd.google-apps.folder'` and Workspace files return `size=null`. `modifiedTime` is RFC 3339 UTC format."
+              },
+              "fileId": {
+                "type": "string",
+                "examples": [
+                  "1a2b3c4d5e6f7g8h9i0j"
+                ],
+                "description": "The Google Drive file ID (an opaque alphanumeric string like '1a2b3c4d5e6f7g8h9i0j'), NOT a file name. If you only have a file name, use GOOGLEDRIVE_FIND_FILE or GOOGLEDRIVE_LIST_FILES to get the file ID first."
+              },
+              "includeLabels": {
+                "type": "string",
+                "description": "A comma-separated list of IDs of labels to include in the labelInfo part of the response."
+              },
+              "supportsAllDrives": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether the requesting application supports both My Drives and shared drives. Defaults to true to ensure files in shared drives are accessible."
+              },
+              "includePermissionsForView": {
+                "type": "string",
+                "description": "Specifies which additional view's permissions to include in the response. Only 'published' is supported."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDRIVE_LIST_SHARED_DRIVES": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_LIST_SHARED_DRIVES",
+          "description": "Tool to list the user's shared drives. Use when you need to get a list of all shared drives accessib...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_LIST_SHARED_DRIVES"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_RESUMABLE_UPLOAD": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_RESUMABLE_UPLOAD",
+          "description": "Tool to start and complete a Google Drive resumable upload session. Use for files larger than ~5 MB ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_RESUMABLE_UPLOAD"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_DOWNLOAD_FILE_OPERATION": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_DOWNLOAD_FILE_OPERATION",
+          "description": "Tool to download file content using long-running operations. Use when you need to download Google Vi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_DOWNLOAD_FILE_OPERATION"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE",
+          "description": "Exports a Google Workspace document to the requested MIME type and returns exported file content. Us...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_CREATE_FOLDER": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_CREATE_FOLDER",
+          "description": "Creates a new folder in Google Drive, optionally within an EXISTING parent folder specified by its I...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_CREATE_FOLDER"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:45:33.919Z",
+        "current_time_utc_epoch_seconds": 1786563933,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "hold",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"hold\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_xX_2LZE54Btk"
+  }
+}

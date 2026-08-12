@@ -1,0 +1,892 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-009-q1-implicit",
+    "workflow_id": 9,
+    "workflow_task": "Create multimedia travel marketing assets from scripts and stock/generative media, then deliver generated files by email and provide downloadable presentation content.",
+    "query": "find professional pictures for a marketing campaign",
+    "required_tools": [
+      "COMPOSIO_SEARCH_IMAGE"
+    ],
+    "supporting_tools": [],
+    "rationale": "The agent needs to find visual assets based on the travel marketing script.",
+    "candidate_tools": [
+      "COMPOSIO_SEARCH_IMAGE",
+      "GEMINI_GENERATE_VIDEOS",
+      "GEMINI_WAIT_FOR_VIDEO",
+      "GMAIL_SEND_EMAIL"
+    ],
+    "source_query_id": "workflow-009-q1",
+    "variant_dimension": "implicit"
+  },
+  "request": {
+    "query": "find professional pictures for a marketing campaign"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "find professional pictures for a marketing campaign",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Collect a concise product brief (product_type, branding, angles/scenes, styles, variation count, aspect_ratio/output) to drive prompts for GEMINI_GENERATE_IMAGE.",
+            "[Required] [Step]: Generate core product shots and variations using GEMINI_GENERATE_IMAGE (iterate prompts until on-brief).",
+            "[Required] [Step]: Extract and store hosted URLs from GEMINI_GENERATE_IMAGE (e.g., data.image.s3url) and label/shortlist final variants for Canva/delivery.",
+            "[Optional (if you want Canva assets from URLs)] [Step]: Import selected URLs using CANVA_CREATE_URL_ASSET_UPLOAD_JOB (starts async uploads).",
+            "[Optional (if URL imports started)] [Next Step]: Poll completion and capture asset IDs using CANVA_GET_URL_ASSET_UPLOADS_JOBID (use job.asset.id when job.status='success').",
+            "[Optional (if you have local files instead of URLs)] [Fallback]: Upload files using CANVA_CREATE_ASSET_UPLOAD_JOB and poll each via CANVA_FETCH_ASSET_UPLOAD_JOB_STATUS to record asset_id.",
+            "[Optional (if you need layouts like ads/carousels/thumbnails)] [Next Step]: Create branded layouts using CANVA_CREATE_CANVA_DESIGN_WITH_OPTIONAL_ASSET (place assets into correct page sizes; store design.urls.edit_url and design.urls.view_url).",
+            "[Optional (if you need downloadable deliverables)] [Prerequisite]: Confirm supported export formats using CANVA_GET_DESIGNS_DESIGNID_EXPORT_FORMATS before starting exports.",
+            "[Optional (if you created Canva designs)] [Next Step]: Export using CANVA_CREATE_CANVA_DESIGN_EXPORT_JOB and retrieve download URLs via CANVA_GET_DESIGN_EXPORT_JOB_RESULT; optionally collect feedback via CANVA_CREATE_DESIGN_COMMENT_IN_PREVIEW_API and iterate before re-export."
+          ],
+          "known_pitfalls": [
+            "[GEMINI_GENERATE_IMAGE] Hosted URLs (data.image.s3url) may include short-lived query params (e.g., X-Amz-Expires=3600); capture/use promptly for sharing or Canva imports.",
+            "[GEMINI_GENERATE_IMAGE] Invalid aspect_ratio/model enums can trigger validation failures; stick to supported values.",
+            "[CANVA_CREATE_URL_ASSET_UPLOAD_JOB] Returns an async job (often status='in_progress'); asset IDs are not available until polling.",
+            "[CANVA_GET_URL_ASSET_UPLOADS_JOBID] Asset ID is under job.asset.id only when job.status='success'; handle non-success states before proceeding.",
+            "[CANVA_CREATE_CANVA_DESIGN_EXPORT_JOB] Export is asynchronous; only use download URLs after CANVA_GET_DESIGN_EXPORT_JOB_RESULT reports completion."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Verify all generated image URLs download successfully before zipping (prevents missing files in the final archive).",
+              "code": "```python\nimport requests, zipfile, io\n\ndef fetch(url, timeout=60):\n  r=requests.get(url,timeout=timeout)\n  r.raise_for_status()\n  return r.content\n\ndef build_zip(name_to_url):\n  ok,fail={},{}\n  for name,url in name_to_url.items():\n    try: ok[name]=fetch(url)\n    except Exception as e: fail[name]=str(e)\n  buf=io.BytesIO()\n  with zipfile.ZipFile(buf,'w',compression=zipfile.ZIP_DEFLATED) as z:\n    for name,data in ok.items(): z.writestr(name,data)\n  return {'zipped':len(ok),'failed':fail,'zip_bytes':buf.getvalue()}\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GEMINI_GENERATE_IMAGE",
+            "CANVA_CREATE_URL_ASSET_UPLOAD_JOB",
+            "CANVA_GET_URL_ASSET_UPLOADS_JOBID",
+            "CANVA_CREATE_CANVA_DESIGN_WITH_OPTIONAL_ASSET"
+          ],
+          "related_tool_slugs": [
+            "CANVA_CREATE_CANVA_DESIGN_EXPORT_JOB",
+            "CANVA_GET_DESIGN_EXPORT_JOB_RESULT",
+            "CANVA_GET_DESIGNS_DESIGNID_EXPORT_FORMATS",
+            "CANVA_CREATE_ASSET_UPLOAD_JOB",
+            "CANVA_FETCH_ASSET_UPLOAD_JOB_STATUS",
+            "CANVA_CREATE_DESIGN_COMMENT_IN_PREVIEW_API"
+          ],
+          "toolkits": [
+            "canva",
+            "gemini"
+          ],
+          "plan_id": "059a9ad14bda4cb39227b303b3323adc"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "gemini",
+          "has_active_connection": true,
+          "description": "Comprehensive Gemini integration supporting Veo 3 video generation, Gemini Flash text generation (Nano Banana), chat completions, and multimodal AI capabilities via the Google Gemini API.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        },
+        {
+          "toolkit": "canva",
+          "has_active_connection": false,
+          "description": "Canva offers a drag-and-drop design suite for creating social media graphics, presentations, and marketing materials with prebuilt templates and a vast element library",
+          "status_message": "No Active connection for toolkit=canva. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"canva\") to create a connection BEFORE executing any canva tools."
+        }
+      ],
+      "tool_schemas": {
+        "GEMINI_GENERATE_IMAGE": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_GENERATE_IMAGE",
+          "description": "Generates images from text prompts using Gemini models (Nano Banana). Supports models: 'gemini-2.5-flash-image' (GA stable, fast), 'gemini-3-pro-image-preview' (Nano Banana Pro - advanced with 4K resolution, thinking mode, up to 14 reference images), and 'gemini-2.0-flash-exp-image-generation' (2.0 Flash experimental). Returns one downloadable image per call, or a text-type entry in data.content when no image is produced. Always validate that an image was returned before treating the call as successful. Output formats are raster only (JPG/PNG/WebP); request PNG for transparency. Concurrent usage may trigger HTTP 429/RESOURCE_EXHAUSTED \u2014 keep concurrency \u22643 and use exponential backoff (1s\u21922s\u21924s, ~5 retries). NOTE NEVER EVER TRUE SYNC_TO_WORKBENCH IN RUBE_MULTI_EXECUTE_TOOL",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "prompt"
+            ],
+            "properties": {
+              "model": {
+                "enum": [
+                  "gemini-2.5-flash-image",
+                  "gemini-3-pro-image-preview",
+                  "gemini-2.0-flash-exp-image-generation"
+                ],
+                "type": "string",
+                "default": "gemini-3-pro-image-preview",
+                "description": "Model to use for image generation. Options: 'gemini-2.5-flash-image' (GA stable, fast), 'gemini-3-pro-image-preview' (advanced with 4K, thinking mode), 'gemini-2.0-flash-exp-image-generation' (2.0 Flash experimental)."
+              },
+              "top_k": {
+                "type": "integer",
+                "description": "Top-k sampling parameter"
+              },
+              "top_p": {
+                "type": "number",
+                "description": "Nucleus sampling parameter (0.0 to 1.0)"
+              },
+              "prompt": {
+                "type": "string",
+                "description": "Text prompt for image generation Sensitive, trademarked, or explicit content triggers HTTP 400 (PROHIBITED_CONTENT or IMAGE_RECITATION) with no image returned \u2014 rephrase into neutral, policy-compliant language rather than retrying identical prompts."
+              },
+              "timeout": {
+                "type": "number",
+                "default": 300,
+                "description": "Request timeout in seconds. Default is 300 seconds (5 minutes). Increase for complex prompts or high-resolution images. Minimum 120 seconds, maximum 600 seconds."
+              },
+              "image_size": {
+                "enum": [
+                  "1K",
+                  "2K",
+                  "4K"
+                ],
+                "type": "string",
+                "default": "1K",
+                "description": "Output resolution (only for 'gemini-3-pro-image-preview'). Options: 1K, 2K, 4K."
+              },
+              "temperature": {
+                "type": "number",
+                "description": "Controls randomness (0.0 to 2.0)"
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "1:1",
+                  "2:3",
+                  "3:2",
+                  "3:4",
+                  "4:3",
+                  "4:5",
+                  "5:4",
+                  "9:16",
+                  "16:9",
+                  "21:9"
+                ],
+                "type": "string",
+                "default": "1:1",
+                "description": "Aspect ratio for generated image. Not supported by 'gemini-2.0-flash-exp-image-generation' model. Accepted values: '1:1', '4:5', '16:9', '9:16'. Unsupported strings will fail or silently default to 1:1."
+              },
+              "safety_settings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "threshold"
+                  ],
+                  "properties": {
+                    "category": {
+                      "enum": [
+                        "HARM_CATEGORY_HARASSMENT",
+                        "HARM_CATEGORY_HATE_SPEECH",
+                        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "HARM_CATEGORY_DANGEROUS_CONTENT"
+                      ],
+                      "type": "string",
+                      "description": "The category of harmful content to filter"
+                    },
+                    "threshold": {
+                      "enum": [
+                        "BLOCK_NONE",
+                        "BLOCK_LOW_AND_ABOVE",
+                        "BLOCK_MEDIUM_AND_ABOVE",
+                        "BLOCK_ONLY_HIGH"
+                      ],
+                      "type": "string",
+                      "description": "The threshold for blocking content in this category"
+                    }
+                  }
+                },
+                "description": "Safety filter settings. List of objects specifying content categories to filter and threshold levels. Each setting requires 'category' (HARM_CATEGORY_HARASSMENT, HARM_CATEGORY_HATE_SPEECH, HARM_CATEGORY_SEXUALLY_EXPLICIT, or HARM_CATEGORY_DANGEROUS_CONTENT) and 'threshold' (BLOCK_NONE, BLOCK_LOW_AND_ABOVE, BLOCK_MEDIUM_AND_ABOVE, or BLOCK_ONLY_HIGH)."
+              },
+              "max_output_tokens": {
+                "type": "integer",
+                "description": "Maximum number of tokens to generate (max 32,768). For image generation, images consume tokens based on resolution: 1K/2K consume 1,120 tokens, 4K consumes 2,000 tokens. If set too low, the API may return MAX_TOKENS finish reason with no image. If not specified, the API uses its default which is sufficient for image generation."
+              },
+              "system_instruction": {
+                "type": "string",
+                "description": "System instruction to guide image generation behavior"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CANVA_CREATE_URL_ASSET_UPLOAD_JOB": {
+          "toolkit": "CANVA",
+          "tool_slug": "CANVA_CREATE_URL_ASSET_UPLOAD_JOB",
+          "description": "Tool to create an asynchronous Canva asset import job from a public URL. Use when you need to import an asset into Canva directly from a publicly accessible URL without S3 choreography.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "name",
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "Publicly accessible HTTPS URL of the file to import. Must use HTTPS protocol (e.g., https://example.com/image.png)."
+              },
+              "name": {
+                "type": "string",
+                "description": "Asset name (1-255 characters)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CANVA_GET_URL_ASSET_UPLOADS_JOBID": {
+          "toolkit": "CANVA",
+          "tool_slug": "CANVA_GET_URL_ASSET_UPLOADS_JOBID",
+          "description": "Tool to retrieve the status and result of a URL-based asset upload job. Use this after creating a URL asset upload job to check progress and retrieve the uploaded asset ID when successful.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "jobId"
+            ],
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "description": "The asset upload job identifier."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CANVA_CREATE_CANVA_DESIGN_WITH_OPTIONAL_ASSET": {
+          "toolkit": "CANVA",
+          "tool_slug": "CANVA_CREATE_CANVA_DESIGN_WITH_OPTIONAL_ASSET",
+          "description": "DEPRECATED: Use CANVA_POST_DESIGNS instead. Creates a new Canva design with specified dimensions or from an asset. This endpoint creates a design using either a preset type (doc, presentation, whiteboard), custom dimensions, or by importing an image asset. Returns the design ID, URLs for editing and viewing, owner info, and metadata. The design can be immediately accessed and edited.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "examples": [
+                  "My Holiday Presentation",
+                  "Q4 Marketing Report",
+                  "Social Media Templates"
+                ],
+                "description": "Design title (1-255 chars). Appears in Canva UI and design lists."
+              },
+              "asset_id": {
+                "type": "string",
+                "examples": [
+                  "Msd59349ff"
+                ],
+                "description": "Image asset ID to create design from. Optional if design_type provided. IMPORTANT: Only image assets are supported - video and PDF assets will be rejected by the API with error 'asset_id must belong to an image asset'. Asset IDs are opaque strings with no guaranteed format. To verify an asset is an image before using it here, call CANVA_RETRIEVE_ASSET_METADATA_BY_ID and check that the 'type' field equals 'image'. To upload a new image asset, use CANVA_CREATE_URL_ASSET_UPLOAD_JOB or CANVA_CREATE_ASSET_UPLOAD_JOB."
+              },
+              "design_type": {
+                "type": "object",
+                "examples": [
+                  {
+                    "name": "presentation",
+                    "type": "preset"
+                  },
+                  {
+                    "type": "custom",
+                    "width": 1080,
+                    "height": 1350
+                  }
+                ],
+                "description": "Design dimensions configuration. Optional if asset_id provided. Must be a dictionary with 'type' field.\n\nTwo options:\n1. Preset: {'type': 'preset', 'name': 'doc'|'whiteboard'|'presentation'}\n2. Custom: {'type': 'custom', 'width': 1080, 'height': 1920}\n\nType must be either 'preset' or 'custom'. For preset, name must be one of: doc, whiteboard, presentation. For custom, width and height must be between 40-8000 pixels.",
+                "additionalProperties": true
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CANVA_CREATE_CANVA_DESIGN_EXPORT_JOB": {
+          "toolkit": "CANVA",
+          "tool_slug": "CANVA_CREATE_CANVA_DESIGN_EXPORT_JOB",
+          "description": "DEPRECATED: Use CANVA_POST_EXPORTS instead. Exports a Canva design to various file formats. This endpoint initiates an asynchronous export job for designs. Supports image formats (PNG, JPG, GIF), documents (PDF, PPTX), and video (MP4). Each format has specific configuration options like dimensions, quality, and page selection. IMPORTANT: This is an async operation. Use GET_DESIGN_EXPORT_JOB_RESULT to poll the job status until completion and retrieve the download URLs for the exported files.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "design_id",
+              "format"
+            ],
+            "properties": {
+              "format": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "title": "PngFormat",
+                    "required": [
+                      "type"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "png",
+                        "title": "Type",
+                        "description": "The export format type"
+                      },
+                      "pages": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Pages",
+                        "default": null,
+                        "description": "Specific page numbers to export (1-indexed). Omit to export all pages."
+                      },
+                      "width": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "maximum": 25000,
+                            "minimum": 40
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Width",
+                        "default": null,
+                        "description": "Export width in pixels (40-25000). If only width is set, height is calculated to maintain aspect ratio."
+                      },
+                      "height": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "maximum": 25000,
+                            "minimum": 40
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Height",
+                        "default": null,
+                        "description": "Export height in pixels (40-25000). If only height is set, width is calculated to maintain aspect ratio."
+                      },
+                      "lossless": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Lossless",
+                        "default": null,
+                        "description": "If true (default), PNG is exported without compression. If false, uses lossy compression (Pro/Enterprise only)."
+                      },
+                      "export_quality": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "regular",
+                              "pro"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Export Quality",
+                        "default": null,
+                        "description": "Export quality. 'pro' requires a Canva Pro or Enterprise plan."
+                      },
+                      "as_single_image": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "As Single Image",
+                        "default": null,
+                        "description": "If true, merges multi-page designs into a single image. Default is false."
+                      },
+                      "transparent_background": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Transparent Background",
+                        "default": null,
+                        "description": "If true, exports with transparent background (Pro/Enterprise only). Default is false."
+                      }
+                    },
+                    "description": "PNG export format configuration."
+                  },
+                  {
+                    "type": "object",
+                    "title": "JpgFormat",
+                    "required": [
+                      "type",
+                      "quality"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "jpg",
+                        "title": "Type",
+                        "description": "The export format type"
+                      },
+                      "pages": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Pages",
+                        "default": null,
+                        "description": "Specific page numbers to export (1-indexed). Omit to export all pages."
+                      },
+                      "width": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "maximum": 25000,
+                            "minimum": 40
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Width",
+                        "default": null,
+                        "description": "Export width in pixels (40-25000). If only width is set, height is calculated to maintain aspect ratio."
+                      },
+                      "height": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "maximum": 25000,
+                            "minimum": 40
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Height",
+                        "default": null,
+                        "description": "Export height in pixels (40-25000). If only height is set, width is calculated to maintain aspect ratio."
+                      },
+                      "quality": {
+                        "type": "integer",
+                        "title": "Quality",
+                        "maximum": 100,
+                        "minimum": 1,
+                        "description": "JPEG compression quality (1-100). Lower values create smaller files with more artifacts."
+                      },
+                      "export_quality": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "regular",
+                              "pro"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Export Quality",
+                        "default": null,
+                        "description": "Export quality. 'pro' requires a Canva Pro or Enterprise plan."
+                      }
+                    },
+                    "description": "JPG export format configuration."
+                  },
+                  {
+                    "type": "object",
+                    "title": "PdfFormat",
+                    "required": [
+                      "type"
+                    ],
+                    "properties": {
+                      "size": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "a4",
+                              "a3",
+                              "letter",
+                              "legal"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Size",
+                        "default": null,
+                        "description": "Paper size for PDF export (only applies to Canva Docs)."
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "pdf",
+                        "title": "Type",
+                        "description": "The export format type"
+                      },
+                      "pages": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Pages",
+                        "default": null,
+                        "description": "Specific page numbers to export (1-indexed). Omit to export all pages."
+                      },
+                      "export_quality": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "regular",
+                              "pro"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Export Quality",
+                        "default": null,
+                        "description": "Export quality. 'pro' requires a Canva Pro or Enterprise plan."
+                      }
+                    },
+                    "description": "PDF export format configuration."
+                  },
+                  {
+                    "type": "object",
+                    "title": "GifFormat",
+                    "required": [
+                      "type"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "gif",
+                        "title": "Type",
+                        "description": "The export format type"
+                      },
+                      "pages": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Pages",
+                        "default": null,
+                        "description": "Specific page numbers to export (1-indexed). Omit to export all pages."
+                      },
+                      "width": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "maximum": 25000,
+                            "minimum": 40
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Width",
+                        "default": null,
+                        "description": "Export width in pixels (40-25000). If only width is set, height is calculated to maintain aspect ratio."
+                      },
+                      "height": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "maximum": 25000,
+                            "minimum": 40
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Height",
+                        "default": null,
+                        "description": "Export height in pixels (40-25000). If only height is set, width is calculated to maintain aspect ratio."
+                      },
+                      "export_quality": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "regular",
+                              "pro"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Export Quality",
+                        "default": null,
+                        "description": "Export quality. 'pro' requires a Canva Pro or Enterprise plan."
+                      }
+                    },
+                    "description": "GIF export format configuration."
+                  },
+                  {
+                    "type": "object",
+                    "title": "Mp4Format",
+                    "required": [
+                      "type",
+                      "quality"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mp4",
+                        "title": "Type",
+                        "description": "The export format type"
+                      },
+                      "pages": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Pages",
+                        "default": null,
+                        "description": "Specific page numbers to export (1-indexed). Omit to export all pages."
+                      },
+                      "quality": {
+                        "enum": [
+                          "horizontal_480p",
+                          "horizontal_720p",
+                          "horizontal_1080p",
+                          "horizontal_4k",
+                          "vertical_480p",
+                          "vertical_720p",
+                          "vertical_1080p",
+                          "vertical_4k"
+                        ],
+                        "type": "string",
+                        "title": "Quality",
+                        "description": "Video quality and orientation."
+                      },
+                      "export_quality": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "regular",
+                              "pro"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Export Quality",
+                        "default": null,
+                        "description": "Export quality. 'pro' requires a Canva Pro or Enterprise plan."
+                      }
+                    },
+                    "description": "MP4 video export format configuration."
+                  },
+                  {
+                    "type": "object",
+                    "title": "PptxFormat",
+                    "required": [
+                      "type"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "pptx",
+                        "title": "Type",
+                        "description": "The export format type"
+                      },
+                      "pages": {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Pages",
+                        "default": null,
+                        "description": "Specific page numbers to export (1-indexed). Omit to export all pages."
+                      }
+                    },
+                    "description": "PowerPoint (PPTX) export format configuration."
+                  }
+                ],
+                "examples": [
+                  {
+                    "type": "png"
+                  },
+                  {
+                    "type": "jpg",
+                    "quality": 85
+                  },
+                  {
+                    "type": "pdf"
+                  },
+                  {
+                    "type": "gif"
+                  },
+                  {
+                    "type": "mp4",
+                    "quality": "horizontal_1080p"
+                  },
+                  {
+                    "type": "pptx"
+                  }
+                ],
+                "description": "Export format configuration. Set 'type' to one of: 'png', 'jpg', 'pdf', 'gif', 'mp4', 'pptx'.",
+                "discriminator": {
+                  "mapping": {
+                    "gif": "#/$defs/GifFormat",
+                    "jpg": "#/$defs/JpgFormat",
+                    "mp4": "#/$defs/Mp4Format",
+                    "pdf": "#/$defs/PdfFormat",
+                    "png": "#/$defs/PngFormat",
+                    "pptx": "#/$defs/PptxFormat"
+                  },
+                  "propertyName": "type"
+                }
+              },
+              "design_id": {
+                "type": "string",
+                "examples": [
+                  "DAGkg05ZH5w",
+                  "DAGz4y3LDFI"
+                ],
+                "minLength": 1,
+                "description": "The design ID to export"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CANVA_GET_DESIGN_EXPORT_JOB_RESULT": {
+          "toolkit": "CANVA",
+          "tool_slug": "CANVA_GET_DESIGN_EXPORT_JOB_RESULT",
+          "description": "Polls for design export job completion status. Use this after CANVA_CREATE_CANVA_DESIGN_EXPORT_JOB t...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CANVA_GET_DESIGN_EXPORT_JOB_RESULT"
+              ]
+            }
+          }
+        },
+        "CANVA_GET_DESIGNS_DESIGNID_EXPORT_FORMATS": {
+          "toolkit": "CANVA",
+          "tool_slug": "CANVA_GET_DESIGNS_DESIGNID_EXPORT_FORMATS",
+          "description": "Lists available file formats for exporting a design. Use this to check which export formats (PDF, JP...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CANVA_GET_DESIGNS_DESIGNID_EXPORT_FORMATS"
+              ]
+            }
+          }
+        },
+        "CANVA_CREATE_ASSET_UPLOAD_JOB": {
+          "toolkit": "CANVA",
+          "tool_slug": "CANVA_CREATE_ASSET_UPLOAD_JOB",
+          "description": "Uploads an asset file to the user's Canva content library. This endpoint initiates an asynchronous u...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CANVA_CREATE_ASSET_UPLOAD_JOB"
+              ]
+            }
+          }
+        },
+        "CANVA_FETCH_ASSET_UPLOAD_JOB_STATUS": {
+          "toolkit": "CANVA",
+          "tool_slug": "CANVA_FETCH_ASSET_UPLOAD_JOB_STATUS",
+          "description": "Polls for asset upload job completion status. Use this after CANVA_CREATE_ASSET_UPLOAD_JOB to check ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CANVA_FETCH_ASSET_UPLOAD_JOB_STATUS"
+              ]
+            }
+          }
+        },
+        "CANVA_CREATE_DESIGN_COMMENT_IN_PREVIEW_API": {
+          "toolkit": "CANVA",
+          "tool_slug": "CANVA_CREATE_DESIGN_COMMENT_IN_PREVIEW_API",
+          "description": "Creates a new comment thread on a Canva design. This preview API allows adding text comments to desi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CANVA_CREATE_DESIGN_COMMENT_IN_PREVIEW_API"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:48:15.018Z",
+        "current_time_utc_epoch_seconds": 1786564095,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "will",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"will\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) You may call COMPOSIO_MANAGE_CONNECTIONS: Some toolkits lack active connections",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_LiIdMvJqpw3G"
+  }
+}

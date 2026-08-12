@@ -1,0 +1,654 @@
+{
+  "query_ground_truth": {
+    "query_id": "synthetic-010-q2",
+    "workflow_id": "synthetic-010",
+    "workflow_task": "A high-priority client onboarding checklist needs to be set up on our project tracking board, with specific team members assigned to review the documentation. Once the cards are prepped, the onboarding action items, including code repository access steps and required security toggles, must be appended directly into our central Notion workspace documentation page for the engineering team.",
+    "query": "append task blocks and code snippets to the Notion engineering onboarding page",
+    "required_tools": [
+      "NOTION_APPEND_TASK_BLOCKS",
+      "NOTION_APPEND_CODE_BLOCKS"
+    ],
+    "supporting_tools": [],
+    "rationale": "These Notion tools are required to add interactive to-do task blocks and code formatting for repository setup.",
+    "candidate_tools": [
+      "NOTION_APPEND_TASK_BLOCKS",
+      "TRELLO_ADD_MEMBER_TO_CARD",
+      "NOTION_ARCHIVE_NOTION_PAGE",
+      "TRELLO_CREATE_ACTION_REACTION",
+      "TRELLO_ADD_CHECKLISTS",
+      "NOTION_APPEND_CODE_BLOCKS",
+      "TRELLO_ADD_BOARDS_LISTS_BY_ID_BOARD",
+      "TRELLO_ARCHIVE_ALL_LIST_CARDS"
+    ],
+    "candidate_toolkits": [
+      "notion",
+      "trello"
+    ],
+    "plausibility_score": 5
+  },
+  "request": {
+    "query": "append task blocks and code snippets to the Notion engineering onboarding page"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "append task blocks and code snippets to the Notion engineering onboarding page",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if access/sharing or archived state is uncertain)] [Prerequisite]: Preflight the target page using NOTION_RETRIEVE_PAGE (avoid attempting writes to inaccessible pages).",
+            "[Optional (if insertion must be under a specific section or after an existing sibling)] [Prerequisite]: List direct child blocks using NOTION_FETCH_BLOCK_CONTENTS (follow has_more/next_cursor) to choose a valid parent container and optional after anchor.",
+            "[Required] [Step]: Append headings/paragraphs/bullets (and other supported blocks) using NOTION_ADD_MULTIPLE_PAGE_CONTENT (keep each call within ~100 content_blocks; for multiple batches, run sequentially and continue by setting after to the last created block identifier from the prior response).",
+            "[Optional (if rich block schemas are failing and plain text is acceptable)] [Step]: Append simplified structures using NOTION_APPEND_TEXT_BLOCKS (retain returned block identifiers for any follow-up edits).",
+            "[Optional (for verification or when append responses are truncated)] [Next Step]: Confirm placement/order using NOTION_GET_PAGE_MARKDOWN (spot-check the edited region).",
+            "[Optional (if small post-write corrections are needed)] [Next Step]: Patch specific blocks using NOTION_UPDATE_BLOCK (use retained block identifiers; keep updates type-correct).",
+            "[Fallback (if a full reset/rebuild is explicitly approved)] [Fallback]: Rebuild children using NOTION_REPLACE_PAGE_CONTENT (provide full new_children), then re-append using NOTION_ADD_MULTIPLE_PAGE_CONTENT."
+          ],
+          "known_pitfalls": [
+            "[NOTION_RETRIEVE_PAGE] 404 object_not_found often means the page is not shared with the integration; 401 unauthorized indicates auth/config issues.",
+            "[NOTION_ADD_MULTIPLE_PAGE_CONTENT] 400 validation_error commonly comes from malformed block payloads or targeting a parent that cannot accept children; large create responses may appear truncated in some clients.",
+            "[NOTION_APPEND_TEXT_BLOCKS] Validation can fail if rich_text items use an invalid type (rich_text[].type must be \"text\") or required fields are missing.",
+            "[NOTION_REPLACE_PAGE_CONTENT] new_children is required; for large pages, verify the response for partial application before assuming the rebuild is complete.",
+            "[NOTION_GET_PAGE_MARKDOWN] The export may include sensitive content already on the page; treat retrieved markdown as sensitive when logging or sharing."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Summarize fetched child blocks to help pick an insertion anchor (without printing identifiers)",
+              "code": "```python\nrows=resp['data']['results']\nfor i,b in enumerate(rows):\n t=b.get('type')\n p=b.get(t) if isinstance(b.get(t),dict) else {}\n rt=p.get('rich_text') or p.get('title') or []\n s=''.join(x.get('plain_text','') for x in rt if isinstance(x,dict)).strip()\n print(i,t,s[:60])\n```"
+            },
+            {
+              "description": "Chunk a prepared content_blocks list to stay within per-request limits",
+              "code": "```python\ndef chunk(xs,n=100):\n return [xs[i:i+n] for i in range(0,len(xs),n)]\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "NOTION_ADD_MULTIPLE_PAGE_CONTENT"
+          ],
+          "related_tool_slugs": [
+            "NOTION_RETRIEVE_PAGE",
+            "NOTION_FETCH_BLOCK_CONTENTS",
+            "NOTION_GET_PAGE_MARKDOWN",
+            "NOTION_UPDATE_BLOCK",
+            "NOTION_REPLACE_PAGE_CONTENT",
+            "NOTION_APPEND_TEXT_BLOCKS"
+          ],
+          "toolkits": [
+            "notion"
+          ],
+          "plan_id": "e7d40c32ef8b4c369ac08a708ac0aa89"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "notion",
+          "has_active_connection": false,
+          "description": "Notion centralizes notes, docs, wikis, and tasks in a unified workspace, letting teams build custom workflows for collaboration and knowledge management",
+          "status_message": "No Active connection for toolkit=notion. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"notion\") to create a connection BEFORE executing any notion tools."
+        }
+      ],
+      "tool_schemas": {
+        "NOTION_ADD_MULTIPLE_PAGE_CONTENT": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+          "description": "Bulk-add content blocks to Notion. Text >2000 chars auto-splits. Parses markdown formatting. \u26a0\ufe0f PARENT BLOCK TYPES: Content is added AS CHILDREN of parent_block_id. - To add content AFTER a heading, use PAGE ID as parent + heading ID in 'after' param. - Headings CANNOT have children unless is_toggleable=True. Simplified format: {'content': 'text', 'block_property': 'paragraph'} Full format for code: {'type': 'code', 'code': {'rich_text': [...], 'language': 'python'}} Array format also supported (auto-normalized): [{\"parent_block_id\": \"...\"}, {block1}, {block2}] => proper request structure",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "parent_block_id",
+              "content_blocks"
+            ],
+            "properties": {
+              "after": {
+                "type": "string",
+                "examples": [
+                  "4b5f6e87-123a-456b-789c-9de8f7a9e4c0"
+                ],
+                "description": "Block ID to insert content AFTER (as siblings). Use this to add content after a heading: set parent_block_id to the PAGE ID and 'after' to the HEADING block ID. The new blocks appear immediately after this block at the same nesting level. If omitted, blocks are appended to the end of the parent's children list."
+              },
+              "content_blocks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "content_block"
+                  ],
+                  "properties": {
+                    "content_block": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "title": "NotionRichText",
+                          "properties": {
+                            "bold": {
+                              "type": "boolean",
+                              "title": "Bold",
+                              "default": false,
+                              "examples": [
+                                true,
+                                false
+                              ],
+                              "description": "Indicates if the text is bold."
+                            },
+                            "code": {
+                              "type": "boolean",
+                              "title": "Code",
+                              "default": false,
+                              "examples": [
+                                true,
+                                false
+                              ],
+                              "description": "Indicates if the text is formatted as code."
+                            },
+                            "link": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "title": "Link",
+                              "default": null,
+                              "examples": [
+                                "https://www.google.com",
+                                "https://example.com/image.png"
+                              ],
+                              "description": "URL for hyperlinks or media blocks. For TEXT blocks: optional URL to make text clickable. For MEDIA blocks (image, video, file): REQUIRED - must be a valid external URL (http/https). Do not pass placeholder text in 'content' for media blocks."
+                            },
+                            "color": {
+                              "type": "string",
+                              "title": "Color",
+                              "default": "default",
+                              "examples": [
+                                "blue_background",
+                                "yellow_background",
+                                "gray",
+                                "purple"
+                              ],
+                              "description": "The color of the text background or text itself."
+                            },
+                            "italic": {
+                              "type": "boolean",
+                              "title": "Italic",
+                              "default": false,
+                              "examples": [
+                                true,
+                                false
+                              ],
+                              "description": "Indicates if the text is italic."
+                            },
+                            "content": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "title": "Content",
+                              "default": null,
+                              "examples": [
+                                "Hello World",
+                                "This is **bold** and *italic* text",
+                                "Visit [our site](https://example.com)",
+                                "Use `code` snippets",
+                                "~~Strikethrough~~ text"
+                              ],
+                              "description": "The textual content for TEXT blocks only. ENHANCED: Automatically parses markdown formatting including bold (**text**), italic (*text*), strikethrough (~~text~~), inline code (`code`), and links ([text](url)). Required for: paragraph, heading_1, heading_2, heading_3, callout, to_do, toggle, quote. NOT USED for media blocks (image, video, file) - use 'link' field instead."
+                            },
+                            "underline": {
+                              "type": "boolean",
+                              "title": "Underline",
+                              "default": false,
+                              "examples": [
+                                true,
+                                false
+                              ],
+                              "description": "Indicates if the text is underlined."
+                            },
+                            "strikethrough": {
+                              "type": "boolean",
+                              "title": "Strikethrough",
+                              "default": false,
+                              "examples": [
+                                true,
+                                false
+                              ],
+                              "description": "Indicates if the text has strikethrough."
+                            },
+                            "block_property": {
+                              "enum": [
+                                "paragraph",
+                                "heading_1",
+                                "heading_2",
+                                "heading_3",
+                                "callout",
+                                "to_do",
+                                "toggle",
+                                "quote",
+                                "bulleted_list_item",
+                                "numbered_list_item",
+                                "file",
+                                "image",
+                                "video",
+                                "divider"
+                              ],
+                              "type": "string",
+                              "title": "BlockProperty",
+                              "default": "paragraph",
+                              "examples": [
+                                "paragraph",
+                                "heading_1",
+                                "heading_2",
+                                "heading_3",
+                                "bulleted_list_item",
+                                "numbered_list_item",
+                                "to_do",
+                                "callout",
+                                "toggle",
+                                "quote",
+                                "divider"
+                              ],
+                              "description": "The block property of the block to be added. **Common text blocks:** `paragraph`, `heading_1`, `heading_2`, `heading_3`, `callout`, `to_do`, `toggle`, `quote`, `bulleted_list_item`, `numbered_list_item`. **Special blocks:** `divider` (creates a horizontal divider line, no content required). **Media/embed blocks:** `file`, `image`, `video` (requires `link` field with external URL - direct file uploads not supported). \n\n**NOTE:** Notion API only supports heading levels 1-3. heading_4, heading_5, etc. are automatically converted to heading_3."
+                            }
+                          },
+                          "description": "Include these fields in the json: {'content': 'Some words', 'link': 'https://random-link.com'. For content styling, refer to https://developers.notion.com/reference/rich-text.\n\nENHANCED: The 'content' field now automatically detects and parses markdown formatting - supports bold (**text**), italic (*text*), strikethrough (~~text~~), inline code (`code`), and links ([text](url)). Headers (# ## ###) are handled via block_property."
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      ],
+                      "examples": [
+                        {
+                          "content": "This is a paragraph added via API.",
+                          "block_property": "paragraph"
+                        },
+                        {
+                          "content": [
+                            {
+                              "text": {
+                                "content": "Text with "
+                              },
+                              "type": "text"
+                            },
+                            {
+                              "text": {
+                                "content": "formatting"
+                              },
+                              "type": "text",
+                              "annotations": {
+                                "bold": true
+                              }
+                            }
+                          ],
+                          "block_property": "paragraph"
+                        },
+                        {
+                          "code": {
+                            "language": "javascript",
+                            "rich_text": [
+                              {
+                                "text": {
+                                  "content": "console.log('Hello');"
+                                },
+                                "type": "text"
+                              }
+                            ]
+                          },
+                          "type": "code"
+                        },
+                        {
+                          "type": "paragraph",
+                          "paragraph": {
+                            "rich_text": [
+                              {
+                                "text": {
+                                  "content": "Full block schema example."
+                                },
+                                "type": "text"
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "type": "table",
+                          "table": {
+                            "children": [
+                              {
+                                "type": "table_row",
+                                "table_row": {
+                                  "cells": [
+                                    [
+                                      {
+                                        "text": {
+                                          "content": "Name"
+                                        },
+                                        "type": "text"
+                                      }
+                                    ],
+                                    [
+                                      {
+                                        "text": {
+                                          "content": "Value"
+                                        },
+                                        "type": "text"
+                                      }
+                                    ]
+                                  ]
+                                }
+                              },
+                              {
+                                "type": "table_row",
+                                "table_row": {
+                                  "cells": [
+                                    [
+                                      {
+                                        "text": {
+                                          "content": "Item 1"
+                                        },
+                                        "type": "text"
+                                      }
+                                    ],
+                                    [
+                                      {
+                                        "text": {
+                                          "content": "100"
+                                        },
+                                        "type": "text"
+                                      }
+                                    ]
+                                  ]
+                                }
+                              }
+                            ],
+                            "table_width": 2,
+                            "has_column_header": true
+                          }
+                        }
+                      ],
+                      "description": "Flattened NotionRichText schema with 'content' (required for text blocks) and 'block_property' (block type), OR a full Notion block dict with 'type' and properties, OR a hybrid format with 'content' as Notion rich_text array and 'block_property' for block type. For code blocks, use the full Notion format: {'type': 'code', 'code': {...}}."
+                    }
+                  },
+                  "description": "Represents a single content block that can be added to a Notion page."
+                },
+                "examples": [
+                  [
+                    {
+                      "content": "# Project Status Report",
+                      "block_property": "heading_1"
+                    },
+                    {
+                      "content": "System is **running smoothly** with *excellent* performance.",
+                      "block_property": "paragraph"
+                    },
+                    {
+                      "block_property": "divider"
+                    },
+                    {
+                      "content": "Task item",
+                      "block_property": "to_do"
+                    }
+                  ],
+                  [
+                    {
+                      "content_block": {
+                        "content": "# Project Status Report",
+                        "block_property": "heading_1"
+                      }
+                    },
+                    {
+                      "content_block": {
+                        "content": "System is **running smoothly** with *excellent* performance.",
+                        "block_property": "paragraph"
+                      }
+                    },
+                    {
+                      "content_block": {
+                        "code": {
+                          "language": "javascript",
+                          "rich_text": [
+                            {
+                              "text": {
+                                "content": "const api = await fetch('/api');"
+                              },
+                              "type": "text"
+                            }
+                          ]
+                        },
+                        "type": "code"
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "type": "table",
+                      "table": {
+                        "children": [
+                          {
+                            "type": "table_row",
+                            "table_row": {
+                              "cells": [
+                                [
+                                  {
+                                    "text": {
+                                      "content": "Header 1"
+                                    },
+                                    "type": "text"
+                                  }
+                                ],
+                                [
+                                  {
+                                    "text": {
+                                      "content": "Header 2"
+                                    },
+                                    "type": "text"
+                                  }
+                                ],
+                                [
+                                  {
+                                    "text": {
+                                      "content": "Header 3"
+                                    },
+                                    "type": "text"
+                                  }
+                                ]
+                              ]
+                            }
+                          },
+                          {
+                            "type": "table_row",
+                            "table_row": {
+                              "cells": [
+                                [
+                                  {
+                                    "text": {
+                                      "content": "Row 1 Col 1"
+                                    },
+                                    "type": "text"
+                                  }
+                                ],
+                                [
+                                  {
+                                    "text": {
+                                      "content": "Row 1 Col 2"
+                                    },
+                                    "type": "text"
+                                  }
+                                ],
+                                [
+                                  {
+                                    "text": {
+                                      "content": "Row 1 Col 3"
+                                    },
+                                    "type": "text"
+                                  }
+                                ]
+                              ]
+                            }
+                          }
+                        ],
+                        "table_width": 3,
+                        "has_row_header": false,
+                        "has_column_header": true
+                      }
+                    }
+                  ]
+                ],
+                "maxItems": 100,
+                "minItems": 1,
+                "description": "\u26a0\ufe0f CRITICAL: Notion API enforces 2000 char limit per text.content field. Content >2000 chars auto-splits.\nList of blocks to add (max 100). Each item can be in EITHER format:\nA) Unwrapped (recommended): {'content': 'text', 'block_property': 'paragraph'}\nB) Wrapped: {'content_block': {'content': 'text', 'block_property': 'paragraph'}}\nBlock content formats:\n1) Simplified: {'content': 'text (REQUIRED for text blocks)', 'block_property': 'type'}\n2) Full Notion: {'type': 'code', 'code': {...}} for complex blocks.\nAuto-features: Markdown parsing (**bold** *italic* ~~strike~~ `code` [link](url)).\nValid block_property values: paragraph, heading_1-3, callout, to_do, toggle, quote, bulleted/numbered_list_item, divider.\nNOTE: 'code' and 'table' blocks require full Notion format with nested children/properties. 'divider' blocks don't require content.\n\u26a0\ufe0f UNSUPPORTED: child_database (use NOTION_CREATE_DATABASE), child_page (use NOTION_CREATE_NOTION_PAGE), link_preview (read-only)."
+              },
+              "parent_block_id": {
+                "type": "string",
+                "examples": [
+                  "4b5f6e87-123a-456b-789c-9de8f7a9e4c1",
+                  "4b5f6e87123a456b789c9de8f7a9e4c1"
+                ],
+                "description": "The UUID of the parent page or block where content will be added AS CHILDREN (nested inside). \u26a0\ufe0f COMMON MISTAKE: To add content AFTER a block (as siblings), use the page ID as parent_block_id and specify the block ID in the 'after' parameter. Using a heading block ID here will fail because headings cannot have children unless they are toggleable. CONTAINER BLOCKS that support children: pages, paragraph, toggle, callout, quote, bulleted_list_item, numbered_list_item, to_do, column, column_list, table, synced_block, and heading_1/2/3 ONLY if is_toggleable=True. NON-CONTAINER blocks that CANNOT have children: heading_1/2/3 (unless toggleable), divider, image, video, file, embed, bookmark, equation, breadcrumb, table_of_contents, code, and child_database (databases don't support block children - use database entry actions instead). Accepts 32 hex chars with/without hyphens. Example: '4b5f6e87-123a-456b-789c-9de8f7a9e4c1'. Get valid IDs from create_page, search_pages, or other Notion actions."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_RETRIEVE_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_RETRIEVE_PAGE",
+          "description": "Retrieve a Notion page's properties/metadata (not block content) by page_id. Use when you have a page URL/ID and need to access its properties; for page content use block-children tools.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id"
+            ],
+            "properties": {
+              "page_id": {
+                "type": "string",
+                "examples": [
+                  "6c6a9b6c-12a4-4c3e-98e2-3c7a1e4f2d2a",
+                  "6c6a9b6c12a44c3e98e23c7a1e4f2d2a"
+                ],
+                "description": "The UUID of the Notion page to retrieve. Accepts both hyphenated (8-4-4-4-12) and unhyphenated (32 characters) UUID formats. IMPORTANT: Must be a PAGE ID, not a database ID. If you have a database ID, use NOTION_FETCH_DATABASE instead. This endpoint returns page properties and metadata, not page content (use block-children tools for content). For pages with properties containing more than 25 references, use NOTION_GET_PAGE_PROPERTY_ACTION to retrieve complete property values."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_FETCH_BLOCK_CONTENTS": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_BLOCK_CONTENTS",
+          "description": "Retrieves a paginated list of direct, first-level child block objects along with contents for a given parent Notion block or page ID; use block IDs from the response for subsequent calls to access deeply nested content.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "block_id"
+            ],
+            "properties": {
+              "block_id": {
+                "type": "string",
+                "examples": [
+                  "c02fc1d3-db8b-45c5-a222-27595b15aea7"
+                ],
+                "description": "UUID of the parent Notion block or page whose children are to be fetched. Accepts both hyphenated (e.g., 'c02fc1d3-db8b-45c5-a222-27595b15aea7') and non-hyphenated (e.g., 'c02fc1d3db8b45c5a22227595b15aea7') UUID formats. Notion's API does not support special identifiers like 'root' or 'top-level' - you must always provide an actual page or block UUID. To discover valid page/block IDs, first use 'NOTION_SEARCH_NOTION_PAGE' to find pages or 'NOTION_QUERY_DATABASE' to query databases."
+              },
+              "page_size": {
+                "type": "integer",
+                "examples": [
+                  "25",
+                  "50",
+                  "100"
+                ],
+                "description": "The maximum number of child blocks to return in a single response. The actual number of results may be lower if there are fewer child blocks available or if the end of the list is reached. Maximum allowed value is 100. If unspecified, Notion's default page size will be used."
+              },
+              "start_cursor": {
+                "type": "string",
+                "examples": [
+                  "a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6"
+                ],
+                "description": "Pagination cursor from next_cursor in a previous API response. When paginating through results, pass the next_cursor value from the previous response here to fetch the next page. Must be a valid UUID format or cursor string returned by Notion's API. If omitted, returns the first page of results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_GET_PAGE_MARKDOWN": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_GET_PAGE_MARKDOWN",
+          "description": "Retrieve a Notion page's full content rendered as Notion-flavored Markdown in a single API call. Use...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_GET_PAGE_MARKDOWN"
+              ]
+            }
+          }
+        },
+        "NOTION_UPDATE_BLOCK": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_UPDATE_BLOCK",
+          "description": "Updates existing Notion block's text content. \u26a0\ufe0f CRITICAL: Content limited to 2000 chars. Cannot cha...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_UPDATE_BLOCK"
+              ]
+            }
+          }
+        },
+        "NOTION_REPLACE_PAGE_CONTENT": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_REPLACE_PAGE_CONTENT",
+          "description": "Safely replaces a page's child blocks by optionally backing up current content, deleting existing ch...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_REPLACE_PAGE_CONTENT"
+              ]
+            }
+          }
+        },
+        "NOTION_APPEND_TEXT_BLOCKS": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_APPEND_TEXT_BLOCKS",
+          "description": "Append text blocks (paragraphs, headings, lists) to a Notion page. This is the most commonly used ac...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_APPEND_TEXT_BLOCKS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T20:09:11.742Z",
+        "current_time_utc_epoch_seconds": 1786565351,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "form",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"form\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_7ziGAiSoiQCH"
+  }
+}

@@ -1,0 +1,443 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-011-q1-explicit",
+    "workflow_id": 11,
+    "workflow_task": "Maintain an internal OneDrive-based operations knowledge base, create and verify strategy/support documents, coordinate operational tasks via Discord, check queue and system state files, and configure Gmail support labels and routing.",
+    "query": "find and download strategy documents from OneDrive",
+    "required_tools": [
+      "ONE_DRIVE_ONEDRIVE_FIND_FILE",
+      "ONE_DRIVE_DOWNLOAD_FILE_BY_PATH"
+    ],
+    "supporting_tools": [
+      "ONE_DRIVE_SEARCH_ITEMS"
+    ],
+    "rationale": "Finding the specific strategy file by name or search requires finding the item first, then downloading it by path.",
+    "candidate_tools": [
+      "DISCORDBOT_LIST_MESSAGES",
+      "DISCORDBOT_TEST_AUTH",
+      "GMAIL_CREATE_FILTER",
+      "GMAIL_CREATE_LABEL",
+      "ONE_DRIVE_DOWNLOAD_FILE",
+      "ONE_DRIVE_DOWNLOAD_FILE_BY_PATH",
+      "ONE_DRIVE_GET_ITEM",
+      "ONE_DRIVE_LIST_FOLDER_CHILDREN",
+      "ONE_DRIVE_ONEDRIVE_CREATE_FOLDER",
+      "ONE_DRIVE_ONEDRIVE_CREATE_TEXT_FILE",
+      "ONE_DRIVE_ONEDRIVE_FIND_FILE",
+      "ONE_DRIVE_ONEDRIVE_FIND_FOLDER",
+      "ONE_DRIVE_SEARCH_ITEMS"
+    ],
+    "source_query_id": "workflow-011-q1",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "find and download strategy documents from OneDrive"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "find and download strategy documents from OneDrive",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if starting from a sharing link)] [Prerequisite]: Resolve the drive scope and item identifier using ONE_DRIVE_GET_DRIVE_ITEM_BY_SHARING_URL (reuse the same scope in later calls).",
+            "[Optional (if an absolute path is already known)] [Step]: Download directly using ONE_DRIVE_DOWNLOAD_FILE_BY_PATH (skip item discovery).",
+            "[Optional (if item identifier/path is unknown)] [Prerequisite]: Locate the file using ONE_DRIVE_SEARCH_ITEMS (q required; paginate via nextLink/skip_token) or ONE_DRIVE_LIST_FOLDER_CHILDREN (paginate as returned) and capture item_id + name.",
+            "[Required] [Prerequisite]: Validate the target is a file using ONE_DRIVE_GET_ITEM (capture correct drive_id/scope and a usable file_name).",
+            "[Optional (if access is uncertain or download errors persist)] [Prerequisite]: Review sharing/access using ONE_DRIVE_GET_ITEM_PERMISSIONS (paginate if present) before retrying.",
+            "[Required] [Step]: Request the download using ONE_DRIVE_DOWNLOAD_FILE (item_id + file_name; include drive_id for non-default drives) and capture response.data.content.s3url (and attachment handle if needed).",
+            "[Optional (if conversion or specific format is needed)] [Next Step]: Export via ONE_DRIVE_DOWNLOAD_ITEM_AS_FORMAT (then use the returned URL for retrieval).",
+            "[Optional (if raw bytes are needed immediately)] [Next Step]: Fetch response.data.content.s3url promptly using COMPOSIO_REMOTE_WORKBENCH (treat as short-lived).",
+            "[Fallback (if download fails or URL is expired/invalid)] [Fallback]: Re-run ONE_DRIVE_GET_ITEM to confirm current metadata/scope, then re-run ONE_DRIVE_DOWNLOAD_FILE to mint a fresh response.data.content.s3url; if identifiers seem stale, re-resolve via ONE_DRIVE_GET_DRIVE_ITEM_BY_SHARING_URL or rediscover via ONE_DRIVE_SEARCH_ITEMS/ONE_DRIVE_LIST_FOLDER_CHILDREN."
+          ],
+          "known_pitfalls": [
+            "[ONE_DRIVE_DOWNLOAD_FILE] Requires both item_id and file_name; missing either commonly triggers request validation failures.",
+            "[ONE_DRIVE_DOWNLOAD_FILE] response.data.content.s3url behaves like a short-lived signed URL; delayed fetches may fail (often HTTP 400/403) and require re-running ONE_DRIVE_DOWNLOAD_FILE.",
+            "[ONE_DRIVE_LIST_FOLDER_CHILDREN] Some scopes require an explicit drive context (e.g., drive_id/site context); missing scope can cause parameter-requirement validation errors.",
+            "[ONE_DRIVE_SEARCH_ITEMS] q is required and results may need pagination via nextLink/skip_token to reach the intended item.",
+            "[ONE_DRIVE_DOWNLOAD_FILE] Incorrect or missing drive_id/drive scope can surface 404 itemNotFound or 400 invalidRequest/invalidResourceId; validate scope with ONE_DRIVE_GET_ITEM."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Fetch bytes from the temporary URL returned in response.data.content.s3url",
+              "code": "```python\nimport requests\nb=requests.get(s3url,timeout=60).content\nn=len(b)\n```"
+            },
+            {
+              "description": "If fetched payload is base64 text, decode to bytes before parsing",
+              "code": "```python\nimport base64\nraw=payload\nif raw[:4]!=b'PK\\x03\\x04':\n s=raw.decode('utf-8','ignore').strip().strip('\"')\n raw=base64.b64decode(s)\nok=raw[:4]==b'PK\\x03\\x04'\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "ONE_DRIVE_GET_ITEM",
+            "ONE_DRIVE_DOWNLOAD_FILE"
+          ],
+          "related_tool_slugs": [
+            "ONE_DRIVE_LIST_FOLDER_CHILDREN",
+            "ONE_DRIVE_SEARCH_ITEMS",
+            "ONE_DRIVE_DOWNLOAD_ITEM_AS_FORMAT",
+            "ONE_DRIVE_GET_DRIVE_ITEM_BY_SHARING_URL",
+            "ONE_DRIVE_GET_ITEM_PERMISSIONS",
+            "ONE_DRIVE_DOWNLOAD_FILE_BY_PATH"
+          ],
+          "toolkits": [
+            "one_drive"
+          ],
+          "plan_id": "5dffd5ad389544158d877a32c0368146"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "one_drive",
+          "has_active_connection": false,
+          "description": "OneDrive is Microsoft\u2019s cloud storage solution enabling users to store, sync, and share files across devices, offering offline access, real-time collaboration, and enterprise-grade security",
+          "status_message": "No Active connection for toolkit=one_drive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"one_drive\") to create a connection BEFORE executing any one_drive tools."
+        }
+      ],
+      "tool_schemas": {
+        "ONE_DRIVE_GET_ITEM": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_GET_ITEM",
+          "description": "Retrieves the metadata of a DriveItem by its unique ID. Use this tool to get information about a specific file or folder in OneDrive when you have its ID. If a `drive_id` is not provided, it defaults to the user's main drive.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "item_id"
+            ],
+            "properties": {
+              "item_id": {
+                "type": "string",
+                "examples": [
+                  "01NKDM7HMOJTVYMDOSXFDK2QJDXCDI3WUK",
+                  "D4648F06C91D9D3D!54927"
+                ],
+                "description": "The unique identifier of the DriveItem (file or folder). DriveItem IDs vary by platform: OneDrive for Business/SharePoint uses '01...' prefix format (e.g., '01NKDM7HMOJTVYMDOSXFDK2QJDXCDI3WUK'), while OneDrive Personal uses 'HASH!NUMBER' format (e.g., 'D4648F06C91D9D3D!54927'). IDs are case-sensitive and must be used exactly as returned from Microsoft Graph API. Obtain IDs from ONE_DRIVE_LIST_FOLDER_CHILDREN, ONE_DRIVE_SEARCH_ITEMS, or similar operations. Do NOT use: web URLs, sharing links, SharePoint listItem IDs, or manually constructed identifiers. IDs become stale after move, rename, or delete; refresh via ONE_DRIVE_SEARCH_ITEMS or ONE_DRIVE_LIST_FOLDER_CHILDREN instead of retrying a stale ID."
+              },
+              "drive_id": {
+                "type": "string",
+                "examples": [
+                  "b!C1N9xkeL9Ea4Y0bdYcYWjXn7b0Un2adItX1s59n5N7Y"
+                ],
+                "description": "The unique identifier of the Drive where the item is located. If not provided, the action will target the user's personal OneDrive (me/drive). Always specify drive_id explicitly for group drives, SharePoint site drives, or shared libraries to avoid silently querying the wrong drive."
+              },
+              "select_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "name",
+                    "size",
+                    "file",
+                    "folder",
+                    "createdDateTime",
+                    "lastModifiedDateTime"
+                  ]
+                ],
+                "description": "A list of DriveItem properties to return. If not specified, a default set of properties is returned. Refer to the DriveItem resource documentation for available fields."
+              },
+              "expand_relations": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "activities",
+                    "analytics",
+                    "children",
+                    "createdByUser",
+                    "lastModifiedByUser",
+                    "listItem",
+                    "permissions",
+                    "retentionLabel",
+                    "subscriptions",
+                    "thumbnails",
+                    "versions",
+                    "workbook"
+                  ],
+                  "type": "string",
+                  "description": "Valid navigation properties that can be expanded for a driveItem."
+                },
+                "examples": [
+                  [
+                    "children"
+                  ],
+                  [
+                    "thumbnails"
+                  ],
+                  [
+                    "children",
+                    "thumbnails"
+                  ]
+                ],
+                "description": "Navigation properties to expand in the response. Valid values: 'children' (folder contents), 'thumbnails' (image previews), 'versions' (version history), 'permissions' (sharing permissions), 'listItem' (SharePoint list item data), 'activities' (recent activities), 'analytics' (usage analytics), 'createdByUser' (creator user details), 'lastModifiedByUser' (last modifier user details), 'retentionLabel' (retention policy), 'subscriptions' (webhooks), 'workbook' (Excel workbook data). Note: 'content' is NOT expandable - use ONE_DRIVE_DOWNLOAD_FILE to retrieve file content; 'listItem' requires SharePoint drives; some properties have regional/license restrictions. When expanding 'children': the array may be empty or absent; check for its presence and branch on 'file' vs 'folder' facets before processing. Expansion is non-recursive \u2014 call this tool separately for each child folder to traverse nested trees."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_DOWNLOAD_FILE": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_DOWNLOAD_FILE",
+          "description": "Downloads a file from a user's OneDrive using its item ID, which must refer to a file and not a folder. Response contains a content object with the downloaded file, MIME type, and name; raw file data is not returned directly. Parsing content from Excel, Word, PDF, or other formats requires additional tooling. The downloaded file can be passed to downstream tools such as OUTLOOK_SEND_EMAIL or OUTLOOK_CREATE_DRAFT.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "item_id",
+              "file_name"
+            ],
+            "properties": {
+              "format": {
+                "enum": [
+                  "pdf",
+                  "html"
+                ],
+                "type": "string",
+                "examples": [
+                  "pdf",
+                  "html"
+                ],
+                "description": "Optional format for file conversion during download. 'pdf' converts supported source files (doc, docx, dot, dotx, dotm, dsn, dwg, eml, epub, fluidframework, form, htm, html, loop, loot, markdown, md, msg, note, odp, ods, odt, page, pps, ppsx, ppt, pptx, pulse, rtf, task, tif, tiff, wbtx, whiteboard, xls, xlsm, xlsx) to PDF. 'html' converts Loop/Fluid files (loop, fluid, wbtx) to HTML. Leave empty to download the file in its original format without conversion. Do NOT use this parameter if the file is already in the target format (e.g., don't convert PDF to PDF or HTML to HTML), as this will result in an error."
+              },
+              "item_id": {
+                "type": "string",
+                "examples": [
+                  "1234567890ABC",
+                  "FF2C4217E73229F9!s950a8550dc04434bbedf945030020683"
+                ],
+                "description": "Raw item ID only (e.g., '1234567890ABC'). Do not include URL fragments or query parameters like '&cid=...' or '?param=...' from sharing links."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com",
+                  "specific_user_id"
+                ],
+                "description": "User's ID or User Principal Name (UPN), or 'me' for the authenticated user's OneDrive. Ignored when drive_id is provided."
+              },
+              "drive_id": {
+                "type": "string",
+                "examples": [
+                  "b!C378D127A8A967E6"
+                ],
+                "description": "The ID of the drive containing the file. Required for SharePoint or OneDrive for Business drives. When provided, user_id is ignored."
+              },
+              "file_name": {
+                "type": "string",
+                "examples": [
+                  "report.docx",
+                  "photo.png",
+                  "archive.zip"
+                ],
+                "description": "Desired filename (including extension) for the downloaded content."
+              },
+              "if_none_match": {
+                "type": "string",
+                "examples": [
+                  "aQzlGRDlBMjdBRDQ5RUVCOTE3LjA",
+                  "{C378D127-A8A9-67E6-1234-567890ABCDEF},1"
+                ],
+                "description": "Optional ETag or cTag value for conditional download. If the provided tag matches the current file's tag, the API returns HTTP 304 Not Modified without downloading the file, saving bandwidth. Useful for caching scenarios."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_LIST_FOLDER_CHILDREN": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_LIST_FOLDER_CHILDREN",
+          "description": "List the direct children (files/folders) of a OneDrive/SharePoint folder by DriveItem ID or path. Returns reliable pagination tokens for large folders. Use when you need to enumerate folder contents deterministically, find companion artifacts (e.g., .vtt/.docx files), or browse within a known folder.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "maximum": 999,
+                "minimum": 1,
+                "examples": [
+                  50,
+                  200
+                ],
+                "description": "Maximum number of items to return per page. Default is 200."
+              },
+              "expand": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "thumbnails"
+                  ],
+                  [
+                    "permissions"
+                  ],
+                  [
+                    "children"
+                  ]
+                ],
+                "description": "List of relationships to expand in the response (e.g., ['thumbnails', 'permissions']). Use this to include related resources inline."
+              },
+              "select": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "name",
+                    "webUrl",
+                    "size",
+                    "lastModifiedDateTime"
+                  ]
+                ],
+                "description": "Comma-separated list of properties to include in the response (e.g., ['id', 'name', 'size'])."
+              },
+              "orderby": {
+                "type": "string",
+                "examples": [
+                  "name",
+                  "lastModifiedDateTime desc"
+                ],
+                "description": "Sort results by specified properties (e.g., 'name', 'lastModifiedDateTime desc')."
+              },
+              "site_id": {
+                "type": "string",
+                "examples": [
+                  "contoso.sharepoint.com,2C712604-1370-44E7-A1F5-426573FDA80A,2D2244C3-251A-49EA-93A8-39E1C3A060FE"
+                ],
+                "description": "If provided, uses /sites/{site-id}/drive/... route for SharePoint sites."
+              },
+              "drive_id": {
+                "type": "string",
+                "examples": [
+                  "b!C378D127A8A967E6"
+                ],
+                "description": "The ID of the drive. Required unless using 'use_me_drive' or 'site_id' is provided."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend the same required identifiers, but filter/sort params need not be repeated \u2014 the token carries them."
+              },
+              "folder_path": {
+                "type": "string",
+                "examples": [
+                  "/",
+                  "/Recordings",
+                  "/Documents/Project"
+                ],
+                "description": "Path relative to the drive root (e.g., '/', '/Recordings', '/Documents/Project'). Use '/' to list the root folder's children. Alternative to 'folder_item_id'."
+              },
+              "use_me_drive": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, uses /me/drive/... route for the authenticated user's personal OneDrive."
+              },
+              "folder_item_id": {
+                "type": "string",
+                "examples": [
+                  "01BYE5RZ6QN3ZWBTUFOFD3GSPGOHDJD36K",
+                  "10F4BEA8101D62DC!s57eaaec50fde480f8f0ffa2a3e346e0b"
+                ],
+                "description": "The ID of the folder (DriveItem) to list children from. Supports both simple item IDs (e.g., '01BYE5RZ6QN3ZWBTUFOFD3GSPGOHDJD36K') and drive-qualified item IDs with '!' separator (e.g., 'driveId!itemId' format commonly returned from search results or shared item listings). When a drive-qualified ID is detected, the drive portion is automatically extracted and used in the API request. Note: The 'driveId!itemId' pattern is based on observed OneDrive API behavior and may not be explicitly documented. Required unless 'folder_path' is provided."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_SEARCH_ITEMS": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_SEARCH_ITEMS",
+          "description": "Search OneDrive for files and folders by keyword. Searches filenames, metadata, and file content to ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_SEARCH_ITEMS"
+              ]
+            }
+          }
+        },
+        "ONE_DRIVE_DOWNLOAD_ITEM_AS_FORMAT": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_DOWNLOAD_ITEM_AS_FORMAT",
+          "description": "Tool to download the contents of a driveItem converted to a specific format (e.g., PDF or HTML). Use...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_DOWNLOAD_ITEM_AS_FORMAT"
+              ]
+            }
+          }
+        },
+        "ONE_DRIVE_GET_DRIVE_ITEM_BY_SHARING_URL": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_GET_DRIVE_ITEM_BY_SHARING_URL",
+          "description": "Tool to resolve a OneDrive/SharePoint sharing URL (or shareId) to a DriveItem with driveId and itemI...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_GET_DRIVE_ITEM_BY_SHARING_URL"
+              ]
+            }
+          }
+        },
+        "ONE_DRIVE_GET_ITEM_PERMISSIONS": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_GET_ITEM_PERMISSIONS",
+          "description": "Retrieves the permissions of a DriveItem by its unique ID within a specific Drive. Use when you need...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_GET_ITEM_PERMISSIONS"
+              ]
+            }
+          }
+        },
+        "ONE_DRIVE_DOWNLOAD_FILE_BY_PATH": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_DOWNLOAD_FILE_BY_PATH",
+          "description": "Downloads the contents of a file from OneDrive by its path. The API returns a 302 redirect to a pre-...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_DOWNLOAD_FILE_BY_PATH"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:49:15.190Z",
+        "current_time_utc_epoch_seconds": 1786564155,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "blow",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"blow\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_FPomsyAKFhdt"
+  }
+}

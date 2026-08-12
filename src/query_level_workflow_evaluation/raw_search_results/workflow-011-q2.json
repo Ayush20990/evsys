@@ -1,0 +1,221 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-011-q2",
+    "workflow_id": 11,
+    "workflow_task": "Maintain an internal OneDrive-based operations knowledge base, create and verify strategy/support documents, coordinate operational tasks via Discord, check queue and system state files, and configure Gmail support labels and routing.",
+    "query": "check recent Discord operational task messages",
+    "required_tools": [
+      "DISCORDBOT_LIST_MESSAGES"
+    ],
+    "supporting_tools": [
+      "DISCORDBOT_TEST_AUTH"
+    ],
+    "rationale": "Listing messages is directly required to coordinate operational tasks via Discord channels.",
+    "candidate_tools": [
+      "DISCORDBOT_LIST_MESSAGES",
+      "DISCORDBOT_TEST_AUTH",
+      "GMAIL_CREATE_FILTER",
+      "GMAIL_CREATE_LABEL",
+      "ONE_DRIVE_DOWNLOAD_FILE",
+      "ONE_DRIVE_DOWNLOAD_FILE_BY_PATH",
+      "ONE_DRIVE_GET_ITEM",
+      "ONE_DRIVE_LIST_FOLDER_CHILDREN",
+      "ONE_DRIVE_ONEDRIVE_CREATE_FOLDER",
+      "ONE_DRIVE_ONEDRIVE_CREATE_TEXT_FILE",
+      "ONE_DRIVE_ONEDRIVE_FIND_FILE",
+      "ONE_DRIVE_ONEDRIVE_FIND_FOLDER",
+      "ONE_DRIVE_SEARCH_ITEMS"
+    ]
+  },
+  "request": {
+    "query": "check recent Discord operational task messages"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "check recent Discord operational task messages",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if server identifier unknown)] [Prerequisite]: Discover accessible servers using DISCORD_LIST_MY_GUILDS (pick target server identifier for downstream bot reads).",
+            "[Optional (if bot auth/connection is uncertain or prior reads failed)] [Prerequisite]: Validate bot credentials using DISCORDBOT_TEST_AUTH (continue only when auth_ok=true).",
+            "[Required] [Step]: List channels in the target server using DISCORDBOT_LIST_GUILD_CHANNELS (collect message-capable channel identifiers to scan).",
+            "[Required] [Step]: For each channel, fetch history using DISCORDBOT_LIST_MESSAGES (paginate with before/after; filter to a consistent UTC cutoff for a recent lookback window; stop paging a channel once pages are older than the cutoff).",
+            "[Optional (if readable labeling/validation is needed)] [Next Step]: Fetch channel metadata using DISCORDBOT_GET_CHANNEL (map identifiers to type/label for reporting only on included channels).",
+            "[Optional (if expected messages are missing and threads are used)] [Fallback]: Enumerate threads using DISCORDBOT_LIST_PUBLIC_ARCHIVED_THREADS, then fetch thread messages using DISCORDBOT_LIST_MESSAGES (apply the same cutoff and pagination rules)."
+          ],
+          "known_pitfalls": [
+            "[DISCORD_LIST_MY_GUILDS] Response shape can vary by wrapper; the server array may appear under data.guilds or data.details\u2014confirm before extracting identifiers.",
+            "[DISCORDBOT_TEST_AUTH] Can return auth_ok=false with status_code=401; treat as a hard blocker before DISCORDBOT_LIST_GUILD_CHANNELS or DISCORDBOT_LIST_MESSAGES.",
+            "[DISCORDBOT_LIST_MESSAGES] Page size is capped at ~100 messages per call; active channels require multi-page pagination to cover the target window.",
+            "[DISCORDBOT_LIST_MESSAGES] Inaccessible/invalid channels can fail with HTTP 404 (\"Unknown Channel\" / error code 10003); re-sync identifiers via DISCORDBOT_LIST_GUILD_CHANNELS.",
+            "[COMPOSIO_REMOTE_WORKBENCH] Direct REST-style workarounds for listing/reading can still yield 401/404 in some contexts; prefer DISCORDBOT_LIST_GUILD_CHANNELS and DISCORDBOT_LIST_MESSAGES."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "DISCORDBOT_LIST_GUILD_CHANNELS",
+            "DISCORDBOT_LIST_MESSAGES"
+          ],
+          "related_tool_slugs": [
+            "DISCORDBOT_GET_CHANNEL",
+            "DISCORD_LIST_MY_GUILDS",
+            "DISCORDBOT_LIST_PUBLIC_ARCHIVED_THREADS",
+            "DISCORDBOT_TEST_AUTH"
+          ],
+          "toolkits": [
+            "discord",
+            "discordbot"
+          ],
+          "plan_id": "78fda9b0b33348faab015bf88272b0ed"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "discord",
+          "has_active_connection": false,
+          "description": "An instant messaging and VoIP social platform.",
+          "status_message": "No Active connection for toolkit=discord. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"discord\") to create a connection BEFORE executing any discord tools."
+        },
+        {
+          "toolkit": "discordbot",
+          "has_active_connection": false,
+          "description": "Discordbot refers to automated programs on Discord servers, performing tasks like moderation, music playback, and user engagement to enhance community interactions",
+          "status_message": "No Active connection for toolkit=discordbot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"discordbot\") to create a connection BEFORE executing any discordbot tools."
+        }
+      ],
+      "tool_schemas": {
+        "DISCORDBOT_LIST_GUILD_CHANNELS": {
+          "toolkit": "DISCORDBOT",
+          "tool_slug": "DISCORDBOT_LIST_GUILD_CHANNELS",
+          "description": "Fetches all channels (text, voice, category, etc.) for a specified Discord guild. Does not include threads or message content.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "guild_id"
+            ],
+            "properties": {
+              "guild_id": {
+                "type": "string",
+                "description": "Identifier of the Discord guild (server) whose channels to list."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "DISCORDBOT_LIST_MESSAGES": {
+          "toolkit": "DISCORDBOT",
+          "tool_slug": "DISCORDBOT_LIST_MESSAGES",
+          "description": "Retrieves messages from a Discord channel, ordered newest first. Supports pagination via before/after/around parameters.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "channel_id"
+            ],
+            "properties": {
+              "after": {
+                "type": "string",
+                "description": "Get messages after this message ID for forward pagination."
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Max number of messages to return (1-100, defaults to 50)."
+              },
+              "around": {
+                "type": "string",
+                "description": "Get messages around this message ID."
+              },
+              "before": {
+                "type": "string",
+                "description": "Get messages before this message ID for backward pagination."
+              },
+              "channel_id": {
+                "type": "string",
+                "description": "ID of the Discord channel to fetch messages from."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "DISCORDBOT_GET_CHANNEL": {
+          "toolkit": "DISCORDBOT",
+          "tool_slug": "DISCORDBOT_GET_CHANNEL",
+          "description": "Retrieves detailed metadata for a specific Discord channel by its channel_id. Returns only channel metadata, not message content or member lists.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "channel_id"
+            ],
+            "properties": {
+              "channel_id": {
+                "type": "string",
+                "description": "The ID of the Discord channel to retrieve."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "DISCORD_LIST_MY_GUILDS": {
+          "toolkit": "DISCORD",
+          "tool_slug": "DISCORD_LIST_MY_GUILDS",
+          "description": "Lists the current user's guilds, returning partial data for each; primarily used for displaying serv...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "DISCORD_LIST_MY_GUILDS"
+              ]
+            }
+          }
+        },
+        "DISCORDBOT_LIST_PUBLIC_ARCHIVED_THREADS": {
+          "toolkit": "DISCORDBOT",
+          "tool_slug": "DISCORDBOT_LIST_PUBLIC_ARCHIVED_THREADS",
+          "description": "Lists public archived threads in a Discord channel, sorted by most recent archival.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "DISCORDBOT_LIST_PUBLIC_ARCHIVED_THREADS"
+              ]
+            }
+          }
+        },
+        "DISCORDBOT_TEST_AUTH": {
+          "toolkit": "DISCORDBOT",
+          "tool_slug": "DISCORDBOT_TEST_AUTH",
+          "description": "Tool to validate the configured Discord bot token by fetching the current authenticated bot user. Us...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "DISCORDBOT_TEST_AUTH"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:37:03.755Z",
+        "current_time_utc_epoch_seconds": 1786563423,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "fast",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"fast\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_CGeN2_hGq-dz"
+  }
+}

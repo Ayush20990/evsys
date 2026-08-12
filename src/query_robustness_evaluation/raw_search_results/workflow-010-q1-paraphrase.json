@@ -1,0 +1,303 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-010-q1-paraphrase",
+    "workflow_id": 10,
+    "workflow_task": "Reconcile an organization's QuickBooks bank-account ledger by querying existing transactions, removing or undoing incorrect entries, posting corrected ledger activity, creating adjustment entries, recording a customer payment, and verifying financial reports.",
+    "query": "retrieve past records from the bank account ledger",
+    "required_tools": [
+      "QUICKBOOKS_QUERY_ENTITIES"
+    ],
+    "supporting_tools": [
+      "QUICKBOOKS_GET_COMPANY_INFO"
+    ],
+    "rationale": "An agent needs to search and query existing ledger entries and entities to review current bank transactions before reconciliation.",
+    "candidate_tools": [
+      "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
+      "QUICKBOOKS_EXECUTE_BATCH_OPERATION",
+      "QUICKBOOKS_GET_COMPANY_INFO",
+      "QUICKBOOKS_GET_REPORTS",
+      "QUICKBOOKS_PROXY_EXECUTE",
+      "QUICKBOOKS_QUERY_ENTITIES"
+    ],
+    "source_query_id": "workflow-010-q1",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "retrieve past records from the bank account ledger"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "retrieve past records from the bank account ledger",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if defining \u201crecent\u201d relative to today)] [Prerequisite]: Get the current date using MERCURY_MCP_GET_CURRENT_DATE (derive a date window for filters).",
+            "[Required] [Step]: Fetch available accounts and balances using MERCURY_MCP_GET_ACCOUNTS (identify the target account).",
+            "[Optional (if you need details for one selected account)] [Step]: Fetch the chosen account using MERCURY_MCP_GET_ACCOUNT (confirm the selected account\u2019s attributes).",
+            "[Required] [Step]: List recent transactions using MERCURY_MCP_LIST_TRANSACTIONS (apply date/status filters and a conservative limit).",
+            "[Required (if page.nextPage is returned)] [Step]: Paginate MERCURY_MCP_LIST_TRANSACTIONS (pass page.nextPage as start_after until nextPage is absent).",
+            "[Optional (if a specific transaction needs drilldown)] [Next Step]: Fetch a single transaction using MERCURY_MCP_GET_TRANSACTION_BY_ID (retrieve full details)."
+          ],
+          "known_pitfalls": [
+            "[MERCURY_MCP_LIST_TRANSACTIONS] Responses may include page.nextPage; stopping after the first page can omit transactions.",
+            "[MERCURY_MCP_LIST_TRANSACTIONS] If status filtering is omitted, results can include non-final items; confirm whether only completed transactions are desired.",
+            "[MERCURY_MCP_GET_ACCOUNTS] Account objects can include sensitive fields; only surface what\u2019s necessary for the balance/transaction summary."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "MERCURY_MCP_GET_ACCOUNTS",
+            "MERCURY_MCP_LIST_TRANSACTIONS",
+            "MERCURY_MCP_GET_CURRENT_DATE"
+          ],
+          "related_tool_slugs": [
+            "MERCURY_MCP_GET_ACCOUNT",
+            "MERCURY_MCP_GET_TRANSACTION_BY_ID",
+            "MERCURY_MCP_GET_TREASURY",
+            "MERCURY_MCP_GET_TREASURY_TRANSACTIONS"
+          ],
+          "toolkits": [
+            "mercury_mcp"
+          ],
+          "plan_id": "6aace5f682c24c828544bd47487b295e"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "mercury_mcp",
+          "has_active_connection": false,
+          "description": "Mercury's official MCP server (Beta) for read-only access to your Mercury business banking data \u2014 accounts, balances, transactions, cards, recipients, statements, and treasury. Cannot initiate transactions or modify account data; all mutations are bl",
+          "status_message": "No Active connection for toolkit=mercury_mcp. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"mercury_mcp\") to create a connection BEFORE executing any mercury_mcp tools."
+        }
+      ],
+      "tool_schemas": {
+        "MERCURY_MCP_GET_ACCOUNTS": {
+          "toolkit": "MERCURY_MCP",
+          "tool_slug": "MERCURY_MCP_GET_ACCOUNTS",
+          "description": "\n    Retrieve a paginated list of accounts. Supports cursor-based pagination with limit, order, start_after, and end_before query parameters.\n\n    \n  ",
+          "input_schema": {
+            "type": "object",
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 1000,
+                "maximum": 1000,
+                "minimum": 1,
+                "description": "Maximum number of results to return. Allowed range: 1 to 1000. Defaults to 1000"
+              },
+              "order": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "default": "asc",
+                "description": "Sort order. Can be 'asc' or 'desc'. Defaults to 'asc'"
+              },
+              "end_before": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The ID of the account to end the page before (exclusive). When provided, results will end just before this ID and work backwards. Use this for reverse pagination or to retrieve previous pages. Cannot be combined with start_after."
+              },
+              "start_after": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The ID of the account to start the page after (exclusive). When provided, results will begin with the account immediately following this ID. Use this for standard forward pagination to get the next page of results. Cannot be combined with end_before."
+              }
+            },
+            "additionalProperties": false
+          },
+          "hasFullSchema": true
+        },
+        "MERCURY_MCP_LIST_TRANSACTIONS": {
+          "toolkit": "MERCURY_MCP",
+          "tool_slug": "MERCURY_MCP_LIST_TRANSACTIONS",
+          "description": "\n    Retrieve a paginated list of all transactions across all accounts. Supports advanced filtering by date ranges, status, categories, and cursor-based pagination.\n\n    \n    CRITICAL TRUNCATION RULE - READ THIS FIRST:\n    ================================================================================\n    IF YOU SEE \"Result too long\" IN THE RESPONSE:\n    1. IMMEDIATELY STOP - Do not analyze or use the truncated data\n    2. The data is INCOMPLETE and any analysis will be WRONG\n    3. Start over with a smaller limit (reduce by 50%)\n    4. Paginate through ALL pages until you have complete data\n    5. NEVER provide answers based on truncated results\n    ================================================================================\n\n    MANDATORY PAGINATION FOR COMPLETE RESULTS:\n    When a user asks ANY question requiring complete data (totals, balances, aggregates, \n    \"most/least\", \"all transactions\", comparisons, or any calculation across transactions):\n\n    CRITICAL: Incomplete pagination will produce WRONG ANSWERS for questions about totals, \n    spending categories, balances, minimums, maximums, or \"most/least\". You must fetch everything \n    before calculating or answering.\n\n    1. Start with a limit of 300 transactions.\n    2. You MUST automatically paginate through ALL pages WITHOUT asking the user\n    3. Continue calling listTransactions using the page.nextPage value from each response\n    4. Keep fetching until page.nextPage is not present\n    5. If pagination would take more than 3 tool calls, ask the user to narrow down to a smaller time period\n    6. It is a CRITICAL ERROR to answer before having fetched ALL pages\n\n    FILTERING:\n    - IMPORTANT: WHEN FILTERING BY DATE, ALWAYS CHECK THE CURRENT DATE FIRST and ensure you're using the current year for current year queries\n    - Unless specified otherwise or queried for \"all transactions\", ONLY include transactions with \"status: sent\"\n    - To get transactions for a specific account, use the accountId parameter to filter by accountId\n\n    PAGINATION MECHANICS:\n    - Use the limit parameter to control page size\n    - If page.nextPage is returned, use it as the start_after parameter in your next call\n    - Keep fetching until page.nextPage is null/undefined\n    - The page.nextPage value is a transaction ID to start after (exclusive)\n\n    COMPUTATIONAL REQUIREMENTS:\n    - For any query requiring:\n      - Sums, totals, averages, medians, modes, ranges, most/least, or other aggregations across accounts/transactions\n      - Calculations involving currency amounts\n      - Comparisons of financial metrics\n    - You MUST:\n      - Create an artifact that processes the data programmatically\n      - Parse the JSON response and use JavaScript/Python to calculate\n      - Display intermediate steps for verification\n      - Never rely on mental arithmetic for financial calculations\n    - Example: \"What's my total balance?\"\n      - CORRECT: Create artifact that parses accounts, maps to balances, uses reduce() to sum\n      - INCORRECT: Manually adding up balance values\n\n    For queries about 'last two months' or 'this year', calculate dates based on the actual current date\n    Use the getCurrentDate tool to get the current date.\n\n    Use the getTransaction tool to get more details about a specific transaction.\n  \n  ",
+          "input_schema": {
+            "type": "object",
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "properties": {
+              "end": {
+                "type": "string",
+                "description": "Latest createdAt date to filter for. If it\u2019s not provided, it defaults to current day. Format: YYYY-MM-DD or an ISO 8601 string. Please note that your Mercury transactions on your Dashboard might have their postedAt date displayed, as opposed to createdAt"
+              },
+              "limit": {
+                "type": "integer",
+                "default": 1000,
+                "maximum": 1000,
+                "minimum": 1,
+                "description": "Maximum number of results to return. Allowed range: 1 to 1000. Defaults to 1000"
+              },
+              "order": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "default": "asc",
+                "description": "Sort order. Can be 'asc' or 'desc'. Defaults to 'asc'"
+              },
+              "start": {
+                "type": "string",
+                "description": "Earliest createdAt date to filter for. If not provided, it defaults to the date of your first transaction. Format: YYYY-MM-DD or an ISO 8601 string. Please note that your Mercury transactions on your Dashboard might have their postedAt date displayed, as opposed to createdAt"
+              },
+              "search": {
+                "type": "string",
+                "description": "Search term to look for in transaction descriptions."
+              },
+              "status": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "pending",
+                    "sent",
+                    "cancelled",
+                    "failed",
+                    "reversed",
+                    "blocked"
+                  ],
+                  "type": "string"
+                }
+              },
+              "start_at": {
+                "type": "string",
+                "description": "The ID of the resource to start the page at (inclusive). When provided, results will begin with and include the resource with this ID. Use this to retrieve a specific page when you know the exact starting point. Cannot be combined with start_after or end_before."
+              },
+              "accountId": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "ID for a Mercury account."
+                }
+              },
+              "postedEnd": {
+                "type": "string",
+                "description": "Latest postedAt date to filter for. Format: YYYY-MM-DD or an ISO 8601 string"
+              },
+              "categoryId": {
+                "type": "string",
+                "description": "UUID of a custom category. Can be returned from /categories endpoint."
+              },
+              "end_before": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The ID of the transaction to end the page before (exclusive). When provided, results will end just before this ID and work backwards. Use this for reverse pagination or to retrieve previous pages. Cannot be combined with start_after."
+              },
+              "postedStart": {
+                "type": "string",
+                "description": "Earliest postedAt date to filter for. Format: YYYY-MM-DD or an ISO 8601 string"
+              },
+              "start_after": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The ID of the transaction to start the page after (exclusive). When provided, results will begin with the transaction immediately following this ID. Use this for standard forward pagination to get the next page of results. Cannot be combined with end_before."
+              },
+              "mercuryCategory": {
+                "type": "string",
+                "description": "Name of mercuryCategory you want to filter on. Merchant Type in the UI."
+              }
+            },
+            "additionalProperties": false
+          },
+          "hasFullSchema": true
+        },
+        "MERCURY_MCP_GET_CURRENT_DATE": {
+          "toolkit": "MERCURY_MCP",
+          "tool_slug": "MERCURY_MCP_GET_CURRENT_DATE",
+          "description": "Get the current date in the format. Example: Fri Oct 31 2025",
+          "input_schema": {
+            "type": "object",
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "hasFullSchema": true
+        },
+        "MERCURY_MCP_GET_ACCOUNT": {
+          "toolkit": "MERCURY_MCP",
+          "tool_slug": "MERCURY_MCP_GET_ACCOUNT",
+          "description": "\n    Get account by ID\n\n    \n  ",
+          "input_schema": {
+            "type": "object",
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "required": [
+              "accountId"
+            ],
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "ID for a Mercury account."
+              }
+            },
+            "additionalProperties": false
+          },
+          "hasFullSchema": true
+        },
+        "MERCURY_MCP_GET_TRANSACTION_BY_ID": {
+          "toolkit": "MERCURY_MCP",
+          "tool_slug": "MERCURY_MCP_GET_TRANSACTION_BY_ID",
+          "description": "\n    Retrieve a single transaction by its ID. Returns full transaction details including attachments...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MERCURY_MCP_GET_TRANSACTION_BY_ID"
+              ]
+            }
+          }
+        },
+        "MERCURY_MCP_GET_TREASURY": {
+          "toolkit": "MERCURY_MCP",
+          "tool_slug": "MERCURY_MCP_GET_TREASURY",
+          "description": "\n    Retrieve a paginated list of all treasury accounts associated with the authenticated organizati...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MERCURY_MCP_GET_TREASURY"
+              ]
+            }
+          }
+        },
+        "MERCURY_MCP_GET_TREASURY_TRANSACTIONS": {
+          "toolkit": "MERCURY_MCP",
+          "tool_slug": "MERCURY_MCP_GET_TREASURY_TRANSACTIONS",
+          "description": "\n    Retrieve paginated treasury transactions for a specific treasury account.\n\n    \n  ",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MERCURY_MCP_GET_TREASURY_TRANSACTIONS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:48:47.074Z",
+        "current_time_utc_epoch_seconds": 1786564127,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "left",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"left\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_GLgIpRJU5wkf"
+  }
+}

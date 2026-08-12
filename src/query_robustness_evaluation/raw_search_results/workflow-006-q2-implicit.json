@@ -1,0 +1,367 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-006-q2-implicit",
+    "workflow_id": 6,
+    "workflow_task": "Manage Salesforce leads, contacts, campaign membership, campaign attendance statuses, a campaign-based static list, and MQL lead activity reporting.",
+    "query": "find campaigns by name",
+    "required_tools": [
+      "SALESFORCE_SEARCH_CAMPAIGNS"
+    ],
+    "supporting_tools": [
+      "SALESFORCE_RUN_SOQL_QUERY"
+    ],
+    "rationale": "Locating the correct campaign is a prerequisite for adding contacts and managing campaign attendance statuses or static lists.",
+    "candidate_tools": [
+      "SALESFORCE_ADD_CONTACT_TO_CAMPAIGN",
+      "SALESFORCE_CREATE_A_RECORD",
+      "SALESFORCE_CREATE_S_OBJECT_RECORD",
+      "SALESFORCE_DELETE_SOBJECT_COLLECTIONS",
+      "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+      "SALESFORCE_POST_COMPOSITE_SOBJECTS",
+      "SALESFORCE_RUN_SOQL_QUERY",
+      "SALESFORCE_SEARCH_CAMPAIGNS",
+      "SALESFORCE_SEARCH_CONTACTS",
+      "SALESFORCE_SEARCH_LEADS",
+      "SALESFORCE_SOBJECT_ROWS_UPDATE"
+    ],
+    "source_query_id": "workflow-006-q2",
+    "variant_dimension": "implicit"
+  },
+  "request": {
+    "query": "find campaigns by name"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "find campaigns by name",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "=== LEMLIST WORKFLOW ===",
+            "[Optional (if multiple contexts exist)] [Prerequisite]: Identify the correct workspace using LEMLIST_GET_TEAM_INFO (avoid listing campaigns from the wrong context).",
+            "[Required] [Step]: List campaigns using LEMLIST_GET_LIST_CAMPAIGNS (capture id, name, status, archived, and sequenceId when present from data.campaigns).",
+            "[Required (if data.pagination indicates more pages)] [Step]: Paginate with LEMLIST_GET_LIST_CAMPAIGNS and aggregate results until completion using multiple data.pagination fields (e.g., currentPage/totalPage), not a single nextPage flag.",
+            "[Required] [Next Step]: Find the best match by comparing the target text to campaign name (exact match first, then normalized case/whitespace and substring) and store campaignId.",
+            "[Optional (if multiple close matches or before downstream reads/writes)] [Next Step]: Confirm the chosen campaign using LEMLIST_GET_CAMPAIGN_BY_ID (verify name/status/archived).",
+            "[Optional (if you need structure or performance context)] [Step]: Inspect sequences via LEMLIST_GET_CAMPAIGN_SEQUENCES and/or metrics via LEMLIST_GET_CAMPAIGN_STATS for the selected campaignId.",
+            "[Fallback (if no acceptable match after full pagination)] [Fallback]: Re-list with LEMLIST_GET_LIST_CAMPAIGNS and present nearest-name candidates for confirmation, then validate the final pick using LEMLIST_GET_CAMPAIGN_BY_ID.",
+            "=== MOOSEND WORKFLOW ===",
+            "[Required] [Step]: List campaigns using MOOSEND_LIST_CAMPAIGNS_WITH_PAGING (iterate and aggregate pages until Context.Paging.CurrentPage == Context.Paging.TotalPageCount).",
+            "[Required] [Step]: Filter aggregated campaigns by Name == campaign_name to pick best match and extract ID as campaign_id (if multiple, prefer exact-name hits over partial/similar).",
+            "[Optional (if multiple close matches or you must confirm)] [Next Step]: Validate top candidate(s) using MOOSEND_GET_CAMPAIGN_DETAILS (confirm Context.Name/Context.Subject/Status; if content is huge/truncated, parse externally via COMPOSIO_REMOTE_WORKBENCH).",
+            "[Optional (if MOOSEND_LIST_CAMPAIGNS_WITH_PAGING fails or paging is unreliable)] [Fallback]: List using MOOSEND_GET_ALL_CAMPAIGNS and filter locally by Name to obtain campaign_id(s) (may be heavy for large accounts)."
+          ],
+          "known_pitfalls": [
+            "=== LEMLIST PITFALLS ===",
+            "[LEMLIST_GET_LIST_CAMPAIGNS] Response is wrapped (campaigns under data.campaigns; paging under data.pagination), not a bare array.",
+            "[LEMLIST_GET_LIST_CAMPAIGNS] data.pagination.nextPage can be unreliable near the end (may not advance); use currentPage/totalPage (or multiple fields) to stop.",
+            "[LEMLIST_GET_LIST_CAMPAIGNS] Single-page listing can miss the target when data.pagination.totalPage > 1.",
+            "[LEMLIST_GET_LIST_CAMPAIGNS] HTTP 401 indicates an auth/connection issue; retries won\u2019t help until credentials/connection are fixed.",
+            "[LEMLIST_GET_CAMPAIGN_SEQUENCES] data.sequences may be an object keyed by sequenceId (not a flat array); iterate values to read steps.",
+            "=== MOOSEND PITFALLS ===",
+            "[MOOSEND_LIST_CAMPAIGNS_WITH_PAGING] Requesting a page > Context.Paging.TotalPageCount may return Code=400 with Error=\"CAMPAIGN_NOT_FOUND\".",
+            "[MOOSEND_LIST_CAMPAIGNS_WITH_PAGING] Duplicate or near-duplicate Name values can exist; treat results as a candidate set, not a single definitive match.",
+            "[MOOSEND_GET_CAMPAIGN_DETAILS] Context may include large HTMLContent/PlainContent and responses can be truncated inline; only fetch details for a small number of candidates.",
+            "[MOOSEND_GET_CAMPAIGN_DETAILS] Details may not include aggregate counters present in MOOSEND_LIST_CAMPAIGNS_WITH_PAGING rows; don\u2019t rely on details alone for totals.",
+            "[MOOSEND_GET_ALL_CAMPAIGNS] Unpaged responses can be hard to handle for large accounts; prefer MOOSEND_LIST_CAMPAIGNS_WITH_PAGING for predictable iteration."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Aggregate campaigns across multiple paged responses",
+              "code": "```python\nall_campaigns=[]\nfor r in results:\n    all_campaigns.extend(r['response']['data']['campaigns'])\nlen(all_campaigns), sorted(all_campaigns[0].keys())\n```"
+            },
+            {
+              "description": "Keyword-match campaign names (case/whitespace normalized)",
+              "code": "```python\nq=keyword.strip().lower()\nmatches=[c for c in resp['data']['campaigns'] if q in c.get('name','').strip().lower()]\n```"
+            }
+          ],
+          "primary_tool_slugs": [
+            "LEMLIST_GET_LIST_CAMPAIGNS",
+            "MOOSEND_LIST_CAMPAIGNS_WITH_PAGING"
+          ],
+          "related_tool_slugs": [
+            "LEMLIST_GET_CAMPAIGN_BY_ID",
+            "LEMLIST_GET_TEAM_INFO",
+            "LEMLIST_GET_LIST_TEAM_SENDERS",
+            "LEMLIST_GET_CAMPAIGN_SEQUENCES",
+            "LEMLIST_GET_CAMPAIGN_STATS",
+            "MOOSEND_GET_CAMPAIGN_DETAILS",
+            "MOOSEND_GET_ALL_CAMPAIGNS"
+          ],
+          "toolkits": [
+            "lemlist",
+            "moosend"
+          ],
+          "plan_id": "595924efbdaa4e64ba6f696d57237d53,40111d958dbe43528aea029165a30bff"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "lemlist",
+          "has_active_connection": false,
+          "description": "lemlist is a prospecting tool that automates multichannel outreach, enabling users to find leads with valid contact information and reach them across email, LinkedIn, or calls with personalized messages.",
+          "status_message": "No Active connection for toolkit=lemlist. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"lemlist\") to create a connection BEFORE executing any lemlist tools."
+        },
+        {
+          "toolkit": "moosend",
+          "has_active_connection": false,
+          "description": "Moosend is a cloud-based, AI-powered email marketing solution that allows you to target your audience at scale.",
+          "status_message": "No Active connection for toolkit=moosend. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"moosend\") to create a connection BEFORE executing any moosend tools."
+        }
+      ],
+      "tool_schemas": {
+        "LEMLIST_GET_LIST_CAMPAIGNS": {
+          "toolkit": "LEMLIST",
+          "tool_slug": "LEMLIST_GET_LIST_CAMPAIGNS",
+          "description": "Tool to retrieve a list of campaigns for the team. Use when you need to discover campaign IDs, names, or statuses before performing operations like auditing or pausing campaigns.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  1
+                ],
+                "description": "Page number to retrieve (alternative to offset)."
+              },
+              "limit": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  50
+                ],
+                "description": "Maximum number of campaigns to retrieve. Default: 100, Max: 100."
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0
+                ],
+                "description": "Pagination offset - number of campaigns to skip."
+              },
+              "sortBy": {
+                "type": "string",
+                "examples": [
+                  "createdAt"
+                ],
+                "description": "Field to sort by. Currently only supports 'createdAt'."
+              },
+              "status": {
+                "enum": [
+                  "running",
+                  "draft",
+                  "archived",
+                  "ended",
+                  "paused",
+                  "errors"
+                ],
+                "type": "string",
+                "examples": [
+                  "running"
+                ],
+                "description": "Filter campaigns by status."
+              },
+              "sortOrder": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "examples": [
+                  "desc"
+                ],
+                "description": "Sort order: ascending or descending."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "MOOSEND_LIST_CAMPAIGNS_WITH_PAGING": {
+          "toolkit": "MOOSEND",
+          "tool_slug": "MOOSEND_LIST_CAMPAIGNS_WITH_PAGING",
+          "description": "Tool to retrieve a paginated list of all campaigns in your account with detailed information. Use when you need to fetch campaigns with specific page size and sorting options. Paging information is required as input.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page",
+              "page_size"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  1
+                ],
+                "description": "The page number to display results for. Must be a positive integer."
+              },
+              "sort_by": {
+                "enum": [
+                  "Name",
+                  "Subject",
+                  "Status",
+                  "DeliveredOn",
+                  "CreatedOn"
+                ],
+                "type": "string",
+                "examples": [
+                  "CreatedOn"
+                ],
+                "description": "Sort field options for campaigns."
+              },
+              "page_size": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50
+                ],
+                "description": "The maximum number of results per page. Must be a positive integer up to 100. If a value greater than 100 is specified, it will be treated as 100."
+              },
+              "sort_method": {
+                "enum": [
+                  "ASC",
+                  "DESC"
+                ],
+                "type": "string",
+                "examples": [
+                  "ASC"
+                ],
+                "description": "Sort method options."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "LEMLIST_GET_CAMPAIGN_BY_ID": {
+          "toolkit": "LEMLIST",
+          "tool_slug": "LEMLIST_GET_CAMPAIGN_BY_ID",
+          "description": "Tool to retrieve a specific campaign by campaignId. Use when you need detailed campaign information by ID.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "campaignId"
+            ],
+            "properties": {
+              "campaignId": {
+                "type": "string",
+                "examples": [
+                  "abc123def"
+                ],
+                "description": "Unique identifier of the campaign to retrieve."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "LEMLIST_GET_TEAM_INFO": {
+          "toolkit": "LEMLIST",
+          "tool_slug": "LEMLIST_GET_TEAM_INFO",
+          "description": "Tool to retrieve information about your team. Use after authentication to inspect current team setti...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "LEMLIST_GET_TEAM_INFO"
+              ]
+            }
+          }
+        },
+        "LEMLIST_GET_LIST_TEAM_SENDERS": {
+          "toolkit": "LEMLIST",
+          "tool_slug": "LEMLIST_GET_LIST_TEAM_SENDERS",
+          "description": "Tool to retrieve all team members and their associated campaigns. Use when you need to discover whic...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "LEMLIST_GET_LIST_TEAM_SENDERS"
+              ]
+            }
+          }
+        },
+        "LEMLIST_GET_CAMPAIGN_SEQUENCES": {
+          "toolkit": "LEMLIST",
+          "tool_slug": "LEMLIST_GET_CAMPAIGN_SEQUENCES",
+          "description": "Tool to retrieve a list of all sequences for a campaign with steps and conditions. Use after fetchin...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "LEMLIST_GET_CAMPAIGN_SEQUENCES"
+              ]
+            }
+          }
+        },
+        "LEMLIST_GET_CAMPAIGN_STATS": {
+          "toolkit": "LEMLIST",
+          "tool_slug": "LEMLIST_GET_CAMPAIGN_STATS",
+          "description": "Tool to retrieve performance statistics for a specific campaign within a date range. Use when you ne...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "LEMLIST_GET_CAMPAIGN_STATS"
+              ]
+            }
+          }
+        },
+        "MOOSEND_GET_CAMPAIGN_DETAILS": {
+          "toolkit": "MOOSEND",
+          "tool_slug": "MOOSEND_GET_CAMPAIGN_DETAILS",
+          "description": "Retrieves comprehensive details about a specific campaign by its ID. Returns complete campaign infor...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MOOSEND_GET_CAMPAIGN_DETAILS"
+              ]
+            }
+          }
+        },
+        "MOOSEND_GET_ALL_CAMPAIGNS": {
+          "toolkit": "MOOSEND",
+          "tool_slug": "MOOSEND_GET_ALL_CAMPAIGNS",
+          "description": "Tool to retrieve a list of all campaigns in your account. Use after acquiring valid API credentials ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MOOSEND_GET_ALL_CAMPAIGNS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:47:12.941Z",
+        "current_time_utc_epoch_seconds": 1786564032,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "made",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"made\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_x_bCr4cLqKac"
+  }
+}

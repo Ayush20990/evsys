@@ -1,0 +1,284 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-015-q4-explicit",
+    "workflow_id": 15,
+    "workflow_task": "Process pending invoice emails, persist invoice attachments to cloud storage, update spreadsheet ledgers, verify calculated totals, and label processed messages.",
+    "query": "bulk update gmail message labels following processing",
+    "required_tools": [
+      "GMAIL_BATCH_MODIFY_MESSAGES"
+    ],
+    "supporting_tools": [
+      "GMAIL_LIST_LABELS"
+    ],
+    "rationale": "Once the invoice emails are processed and logged, the agent needs to update their labels in bulk to mark them as handled.",
+    "candidate_tools": [
+      "GMAIL_BATCH_MODIFY_MESSAGES",
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_GET_ATTACHMENT",
+      "GMAIL_LIST_LABELS",
+      "GOOGLEDRIVE_UPLOAD_FROM_URL",
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "GOOGLESHEETS_UPDATE_VALUES_BATCH"
+    ],
+    "source_query_id": "workflow-015-q4",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "bulk update gmail message labels following processing"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "bulk update gmail message labels following processing",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if label IDs are unknown)] [Prerequisite]: Map label display names to internal IDs using GMAIL_LIST_LABELS (writes require label IDs, not names).",
+            "[Required] [Prerequisite]: Gather target message IDs using GMAIL_FETCH_EMAILS (use query/label filters; paginate until nextPageToken is missing or empty).",
+            "[Required] [Prerequisite]: Confirm add/remove label ID lists, total target count, and de-duplicate message IDs before writing.",
+            "[Required] [Step]: Apply changes using GMAIL_BATCH_MODIFY_MESSAGES (send messageIds with addLabelIds and/or removeLabelIds; chunk large runs).",
+            "[Optional (if label IDs or label logic is uncertain)] [Fallback]: Test on a single message using GMAIL_ADD_LABEL_TO_EMAIL before repeating the bulk update.",
+            "[Optional (for verification)] [Next Step]: Spot-check outcomes using GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID (metadata) to confirm labelIds reflect intended adds/removals; retry after a short delay if needed.",
+            "[Optional (for aggregate verification)] [Next Step]: Re-check label counts using GMAIL_LIST_LABELS (include_details) to confirm expected label distribution after writes."
+          ],
+          "known_pitfalls": [
+            "[GMAIL_BATCH_MODIFY_MESSAGES] Max 1,000 messageIds per request\u2014split larger runs into chunks.",
+            "[GMAIL_BATCH_MODIFY_MESSAGES] Response can be acknowledgement-only; invalid message IDs may be silently skipped\u2014verify via follow-up fetches when correctness matters.",
+            "[GMAIL_BATCH_MODIFY_MESSAGES] 400 INVALID_ARGUMENT can occur if the messageIds array is missing or misnamed.",
+            "[GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID] Immediate re-fetch may still show pre-change labelIds\u2014verification may require brief delay/retry.",
+            "[GMAIL_FETCH_EMAILS] Pagination may end with nextPageToken as an empty string\u2014treat empty/missing as completion."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GMAIL_BATCH_MODIFY_MESSAGES"
+          ],
+          "related_tool_slugs": [
+            "GMAIL_LIST_LABELS",
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+            "GMAIL_ADD_LABEL_TO_EMAIL",
+            "GMAIL_FETCH_EMAILS"
+          ],
+          "toolkits": [
+            "gmail"
+          ],
+          "plan_id": "19a1bec389db4012bfb1975a721cfcd0"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "gmail",
+          "has_active_connection": false,
+          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
+          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+        }
+      ],
+      "tool_schemas": {
+        "GMAIL_BATCH_MODIFY_MESSAGES": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_BATCH_MODIFY_MESSAGES",
+          "description": "Modify labels on multiple Gmail messages in one efficient API call. Supports up to 1,000 messages per request for bulk operations like archiving, marking as read/unread, or applying custom labels. High-volume calls may return 429 rateLimitExceeded or 403 userRateLimitExceeded; apply exponential backoff.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "messageIds"
+            ],
+            "properties": {
+              "userId": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "User's email address or 'me' for the authenticated user."
+              },
+              "messageIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "18c5f5d1a2b3c4d5",
+                    "18c5f5d1a2b3c4d6"
+                  ],
+                  [
+                    "msg_id_1",
+                    "msg_id_2",
+                    "msg_id_3"
+                  ]
+                ],
+                "maxItems": 1000,
+                "minItems": 1,
+                "description": "List of message IDs to modify. Maximum 1,000 message IDs per request. Get message IDs from GMAIL_FETCH_EMAILS or GMAIL_LIST_THREADS actions. Accepts 'messageIds', 'ids', or 'message_ids' as the parameter name."
+              },
+              "addLabelIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "INBOX",
+                    "STARRED"
+                  ],
+                  [
+                    "Label_1",
+                    "Label_25"
+                  ],
+                  [
+                    "IMPORTANT",
+                    "Label_10"
+                  ]
+                ],
+                "description": "List of label IDs to add to the messages. IMPORTANT: Use label IDs, NOT label display names. System labels use their name as ID: INBOX, STARRED, IMPORTANT, SENT, DRAFT, SPAM, TRASH, UNREAD, CATEGORY_PERSONAL, CATEGORY_SOCIAL, CATEGORY_PROMOTIONS, CATEGORY_UPDATES, CATEGORY_FORUMS. Custom labels MUST use their ID (format: 'Label_XXX', e.g., 'Label_1', 'Label_25'), NOT the display name (e.g., do NOT use 'Work' or 'Projects'). Call GMAIL_LIST_LABELS first to get the 'id' field for custom labels. At least one of add_label_ids or remove_label_ids must be provided. CONSTRAINT: Label IDs must NOT overlap with remove_label_ids - cannot add and remove the same label."
+              },
+              "removeLabelIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "UNREAD"
+                  ],
+                  [
+                    "INBOX",
+                    "UNREAD"
+                  ],
+                  [
+                    "Label_1",
+                    "SPAM"
+                  ]
+                ],
+                "description": "List of label IDs to remove from the messages. IMPORTANT: Use label IDs, NOT label display names. System labels use their name as ID: INBOX, STARRED, IMPORTANT, SENT, SPAM, TRASH, UNREAD. Custom labels MUST use their ID (format: 'Label_XXX', e.g., 'Label_1', 'Label_25'), NOT the display name (e.g., do NOT use 'Work' or 'Projects'). Call GMAIL_LIST_LABELS first to get the 'id' field for custom labels. Common use cases: Remove 'UNREAD' to mark as read, remove 'INBOX' to archive. Note: 'DRAFT' cannot be removed - use GMAIL_DELETE_DRAFT instead. At least one of add_label_ids or remove_label_ids must be provided. CONSTRAINT: Label IDs must NOT overlap with add_label_ids - cannot add and remove the same label."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_LIST_LABELS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_LIST_LABELS",
+          "description": "Retrieves all system and user-created labels for a Gmail account in a single unpaginated response. Primary use: obtain internal label IDs (e.g., 'Label_123') required by other Gmail tools \u2014 display names cannot be used as label identifiers and cause silent failures or errors. System labels (INBOX, UNREAD, SPAM, TRASH, etc.) are case-sensitive and must be used exactly as returned; INBOX, SPAM, and TRASH are read-only and cannot be added/removed via label modification tools. The Gmail search 'label:' operator accepts display names, but label_ids parameters in tools like GMAIL_FETCH_EMAILS require internal IDs from this tool \u2014 mixing conventions yields zero results silently. Do not hardcode label IDs across sessions; refresh via this tool on conflict errors.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "Identifies the Gmail account (owner's email or 'me' for authenticated user) for which labels will be listed."
+              },
+              "include_details": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "If true, fetches detailed info for each label including message/thread counts (messagesTotal, messagesUnread, threadsTotal, threadsUnread). This requires additional API calls and may be slower for accounts with many labels. If false (default), returns basic label info (id, name, type) which is faster. Counts are eventually consistent and may lag real-time mailbox state by a few seconds."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+          "description": "Fetches a specific email message by its ID, provided the `message_id` exists and is accessible to the authenticated `user_id`. Spam/trash messages are excluded unless upstream list/search calls used `include_spam_trash=true`. Use `internalDate` (milliseconds since epoch) rather than header `Date` for recency checks.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_id"
+            ],
+            "properties": {
+              "format": {
+                "type": "string",
+                "default": "full",
+                "examples": [
+                  "metadata",
+                  "minimal",
+                  "full",
+                  "raw"
+                ],
+                "description": "Format for message content. 'minimal': lightest (ID, thread ID, labels only). 'metadata': headers and message metadata without body content - ideal for summarization, analysis, or when you only need subject/sender/timestamp (recommended for most use cases). 'full': complete MIME structure with 50+ headers, nested parts, and base64url-encoded body data - heavy payload, only use when you need the complete raw MIME structure for parsing attachments or body content. 'raw': entire RFC 2822 formatted message as base64url string."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "user@example.com",
+                  "me"
+                ],
+                "description": "User's email address or 'me' for the authenticated user."
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "19b11732c1b578fd",
+                  "18c5e5b5f5d5e5b5",
+                  "1736ccf5d7b4d452"
+                ],
+                "minLength": 1,
+                "description": "The Gmail API message ID (hexadecimal string, typically 15-16 characters like '19b11732c1b578fd'). Must be obtained from Gmail API responses (e.g., List Messages, Search Messages). Do NOT use email subjects, dates, sender names, or custom identifiers. Do NOT use `threadId` (use GMAIL_FETCH_MESSAGE_BY_THREAD_ID for threads), the Message-ID email header, or any fabricated value \u2014 only IDs from Gmail API list/search responses."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_ADD_LABEL_TO_EMAIL": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_ADD_LABEL_TO_EMAIL",
+          "description": "Adds and/or removes specified Gmail labels for a message; ensure `message_id` and all `label_ids` ar...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_ADD_LABEL_TO_EMAIL"
+              ]
+            }
+          }
+        },
+        "GMAIL_FETCH_EMAILS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_FETCH_EMAILS",
+          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optiona...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_FETCH_EMAILS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:52:17.583Z",
+        "current_time_utc_epoch_seconds": 1786564337,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "horn",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"horn\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_YQl9QwS8jLcS"
+  }
+}

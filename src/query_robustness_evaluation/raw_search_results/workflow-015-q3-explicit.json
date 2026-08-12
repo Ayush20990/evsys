@@ -1,0 +1,389 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-015-q3-explicit",
+    "workflow_id": 15,
+    "workflow_task": "Process pending invoice emails, persist invoice attachments to cloud storage, update spreadsheet ledgers, verify calculated totals, and label processed messages.",
+    "query": "batch update multiple value ranges in Google Sheets",
+    "required_tools": [
+      "GOOGLESHEETS_UPDATE_VALUES_BATCH"
+    ],
+    "supporting_tools": [
+      "GOOGLESHEETS_BATCH_GET"
+    ],
+    "rationale": "The workflow requires recording the invoice details into spreadsheet ledgers, necessitating batch write operations.",
+    "candidate_tools": [
+      "GMAIL_BATCH_MODIFY_MESSAGES",
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_GET_ATTACHMENT",
+      "GMAIL_LIST_LABELS",
+      "GOOGLEDRIVE_UPLOAD_FROM_URL",
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "GOOGLESHEETS_UPDATE_VALUES_BATCH"
+    ],
+    "source_query_id": "workflow-015-q3",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "batch update multiple value ranges in Google Sheets"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "batch update multiple value ranges in Google Sheets",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if file type is uncertain or prior calls failed)] [Prerequisite]: Confirm it\u2019s a native Google Spreadsheet using GOOGLEDRIVE_GET_FILE_METADATA (avoid unsupported-document errors).",
+            "[Optional (if tab name is uncertain)] [Prerequisite]: Resolve the target tab using GOOGLESHEETS_GET_SHEET_NAMES (avoid writing to the wrong/default tab).",
+            "[Required] [Prerequisite]: Read header + a tight sample window for the target column using GOOGLESHEETS_BATCH_GET (confirm column alignment, start row, and protect headers).",
+            "[Required] [Step]: Write the target value(s) to the intended cells using GOOGLESHEETS_UPDATE_VALUES_BATCH (use smallest set of sheet-qualified ranges; ensure 2D values match each range shape).",
+            "[Optional (if only a single contiguous A1 range is being updated or batch write fails)] [Fallback]: Write using GOOGLESHEETS_VALUES_UPDATE (single sheet-qualified A1 range; 2D values).",
+            "[Optional (if rows must be matched by a unique key, not row index)] [Step]: Update by key using GOOGLESHEETS_UPSERT_ROWS (align headers and keyColumn; optionally insert missing rows).",
+            "[Optional (for verification or suspected no-op)] [Next Step]: Re-read affected ranges using GOOGLESHEETS_BATCH_GET (confirm updated values and shapes landed correctly)."
+          ],
+          "known_pitfalls": [
+            "[GOOGLEDRIVE_GET_FILE_METADATA] Non-native spreadsheets can cause GOOGLESHEETS_GET_SHEET_NAMES/GOOGLESHEETS_BATCH_GET to fail with APIError 400 (\u201cThis operation is not supported for this document\u201d).",
+            "[GOOGLESHEETS_BATCH_GET] Full-column ranges (e.g., \u201cA:A\u201d) can return large payloads and omit trailing empties; malformed spreadsheet_id can surface as 400 \u201cInvalid spreadsheet ID format\u2026 malformed\u201d.",
+            "[GOOGLESHEETS_UPDATE_VALUES_BATCH] Each range must be sheet-qualified and each data[*].values must be a 2D array matching the exact target shape (e.g., 360 rows \u21d2 360 inner arrays for a single-column range).",
+            "[GOOGLESHEETS_UPDATE_VALUES_BATCH] Dimension mismatches across multiple ranges can fail the request or shift writes if ranges/values aren\u2019t aligned.",
+            "[GOOGLESHEETS_VALUES_UPDATE] Values must be a 2D array; writing a large rectangle without preserving existing cells can overwrite unrelated data; updatedRange may quote tab names (e.g., \"'Tab Name'!A1:A6\")."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Example pattern to update many disjoint cells/ranges in one request using GOOGLESHEETS_UPDATE_VALUES_BATCH",
+              "code": "```python\nupdates=[{'range':'<sheet_name>!A2:A4','values':[['<value>'],['<value>'],['<value>']]}]\npayload={'spreadsheet_id':'<spreadsheet_id>','valueInputOption':'RAW','data':[{'range':u['range'],'values':u['values']} for u in updates]}\nresult,error=run_composio_tool('GOOGLESHEETS_UPDATE_VALUES_BATCH',payload)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLESHEETS_UPDATE_VALUES_BATCH"
+          ],
+          "related_tool_slugs": [
+            "GOOGLESHEETS_BATCH_GET",
+            "GOOGLESHEETS_GET_SHEET_NAMES",
+            "GOOGLESHEETS_VALUES_UPDATE",
+            "GOOGLESHEETS_UPSERT_ROWS",
+            "GOOGLEDRIVE_GET_FILE_METADATA"
+          ],
+          "toolkits": [
+            "googledrive",
+            "googlesheets"
+          ],
+          "plan_id": "2f2ebe65dff34e078d76a747eec953d5"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledrive",
+          "has_active_connection": false,
+          "description": "Google Drive is a cloud storage solution for uploading, sharing, and collaborating on files across devices, with robust search and offline access. Special usecases: Sharing google sheets/docs or any G-Suite files with specific emails.",
+          "status_message": "No Active connection for toolkit=googledrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledrive\") to create a connection BEFORE executing any googledrive tools."
+        },
+        {
+          "toolkit": "googlesheets",
+          "has_active_connection": false,
+          "description": "Google Sheets is a cloud-based spreadsheet tool enabling real-time collaboration, data analysis, and integration with other Google Workspace apps. STRICT RATE LIMITS apply - max 60 reads/minute and 60 writes/minute. Exceeding this causes errors.",
+          "status_message": "No Active connection for toolkit=googlesheets. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesheets\") to create a connection BEFORE executing any googlesheets tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLESHEETS_UPDATE_VALUES_BATCH": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+          "description": "Tool to set values in one or more ranges of a spreadsheet. Use when you need to update multiple ranges in a single operation for better performance.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id",
+              "valueInputOption",
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "range",
+                    "values"
+                  ],
+                  "properties": {
+                    "range": {
+                      "type": "string",
+                      "examples": [
+                        "Sheet1!A1:B2",
+                        "Sheet1!D1:E2"
+                      ],
+                      "description": "The A1 notation of the range to update (e.g., 'Sheet1!A1:B2', 'Sheet1!C:C', or 'A1:D5'). The range must specify which cells to update."
+                    },
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "examples": [
+                        [
+                          [
+                            "Name",
+                            "Score"
+                          ],
+                          [
+                            "Alice",
+                            "95"
+                          ]
+                        ]
+                      ],
+                      "description": "The data to write. This is an array of arrays, the outer array representing all the data and each inner array representing a major dimension. Each item in the inner array corresponds with one cell. Supports string, number, boolean, and null values."
+                    },
+                    "majorDimension": {
+                      "enum": [
+                        "ROWS",
+                        "COLUMNS"
+                      ],
+                      "type": "string",
+                      "examples": [
+                        "ROWS"
+                      ],
+                      "description": "The major dimension of the values. ROWS (default) means each inner array is a row of values. COLUMNS means each inner array is a column of values."
+                    }
+                  },
+                  "description": "Data within a range of the spreadsheet."
+                },
+                "minItems": 1,
+                "description": "The new values to apply to the spreadsheet. Each ValueRange specifies a range and the values to write to that range. Multiple ranges can be updated in a single request."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "examples": [
+                  "16k0mZLTGKySpihrjTycQalUVQQwq4SuLSdD3r_T164A"
+                ],
+                "description": "The ID of the spreadsheet to update. This ID can be found in the URL of the spreadsheet (e.g., https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit). Must be a valid Google Sheets spreadsheet ID."
+              },
+              "valueInputOption": {
+                "enum": [
+                  "INPUT_VALUE_OPTION_UNSPECIFIED",
+                  "RAW",
+                  "USER_ENTERED"
+                ],
+                "type": "string",
+                "examples": [
+                  "USER_ENTERED"
+                ],
+                "description": "How the input data should be interpreted. RAW: Values are stored exactly as entered, without parsing. USER_ENTERED: Values are parsed as if typed by a user (numbers stay numbers, strings prefixed with '=' become formulas, etc.). INPUT_VALUE_OPTION_UNSPECIFIED: Default input value option is not specified."
+              },
+              "includeValuesInResponse": {
+                "type": "boolean",
+                "examples": [
+                  false
+                ],
+                "description": "Determines if the update response should include the values of the cells that were updated. By default, responses do not include the updated values."
+              },
+              "responseValueRenderOption": {
+                "enum": [
+                  "FORMATTED_VALUE",
+                  "UNFORMATTED_VALUE",
+                  "FORMULA"
+                ],
+                "type": "string",
+                "examples": [
+                  "FORMATTED_VALUE"
+                ],
+                "description": "Determines how values in the response should be rendered. Only used if includeValuesInResponse is true. FORMATTED_VALUE (default): Values are formatted as displayed in the UI. UNFORMATTED_VALUE: Values are unformatted. FORMULA: Formulas are not evaluated."
+              },
+              "responseDateTimeRenderOption": {
+                "enum": [
+                  "SERIAL_NUMBER",
+                  "FORMATTED_STRING"
+                ],
+                "type": "string",
+                "examples": [
+                  "SERIAL_NUMBER"
+                ],
+                "description": "Determines how dates, times, and durations in the response should be rendered. Only used if includeValuesInResponse is true. SERIAL_NUMBER (default): Dates are returned as numbers. FORMATTED_STRING: Dates are returned as formatted strings."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_BATCH_GET": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_BATCH_GET",
+          "description": "Retrieves data from specified cell ranges in a Google Spreadsheet.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id"
+            ],
+            "properties": {
+              "ranges": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "Sheet1",
+                  "Sheet1!A1:B2",
+                  "Sheet1!A1:Z10000",
+                  "Sheet1!1:2",
+                  "'My Sheet'!A1:Z500",
+                  "A1:B2"
+                ],
+                "description": "A list of cell ranges in A1 notation from which to retrieve data. If this list is omitted, empty, or contains only empty strings, all data from the first sheet of the spreadsheet will be fetched. Empty strings in the list are automatically filtered out. Supported formats: (1) Bare sheet name like 'Sheet1' to get all data from that sheet, (2) Sheet with range like 'Sheet1!A1:B2', (3) Just cell reference like 'A1:B2' (uses first sheet). For sheet names with spaces or special characters, enclose in single quotes (e.g., \"'My Sheet'\" or \"'My Sheet'!A1:B2\"). IMPORTANT: For large sheets, always use bounded ranges with explicit row limits (e.g., 'Sheet1!A1:Z10000' instead of 'Sheet1!A:Z'). Unbounded column ranges like 'A:Z' on sheets with >10,000 rows may cause timeouts or errors. If you need all data from a large sheet, fetch in chunks of 10,000 rows at a time."
+              },
+              "majorDimension": {
+                "enum": [
+                  "DIMENSION_UNSPECIFIED",
+                  "ROWS",
+                  "COLUMNS"
+                ],
+                "type": "string",
+                "description": "The major dimension for organizing data in results."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "maxLength": 200,
+                "description": "The unique identifier of the Google Spreadsheet from which data will be retrieved. This is the ID found in the spreadsheet URL after /d/. You can provide either the spreadsheet ID directly or a full Google Sheets URL (the ID will be extracted automatically)."
+              },
+              "valueRenderOption": {
+                "enum": [
+                  "FORMATTED_VALUE",
+                  "UNFORMATTED_VALUE",
+                  "FORMULA"
+                ],
+                "type": "string",
+                "default": "FORMATTED_VALUE",
+                "description": "How values should be rendered in the output. FORMATTED_VALUE: Values are calculated and formatted (default). UNFORMATTED_VALUE: Values are calculated but not formatted. FORMULA: Values are not calculated; the formula is returned instead."
+              },
+              "dateTimeRenderOption": {
+                "enum": [
+                  "SERIAL_NUMBER",
+                  "FORMATTED_STRING"
+                ],
+                "type": "string",
+                "default": "SERIAL_NUMBER",
+                "description": "How dates and times should be rendered in the output. SERIAL_NUMBER: Dates are returned as serial numbers (default). FORMATTED_STRING: Dates returned as formatted strings."
+              },
+              "empty_strings_filtered": {
+                "type": "boolean",
+                "default": false,
+                "description": "Indicates whether empty strings were filtered from the response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_GET_SHEET_NAMES": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_GET_SHEET_NAMES",
+          "description": "Lists all worksheet names from a specified Google Spreadsheet (which must exist), useful for discovering sheets before further operations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id"
+            ],
+            "properties": {
+              "exclude_hidden": {
+                "type": "boolean",
+                "default": false,
+                "description": "When True, hidden sheets will be excluded from the results. When False (default), all sheets including hidden ones are returned. Hidden sheets are sheets that have been hidden via the 'Hide sheet' option in Google Sheets UI."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1qpyC0XzvTcKT6EISywY_7H7D7No1tpxEXAMPLE_ID"
+                ],
+                "description": "The unique identifier of the Google Spreadsheet (alphanumeric string, typically 44 characters). Extract only the ID portion from URLs - do not include leading/trailing slashes, '/edit' suffixes, query parameters, or URL fragments. From 'https://docs.google.com/spreadsheets/d/1qpyC0XzvTcKT6EISywY/edit#gid=0', use only '1qpyC0XzvTcKT6EISywY'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_VALUES_UPDATE": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_VALUES_UPDATE",
+          "description": "Tool to set values in a range of a Google Spreadsheet. Use when you need to update or overwrite exis...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_VALUES_UPDATE"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_UPSERT_ROWS": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_UPSERT_ROWS",
+          "description": "Upsert rows - update existing rows by key, append new ones. Automatically handles column mapping and...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_UPSERT_ROWS"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_GET_FILE_METADATA": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_GET_FILE_METADATA",
+          "description": "Tool to get a file's metadata by ID. Use to verify `mimeType`, `parents`, and `trashed` status befor...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_GET_FILE_METADATA"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:52:01.243Z",
+        "current_time_utc_epoch_seconds": 1786564321,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "save",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"save\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_1Zo6cMogqY5u"
+  }
+}

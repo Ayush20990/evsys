@@ -1,0 +1,1149 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-011-q3-paraphrase",
+    "workflow_id": 11,
+    "workflow_task": "Maintain an internal OneDrive-based operations knowledge base, create and verify strategy/support documents, coordinate operational tasks via Discord, check queue and system state files, and configure Gmail support labels and routing.",
+    "query": "establish automated filter rules and organize categories for email routing",
+    "required_tools": [
+      "GMAIL_CREATE_LABEL",
+      "GMAIL_CREATE_FILTER"
+    ],
+    "supporting_tools": [],
+    "rationale": "Both label creation and filter creation are necessary to fully set up Gmail support labels and routing rules.",
+    "candidate_tools": [
+      "DISCORDBOT_LIST_MESSAGES",
+      "DISCORDBOT_TEST_AUTH",
+      "GMAIL_CREATE_FILTER",
+      "GMAIL_CREATE_LABEL",
+      "ONE_DRIVE_DOWNLOAD_FILE",
+      "ONE_DRIVE_DOWNLOAD_FILE_BY_PATH",
+      "ONE_DRIVE_GET_ITEM",
+      "ONE_DRIVE_LIST_FOLDER_CHILDREN",
+      "ONE_DRIVE_ONEDRIVE_CREATE_FOLDER",
+      "ONE_DRIVE_ONEDRIVE_CREATE_TEXT_FILE",
+      "ONE_DRIVE_ONEDRIVE_FIND_FILE",
+      "ONE_DRIVE_ONEDRIVE_FIND_FOLDER",
+      "ONE_DRIVE_SEARCH_ITEMS"
+    ],
+    "source_query_id": "workflow-011-q3",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "establish automated filter rules and organize categories for email routing"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "establish automated filter rules and organize categories for email routing",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Confirm the label exists using OUTLOOK_GET_MASTER_CATEGORIES (actions.assignCategories requires an exact existing displayName).",
+            "[Optional (if the label is missing)] [Prerequisite]: Create the label using OUTLOOK_CREATE_USER_MASTER_CATEGORY (provide displayName and color).",
+            "[Fallback] [Prerequisite]: If label creation returns a conflict error, re-check with OUTLOOK_GET_MASTER_CATEGORIES and proceed using the already-existing exact displayName.",
+            "[Required] [Step]: Create an inbox rule using OUTLOOK_CREATE_EMAIL_RULE (match the known sender; set actions.assignCategories plus follow-up flag; set isEnabled/sequence and actions.stopProcessingRules if needed).",
+            "[Optional (to prevent duplicates or fix priority)] [Next Step]: Audit and adjust rules using OUTLOOK_LIST_EMAIL_RULES, then modify via OUTLOOK_UPDATE_EMAIL_RULE or remove via OUTLOOK_DELETE_EMAIL_RULE (confirm before deletion).",
+            "[Optional (to validate or backfill for existing mail)] [Next Step]: Find sample messages using OUTLOOK_SEARCH_MESSAGES, then apply categories/flag with OUTLOOK_BATCH_UPDATE_MESSAGES (chunk updates; if a few items fail, retry individually with OUTLOOK_UPDATE_EMAIL) and spot-check via OUTLOOK_GET_MESSAGE."
+          ],
+          "known_pitfalls": [
+            "[OUTLOOK_CREATE_USER_MASTER_CATEGORY] Can fail with 409 CategoryListConflict if the displayName already exists; list first and reuse the exact name.",
+            "[OUTLOOK_CREATE_USER_MASTER_CATEGORY] Validation can fail if displayName is omitted; it must be provided.",
+            "[OUTLOOK_CREATE_EMAIL_RULE] conditions.fromAddresses vs conditions.senderContains can over/under-match; choose the condition that matches the intended scope.",
+            "[OUTLOOK_CREATE_EMAIL_RULE] actions.assignCategories only works when the category displayName already exists and matches exactly.",
+            "[OUTLOOK_SEARCH_MESSAGES] Results may be nested under data.value[0].hitsContainers[0].hits[*].resource; when total=0, hitsContainers may be absent."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "OUTLOOK_SEARCH_MESSAGES",
+            "OUTLOOK_CREATE_USER_MASTER_CATEGORY",
+            "OUTLOOK_GET_MASTER_CATEGORIES",
+            "OUTLOOK_BATCH_UPDATE_MESSAGES"
+          ],
+          "related_tool_slugs": [
+            "OUTLOOK_UPDATE_EMAIL",
+            "OUTLOOK_GET_MESSAGE",
+            "OUTLOOK_CREATE_EMAIL_RULE",
+            "OUTLOOK_LIST_EMAIL_RULES",
+            "OUTLOOK_UPDATE_EMAIL_RULE",
+            "OUTLOOK_DELETE_EMAIL_RULE"
+          ],
+          "toolkits": [
+            "outlook"
+          ],
+          "plan_id": "dc3be1297db44326a23af362e7c900bc"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "outlook",
+          "has_active_connection": false,
+          "description": "Outlook is Microsoft's email and calendaring platform integrating contacts and scheduling, enabling users to manage communications and events in a unified workspace",
+          "status_message": "No Active connection for toolkit=outlook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"outlook\") to create a connection BEFORE executing any outlook tools."
+        }
+      ],
+      "tool_schemas": {
+        "OUTLOOK_SEARCH_MESSAGES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEARCH_MESSAGES",
+          "description": "Search Outlook messages using powerful KQL syntax. Supports sender (from:), recipient (to:, cc:), subject, date filters (received:, sent:), attachments, and boolean logic. Only works with Microsoft 365/Enterprise accounts (no @hotmail.com/@outlook.com). Examples: 'from:user@example.com AND received>=2025-10-01', 'to:info@jcdn.nl AND subject:invoice', 'received>today-30 AND hasattachment:yes'",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "size": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 25,
+                "minimum": 1,
+                "description": "Number of search results to return per page (1-25). Note: For message entity, max size is 25. Also, from_index + size cannot exceed 1000 (API pagination window limit)."
+              },
+              "query": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "project report",
+                  "from:manager@example.com AND subject:budget",
+                  "to:info@jcdn.nl AND (subject:toegangscontrole OR subject:beveiligingspoorten)",
+                  "received>=2025-10-01 AND received<=2025-10-31",
+                  "received>today-30 AND hasattachment:yes",
+                  "from:example.com AND subject:invoice AND received:2025-10",
+                  "to:team@example.com AND received>=2025-10-01",
+                  "cc:manager@example.com OR to:manager@example.com"
+                ],
+                "description": "KQL (Keyword Query Language) search query string. Supports advanced syntax for precise searches.\n\n**Basic Syntax:**\n- Simple keywords: 'budget report'\n- Exact phrases: '\"quarterly review\"'\n- Boolean operators: 'urgent AND deadline' or 'invoice OR receipt'\n\n**Property Filters (prefix:value):**\n- from: Sender email - 'from:user@example.com' or 'from:example.com'\n- to: Recipient email - 'to:info@jcdn.nl'\n- cc: CC recipient - 'cc:manager@example.com'\n- subject: Subject line - 'subject:invoice'\n- received: Date received - 'received:2025-10-01' or 'received>=2025-10-01'\n- sent: Date sent - 'sent:2025-10-01' or 'sent>=2025-10-01'\n- hasattachment: Has files - 'hasattachment:yes' or 'hasattachment:no'\n\n**REQUIRED**: At least one search criterion must be provided - either this query parameter OR one of the legacy filters (fromEmail, subject, hasAttachments). Empty searches are not supported."
+              },
+              "region": {
+                "type": "string",
+                "examples": [
+                  "US",
+                  "EU",
+                  "GB"
+                ],
+                "description": "Geographic region for the search query. ONLY required when using application permissions (S2S authentication). DO NOT use with delegated permissions (user authentication) - the API will reject the request. Common values: 'US', 'EU', 'GB', 'JP', 'CN', 'IN', 'CA', 'AU', 'BR', 'RU'. Leave unset (None) for delegated permissions."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Project Update",
+                  "Budget Proposal Q4",
+                  "Action Required: Review Document"
+                ],
+                "description": "Text to search for within the message subject line. Legacy parameter - prefer using 'subject:text' in the query parameter for more control. When combined with query, this filter is joined using AND. If query contains OR operators, the query is wrapped in parentheses to preserve precedence. Example: Instead of subject='invoice', use query='subject:invoice AND received>=2025-10-01'"
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com",
+                  "support@example.com"
+                ],
+                "description": "Target mailbox: 'me' for the signed-in user, or an email/UPN for a shared/other mailbox (e.g., 'support@example.com'). Shared-mailbox access requires Mail.Read.Shared (delegated) or Mail.Read (application) on the target; 403 means insufficient permissions. Behavior differs by value: 'me' uses the Microsoft Search API; a specific mailbox uses the Messages API with $search (response is normalized back into the same hitsContainers/hits shape, so callers don't need to branch). `region` and `enable_top_results` apply only when `user_id` is 'me'. LIMITATION: shared-mailbox search supports only the first page (`from_index=0`); Graph rejects $skip with $search. For deep pagination over a shared mailbox, use OUTLOOK_QUERY_EMAILS with $filter."
+              },
+              "fromEmail": {
+                "type": "string",
+                "examples": [
+                  "manager@example.com",
+                  "example.com",
+                  "contact@partner.com"
+                ],
+                "description": "Filter messages by sender email address or domain. Supports exact email ('user@example.com') or domain matching ('example.com'). Legacy parameter - prefer using 'from:email@example.com' in the query parameter for more flexibility. When combined with query, this filter is joined using AND. If query contains OR operators, the query is wrapped in parentheses to preserve precedence. Note: Only Microsoft 365/Enterprise accounts are supported (no @hotmail.com or @outlook.com)."
+              },
+              "from_index": {
+                "type": "integer",
+                "default": 0,
+                "maximum": 999,
+                "minimum": 0,
+                "description": "The 0-based starting index for pagination (max 999). Note: from_index + size cannot exceed 1000 (API pagination window limit). To paginate: check response['value'][0]['hitsContainers'][0]['moreResultsAvailable']. If true, call again with from_index += size (e.g., 0 \u2192 25 \u2192 50). Message ID is in hits[]['hitId'], not hits[]['resource']['id']."
+              },
+              "hasAttachments": {
+                "type": "boolean",
+                "description": "Filters messages based on the presence of attachments. Legacy parameter - prefer using 'hasattachment:yes' or 'hasattachment:no' in the query parameter. When combined with query, this filter is joined using AND. If query contains OR operators, the query is wrapped in parentheses to preserve precedence."
+              },
+              "enable_top_results": {
+                "type": "boolean",
+                "default": false,
+                "description": "If `true`, sorts results by relevance; otherwise, sorts by date in descending order (newest first)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_CREATE_USER_MASTER_CATEGORY": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_CREATE_USER_MASTER_CATEGORY",
+          "description": "Tool to create a new category in a user's master category list. Use when you need to add a category to organize email and calendar items for a specific user.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "display_name"
+            ],
+            "properties": {
+              "color": {
+                "enum": [
+                  "preset0",
+                  "preset1",
+                  "preset2",
+                  "preset3",
+                  "preset4",
+                  "preset5",
+                  "preset6",
+                  "preset7",
+                  "preset8",
+                  "preset9",
+                  "preset10",
+                  "preset11",
+                  "preset12",
+                  "preset13",
+                  "preset14",
+                  "preset15",
+                  "preset16",
+                  "preset17",
+                  "preset18",
+                  "preset19",
+                  "preset20",
+                  "preset21",
+                  "preset22",
+                  "preset23",
+                  "preset24"
+                ],
+                "type": "string",
+                "examples": [
+                  "preset9"
+                ],
+                "description": "A pre-set color constant for the category. Allowed values: preset0 through preset24."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com",
+                  "a1b2c3d4-e5f6-g7h8-i9j0-k1l2m3n4o5p6"
+                ],
+                "description": "The user's unique identifier or principal name. Use 'me' for the signed-in user."
+              },
+              "display_name": {
+                "type": "string",
+                "examples": [
+                  "Project expenses",
+                  "Urgent"
+                ],
+                "description": "Unique name that identifies the category in the user's mailbox."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_GET_MASTER_CATEGORIES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_GET_MASTER_CATEGORIES",
+          "description": "Tool to retrieve the user's master category list. Use when you need to get all categories defined for the user.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  5,
+                  10
+                ],
+                "description": "Maximum number of master categories to return (OData $top)."
+              },
+              "skip": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0,
+                  5
+                ],
+                "description": "Number of master categories to skip for pagination (OData $skip)."
+              },
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "color eq 'preset0'"
+                ],
+                "description": "OData $filter query to filter master categories."
+              },
+              "select": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "displayName",
+                    "color"
+                  ]
+                ],
+                "description": "OData $select query to specify properties to include."
+              },
+              "orderby": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "displayName asc"
+                  ]
+                ],
+                "description": "OData $orderby query to order master categories by property values."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The user's unique identifier or principal name. Use 'me' for the signed-in user."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_BATCH_UPDATE_MESSAGES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_BATCH_UPDATE_MESSAGES",
+          "description": "Batch-update up to 20 Outlook messages per call using Microsoft Graph JSON batching. Use when marking multiple messages read/unread or updating other properties to avoid per-message PATCH calls.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "updates"
+            ],
+            "properties": {
+              "updates": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "message_id",
+                    "patch"
+                  ],
+                  "properties": {
+                    "patch": {
+                      "type": "object",
+                      "examples": [
+                        {
+                          "isRead": true
+                        },
+                        {
+                          "isRead": false,
+                          "importance": "high"
+                        },
+                        {
+                          "categories": [
+                            "Work",
+                            "Urgent"
+                          ]
+                        }
+                      ],
+                      "properties": {
+                        "body": {
+                          "type": "object",
+                          "properties": {
+                            "content": {
+                              "type": "string",
+                              "description": "The content of the item body."
+                            },
+                            "contentType": {
+                              "enum": [
+                                "text",
+                                "html"
+                              ],
+                              "type": "string",
+                              "description": "The type of body content."
+                            }
+                          },
+                          "description": "The body of the message.",
+                          "additionalProperties": false
+                        },
+                        "flag": {
+                          "type": "object",
+                          "properties": {
+                            "flagStatus": {
+                              "enum": [
+                                "notFlagged",
+                                "flagged",
+                                "complete"
+                              ],
+                              "type": "string",
+                              "description": "Status for follow-up for an item."
+                            },
+                            "dueDateTime": {
+                              "type": "object",
+                              "properties": {
+                                "dateTime": {
+                                  "type": "string",
+                                  "description": "A single point of time in combined date and time format ({date}T{time}). Example: '2024-01-15T09:00:00.0000000'."
+                                },
+                                "timeZone": {
+                                  "type": "string",
+                                  "description": "The time zone. Example: 'Pacific Standard Time', 'UTC'."
+                                }
+                              },
+                              "description": "Describes the date, time, and time zone of a point in time.",
+                              "additionalProperties": false
+                            },
+                            "startDateTime": {
+                              "type": "object",
+                              "properties": {
+                                "dateTime": {
+                                  "type": "string",
+                                  "description": "A single point of time in combined date and time format ({date}T{time}). Example: '2024-01-15T09:00:00.0000000'."
+                                },
+                                "timeZone": {
+                                  "type": "string",
+                                  "description": "The time zone. Example: 'Pacific Standard Time', 'UTC'."
+                                }
+                              },
+                              "description": "Describes the date, time, and time zone of a point in time.",
+                              "additionalProperties": false
+                            },
+                            "completedDateTime": {
+                              "type": "object",
+                              "properties": {
+                                "dateTime": {
+                                  "type": "string",
+                                  "description": "A single point of time in combined date and time format ({date}T{time}). Example: '2024-01-15T09:00:00.0000000'."
+                                },
+                                "timeZone": {
+                                  "type": "string",
+                                  "description": "The time zone. Example: 'Pacific Standard Time', 'UTC'."
+                                }
+                              },
+                              "description": "Describes the date, time, and time zone of a point in time.",
+                              "additionalProperties": false
+                            }
+                          },
+                          "description": "The flag value that indicates the status, start date, due date, or completion date for the message.",
+                          "additionalProperties": false
+                        },
+                        "from": {
+                          "type": "object",
+                          "properties": {
+                            "emailAddress": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "description": "The display name of the person or entity."
+                                },
+                                "address": {
+                                  "type": "string",
+                                  "description": "The email address of the person or entity."
+                                }
+                              },
+                              "description": "Email address of a contact or message recipient.",
+                              "additionalProperties": false
+                            }
+                          },
+                          "description": "Represents information about a user in the sending or receiving end of a message.",
+                          "additionalProperties": false
+                        },
+                        "isRead": {
+                          "type": "boolean",
+                          "description": "Whether the message has been read."
+                        },
+                        "sender": {
+                          "type": "object",
+                          "properties": {
+                            "emailAddress": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "description": "The display name of the person or entity."
+                                },
+                                "address": {
+                                  "type": "string",
+                                  "description": "The email address of the person or entity."
+                                }
+                              },
+                              "description": "Email address of a contact or message recipient.",
+                              "additionalProperties": false
+                            }
+                          },
+                          "description": "Represents information about a user in the sending or receiving end of a message.",
+                          "additionalProperties": false
+                        },
+                        "replyTo": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "emailAddress": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string",
+                                    "description": "The display name of the person or entity."
+                                  },
+                                  "address": {
+                                    "type": "string",
+                                    "description": "The email address of the person or entity."
+                                  }
+                                },
+                                "description": "Email address of a contact or message recipient.",
+                                "additionalProperties": false
+                              }
+                            },
+                            "description": "Represents information about a user in the sending or receiving end of a message."
+                          },
+                          "description": "The email addresses to use when replying. Only updatable if isDraft=true."
+                        },
+                        "subject": {
+                          "type": "string",
+                          "description": "The subject of the message. Only updatable if isDraft=true."
+                        },
+                        "categories": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "The categories associated with the message."
+                        },
+                        "importance": {
+                          "enum": [
+                            "low",
+                            "normal",
+                            "high"
+                          ],
+                          "type": "string",
+                          "description": "Importance level of the message."
+                        },
+                        "ccRecipients": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "emailAddress": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string",
+                                    "description": "The display name of the person or entity."
+                                  },
+                                  "address": {
+                                    "type": "string",
+                                    "description": "The email address of the person or entity."
+                                  }
+                                },
+                                "description": "Email address of a contact or message recipient.",
+                                "additionalProperties": false
+                              }
+                            },
+                            "description": "Represents information about a user in the sending or receiving end of a message."
+                          },
+                          "description": "The Cc recipients for the message."
+                        },
+                        "toRecipients": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "emailAddress": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string",
+                                    "description": "The display name of the person or entity."
+                                  },
+                                  "address": {
+                                    "type": "string",
+                                    "description": "The email address of the person or entity."
+                                  }
+                                },
+                                "description": "Email address of a contact or message recipient.",
+                                "additionalProperties": false
+                              }
+                            },
+                            "description": "Represents information about a user in the sending or receiving end of a message."
+                          },
+                          "description": "The To recipients for the message."
+                        },
+                        "bccRecipients": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "emailAddress": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string",
+                                    "description": "The display name of the person or entity."
+                                  },
+                                  "address": {
+                                    "type": "string",
+                                    "description": "The email address of the person or entity."
+                                  }
+                                },
+                                "description": "Email address of a contact or message recipient.",
+                                "additionalProperties": false
+                              }
+                            },
+                            "description": "Represents information about a user in the sending or receiving end of a message."
+                          },
+                          "description": "The Bcc recipients for the message."
+                        },
+                        "internetMessageId": {
+                          "type": "string",
+                          "description": "The message ID in RFC2822 format. Only updatable if isDraft=true."
+                        },
+                        "isReadReceiptRequested": {
+                          "type": "boolean",
+                          "description": "Whether a read receipt is requested for the message."
+                        },
+                        "inferenceClassification": {
+                          "enum": [
+                            "focused",
+                            "other"
+                          ],
+                          "type": "string",
+                          "description": "Classification of the message based on inferred relevance or importance."
+                        },
+                        "isDeliveryReceiptRequested": {
+                          "type": "boolean",
+                          "description": "Whether a delivery receipt is requested for the message."
+                        }
+                      },
+                      "description": "Object containing the message properties to update. Include only fields you want to update.",
+                      "additionalProperties": false
+                    },
+                    "message_id": {
+                      "type": "string",
+                      "examples": [
+                        "AAMkAGI2TAAA="
+                      ],
+                      "description": "The unique identifier of the message to update."
+                    }
+                  },
+                  "description": "Represents a single message update operation in the batch."
+                },
+                "maxItems": 20,
+                "minItems": 1,
+                "description": "Array of message updates to perform. Maximum 20 items per batch (Microsoft Graph API limit). For larger workloads, chunk into multiple batch calls and retry any failures."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The UPN (User Principal Name) of the user whose messages to update, or 'me' for the currently authenticated user."
+              },
+              "response_detail": {
+                "enum": [
+                  "minimal",
+                  "full"
+                ],
+                "type": "string",
+                "default": "minimal",
+                "description": "Controls how much each PATCH sub-request returns from Microsoft Graph. 'minimal' (default) sets `Prefer: return=minimal` on each sub-request, so Graph returns 204 No Content per update \u2014 the response stays small even for the maximum 20 HTML messages. The action's response shape (BatchItemResult.status / .success / .error_message) is unchanged. 'full' omits the Prefer header so Graph returns the full updated-message body per sub-request (status 200) \u2014 useful only if you want to inspect the raw Graph response for debugging; otherwise stick with 'minimal' to avoid multi-MB batch responses."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_UPDATE_EMAIL": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_UPDATE_EMAIL",
+          "description": "Updates specified properties of an existing email message; `message_id` must identify a valid message within the specified `user_id`'s mailbox.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_id"
+            ],
+            "properties": {
+              "From": {
+                "type": "object",
+                "required": [
+                  "emailAddress"
+                ],
+                "properties": {
+                  "emailAddress": {
+                    "type": "object",
+                    "required": [
+                      "address"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "default": "",
+                        "examples": [
+                          "Katherine Hughes",
+                          "Support Team"
+                        ],
+                        "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                      },
+                      "address": {
+                        "type": "string",
+                        "examples": [
+                          "kat.hughes@example.com",
+                          "support@company.org"
+                        ],
+                        "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                      }
+                    },
+                    "description": "Email address details for the recipient.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Recipient with email address for input requests.",
+                "additionalProperties": false
+              },
+              "body": {
+                "type": "object",
+                "required": [
+                  "contentType",
+                  "content"
+                ],
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "examples": [
+                      "<p>This is the <b>updated</b> email body.</p>",
+                      "This is a plain text update."
+                    ],
+                    "description": "The actual email body content, formatted according to the `contentType`. For example, if contentType is 'HTML', this would be HTML markup."
+                  },
+                  "contentType": {
+                    "type": "string",
+                    "examples": [
+                      "Text",
+                      "HTML"
+                    ],
+                    "description": "Specifies the format of the email body content. Must be either 'Text' (for plain text) or 'HTML' (for HTML markup)."
+                  }
+                },
+                "description": "New body content (Text or HTML). If omitted, the existing message body remains unchanged. Must be a dict with both `contentType` ('Text' or 'HTML') and `content` keys set together; omitting `contentType` defaults to plain text and will not render HTML markup.",
+                "additionalProperties": false
+              },
+              "flag": {
+                "type": "object",
+                "required": [
+                  "flagStatus"
+                ],
+                "properties": {
+                  "flagStatus": {
+                    "type": "string",
+                    "examples": [
+                      "notFlagged",
+                      "flagged",
+                      "complete"
+                    ],
+                    "description": "Flag status for the message. Possible values: 'notFlagged', 'flagged', 'complete'. When 'notFlagged', any date/time fields (startDateTime, dueDateTime, completedDateTime) are ignored."
+                  },
+                  "dueDateTime": {
+                    "type": "object",
+                    "required": [
+                      "dateTime",
+                      "timeZone"
+                    ],
+                    "properties": {
+                      "dateTime": {
+                        "type": "string",
+                        "description": "A single point of time in a combined date and time representation ({date}T{time}; for example, 2017-08-29T04:00:00.0000000)."
+                      },
+                      "timeZone": {
+                        "type": "string",
+                        "description": "Represents a time zone, for example, 'Pacific Standard Time' or 'UTC'."
+                      }
+                    },
+                    "description": "Represents a date and time with timezone information for input.",
+                    "additionalProperties": false
+                  },
+                  "startDateTime": {
+                    "type": "object",
+                    "required": [
+                      "dateTime",
+                      "timeZone"
+                    ],
+                    "properties": {
+                      "dateTime": {
+                        "type": "string",
+                        "description": "A single point of time in a combined date and time representation ({date}T{time}; for example, 2017-08-29T04:00:00.0000000)."
+                      },
+                      "timeZone": {
+                        "type": "string",
+                        "description": "Represents a time zone, for example, 'Pacific Standard Time' or 'UTC'."
+                      }
+                    },
+                    "description": "Represents a date and time with timezone information for input.",
+                    "additionalProperties": false
+                  },
+                  "completedDateTime": {
+                    "type": "object",
+                    "required": [
+                      "dateTime",
+                      "timeZone"
+                    ],
+                    "properties": {
+                      "dateTime": {
+                        "type": "string",
+                        "description": "A single point of time in a combined date and time representation ({date}T{time}; for example, 2017-08-29T04:00:00.0000000)."
+                      },
+                      "timeZone": {
+                        "type": "string",
+                        "description": "Represents a time zone, for example, 'Pacific Standard Time' or 'UTC'."
+                      }
+                    },
+                    "description": "Represents a date and time with timezone information for input.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Represents the flag value for a message (input).",
+                "additionalProperties": false
+              },
+              "sender": {
+                "type": "object",
+                "required": [
+                  "emailAddress"
+                ],
+                "properties": {
+                  "emailAddress": {
+                    "type": "object",
+                    "required": [
+                      "address"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "default": "",
+                        "examples": [
+                          "Katherine Hughes",
+                          "Support Team"
+                        ],
+                        "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                      },
+                      "address": {
+                        "type": "string",
+                        "examples": [
+                          "kat.hughes@example.com",
+                          "support@company.org"
+                        ],
+                        "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                      }
+                    },
+                    "description": "Email address details for the recipient.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Recipient with email address for input requests.",
+                "additionalProperties": false
+              },
+              "is_read": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Mark message as read (True) or unread (False). If omitted, read status remains unchanged."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Updated Subject",
+                  "Re: Important Update"
+                ],
+                "description": "New subject line. If omitted, the existing subject remains unchanged. Provide empty string to clear the subject."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "specific.user@example.com"
+                ],
+                "description": "The UPN (User Principal Name) of the user whose mailbox contains the message, or 'me' for the currently authenticated user. This determines whose message is updated."
+              },
+              "reply_to": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "emailAddress"
+                  ],
+                  "properties": {
+                    "emailAddress": {
+                      "type": "object",
+                      "required": [
+                        "address"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "default": "",
+                          "examples": [
+                            "Katherine Hughes",
+                            "Support Team"
+                          ],
+                          "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                        },
+                        "address": {
+                          "type": "string",
+                          "examples": [
+                            "kat.hughes@example.com",
+                            "support@company.org"
+                          ],
+                          "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                        }
+                      },
+                      "description": "Email address details for the recipient.",
+                      "additionalProperties": false
+                    }
+                  },
+                  "description": "Recipient with email address for input requests."
+                },
+                "description": "Email addresses to use when replying. Updatable only if isDraft = true."
+              },
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "Follow Up",
+                    "Customer"
+                  ],
+                  [
+                    "Important",
+                    "Project"
+                  ]
+                ],
+                "description": "Categories associated with the message. Provides a list of category labels (e.g., 'Follow Up', 'Customer')."
+              },
+              "importance": {
+                "type": "string",
+                "examples": [
+                  "low",
+                  "normal",
+                  "high"
+                ],
+                "description": "New importance level ('low', 'normal', 'high'). If omitted, the existing importance level remains unchanged."
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "AAMkAGI2TAAA="
+                ],
+                "description": "The unique identifier of the email message to be updated. This ID is typically obtained from listing messages or creating/sending a message. URL-encoded IDs are automatically decoded before use."
+              },
+              "cc_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "address"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "default": "",
+                      "examples": [
+                        "Katherine Hughes",
+                        "Support Team"
+                      ],
+                      "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                    },
+                    "address": {
+                      "type": "string",
+                      "examples": [
+                        "kat.hughes@example.com",
+                        "support@company.org"
+                      ],
+                      "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                    }
+                  }
+                },
+                "description": "List of CC recipients; replaces all existing CCs. Omitting this field preserves existing CC recipients. Provide an empty list to clear all CC recipients."
+              },
+              "to_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "address"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "default": "",
+                      "examples": [
+                        "Katherine Hughes",
+                        "Support Team"
+                      ],
+                      "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                    },
+                    "address": {
+                      "type": "string",
+                      "examples": [
+                        "kat.hughes@example.com",
+                        "support@company.org"
+                      ],
+                      "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                    }
+                  }
+                },
+                "description": "List of TO recipients; replaces all existing TOs. Omitting this field preserves existing TO recipients. Provide an empty list to clear all TO recipients."
+              },
+              "bcc_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "address"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "default": "",
+                      "examples": [
+                        "Katherine Hughes",
+                        "Support Team"
+                      ],
+                      "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                    },
+                    "address": {
+                      "type": "string",
+                      "examples": [
+                        "kat.hughes@example.com",
+                        "support@company.org"
+                      ],
+                      "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                    }
+                  }
+                },
+                "description": "List of BCC recipients; replaces all existing BCCs. Omitting this field preserves existing BCC recipients. Provide an empty list to clear all BCC recipients."
+              },
+              "internet_message_id": {
+                "type": "string",
+                "description": "The message ID in the format specified by RFC2822. Updatable only if isDraft = true."
+              },
+              "inference_classification": {
+                "type": "string",
+                "examples": [
+                  "focused",
+                  "other"
+                ],
+                "description": "Classification of the message for the user based on inferred relevance or importance. Possible values: 'focused' or 'other'."
+              },
+              "is_read_receipt_requested": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Indicates whether a read receipt is requested for the message."
+              },
+              "is_delivery_receipt_requested": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Indicates whether a delivery receipt is requested for the message."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_GET_MESSAGE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_GET_MESSAGE",
+          "description": "Retrieves a specific email message by its ID from the specified user's Outlook mailbox. Use the 'sel...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_GET_MESSAGE"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_CREATE_EMAIL_RULE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_CREATE_EMAIL_RULE",
+          "description": "Create email rule filter with conditions and actions",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_CREATE_EMAIL_RULE"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_LIST_EMAIL_RULES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_EMAIL_RULES",
+          "description": "List all email rules from inbox. No server-side filtering is supported; all rule narrowing must be d...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_LIST_EMAIL_RULES"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_UPDATE_EMAIL_RULE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_UPDATE_EMAIL_RULE",
+          "description": "Update an existing email rule",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_UPDATE_EMAIL_RULE"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_DELETE_EMAIL_RULE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_DELETE_EMAIL_RULE",
+          "description": "Delete an email rule permanently; deletion is irreversible. Confirm rule details with the user befor...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_DELETE_EMAIL_RULE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:49:39.506Z",
+        "current_time_utc_epoch_seconds": 1786564179,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "hope",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"hope\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_ly9rfUq9KNb-"
+  }
+}

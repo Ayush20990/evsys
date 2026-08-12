@@ -1,0 +1,200 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-018-q2-explicit",
+    "workflow_id": 18,
+    "workflow_task": "Find recent remote or hybrid contract data-engineering-related job listings in a target region, validate/extract job details from job boards, compile a curated digest, and email it to someone.",
+    "query": "extract job description details using the browser task automation",
+    "required_tools": [
+      "BROWSER_TOOL_CREATE_TASK",
+      "BROWSER_TOOL_WATCH_TASK"
+    ],
+    "supporting_tools": [
+      "BROWSER_TOOL_STOP_TASK"
+    ],
+    "rationale": "Automates browser navigation and data extraction to pull full listing details.",
+    "candidate_tools": [
+      "BROWSER_TOOL_CREATE_TASK",
+      "BROWSER_TOOL_STOP_TASK",
+      "BROWSER_TOOL_WATCH_TASK",
+      "GMAIL_SEND_EMAIL",
+      "LINKEDIN_PROXY_EXECUTE"
+    ],
+    "source_query_id": "workflow-018-q2",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "extract job description details using the browser task automation"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "extract job description details using the browser task automation",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Start an automation run using BROWSER_TOOL_CREATE_TASK (open the provided page, handle common overlays, wait/scroll for dynamic content, execute in-page JavaScript when needed, and request compact structured JSON; if output may be large, ask to write results to outputFiles).",
+            "[Optional (for live verification/debugging)] [Next Step]: Get a live viewing link using BROWSER_TOOL_GET_SESSION (use the session identifier from BROWSER_TOOL_CREATE_TASK to confirm redirects, blocks, or auth walls before iterating).",
+            "[Required] [Step]: Poll to completion using BROWSER_TOOL_WATCH_TASK (poll with taskId; use lastStepSeen for incremental updates; accept success only when status is terminal and isSuccess=true; if data.output is empty, inspect steps/actions for the extracted payload and parse JSON-formatted strings when returned).",
+            "[Optional (if outputFiles are present or inline output is truncated/escaped)] [Next Step]: Retrieve each artifact using BROWSER_TOOL_GET_OUTPUT_FILE (use taskId + fileId from BROWSER_TOOL_WATCH_TASK.outputFiles, then merge artifacts into the final structured result).",
+            "[Fallback (if blocked, stalled, looping, or step limits hit)] [Fallback]: Abort using BROWSER_TOOL_STOP_TASK, then rerun BROWSER_TOOL_CREATE_TASK in a fresh session with a narrower single-goal extraction (split multi-page work into smaller runs) and monitor again via BROWSER_TOOL_WATCH_TASK."
+          ],
+          "known_pitfalls": [
+            "[BROWSER_TOOL_CREATE_TASK] HTTP 422 if startUrl is missing or not a standard web URL with a valid scheme/host.",
+            "[BROWSER_TOOL_CREATE_TASK] HTTP 422 if secrets keys include invalid characters (allowed: alphanumeric, underscore, hyphen, dot).",
+            "[BROWSER_TOOL_CREATE_TASK] HTTP 400 if attempting to reuse a stopped sessionId; omit sessionId to create a fresh session.",
+            "[BROWSER_TOOL_WATCH_TASK] status='finished' can still have isSuccess=false even if output text exists; treat as failure and retry with tighter scope.",
+            "[BROWSER_TOOL_GET_OUTPUT_FILE] HTTP 422/validation errors if fileId is not taken from BROWSER_TOOL_WATCH_TASK.outputFiles or if taskId is omitted when required."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse a saved watch response dump to collect terminal status and top-level output when inline payloads are too large.",
+              "code": "```python\nimport json\np=json.load(open(path))\nout=[]\nfor r in p.get('results',[]):\n d=(r.get('response') or {}).get('data') or {}\n out.append({'status':d.get('status'),'isSuccess':d.get('isSuccess'),'output':d.get('output') or ''})\nprint(out)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "BROWSER_TOOL_CREATE_TASK"
+          ],
+          "related_tool_slugs": [
+            "BROWSER_TOOL_GET_SESSION",
+            "BROWSER_TOOL_STOP_TASK",
+            "BROWSER_TOOL_GET_OUTPUT_FILE",
+            "BROWSER_TOOL_WATCH_TASK"
+          ],
+          "toolkits": [
+            "browser_tool"
+          ],
+          "plan_id": "2372aa5602614a26843ff288c32fc256"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "browser_tool",
+          "has_active_connection": true,
+          "description": "Composio Browser Tool enables AI Agents and LLMs to automate web interactions, perform web scraping, and conduct automated testing. Use cases include data extraction, form automation, website monitoring, and intelligent web navigation.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        }
+      ],
+      "tool_schemas": {
+        "BROWSER_TOOL_CREATE_TASK": {
+          "toolkit": "BROWSER_TOOL",
+          "tool_slug": "BROWSER_TOOL_CREATE_TASK",
+          "description": "Run an AI-powered browser automation task. The AI agent will control a cloud browser to complete your task. It can: - Navigate websites, click buttons, fill forms - Extract data and return results - Handle multi-step workflows (login -> navigate -> extract) - Solve CAPTCHAs and handle dynamic content If there is no running browser session in context, call CreateTask to start one. AFTER CREATING A TASK: 1. Use GetSession with browser_session_id to get the liveUrl - share with user to watch live 2. Use WatchTask with watch_task_id to check progress and get the final result 3. Use StopTask if you need to abort TIPS FOR GOOD TASKS: - Be specific: \"Click login, enter email 'test@test.com', click submit\" - Break complex workflows into smaller tasks",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "task"
+            ],
+            "properties": {
+              "task": {
+                "type": "string",
+                "minLength": 10,
+                "description": "Natural language instructions for the browser AI agent. Be specific and clear. Examples: 'Go to amazon.com, search for wireless headphones, and return the top 3 results with prices', 'Log into twitter.com and post a tweet saying Hello World'. For multi-step workflows, break them into clear sequential instructions."
+              },
+              "secrets": {
+                "type": "object",
+                "description": "Domain-specific credentials for automatic login. Map domain patterns to 'username:password'. Example: {'https://example.com': 'user@email.com:pass123', 'https://*.google.com': 'email@gmail.com:password'}. Wildcards (*) supported for subdomains.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "startUrl": {
+                "type": "string",
+                "description": "URL to navigate to before starting the task. If not provided, agent starts from blank page."
+              },
+              "sessionId": {
+                "type": "string",
+                "description": "Leave this empty for the first task, a new session will be auto-created. To continue in an existing browser: pass the browser_session_id from a previous CreateTask response. This preserves login state and cookies between tasks. Important: the previous task in this session must be finished or stopped (via StopTask or by waiting for WatchTask to show status='finished') before creating a new task."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "BROWSER_TOOL_GET_SESSION": {
+          "toolkit": "BROWSER_TOOL",
+          "tool_slug": "BROWSER_TOOL_GET_SESSION",
+          "description": "Get the live URL to watch a browser session in real-time. Call this right after CreateTask to get the liveUrl. Always share this URL with the user so they can watch the AI agent working in the browser. The liveUrl opens a visual stream showing exactly what the browser agent sees and does.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "sessionId"
+            ],
+            "properties": {
+              "sessionId": {
+                "type": "string",
+                "description": "The sessionId returned from a CreateTask call you made previously. Only use session IDs from your own CreateTask responses."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "BROWSER_TOOL_STOP_TASK": {
+          "toolkit": "BROWSER_TOOL",
+          "tool_slug": "BROWSER_TOOL_STOP_TASK",
+          "description": "Kill a browser task and its session. Use this when the browser agent is in a bad state: - Task is stuck or taking too long - WatchTask shows the agent going in the wrong direction - Agent is looping or making no progress After stopping, call CreateTask again to start fresh with a new browser.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "taskId"
+            ],
+            "properties": {
+              "taskId": {
+                "type": "string",
+                "description": "Task ID to stop (from CreateTask)"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "BROWSER_TOOL_GET_OUTPUT_FILE": {
+          "toolkit": "BROWSER_TOOL",
+          "tool_slug": "BROWSER_TOOL_GET_OUTPUT_FILE",
+          "description": "Get a download URL for a file generated by a task. When a task downloads or creates files (PDFs, ima...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BROWSER_TOOL_GET_OUTPUT_FILE"
+              ]
+            }
+          }
+        },
+        "BROWSER_TOOL_WATCH_TASK": {
+          "toolkit": "BROWSER_TOOL",
+          "tool_slug": "BROWSER_TOOL_WATCH_TASK",
+          "description": "Poll a browser task to check progress and get results. Call this after CreateTask to monitor the tas...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BROWSER_TOOL_WATCH_TASK"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:54:02.093Z",
+        "current_time_utc_epoch_seconds": 1786564442,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "body",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"body\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) Connections active, proceed to next step",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_Ko5HVg0Vn0SK"
+  }
+}

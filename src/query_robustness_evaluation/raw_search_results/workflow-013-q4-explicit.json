@@ -1,0 +1,474 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-013-q4-explicit",
+    "workflow_id": 13,
+    "workflow_task": "Audit website search and traffic performance, prepare email marketing/contact lists, and send outreach emails for marketing and press engagement.",
+    "query": "send outreach emails using Gmail",
+    "required_tools": [
+      "GMAIL_SEND_EMAIL"
+    ],
+    "supporting_tools": [
+      "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"
+    ],
+    "rationale": "Executing the final step of marketing and press engagement involves sending outreach emails through Gmail.",
+    "candidate_tools": [
+      "BREVO_CREATE_CONTACT_LIST",
+      "BREVO_GET_CONTACT_LISTS",
+      "BREVO_LIST_EMAIL_CAMPAIGNS",
+      "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+      "GMAIL_SEND_EMAIL",
+      "GOOGLE_ANALYTICS_LIST_ACCOUNTS",
+      "GOOGLE_ANALYTICS_LIST_PROPERTIES",
+      "GOOGLE_ANALYTICS_RUN_REPORT",
+      "GOOGLE_SEARCH_CONSOLE_GET_SITE",
+      "GOOGLE_SEARCH_CONSOLE_INSPECT_URL",
+      "GOOGLE_SEARCH_CONSOLE_LIST_SITEMAPS",
+      "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY",
+      "GOOGLE_SEARCH_CONSOLE_SUBMIT_SITEMAP"
+    ],
+    "source_query_id": "workflow-013-q4",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "send outreach emails using Gmail"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "send outreach emails using Gmail",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if lead spreadsheet is unknown)] [Prerequisite]: Locate the lead spreadsheet using GOOGLESHEETS_SEARCH_SPREADSHEETS (avoid pulling the wrong document).",
+            "[Optional (if personalization data is in a sheet)] [Prerequisite]: Read only required columns and bounded row blocks using GOOGLESHEETS_BATCH_GET (build a per-recipient queue and enforce any send limit).",
+            "[Optional (if avoiding duplicate outreach)] [Prerequisite]: Build a dedupe set from prior outbound messages using GMAIL_FETCH_EMAILS (filter to sent/outbound and paginate via page_token).",
+            "[Required] [Step]: Create one reviewable draft per recipient using GMAIL_CREATE_EMAIL_DRAFT (persist the exact draft_id and keep recipient\u2194draft mapping stable).",
+            "[Optional (for QA/editing before approval)] [Next Step]: Spot-check content using GMAIL_GET_DRAFT and apply edits using GMAIL_UPDATE_DRAFT (verify recipients weren\u2019t changed).",
+            "[Required] [Step]: Get explicit user confirmation, then send each finalized message using GMAIL_SEND_DRAFT (record returned message/thread identifiers for reconciliation).",
+            "[Fallback (if GMAIL_SEND_DRAFT fails for a specific recipient)] [Fallback]: Send only the affected recipient using GMAIL_SEND_EMAIL (continue per-recipient to avoid resends)."
+          ],
+          "known_pitfalls": [
+            "[GOOGLESHEETS_BATCH_GET] Large or unbounded ranges can be slow and previews may truncate; request only needed columns and read in bounded windows.",
+            "[GOOGLESHEETS_BATCH_GET] response.data.valueRanges[].values can include blank/sparse rows; parse defensively and don\u2019t assume contiguous data.",
+            "[GMAIL_CREATE_EMAIL_DRAFT] draft_id is opaque (may include non-alphanumerics); altering it can break later get/update/send calls.",
+            "[GMAIL_SEND_DRAFT] Sends the draft as-is (cannot override recipients at send time); per-recipient failures may surface as precondition errors.",
+            "[COMPOSIO_REMOTE_WORKBENCH] Loading previously saved tool output may raise FileNotFoundError; prefer inline values or re-fetch via GOOGLESHEETS_BATCH_GET."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GMAIL_CREATE_EMAIL_DRAFT",
+            "GMAIL_SEND_DRAFT"
+          ],
+          "related_tool_slugs": [
+            "GOOGLESHEETS_BATCH_GET",
+            "GMAIL_GET_DRAFT",
+            "GMAIL_UPDATE_DRAFT",
+            "GMAIL_SEND_EMAIL",
+            "GMAIL_FETCH_EMAILS",
+            "GOOGLESHEETS_SEARCH_SPREADSHEETS"
+          ],
+          "toolkits": [
+            "gmail",
+            "googlesheets"
+          ],
+          "plan_id": "0515c3fdb3014b2bb2574d28c75a49cb"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "gmail",
+          "has_active_connection": false,
+          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
+          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+        },
+        {
+          "toolkit": "googlesheets",
+          "has_active_connection": false,
+          "description": "Google Sheets is a cloud-based spreadsheet tool enabling real-time collaboration, data analysis, and integration with other Google Workspace apps. STRICT RATE LIMITS apply - max 60 reads/minute and 60 writes/minute. Exceeding this causes errors.",
+          "status_message": "No Active connection for toolkit=googlesheets. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesheets\") to create a connection BEFORE executing any googlesheets tools."
+        }
+      ],
+      "tool_schemas": {
+        "GMAIL_CREATE_EMAIL_DRAFT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_CREATE_EMAIL_DRAFT",
+          "description": "Creates a Gmail email draft. While all fields are optional per the Gmail API, practical validation requires at least one of recipient_email, cc, or bcc and at least one of subject or body. Supports To/Cc/Bcc recipients, subject, plain/HTML body (ensure `is_html=True` for HTML), attachments, and threading. Returns a draft_id that must be used as-is with GMAIL_SEND_DRAFT \u2014 synthetic or stale IDs will fail. When creating a draft reply to an existing thread (thread_id provided), leave subject empty to stay in the same thread; setting a subject will create a NEW thread instead. HTTP 429 may occur on rapid creation/send sequences; apply exponential backoff.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "cc": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "cc.recipient1@example.com",
+                    "CC User <cc.recipient2@example.com>"
+                  ]
+                ],
+                "description": "Carbon Copy (CC) recipients' email addresses. Each must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). Plain names without email addresses are NOT valid. Optional for drafts (recipients can be added later before sending)."
+              },
+              "bcc": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "bcc.recipient@example.com",
+                    "BCC User <bcc.user@example.com>"
+                  ]
+                ],
+                "description": "Blind Carbon Copy (BCC) recipients' email addresses. Each must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'Bob Jones <user@example.com>'). Plain names without email addresses are NOT valid. Optional for drafts (recipients can be added later before sending)."
+              },
+              "body": {
+                "type": "string",
+                "examples": [
+                  "Hello Team,\n\nPlease find the attached report for your review.\n\nBest regards,\nYour Name",
+                  "<h1>Meeting Confirmation</h1><p>This email confirms our meeting scheduled for next Tuesday.</p>"
+                ],
+                "description": "Email body content (plain text or HTML); `is_html` must be True if HTML. Optional - drafts can be created without a body and edited later before sending. Can also be provided as 'message_body'."
+              },
+              "is_html": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Set to True if `body` is already formatted HTML. When False, plain text newlines are auto-converted to <br/> tags. Both modes result in HTML email; this flag controls whether the body content is treated as raw HTML or plain text that gets HTML formatting applied."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Project Update Q3",
+                  "Meeting Reminder"
+                ],
+                "description": "Email subject line. Optional - drafts can be created without a subject and edited later before sending. When creating a draft reply to an existing thread (thread_id provided), leave this empty to stay in the same thread. Setting a subject will create a NEW thread instead."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "User's email address or 'me' for the authenticated user."
+              },
+              "thread_id": {
+                "type": "string",
+                "examples": [
+                  "17f45ec49a9c3f1b"
+                ],
+                "description": "ID of an existing Gmail thread to reply to; omit for new thread. If the thread ID is invalid or inaccessible, the draft will be created as a new thread instead of failing."
+              },
+              "attachment": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "title": "FileUploadable",
+                    "required": [
+                      "name",
+                      "mimetype",
+                      "s3key"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "examples": [
+                          "document.pdf",
+                          "image.jpg",
+                          "report.docx"
+                        ],
+                        "description": "The filename that will be used when uploading the file to the destination service"
+                      },
+                      "s3key": {
+                        "type": "string",
+                        "title": "S3Key",
+                        "examples": [
+                          "47563/gmail/GET_ATTACHMENT/response/12345"
+                        ],
+                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                      },
+                      "mimetype": {
+                        "type": "string",
+                        "title": "Mimetype",
+                        "examples": [
+                          "application/pdf",
+                          "image/jpeg",
+                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        ],
+                        "description": "The MIME type of the file"
+                      }
+                    },
+                    "file_uploadable": true
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "title": "FileUploadable",
+                      "required": [
+                        "name",
+                        "mimetype",
+                        "s3key"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "title": "Name",
+                          "examples": [
+                            "document.pdf",
+                            "image.jpg",
+                            "report.docx"
+                          ],
+                          "description": "The filename that will be used when uploading the file to the destination service"
+                        },
+                        "s3key": {
+                          "type": "string",
+                          "title": "S3Key",
+                          "examples": [
+                            "47563/gmail/GET_ATTACHMENT/response/12345"
+                          ],
+                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                        },
+                        "mimetype": {
+                          "type": "string",
+                          "title": "Mimetype",
+                          "examples": [
+                            "application/pdf",
+                            "image/jpeg",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ],
+                          "description": "The MIME type of the file"
+                        }
+                      },
+                      "file_uploadable": true
+                    }
+                  }
+                ],
+                "description": "File(s) to attach to the email. Accepts a single file or a list of files. Total message size including base64-encoded attachments must be under 25 MB; use shareable links (e.g., Google Drive) for larger files."
+              },
+              "recipient_email": {
+                "type": "string",
+                "examples": [
+                  "john.doe@example.com",
+                  "John Doe <john.doe@example.com>"
+                ],
+                "description": "Primary recipient's email address. Must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). A plain name without an email address (e.g., 'John Doe') is NOT valid - the '@' symbol and domain are required. Optional for drafts (recipients can be added later before sending). Use extra_recipients if you want to send to multiple recipients."
+              },
+              "extra_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "jane.doe@example.com",
+                    "Jane Doe <jane.doe@example.com>"
+                  ]
+                ],
+                "description": "Additional 'To' recipients' email addresses (not Cc or Bcc). Each must be a valid email address (e.g., 'user@example.com'), display name format (e.g., 'Jane Doe <user@example.com>'), or 'me' for the authenticated user. Plain names without email addresses are NOT valid. Should only be used if recipient_email is also provided."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_SEND_DRAFT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_SEND_DRAFT",
+          "description": "Sends an existing draft email AS-IS to recipients already defined within the draft. IMPORTANT: This action does NOT accept recipient parameters (to, cc, bcc). The Gmail API's drafts/send endpoint sends drafts to whatever recipients are already set in the draft's To, Cc, and Bcc headers - it cannot add or override recipients. If the draft has no recipients, you must either: 1. Create a new draft with recipients using GMAIL_CREATE_EMAIL_DRAFT, then send it 2. Use GMAIL_SEND_EMAIL to send a new email directly with recipients. Send is immediate and irreversible \u2014 confirm recipients and content before calling. No scheduling support; trigger at the desired UTC time externally. Gmail enforces ~25 MB message size limit and daily send caps (~500 recipients/day personal, ~2,000/day Workspace).",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "draft_id"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The user's email address. The special value `me` can be used to indicate the authenticated user."
+              },
+              "draft_id": {
+                "type": "string",
+                "examples": [
+                  "r99885592323229922"
+                ],
+                "description": "The ID of the draft to send. Draft IDs are typically alphanumeric strings (e.g., 'r99885592323229922'). Important: Do not confuse draft_id with message_id - they are different identifiers. Use GMAIL_LIST_DRAFTS to retrieve valid draft IDs, or GMAIL_CREATE_EMAIL_DRAFT to create a new draft and get its ID. IMPORTANT: The draft MUST already have recipients (To, Cc, or Bcc) set - this action cannot add or override recipients. If the draft has no recipients, first create a new draft with recipients using GMAIL_CREATE_EMAIL_DRAFT, or use GMAIL_SEND_EMAIL to send a new email directly."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_BATCH_GET": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_BATCH_GET",
+          "description": "Retrieves data from specified cell ranges in a Google Spreadsheet.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id"
+            ],
+            "properties": {
+              "ranges": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "Sheet1",
+                  "Sheet1!A1:B2",
+                  "Sheet1!A1:Z10000",
+                  "Sheet1!1:2",
+                  "'My Sheet'!A1:Z500",
+                  "A1:B2"
+                ],
+                "description": "A list of cell ranges in A1 notation from which to retrieve data. If this list is omitted, empty, or contains only empty strings, all data from the first sheet of the spreadsheet will be fetched. Empty strings in the list are automatically filtered out. Supported formats: (1) Bare sheet name like 'Sheet1' to get all data from that sheet, (2) Sheet with range like 'Sheet1!A1:B2', (3) Just cell reference like 'A1:B2' (uses first sheet). For sheet names with spaces or special characters, enclose in single quotes (e.g., \"'My Sheet'\" or \"'My Sheet'!A1:B2\"). IMPORTANT: For large sheets, always use bounded ranges with explicit row limits (e.g., 'Sheet1!A1:Z10000' instead of 'Sheet1!A:Z'). Unbounded column ranges like 'A:Z' on sheets with >10,000 rows may cause timeouts or errors. If you need all data from a large sheet, fetch in chunks of 10,000 rows at a time."
+              },
+              "majorDimension": {
+                "enum": [
+                  "DIMENSION_UNSPECIFIED",
+                  "ROWS",
+                  "COLUMNS"
+                ],
+                "type": "string",
+                "description": "The major dimension for organizing data in results."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "maxLength": 200,
+                "description": "The unique identifier of the Google Spreadsheet from which data will be retrieved. This is the ID found in the spreadsheet URL after /d/. You can provide either the spreadsheet ID directly or a full Google Sheets URL (the ID will be extracted automatically)."
+              },
+              "valueRenderOption": {
+                "enum": [
+                  "FORMATTED_VALUE",
+                  "UNFORMATTED_VALUE",
+                  "FORMULA"
+                ],
+                "type": "string",
+                "default": "FORMATTED_VALUE",
+                "description": "How values should be rendered in the output. FORMATTED_VALUE: Values are calculated and formatted (default). UNFORMATTED_VALUE: Values are calculated but not formatted. FORMULA: Values are not calculated; the formula is returned instead."
+              },
+              "dateTimeRenderOption": {
+                "enum": [
+                  "SERIAL_NUMBER",
+                  "FORMATTED_STRING"
+                ],
+                "type": "string",
+                "default": "SERIAL_NUMBER",
+                "description": "How dates and times should be rendered in the output. SERIAL_NUMBER: Dates are returned as serial numbers (default). FORMATTED_STRING: Dates returned as formatted strings."
+              },
+              "empty_strings_filtered": {
+                "type": "boolean",
+                "default": false,
+                "description": "Indicates whether empty strings were filtered from the response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_GET_DRAFT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_GET_DRAFT",
+          "description": "Retrieves a single Gmail draft by its ID. Use this to fetch and inspect draft content before sending...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_GET_DRAFT"
+              ]
+            }
+          }
+        },
+        "GMAIL_UPDATE_DRAFT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_UPDATE_DRAFT",
+          "description": "Updates (replaces) an existing Gmail draft's content in-place by draft ID. This action replaces the ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_UPDATE_DRAFT"
+              ]
+            }
+          }
+        },
+        "GMAIL_SEND_EMAIL": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_SEND_EMAIL",
+          "description": "Sends an email via Gmail API using the authenticated user's Google profile display name. Sends immed...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_SEND_EMAIL"
+              ]
+            }
+          }
+        },
+        "GMAIL_FETCH_EMAILS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_FETCH_EMAILS",
+          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optiona...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_FETCH_EMAILS"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_SEARCH_SPREADSHEETS": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+          "description": "Search for Google Spreadsheets using various filters including name, content, date ranges, and more.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_SEARCH_SPREADSHEETS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:50:56.347Z",
+        "current_time_utc_epoch_seconds": 1786564256,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "bill",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"bill\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_2auSrdOIrLFM"
+  }
+}

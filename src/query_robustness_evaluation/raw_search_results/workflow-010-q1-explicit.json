@@ -1,0 +1,375 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-010-q1-explicit",
+    "workflow_id": 10,
+    "workflow_task": "Reconcile an organization's QuickBooks bank-account ledger by querying existing transactions, removing or undoing incorrect entries, posting corrected ledger activity, creating adjustment entries, recording a customer payment, and verifying financial reports.",
+    "query": "search through my QuickBooks bank account ledger transactions",
+    "required_tools": [
+      "QUICKBOOKS_QUERY_ENTITIES"
+    ],
+    "supporting_tools": [
+      "QUICKBOOKS_GET_COMPANY_INFO"
+    ],
+    "rationale": "An agent needs to search and query existing ledger entries and entities to review current bank transactions before reconciliation.",
+    "candidate_tools": [
+      "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
+      "QUICKBOOKS_EXECUTE_BATCH_OPERATION",
+      "QUICKBOOKS_GET_COMPANY_INFO",
+      "QUICKBOOKS_GET_REPORTS",
+      "QUICKBOOKS_PROXY_EXECUTE",
+      "QUICKBOOKS_QUERY_ENTITIES"
+    ],
+    "source_query_id": "workflow-010-q1",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "search through my QuickBooks bank account ledger transactions"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search through my QuickBooks bank account ledger transactions",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite (if account identifier unknown)]: Find candidate bank/cash/credit accounts using QUICKBOOKS_QUERY_ACCOUNT (keep filters simple; capture Account.Id).",
+            "[Optional (if matches are ambiguous)] [Prerequisite]: Confirm the intended Account.Id set using QUICKBOOKS_GET_REPORT_ACCOUNT_LIST.",
+            "[Optional (if unsure which report fits)] [Prerequisite]: Review available report types using QUICKBOOKS_GET_REPORTS (pick a transaction-listing style report).",
+            "[Required] [Step]: Get point-in-time balance/context using QUICKBOOKS_READ_ACCOUNT (treat as a snapshot, not a period ending balance).",
+            "[Required] [Step]: Pull activity for an explicit window using QUICKBOOKS_GET_TRANSACTION_LIST_REPORT (always provide start_date/end_date; pass account_ids when supported).",
+            "[Required] [Step]: Parse output by deriving schema from Columns.Column[*].ColTitle and mapping each Data row\u2019s ColData[*].value by index; if grouped, traverse nested Section blocks and ignore Summary totals.",
+            "[Optional (if you need typed objects or the report scope looks wrong)] [Step]: Retrieve relevant transaction entities using QUICKBOOKS_QUERY_ENTITIES (paginate with STARTPOSITION/MAXRESULTS; filter client-side to the same window/account scope).",
+            "[Optional (if payload is large or needs reshaping)] [Step]: Chunk windows and flatten/aggregate using COMPOSIO_REMOTE_WORKBENCH (checkpoint partial outputs).",
+            "[Optional (for reconciliation/verification)] [Next Step]: Compare period totals using QUICKBOOKS_GET_REPORT_TRIAL_BALANCE (same window/account scope).",
+            "[Fallback (if transaction list lacks needed detail/shape)] [Fallback]: Re-run the same window using QUICKBOOKS_GET_GENERAL_LEDGER_REPORT and recursively extract only leaf type=='Data' rows (skip headers/opening lines/summaries)."
+          ],
+          "known_pitfalls": [
+            "[QUICKBOOKS_QUERY_ACCOUNT] Unsupported AccountType values or complex filters can trigger 400 ValidationFault (including code 2010); refine client-side after a broad query.",
+            "[QUICKBOOKS_READ_ACCOUNT] CurrentBalance is point-in-time and can differ from any reporting-window ending balance.",
+            "[QUICKBOOKS_GET_TRANSACTION_LIST_REPORT] The response can indicate no data (e.g., via header options like NoReportData) even when the call succeeds; widen/shift the window.",
+            "[QUICKBOOKS_GET_TRANSACTION_LIST_REPORT] Returned Columns may differ from requested columns; always align using Columns.Column[*].ColTitle with ColData index order.",
+            "[QUICKBOOKS_GET_TRANSACTION_LIST_REPORT] account_ids filtering and group_by can yield nested Section/Header/Summary rows; validate that rows actually change and avoid double-counting summaries."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Flatten Data rows by zipping returned column titles to each row\u2019s ColData values",
+              "code": "```python\ndef flatten_report(report):\n    cols=[c.get('ColTitle','') for c in report.get('Columns',{}).get('Column',[])]\n    out=[]\n    for r in report.get('Rows',{}).get('Row',[]):\n        if r.get('type')!='Data':\n            continue\n        vals=[c.get('value','') for c in r.get('ColData',[])]\n        vals+=['']*(len(cols)-len(vals))\n        out.append(dict(zip(cols,vals)))\n    return out\n```"
+            },
+            {
+              "description": "Recursively flatten nested Section rows while skipping summaries and carrying section context",
+              "code": "```python\ndef flatten_sections(rows_obj, cols, section=''):\n    rows=rows_obj if isinstance(rows_obj,list) else rows_obj.get('Row',[])\n    out=[]\n    for r in rows:\n        t=r.get('type','')\n        if t=='Section':\n            h=r.get('Header',{}).get('ColData',[])\n            s=(h[0].get('value','') if h else section)\n            inner=r.get('Rows')\n            if inner:\n                out.extend(flatten_sections(inner, cols, s))\n        elif t=='Data':\n            vals=[c.get('value','') for c in r.get('ColData',[])]\n            rec=dict(zip(cols,vals))\n            rec['section']=section\n            out.append(rec)\n        else:\n            inner=r.get('Rows')\n            if inner:\n                out.extend(flatten_sections(inner, cols, section))\n    return out\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "QUICKBOOKS_QUERY_ACCOUNT",
+            "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT"
+          ],
+          "related_tool_slugs": [
+            "QUICKBOOKS_GET_REPORT_ACCOUNT_LIST",
+            "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
+            "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE",
+            "QUICKBOOKS_GET_REPORTS",
+            "QUICKBOOKS_QUERY_ENTITIES",
+            "QUICKBOOKS_READ_ACCOUNT"
+          ],
+          "toolkits": [
+            "quickbooks"
+          ],
+          "plan_id": "13a3427cd79d4dd5a92bfe6a5d1b2b0c"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "quickbooks",
+          "has_active_connection": false,
+          "description": "Quickbooks is a cloud-based accounting software that helps you manage your finances, track your income and expenses, and get insights into your business",
+          "status_message": "No Active connection for toolkit=quickbooks. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"quickbooks\") to create a connection BEFORE executing any quickbooks tools."
+        }
+      ],
+      "tool_schemas": {
+        "QUICKBOOKS_QUERY_ACCOUNT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_QUERY_ACCOUNT",
+          "description": "Query Account entities in QuickBooks using SQL-like syntax. IMPORTANT: Queries the Account entity ONLY (chart of accounts). For other entities (Purchase, Invoice, Bill, Payment, etc.), use their respective query actions. NOTE: API returns ALL fields with values regardless of SELECT clause (projections not supported). CRITICAL RESTRICTIONS: Parentheses and OR operator are NOT supported. Use IN operator for multiple values: WHERE AccountType IN ('Bank', 'Credit Card') Supports: WHERE clauses (=, <, >, LIKE, IN), AND operator, pattern matching (%), ORDER BY, pagination (MAXRESULTS up to 1000, STARTPOSITION), COUNT. Common fields: Id, Name, AccountType, AccountSubType, Classification, Active, FullyQualifiedName, CurrentBalance, AcctNum, Description, SubAccount. Examples: - SELECT * FROM Account WHERE AccountType = 'Expense' MAXRESULTS 100 - SELECT * FROM Account WHERE Active = true ORDER BY Name - SELECT * FROM Account WHERE AccountType IN ('Bank', 'Credit Card')",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "SELECT * FROM Account",
+                  "SELECT * FROM Account WHERE AccountType = 'Expense' MAXRESULTS 100",
+                  "SELECT * FROM Account WHERE Active = true ORDER BY Name",
+                  "SELECT * FROM Account WHERE Name LIKE '%Checking%' MAXRESULTS 10",
+                  "SELECT COUNT(*) FROM Account WHERE Classification = 'Asset'",
+                  "SELECT * FROM Account WHERE AccountType IN ('Expense', 'Income') MAXRESULTS 100",
+                  "SELECT * FROM Account WHERE Active = true AND AccountType IN ('Bank', 'Credit Card')",
+                  "SELECT * FROM Account ORDER BY Id STARTPOSITION 1 MAXRESULTS 100"
+                ],
+                "description": "SQL-like query string to filter and retrieve Account entities ONLY. Do NOT use for other entities (Purchase, Invoice, Bill, etc.) - use their respective query tools. \n\nQuery syntax: SELECT [fields] FROM Account [WHERE conditions] [ORDER BY field] [STARTPOSITION n] [MAXRESULTS n] \n\nCRITICAL SYNTAX RESTRICTIONS: - Parentheses for grouping are NOT supported - OR operator is NOT supported - use IN instead - Use: WHERE Active = true AND AccountType IN ('Bank', 'Credit Card') \n\nNOTE: QuickBooks API returns ALL fields regardless of SELECT clause. \n\nCommonly queryable fields: Id, Name, AccountType, AccountSubType, Classification, Active, FullyQualifiedName, CurrentBalance, AcctNum, Description, SubAccount. \n\nSupports: - WHERE with operators (=, <, >, <=, >=, IN) - LIKE with % wildcard - AND only (no OR - use IN for multiple values) - ORDER BY for sorting (MUST be two words, not 'ORDERBY'). Sortable fields: Name, Id. Non-sortable: AccountType, AccountSubType, Classification, and others. - MAXRESULTS (max 1000, default 100) and STARTPOSITION - COUNT"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT",
+          "description": "Get the Transaction List report showing all transactions in the company. Use when you need a comprehensive view of all transactions with flexible filtering by date, customer, vendor, account, or other criteria.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "cleared": {
+                "type": "string",
+                "examples": [
+                  "All",
+                  "Cleared",
+                  "Uncleared",
+                  "Reconciled"
+                ],
+                "description": "Filter for transaction cleared status. Options: 'All', 'Cleared', 'Uncleared', 'Reconciled'. Note that 'cleared' can only be used as a filter parameter, not as a column in the result."
+              },
+              "columns": {
+                "type": "string",
+                "examples": [
+                  "date,transaction_type,number,name,memo,account,amount",
+                  "tx_date,txn_type,doc_num,name,memo,account_name,subt_nat_amount",
+                  "date,account,amount"
+                ],
+                "description": "Comma-separated list of columns to include in the report. Supports both user-friendly names and QuickBooks API identifiers: date/tx_date (Date), transaction_type/txn_type (Transaction Type), number/num/doc_num (Number), name (Name), memo/description (Memo/Description), account/account_name (Account), amount/subt_nat_amount (Amount), net_amount (Net Amount), split (Split), balance (Balance), customer (Customer), vendor (Vendor), employee (Employee), product_service (Product/Service), quantity (Quantity), rate (Rate), class (Class), department/dept (Department), location (Location). If not specified, report uses default columns."
+              },
+              "sort_by": {
+                "type": "string",
+                "examples": [
+                  "date",
+                  "amount",
+                  "tx_date",
+                  "subt_nat_amount"
+                ],
+                "description": "Column to sort report rows by. Supports both user-friendly names (date, transaction_type, amount, account, etc.) and QuickBooks API identifiers (tx_date, txn_type, subt_nat_amount, account_name, etc.). Must be a column that exists in the report."
+              },
+              "end_date": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31",
+                  "2024-06-30"
+                ],
+                "description": "Report end date in YYYY-MM-DD format. Used to filter transactions up to this date. If not provided, the report uses its default end date or date_macro setting."
+              },
+              "group_by": {
+                "type": "string",
+                "examples": [
+                  "Customer",
+                  "Vendor",
+                  "Account"
+                ],
+                "description": "Column type to use for grouping report rows. Common values include 'Customer', 'Vendor', 'Account', etc. Groups transactions by the specified entity type."
+              },
+              "class_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of class IDs to filter the report. If not provided, the report includes all classes. Each ID should be the Class.Id value (e.g., ['1', '2'])."
+              },
+              "date_macro": {
+                "enum": [
+                  "Today",
+                  "Yesterday",
+                  "This Week",
+                  "Last Week",
+                  "This Week-to-date",
+                  "Last Week-to-date",
+                  "Next Week",
+                  "Next 4 Weeks",
+                  "This Month",
+                  "Last Month",
+                  "This Month-to-date",
+                  "Last Month-to-date",
+                  "Next Month",
+                  "This Fiscal Quarter",
+                  "Last Fiscal Quarter",
+                  "This Fiscal Quarter-to-date",
+                  "Last Fiscal Quarter-to-date",
+                  "Next Fiscal Quarter",
+                  "This Fiscal Year",
+                  "Last Fiscal Year",
+                  "This Fiscal Year-to-date",
+                  "Last Fiscal Year-to-date",
+                  "Next Fiscal Year"
+                ],
+                "type": "string",
+                "description": "Predefined date range for the report. Use if you want the report to cover a standard report date range; otherwise, use start_date and end_date to cover an explicit report date range."
+              },
+              "sort_order": {
+                "enum": [
+                  "ascend",
+                  "descend"
+                ],
+                "type": "string",
+                "description": "The sort order for rows (ascending or descending). Default is ascending."
+              },
+              "start_date": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01",
+                  "2024-06-01"
+                ],
+                "description": "Report start date in YYYY-MM-DD format. Used to filter transactions from this date onwards. If not provided, the report uses its default start date or date_macro setting."
+              },
+              "vendor_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of vendor IDs to filter the report. If not provided, the report includes all vendors. Each ID should be the Vendor.Id value from the Vendor object (e.g., ['5', '8', '12'])."
+              },
+              "account_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of account IDs to filter the report. If not provided, the report includes all accounts. Each ID should be the Account.Id value from the Account object (e.g., ['1', '35', '82'])."
+              },
+              "customer_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of customer IDs to filter the report. If not provided, the report includes all customers. Each ID should be the Customer.Id value from the Customer object (e.g., ['1', '2', '10'])."
+              },
+              "department_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of department IDs to filter the report. If not provided, the report includes all departments. Filters report contents to include information for specified departments if so configured in the company file."
+              },
+              "accounting_method": {
+                "enum": [
+                  "Cash",
+                  "Accrual"
+                ],
+                "type": "string",
+                "description": "The accounting method used in the report (Cash or Accrual)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_REPORT_ACCOUNT_LIST": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_REPORT_ACCOUNT_LIST",
+          "description": "Retrieve the AccountList report from QuickBooks showing a list of all accounts. This report displays all account details including name, type, and balance information.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "string",
+                "description": "Comma-separated list of column names to include in the report. Valid column names: 'account_name', 'account_type', 'detail_acc_type', 'account_desc', 'account_bal'. If not specified, all columns are included. Example: 'account_name,account_type,account_bal'"
+              },
+              "sort_order": {
+                "type": "string",
+                "description": "The sort order for the accounts. Valid values: 'ascend' (ascending, A-Z) or 'descend' (descending, Z-A). If not specified, accounts are returned in their default order."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
+          "description": "Generate a General Ledger report showing all transactions with debits, credits, and running balances...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE",
+          "description": "Generate a Trial Balance report showing account debits, credits, and balances for a specified period...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_REPORTS": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_REPORTS",
+          "description": "Retrieve QuickBooks reports such as TransactionList, BalanceSheet, ProfitAndLoss, and others. Use wh...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_REPORTS"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_QUERY_ENTITIES": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_QUERY_ENTITIES",
+          "description": "Execute SQL-like queries on QuickBooks Online entities. Supports all entity types (Customer, Invoice...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_QUERY_ENTITIES"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_READ_ACCOUNT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_READ_ACCOUNT",
+          "description": "Read an account in QuickBooks with the given account ID.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_READ_ACCOUNT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:48:40.335Z",
+        "current_time_utc_epoch_seconds": 1786564120,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "soil",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"soil\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_Ov-MtkU-B6uG"
+  }
+}

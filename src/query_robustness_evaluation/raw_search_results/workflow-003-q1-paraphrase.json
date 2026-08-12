@@ -1,0 +1,436 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-003-q1-paraphrase",
+    "workflow_id": 3,
+    "workflow_task": "Find a spreadsheet in OneDrive, download it, programmatically add comparison summary worksheets/sections, upload the modified workbook back to the same OneDrive item, and verify the cloud copy.",
+    "query": "where is my spreadsheet located on OneDrive",
+    "required_tools": [
+      "ONE_DRIVE_SEARCH_ITEMS"
+    ],
+    "supporting_tools": [
+      "ONE_DRIVE_GET_ITEM"
+    ],
+    "rationale": "The agent needs to find the target spreadsheet file by name or path within OneDrive before interacting with it.",
+    "candidate_tools": [
+      "ONE_DRIVE_DOWNLOAD_FILE",
+      "ONE_DRIVE_GET_ITEM",
+      "ONE_DRIVE_SEARCH_ITEMS",
+      "ONE_DRIVE_UPDATE_FILE_CONTENT"
+    ],
+    "source_query_id": "workflow-003-q1",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "where is my spreadsheet located on OneDrive"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "where is my spreadsheet located on OneDrive",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Locate candidate workbook(s) using ONE_DRIVE_SEARCH_ITEMS (filter to spreadsheet files; follow @odata.nextLink to exhaust results; pick best match by metadata).",
+            "[Fallback (if ONE_DRIVE_SEARCH_ITEMS returns no usable match)] [Prerequisite]: Discover the workbook using EXCEL_SEARCH_FILES (use the returned drive item identifier for downstream calls).",
+            "[Optional (if multiple hits or item type is unclear)] [Prerequisite]: Confirm the selected item using ONE_DRIVE_GET_ITEM (ensure it is a workbook-compatible DriveItem).",
+            "[Required] [Prerequisite]: Create a workbook session using EXCEL_GET_SESSION (reuse the same session_id for all reads).",
+            "[Required] [Step]: Enumerate worksheets using EXCEL_LIST_WORKSHEETS (capture worksheet_id/name for targeting reads).",
+            "[Required] [Step]: Read data using EXCEL_GET_WORKSHEET_USED_RANGE (use values_only when formatted text is not needed).",
+            "[Optional (if used-range is too large or you only need key columns/rows)] [Step]: Read smaller slices using EXCEL_GET_RANGE (iterate in bounded row windows).",
+            "[Optional (if structured tables exist)] [Step]: Read tabular data using EXCEL_LIST_TABLES then EXCEL_LIST_TABLE_ROWS (paginate via @odata.nextLink).",
+            "[Required (if a session was created)] [Next Step]: Release locks by closing the session using EXCEL_CLOSE_SESSION (same session_id)."
+          ],
+          "known_pitfalls": [
+            "[ONE_DRIVE_SEARCH_ITEMS] Paginates via @odata.nextLink ($skiptoken); previews may be incomplete, so exhaust pages and post-filter by extension/type before selecting.",
+            "[EXCEL_GET_SESSION] Fails if given a non-DriveItem identifier or if the Excel integration is not authenticated; session_id must be reused and may expire (401/403)\u2014recreate and always call EXCEL_CLOSE_SESSION.",
+            "[EXCEL_LIST_WORKSHEETS] Some responses return results under a worksheets array (not data.value); parse defensively before iterating.",
+            "[EXCEL_GET_WORKSHEET_USED_RANGE] Omitting worksheet_id can trigger validation errors; large sheets may hit payload-too-large/offloaded responses\u2014switch to bounded EXCEL_GET_RANGE reads.",
+            "[EXCEL_GET_RANGE] Returned cell data is a 2D grid; data.values (typed) vs data.text (formatted) can differ (e.g., date-like serials), and large addresses can produce oversized responses."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse an EXCEL_GET_RANGE response (stdin) and extract a small formatted grid sample for downstream checks",
+              "code": "```python\nimport json,sys\nd=json.load(sys.stdin)\ntext=d[\"results\"][0][\"response\"][\"data\"].get(\"text\") or []\nheaders=text[0] if text else []\nrows=text[1:] if len(text)>1 else []\nprint(headers[:8])\nprint((rows[0][:8] if rows else []))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "ONE_DRIVE_SEARCH_ITEMS",
+            "EXCEL_GET_SESSION",
+            "EXCEL_LIST_WORKSHEETS",
+            "EXCEL_GET_WORKSHEET_USED_RANGE"
+          ],
+          "related_tool_slugs": [
+            "EXCEL_LIST_TABLES",
+            "EXCEL_LIST_TABLE_ROWS",
+            "ONE_DRIVE_GET_ITEM",
+            "EXCEL_CLOSE_SESSION",
+            "EXCEL_SEARCH_FILES",
+            "EXCEL_GET_RANGE"
+          ],
+          "toolkits": [
+            "excel",
+            "one_drive"
+          ],
+          "plan_id": "b1f4a1edf1bb4ee68c8eabd7c7d4582d"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "excel",
+          "has_active_connection": false,
+          "description": "Microsoft Excel is a powerful spreadsheet application for data analysis, calculations, and visualization, enabling users to organize and process data with formulas, charts, and pivot tables",
+          "status_message": "No Active connection for toolkit=excel. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"excel\") to create a connection BEFORE executing any excel tools."
+        },
+        {
+          "toolkit": "one_drive",
+          "has_active_connection": false,
+          "description": "OneDrive is Microsoft\u2019s cloud storage solution enabling users to store, sync, and share files across devices, offering offline access, real-time collaboration, and enterprise-grade security",
+          "status_message": "No Active connection for toolkit=one_drive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"one_drive\") to create a connection BEFORE executing any one_drive tools."
+        }
+      ],
+      "tool_schemas": {
+        "ONE_DRIVE_SEARCH_ITEMS": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_SEARCH_ITEMS",
+          "description": "Search OneDrive for files and folders by keyword. Searches filenames, metadata, and file content to find matching items. Use when you need to find specific files based on keywords, file types, or content. Supports filtering, sorting, and pagination. Results are mixed files and folders \u2014 filter client-side using file vs folder properties. Disambiguate similarly named items using parentReference.path, lastModifiedDateTime, and size before passing item IDs downstream. Newly created or recently moved files may not appear due to indexing delays; fall back to ONE_DRIVE_LIST_FOLDER_CHILDREN if expected items are missing. No server-side date filtering \u2014 apply lastModifiedDateTime/createdDateTime filtering in your own logic. HTTP 429 responses include a Retry-After header; use exponential backoff.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "q"
+            ],
+            "properties": {
+              "q": {
+                "type": "string",
+                "examples": [
+                  "Contoso Project",
+                  "budget report",
+                  "mp4",
+                  "pdf"
+                ],
+                "description": "The query text used to search for items. Values are matched across filenames, metadata, and file content. This is a simple keyword-based search only - NOT KQL (Keyword Query Language). IMPORTANT: (1) KQL operators like 'folder:', 'file:', 'content:', 'filetype:' are NOT supported by this endpoint and will be treated as literal text search. Use plain keywords instead (e.g., 'shared documents' not 'folder:shared'). (2) Path-based filtering syntax (e.g., 'path:/folder') is NOT supported and will be transformed to a keyword search. (3) Wildcard characters (* and ?) are NOT supported and will be automatically removed - use file extension keywords instead (e.g., 'mp4' instead of '*.mp4'). To search within a specific folder, use ONE_DRIVE_LIST_FOLDER_CHILDREN."
+              },
+              "top": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The maximum number of items to return in a single page. Default is 200."
+              },
+              "expand": {
+                "type": "string",
+                "examples": [
+                  "children",
+                  "thumbnails",
+                  "permissions"
+                ],
+                "description": "A comma-separated list of relationship names to expand and include in the response. For driveItem resources, you can expand relationships like 'children' to get child items, 'thumbnails' to get thumbnail metadata, or 'permissions' to get sharing permissions. For example, use 'children' to include the child items of folders in search results, or 'thumbnails' to include thumbnail URLs. Note: Not all relationships may be expandable in search results. Refer to the Microsoft Graph API documentation for supported expansions."
+              },
+              "select": {
+                "type": "string",
+                "examples": [
+                  "id,name,webUrl"
+                ],
+                "description": "Comma-separated list of driveItem properties to include in the response. Valid properties include: id, name, webUrl, size, createdDateTime, lastModifiedDateTime, file, folder, parentReference, createdBy, lastModifiedBy, fileSystemInfo, searchResult, remoteItem, etc. Note: @-prefixed annotations (e.g., @microsoft.graph.downloadUrl) are automatically stripped as they are not valid in $select queries for search endpoints."
+              },
+              "orderby": {
+                "type": "string",
+                "examples": [
+                  "name desc"
+                ],
+                "description": "A comma-separated list of properties used to sort the order of the items in the response. Use 'asc' or 'desc' for ascending or descending order, e.g., 'name asc'."
+              },
+              "drive_id": {
+                "type": "string",
+                "examples": [
+                  "b!C378D127A8A967E6!115"
+                ],
+                "description": "The ID of the drive to search within. If not provided, the user's personal drive (me/drive) will be searched. Use ONE_DRIVE_LIST_DRIVES to get valid drive IDs. Note: Some drive ID formats (e.g., secondary personal drives or special SharePoint IDs) may return 'ObjectHandle is Invalid' errors due to Microsoft Graph API limitations."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend the same required identifiers, but filter/sort params need not be repeated \u2014 the token carries them."
+              },
+              "search_scope": {
+                "enum": [
+                  "drive",
+                  "root"
+                ],
+                "type": "string",
+                "default": "root",
+                "description": "Specifies the scope of the search. 'root' searches within the folder hierarchy starting from root (uses /drives/{drive_id}/root/search or /me/drive/root/search). 'drive' broadens the search to include items shared with the current user (uses /drives/{drive_id}/search or /me/drive/search). This parameter is respected both with and without a drive_id."
+              },
+              "stripped_annotations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Internal field to track stripped annotations. Not exposed to API."
+              },
+              "transformed_path_query": {
+                "type": "string",
+                "description": "Internal field to track if path-based query was transformed. Not exposed to API."
+              },
+              "transformed_kql_operator": {
+                "type": "string",
+                "description": "Internal field to track if a KQL operator was transformed. Not exposed to API."
+              },
+              "transformed_parent_query": {
+                "type": "string",
+                "description": "Internal field to track if parent: filter was stripped from query. Not exposed to API."
+              },
+              "transformed_wildcard_query": {
+                "type": "string",
+                "description": "Internal field to track if wildcard characters were removed from query. Not exposed to API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "EXCEL_GET_SESSION": {
+          "toolkit": "EXCEL",
+          "tool_slug": "EXCEL_GET_SESSION",
+          "description": "Create a session for an Excel workbook using Microsoft Graph API.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "item_id"
+            ],
+            "properties": {
+              "item_id": {
+                "type": "string",
+                "description": "The OneDrive drive item ID of the Excel file (.xlsx). Drive-item IDs are opaque, immutable identifiers (Microsoft Graph does not document a fixed format). Get a valid item ID from the EXCEL_LIST_FILES action."
+              },
+              "drive_id": {
+                "type": "string",
+                "description": "Optional drive ID. Required for application-level permissions (s2s_oauth). If not provided, uses /me/drive endpoint for delegated auth."
+              },
+              "persist_changes": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether changes should be persisted after the session. If false, a nonpersistent session is created."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "EXCEL_LIST_WORKSHEETS": {
+          "toolkit": "EXCEL",
+          "tool_slug": "EXCEL_LIST_WORKSHEETS",
+          "description": "List worksheets in an Excel workbook using Microsoft Graph API.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "item_id"
+            ],
+            "properties": {
+              "top": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum number of items to return per page (OData $top)."
+              },
+              "skip": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of items to skip for pagination (OData $skip)."
+              },
+              "item_id": {
+                "type": "string",
+                "description": "The ID of the Excel file (drive item) to list worksheets for."
+              },
+              "drive_id": {
+                "type": "string",
+                "description": "The ID of the drive containing the Excel file. If not provided, will attempt to use 'me' for delegated permissions."
+              },
+              "session_id": {
+                "type": "string",
+                "description": "Optional session ID for the workbook. If provided, will be sent in the headers."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "EXCEL_GET_WORKSHEET_USED_RANGE": {
+          "toolkit": "EXCEL",
+          "tool_slug": "EXCEL_GET_WORKSHEET_USED_RANGE",
+          "description": "Tool to retrieve a worksheet's used range (active data region) without specifying a fixed range address. Use when you need to read all data from a sheet but don't know the exact range. The valuesOnly option helps filter out formatting-only cells.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "drive_id",
+              "item_id",
+              "worksheet_id"
+            ],
+            "properties": {
+              "item_id": {
+                "type": "string",
+                "examples": [
+                  "01RWIO2VKO5Q4ECCKUL5BYFHITS5UOQPBH"
+                ],
+                "description": "The ID of the Excel file (drive item) containing the worksheet."
+              },
+              "drive_id": {
+                "type": "string",
+                "examples": [
+                  "me",
+                  "b!abc123"
+                ],
+                "description": "The ID of the drive (e.g., 'me' for the user's default OneDrive, or a specific drive ID for SharePoint)."
+              },
+              "session_id": {
+                "type": "string",
+                "description": "Optional workbook session ID. If provided, will be sent in the workbook-session-id header. Must be a valid session ID obtained from the createSession action."
+              },
+              "values_only": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  false,
+                  true
+                ],
+                "description": "If true, only returns cells with values (ignores formatting-only cells). Maps to valuesOnly parameter in the API."
+              },
+              "worksheet_id": {
+                "type": "string",
+                "examples": [
+                  "Sheet1",
+                  "{00000000-0001-0000-0000-000000000000}"
+                ],
+                "description": "The ID or name of the worksheet. Can be the worksheet name (e.g., 'Sheet1') or its unique ID."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "EXCEL_LIST_TABLES": {
+          "toolkit": "EXCEL",
+          "tool_slug": "EXCEL_LIST_TABLES",
+          "description": "List tables in a worksheet using Microsoft Graph API. This action retrieves information about all tables present in a specified worksheet of an Excel file. It requires the file ID and worksheet name or ID, and can optionally use a session ID for workbook operations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "item_id",
+              "worksheet"
+            ],
+            "properties": {
+              "top": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum number of items to return per page (OData $top)."
+              },
+              "skip": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of items to skip for pagination (OData $skip)."
+              },
+              "item_id": {
+                "type": "string",
+                "description": "The ID of the Excel file (drive item) containing the worksheet."
+              },
+              "drive_id": {
+                "type": "string",
+                "description": "Optional drive ID. Required for application-level permissions (s2s_oauth). If not provided, uses /me/drive endpoint for delegated auth."
+              },
+              "worksheet": {
+                "type": "string",
+                "description": "The name or ID of the worksheet (e.g., 'Sheet1', '\u5de5\u4f5c\u8868', or '{00000000-0001-0000-0000-000000000000}'). URL encoding is handled automatically."
+              },
+              "session_id": {
+                "type": "string",
+                "description": "Optional session ID for the workbook. If provided, will be sent in the headers."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "EXCEL_LIST_TABLE_ROWS": {
+          "toolkit": "EXCEL",
+          "tool_slug": "EXCEL_LIST_TABLE_ROWS",
+          "description": "List rows in a table using Microsoft Graph API.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "EXCEL_LIST_TABLE_ROWS"
+              ]
+            }
+          }
+        },
+        "ONE_DRIVE_GET_ITEM": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_GET_ITEM",
+          "description": "Retrieves the metadata of a DriveItem by its unique ID. Use this tool to get information about a spe...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_GET_ITEM"
+              ]
+            }
+          }
+        },
+        "EXCEL_CLOSE_SESSION": {
+          "toolkit": "EXCEL",
+          "tool_slug": "EXCEL_CLOSE_SESSION",
+          "description": "Tool to close an existing Excel workbook session. Use when you need to explicitly end a persistent s...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "EXCEL_CLOSE_SESSION"
+              ]
+            }
+          }
+        },
+        "EXCEL_SEARCH_FILES": {
+          "toolkit": "EXCEL",
+          "tool_slug": "EXCEL_SEARCH_FILES",
+          "description": "Tool to search OneDrive drive items by query to discover Excel workbook IDs. Use when you need to fi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "EXCEL_SEARCH_FILES"
+              ]
+            }
+          }
+        },
+        "EXCEL_GET_RANGE": {
+          "toolkit": "EXCEL",
+          "tool_slug": "EXCEL_GET_RANGE",
+          "description": "Get a range from a worksheet using Microsoft Graph API.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "EXCEL_GET_RANGE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:45:19.855Z",
+        "current_time_utc_epoch_seconds": 1786563919,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "poet",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"poet\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_Xq7U5YQZfCcx"
+  }
+}

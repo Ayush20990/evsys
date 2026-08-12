@@ -1,0 +1,271 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-003-q3-paraphrase",
+    "workflow_id": 3,
+    "workflow_task": "Find a spreadsheet in OneDrive, download it, programmatically add comparison summary worksheets/sections, upload the modified workbook back to the same OneDrive item, and verify the cloud copy.",
+    "query": "sync the modified workbook to OneDrive and confirm its cloud status",
+    "required_tools": [
+      "ONE_DRIVE_UPDATE_FILE_CONTENT"
+    ],
+    "supporting_tools": [
+      "ONE_DRIVE_GET_ITEM"
+    ],
+    "rationale": "After modifying the spreadsheet locally, the agent needs to overwrite the existing cloud file and check its metadata to verify the update.",
+    "candidate_tools": [
+      "ONE_DRIVE_DOWNLOAD_FILE",
+      "ONE_DRIVE_GET_ITEM",
+      "ONE_DRIVE_SEARCH_ITEMS",
+      "ONE_DRIVE_UPDATE_FILE_CONTENT"
+    ],
+    "source_query_id": "workflow-003-q3",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "sync the modified workbook to OneDrive and confirm its cloud status"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "sync the modified workbook to OneDrive and confirm its cloud status",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Confirm provider-A connectivity using GOOGLEDRIVE_GET_ABOUT (any successful response indicates base access).",
+            "[Required] [Step]: Confirm provider-B connectivity using ONE_DRIVE_GET_QUOTA (any successful response indicates base API access).",
+            "[Optional (if you want deterministic read/browse validation)] [Next Step]: Fetch root metadata using ONE_DRIVE_GET_ROOT (lightweight direct-read check; use minimal fields if supported).",
+            "[Optional (if you also want discovery/search validation)] [Next Step]: Run minimal searches using GOOGLEDRIVE_FIND_FILE and ONE_DRIVE_SEARCH_ITEMS (empty results are OK; auth/permission errors indicate not connected/insufficient scopes).",
+            "[Fallback (if ONE_DRIVE_SEARCH_ITEMS is empty/unreliable despite quota success)] [Fallback]: Treat ONE_DRIVE_GET_ROOT success as the primary validation signal to avoid search/indexing false negatives."
+          ],
+          "known_pitfalls": [
+            "[GOOGLEDRIVE_GET_ABOUT] Missing/expired connection or insufficient scopes surface as errors; treat failures as not connected (not \u201cno data\u201d).",
+            "[ONE_DRIVE_GET_QUOTA] A \u201cno active connection found\u201d style error indicates no connection in the current context; don\u2019t interpret it as 0 quota.",
+            "[GOOGLEDRIVE_FIND_FILE] Empty search results can still mean the connection is healthy; only auth/permission errors imply a problem.",
+            "[ONE_DRIVE_SEARCH_ITEMS] Can return no matches due to query context or indexing delays; use ONE_DRIVE_GET_ROOT for deterministic validation.",
+            "[ONE_DRIVE_SEARCH_ITEMS] Results may paginate via '@odata.nextLink'; iterate if you need complete coverage."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract item names from a ONE_DRIVE_SEARCH_ITEMS response.",
+              "code": "```python\nitems=(((resp or {}).get('data') or {}).get('value') or [])\nnames=[it.get('name') for it in items if it.get('name')]\nprint(len(names))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLEDRIVE_GET_ABOUT",
+            "ONE_DRIVE_GET_QUOTA",
+            "ONE_DRIVE_GET_ROOT"
+          ],
+          "related_tool_slugs": [
+            "ONE_DRIVE_SEARCH_ITEMS",
+            "GOOGLEDRIVE_FIND_FILE"
+          ],
+          "toolkits": [
+            "googledrive",
+            "one_drive"
+          ],
+          "plan_id": "eba12c86e1694b58b3d2297c60e1e243"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledrive",
+          "has_active_connection": false,
+          "description": "Google Drive is a cloud storage solution for uploading, sharing, and collaborating on files across devices, with robust search and offline access. Special usecases: Sharing google sheets/docs or any G-Suite files with specific emails.",
+          "status_message": "No Active connection for toolkit=googledrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledrive\") to create a connection BEFORE executing any googledrive tools."
+        },
+        {
+          "toolkit": "one_drive",
+          "has_active_connection": false,
+          "description": "OneDrive is Microsoft\u2019s cloud storage solution enabling users to store, sync, and share files across devices, offering offline access, real-time collaboration, and enterprise-grade security",
+          "status_message": "No Active connection for toolkit=one_drive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"one_drive\") to create a connection BEFORE executing any one_drive tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLEDRIVE_GET_ABOUT": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_GET_ABOUT",
+          "description": "Tool to retrieve information about the user, the user's Drive, and system capabilities. Use when you need to check storage quotas, user details, or supported import/export formats. Note: storageQuota reflects My Drive (personal) storage only \u2014 it does not cover shared drives; use GOOGLEDRIVE_LIST_SHARED_DRIVES and GOOGLEDRIVE_GET_DRIVE for shared drive quotas. A successful response confirms base Drive read access only; write access and shared drive access must be verified separately.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "type": "string",
+                "default": "*",
+                "examples": [
+                  "*",
+                  "user,storageQuota",
+                  "user,storageQuota,kind"
+                ],
+                "description": "A comma-separated list of fields to include in the response. Use `*` to include all fields. Supported fields in Drive API v3: kind, user, storageQuota, importFormats, exportFormats, maxImportSizes, maxUploadSize, appInstalled, canCreateDrives, canCreateTeamDrives (deprecated), driveThemes, teamDriveThemes (deprecated), folderColorPalette. Note: rootFolderId was removed in v3 and is not supported. Note: storageQuota sub-fields (limit, usage, usageInDrive, usageInDriveTrash) are returned as strings representing bytes \u2014 convert to numeric types before arithmetic."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_GET_ROOT": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_GET_ROOT",
+          "description": "Tool to retrieve metadata for the root folder of the signed-in user's OneDrive. Use when you need information about the user's OneDrive root directory, such as size, child count, or web URL.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "user@example.com"
+                ],
+                "description": "The user's ID, email, or 'me'. Defaults to 'me' (authenticated user). Required for S2S (app-only) auth."
+              },
+              "select_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "name",
+                    "size",
+                    "folder",
+                    "webUrl"
+                  ]
+                ],
+                "description": "A list of properties to include in the response. Use this to retrieve specific fields and reduce the response size. Common fields include: id, name, size, createdDateTime, lastModifiedDateTime, webUrl, folder, root. If not provided, all default properties are returned."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_SEARCH_ITEMS": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_SEARCH_ITEMS",
+          "description": "Search OneDrive for files and folders by keyword. Searches filenames, metadata, and file content to find matching items. Use when you need to find specific files based on keywords, file types, or content. Supports filtering, sorting, and pagination. Results are mixed files and folders \u2014 filter client-side using file vs folder properties. Disambiguate similarly named items using parentReference.path, lastModifiedDateTime, and size before passing item IDs downstream. Newly created or recently moved files may not appear due to indexing delays; fall back to ONE_DRIVE_LIST_FOLDER_CHILDREN if expected items are missing. No server-side date filtering \u2014 apply lastModifiedDateTime/createdDateTime filtering in your own logic. HTTP 429 responses include a Retry-After header; use exponential backoff.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "q"
+            ],
+            "properties": {
+              "q": {
+                "type": "string",
+                "examples": [
+                  "Contoso Project",
+                  "budget report",
+                  "mp4",
+                  "pdf"
+                ],
+                "description": "The query text used to search for items. Values are matched across filenames, metadata, and file content. This is a simple keyword-based search only - NOT KQL (Keyword Query Language). IMPORTANT: (1) KQL operators like 'folder:', 'file:', 'content:', 'filetype:' are NOT supported by this endpoint and will be treated as literal text search. Use plain keywords instead (e.g., 'shared documents' not 'folder:shared'). (2) Path-based filtering syntax (e.g., 'path:/folder') is NOT supported and will be transformed to a keyword search. (3) Wildcard characters (* and ?) are NOT supported and will be automatically removed - use file extension keywords instead (e.g., 'mp4' instead of '*.mp4'). To search within a specific folder, use ONE_DRIVE_LIST_FOLDER_CHILDREN."
+              },
+              "top": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The maximum number of items to return in a single page. Default is 200."
+              },
+              "expand": {
+                "type": "string",
+                "examples": [
+                  "children",
+                  "thumbnails",
+                  "permissions"
+                ],
+                "description": "A comma-separated list of relationship names to expand and include in the response. For driveItem resources, you can expand relationships like 'children' to get child items, 'thumbnails' to get thumbnail metadata, or 'permissions' to get sharing permissions. For example, use 'children' to include the child items of folders in search results, or 'thumbnails' to include thumbnail URLs. Note: Not all relationships may be expandable in search results. Refer to the Microsoft Graph API documentation for supported expansions."
+              },
+              "select": {
+                "type": "string",
+                "examples": [
+                  "id,name,webUrl"
+                ],
+                "description": "Comma-separated list of driveItem properties to include in the response. Valid properties include: id, name, webUrl, size, createdDateTime, lastModifiedDateTime, file, folder, parentReference, createdBy, lastModifiedBy, fileSystemInfo, searchResult, remoteItem, etc. Note: @-prefixed annotations (e.g., @microsoft.graph.downloadUrl) are automatically stripped as they are not valid in $select queries for search endpoints."
+              },
+              "orderby": {
+                "type": "string",
+                "examples": [
+                  "name desc"
+                ],
+                "description": "A comma-separated list of properties used to sort the order of the items in the response. Use 'asc' or 'desc' for ascending or descending order, e.g., 'name asc'."
+              },
+              "drive_id": {
+                "type": "string",
+                "examples": [
+                  "b!C378D127A8A967E6!115"
+                ],
+                "description": "The ID of the drive to search within. If not provided, the user's personal drive (me/drive) will be searched. Use ONE_DRIVE_LIST_DRIVES to get valid drive IDs. Note: Some drive ID formats (e.g., secondary personal drives or special SharePoint IDs) may return 'ObjectHandle is Invalid' errors due to Microsoft Graph API limitations."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend the same required identifiers, but filter/sort params need not be repeated \u2014 the token carries them."
+              },
+              "search_scope": {
+                "enum": [
+                  "drive",
+                  "root"
+                ],
+                "type": "string",
+                "default": "root",
+                "description": "Specifies the scope of the search. 'root' searches within the folder hierarchy starting from root (uses /drives/{drive_id}/root/search or /me/drive/root/search). 'drive' broadens the search to include items shared with the current user (uses /drives/{drive_id}/search or /me/drive/search). This parameter is respected both with and without a drive_id."
+              },
+              "stripped_annotations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Internal field to track stripped annotations. Not exposed to API."
+              },
+              "transformed_path_query": {
+                "type": "string",
+                "description": "Internal field to track if path-based query was transformed. Not exposed to API."
+              },
+              "transformed_kql_operator": {
+                "type": "string",
+                "description": "Internal field to track if a KQL operator was transformed. Not exposed to API."
+              },
+              "transformed_parent_query": {
+                "type": "string",
+                "description": "Internal field to track if parent: filter was stripped from query. Not exposed to API."
+              },
+              "transformed_wildcard_query": {
+                "type": "string",
+                "description": "Internal field to track if wildcard characters were removed from query. Not exposed to API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDRIVE_FIND_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_FIND_FILE",
+          "description": "The comprehensive Google Drive search tool that handles all file and folder discovery needs. Use thi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_FIND_FILE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:45:44.402Z",
+        "current_time_utc_epoch_seconds": 1786563944,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "read",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"read\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_l-dngLXDb1up"
+  }
+}

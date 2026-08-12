@@ -1,0 +1,229 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-006-q1-explicit",
+    "workflow_id": 6,
+    "workflow_task": "Manage Salesforce leads, contacts, campaign membership, campaign attendance statuses, a campaign-based static list, and MQL lead activity reporting.",
+    "query": "look up existing contacts and leads in Salesforce",
+    "required_tools": [
+      "SALESFORCE_SEARCH_LEADS",
+      "SALESFORCE_SEARCH_CONTACTS"
+    ],
+    "supporting_tools": [
+      "SALESFORCE_RUN_SOQL_QUERY"
+    ],
+    "rationale": "An agent needs to locate specific leads and contacts before managing their campaign memberships or updating statuses.",
+    "candidate_tools": [
+      "SALESFORCE_ADD_CONTACT_TO_CAMPAIGN",
+      "SALESFORCE_CREATE_A_RECORD",
+      "SALESFORCE_CREATE_S_OBJECT_RECORD",
+      "SALESFORCE_DELETE_SOBJECT_COLLECTIONS",
+      "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+      "SALESFORCE_POST_COMPOSITE_SOBJECTS",
+      "SALESFORCE_RUN_SOQL_QUERY",
+      "SALESFORCE_SEARCH_CAMPAIGNS",
+      "SALESFORCE_SEARCH_CONTACTS",
+      "SALESFORCE_SEARCH_LEADS",
+      "SALESFORCE_SOBJECT_ROWS_UPDATE"
+    ],
+    "source_query_id": "workflow-006-q1",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "look up existing contacts and leads in Salesforce"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "look up existing contacts and leads in Salesforce",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if field API names/relationships are unknown)] [Prerequisite]: Inspect lead fields using SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT (avoid invalid/unselectable fields in list or SOQL).",
+            "[Optional (if exporting very large volumes)] [Prerequisite]: Check remaining API headroom using SALESFORCE_GET_ORG_LIMITS (anticipate throttling before long pagination loops).",
+            "[Optional (if you need an exact total before export)] [Step]: Get lead record count using SALESFORCE_RUN_SOQL_QUERY (use COUNT() and capture total).",
+            "[Required] [Step]: Export lead rows using SALESFORCE_LIST_LEADS (request a minimal field set; apply any needed filters).",
+            "[Required (if response indicates more pages)] [Next Step]: Continue pagination using SALESFORCE_LIST_LEADS (follow the server-provided next-page reference; accumulate until complete).",
+            "[Fallback (if SALESFORCE_LIST_LEADS can\u2019t express needed filtering/sort, payloads truncate, or results seem incomplete)] [Fallback]: Re-run using SALESFORCE_RUN_SOQL_QUERY with a minimal SELECT and conservative LIMIT; escalate to SALESFORCE_QUERY_ALL only when broader query context is required.",
+            "[Optional (if you need full details for one exported record)] [Next Step]: Retrieve a single lead using SALESFORCE_GET_LEAD (use the record identifier from the export)."
+          ],
+          "known_pitfalls": [
+            "[SALESFORCE_LIST_LEADS] Modifying the server-provided next-page reference can cause HTTP 404 or stalled pagination.",
+            "[SALESFORCE_LIST_LEADS] Records may omit/null fields or include nested relationship shapes; consumers must tolerate missing keys.",
+            "[SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT] Schema payloads can be extremely large and appear truncated in surfaced output; plan for offline parsing/search.",
+            "[SALESFORCE_RUN_SOQL_QUERY] COUNT() can fail with 400 MALFORMED_QUERY if written with unsupported aliasing; responses often use {done, records, totalSize} (records may be empty).",
+            "[SALESFORCE_QUERY_ALL] Can trigger REQUEST_LIMIT_EXCEEDED/HTTP 429; back off and honor Retry-After to avoid repeated throttling."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Iteratively merge paged lead records by following the returned next-page pointer until exhausted.",
+              "code": "```python\nall_rows=[]\npage=first\nwhile True:\n    all_rows.extend(page.get(\"items\",[]))\n    nxt=page.get(\"next\")\n    if not nxt: break\n    page=fetch(nxt)\n```"
+            },
+            {
+              "description": "Parse a large SOQL response payload to extract rows and the reported total.",
+              "code": "```python\nimport json\ndata=json.loads(raw).get(\"data\",{})\nrows=data.get(\"items\",[])\ntotal=data.get(\"total\")\n(total,len(rows))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "SALESFORCE_RUN_SOQL_QUERY",
+            "SALESFORCE_LIST_LEADS"
+          ],
+          "related_tool_slugs": [
+            "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+            "SALESFORCE_GET_ORG_LIMITS",
+            "SALESFORCE_QUERY_ALL",
+            "SALESFORCE_GET_LEAD"
+          ],
+          "toolkits": [
+            "salesforce"
+          ],
+          "plan_id": "f99da5420cbf497e87c24e988cf2a267"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "salesforce",
+          "has_active_connection": false,
+          "description": "Salesforce is a leading CRM platform integrating sales, service, marketing, and analytics to build customer relationships and drive business growth",
+          "status_message": "No Active connection for toolkit=salesforce. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"salesforce\") to create a connection BEFORE executing any salesforce tools."
+        }
+      ],
+      "tool_schemas": {
+        "SALESFORCE_RUN_SOQL_QUERY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_RUN_SOQL_QUERY",
+          "description": "Executes a SOQL query against Salesforce data. Returns records matching the query with pagination support.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "SELECT Id, Name, Email FROM Contact WHERE CreatedDate > 2024-01-01T00:00:00Z",
+                  "SELECT Name, (SELECT LastName FROM Contacts) FROM Account",
+                  "SELECT COUNT() FROM Lead WHERE Status = 'New'",
+                  "SELECT COUNT(Id), StageName FROM Opportunity GROUP BY StageName",
+                  "SELECT Id, Name FROM Opportunity ORDER BY Amount DESC LIMIT 10",
+                  "SELECT FIELDS(ALL) FROM Account LIMIT 200",
+                  "SELECT Id, Name FROM Contact WHERE LastName = 'O\\'Brien'",
+                  "SELECT Id, Name, Description FROM Account LIMIT 10"
+                ],
+                "description": "SOQL query to execute. Must start with SELECT. Field names must match object schema exactly \u2014 use SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT for unfamiliar objects. ALIASES: No 'AS' keyword (use 'SUM(Amount) TotalSales' NOT 'SUM(Amount) AS TotalSales'). AGGREGATES: Without GROUP BY, ORDER BY/LIMIT not allowed (single-row result). COUNT() SYNTAX: Bare COUNT() only valid alone. With GROUP BY or other fields, must specify field: COUNT(Id) or COUNT(fieldName). Example: 'SELECT COUNT(Id), Status FROM Lead GROUP BY Status' NOT 'SELECT COUNT(), Status FROM Lead GROUP BY Status'. NON-GROUPABLE: Long text, rich text, encrypted text, compound address/location fields. NON-FILTERABLE: Long text area, rich text, encrypted text, multi-select picklists, blob fields CANNOT be in WHERE. FIELDS(ALL)/FIELDS(CUSTOM) require LIMIT \u2264200. ID values need single quotes. Apostrophes use backslash: 'O\\'Brien'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_LIST_LEADS": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_LIST_LEADS",
+          "description": "Lists leads from Salesforce using SOQL query, allowing flexible filtering, sorting, and field selection. Results are paginated; follow nextRecordsUrl in the response to retrieve subsequent pages \u2014 the first page may silently omit matching records beyond the page limit.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "default": "SELECT Id, FirstName, LastName, Company, Title, Email, Phone, Status, LeadSource, Rating, Industry FROM Lead",
+                "examples": [
+                  "SELECT Id, FirstName, LastName, Company FROM Lead WHERE Status = 'New'",
+                  "SELECT Id, Name, Email, Company FROM Lead ORDER BY CreatedDate DESC LIMIT 10",
+                  "SELECT Id, Name, Rating FROM Lead WHERE Rating = 'Hot' AND Industry = 'Technology'"
+                ],
+                "description": "SOQL query to fetch leads. Use standard SOQL syntax to filter, sort, and limit results. Field API names must be exact (e.g., LeadSource, LastModifiedDate) \u2014 invalid names cause MALFORMED_QUERY errors. Date literals like TODAY use the org timezone; use explicit ranges (e.g., LastModifiedDate >= TODAY AND LastModifiedDate < TOMORROW) to avoid boundary misses. Filter null Email with WHERE Email != null when downstream steps require it. Narrow LastModifiedDate ranges to avoid row-limit truncation."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+          "description": "Retrieves all fields (standard and custom) for a Salesforce object with complete metadata including field types, constraints, picklist values, and relationships.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "object_name"
+            ],
+            "properties": {
+              "object_name": {
+                "type": "string",
+                "examples": [
+                  "Contact",
+                  "Account",
+                  "Lead",
+                  "Custom_Object__c"
+                ],
+                "description": "API name of the Salesforce object to describe. Use standard object names (Account, Contact, Lead, Opportunity) or custom object API names ending in __c."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_GET_ORG_LIMITS": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_ORG_LIMITS",
+          "description": "Tool to retrieve organization limits with max and remaining allocations. Use when you need to check ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_ORG_LIMITS"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_QUERY_ALL": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_QUERY_ALL",
+          "description": "Tool to execute SOQL queries including soft-deleted and archived records. Use when you need to query...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_QUERY_ALL"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_GET_LEAD": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_LEAD",
+          "description": "Retrieves a specific lead by ID from Salesforce, returning all available fields.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_LEAD"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:46:58.176Z",
+        "current_time_utc_epoch_seconds": 1786564018,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "tiny",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"tiny\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_UJ_6g7zMskiu"
+  }
+}

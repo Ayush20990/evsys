@@ -1,0 +1,501 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-011-q3-explicit",
+    "workflow_id": 11,
+    "workflow_task": "Maintain an internal OneDrive-based operations knowledge base, create and verify strategy/support documents, coordinate operational tasks via Discord, check queue and system state files, and configure Gmail support labels and routing.",
+    "query": "set up Gmail labels and routing filters",
+    "required_tools": [
+      "GMAIL_CREATE_LABEL",
+      "GMAIL_CREATE_FILTER"
+    ],
+    "supporting_tools": [],
+    "rationale": "Both label creation and filter creation are necessary to fully set up Gmail support labels and routing rules.",
+    "candidate_tools": [
+      "DISCORDBOT_LIST_MESSAGES",
+      "DISCORDBOT_TEST_AUTH",
+      "GMAIL_CREATE_FILTER",
+      "GMAIL_CREATE_LABEL",
+      "ONE_DRIVE_DOWNLOAD_FILE",
+      "ONE_DRIVE_DOWNLOAD_FILE_BY_PATH",
+      "ONE_DRIVE_GET_ITEM",
+      "ONE_DRIVE_LIST_FOLDER_CHILDREN",
+      "ONE_DRIVE_ONEDRIVE_CREATE_FOLDER",
+      "ONE_DRIVE_ONEDRIVE_CREATE_TEXT_FILE",
+      "ONE_DRIVE_ONEDRIVE_FIND_FILE",
+      "ONE_DRIVE_ONEDRIVE_FIND_FOLDER",
+      "ONE_DRIVE_SEARCH_ITEMS"
+    ],
+    "source_query_id": "workflow-011-q3",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "set up Gmail labels and routing filters"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "set up Gmail labels and routing filters",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Discover current labels using GMAIL_LIST_LABELS (build a case-normalized name\u2192id map from the full labels array; keep labels[].type to distinguish system vs user; use id for all writes).",
+            "[Required (if any requested user label is missing)] [Step]: Create missing label(s) using GMAIL_CREATE_LABEL (check the map first to avoid duplicates; store returned id).",
+            "[Optional (if labels were created/renamed/deleted or IDs must be canonical)] [Next Step]: Rebuild the mapping using GMAIL_LIST_LABELS (refresh from the full labels array before further writes).",
+            "[Optional (if verifying or changing label settings)] [Next Step]: Review then adjust a user label using GMAIL_GET_LABEL \u2192 GMAIL_PATCH_LABEL (operate by id; change only supported fields like name/visibility/color; avoid system labels).",
+            "[Fallback (only with explicit confirmation; if a conflicting user label blocks progress)] [Fallback]: Remove the conflicting label using GMAIL_DELETE_LABEL (by id; never system labels), then retry GMAIL_CREATE_LABEL or GMAIL_PATCH_LABEL."
+          ],
+          "known_pitfalls": [
+            "[GMAIL_LIST_LABELS] response.data.labels includes both system and user labels via labels[].type; patching/deleting system labels with GMAIL_PATCH_LABEL or GMAIL_DELETE_LABEL may fail or be unsafe.",
+            "[GMAIL_LIST_LABELS] The response may be bulky or appear truncated; build mappings from the full labels array (fall back to data_preview only if that\u2019s all that exists).",
+            "[GMAIL_CREATE_LABEL] 400/409 can occur for empty/duplicate/reserved names; prefer reusing an existing id from GMAIL_LIST_LABELS over blind retries.",
+            "[GMAIL_CREATE_LABEL] Invalid color combinations may return 400/FAILED_PRECONDITION; omit color fields if unsure; intermittent HTTP 500 can occur\u2014retry serially.",
+            "[GMAIL_DELETE_LABEL] 404 often indicates a stale/already-removed id; re-run GMAIL_LIST_LABELS before retrying (intermittent 500 can also occur)."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Build a lowercase label-name \u2192 id map from a saved GMAIL_LIST_LABELS response object.",
+              "code": "```python\nlabels=(resp.get('data') or {}).get('labels',[])\nname_to_id={l.get('name','').lower():l.get('id') for l in labels if l.get('name') and l.get('id')}\n```"
+            },
+            {
+              "description": "Prefer full payload; fall back to preview payload when only that is available.",
+              "code": "```python\npayload=resp.get('data') or resp.get('data_preview') or {}\nlabels=payload.get('labels',[])\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GMAIL_LIST_LABELS",
+            "GMAIL_CREATE_LABEL"
+          ],
+          "related_tool_slugs": [
+            "GMAIL_GET_LABEL",
+            "GMAIL_PATCH_LABEL",
+            "GMAIL_DELETE_LABEL"
+          ],
+          "toolkits": [
+            "gmail"
+          ],
+          "plan_id": "2282da8a49494b76a1b6f93f984ced07"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "gmail",
+          "has_active_connection": false,
+          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
+          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+        }
+      ],
+      "tool_schemas": {
+        "GMAIL_LIST_LABELS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_LIST_LABELS",
+          "description": "Retrieves all system and user-created labels for a Gmail account in a single unpaginated response. Primary use: obtain internal label IDs (e.g., 'Label_123') required by other Gmail tools \u2014 display names cannot be used as label identifiers and cause silent failures or errors. System labels (INBOX, UNREAD, SPAM, TRASH, etc.) are case-sensitive and must be used exactly as returned; INBOX, SPAM, and TRASH are read-only and cannot be added/removed via label modification tools. The Gmail search 'label:' operator accepts display names, but label_ids parameters in tools like GMAIL_FETCH_EMAILS require internal IDs from this tool \u2014 mixing conventions yields zero results silently. Do not hardcode label IDs across sessions; refresh via this tool on conflict errors.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "Identifies the Gmail account (owner's email or 'me' for authenticated user) for which labels will be listed."
+              },
+              "include_details": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "If true, fetches detailed info for each label including message/thread counts (messagesTotal, messagesUnread, threadsTotal, threadsUnread). This requires additional API calls and may be slower for accounts with many labels. If false (default), returns basic label info (id, name, type) which is faster. Counts are eventually consistent and may lag real-time mailbox state by a few seconds."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_CREATE_LABEL": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_CREATE_LABEL",
+          "description": "Creates a new label with a unique name in the specified user's Gmail account. Returns a labelId (e.g., 'Label_123') required for downstream tools like GMAIL_ADD_LABEL_TO_EMAIL, GMAIL_BATCH_MODIFY_MESSAGES, and GMAIL_MODIFY_THREAD_LABELS \u2014 those tools do not accept display names.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "label_name"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The email address of the user in whose account the label will be created."
+              },
+              "label_name": {
+                "type": "string",
+                "examples": [
+                  "Work",
+                  "Project Documents",
+                  "Receipts 2024",
+                  "Work/Projects",
+                  "Personal/Finance",
+                  "1. Action Items"
+                ],
+                "description": "REQUIRED. The name for the new label. Must be unique within the account, non-blank, maximum length 225 characters, cannot contain commas (','), not only whitespace, and must not be a reserved system label. Reserved English system labels include: Inbox, Starred, Important, Sent, Draft, Drafts, Spam, Trash, etc. Forward slashes ('/') are allowed and used to create hierarchical nested labels (e.g., 'Work/Projects', 'Personal/Finance'). When creating nested labels, any missing parent labels will be automatically created (similar to 'mkdir -p'). Periods ('.') are allowed and commonly used for numbering schemes (e.g., '1. Action Items', '2. Projects'). Note: 'name' is also accepted as an alias for this field. If a label with this name already exists, returns a 409 conflict; use GMAIL_LIST_LABELS to check existing labels and reuse the existing labelId, or use GMAIL_PATCH_LABEL to update it."
+              },
+              "text_color": {
+                "enum": [
+                  "#000000",
+                  "#434343",
+                  "#666666",
+                  "#999999",
+                  "#cccccc",
+                  "#efefef",
+                  "#f3f3f3",
+                  "#ffffff",
+                  "#fb4c2f",
+                  "#ffad47",
+                  "#fad165",
+                  "#16a766",
+                  "#43d692",
+                  "#4a86e8",
+                  "#a479e2",
+                  "#f691b3",
+                  "#f6c5be",
+                  "#ffe6c7",
+                  "#fef1d1",
+                  "#b9e4d0",
+                  "#c6f3de",
+                  "#c9daf8",
+                  "#e4d7f5",
+                  "#fcdee8",
+                  "#efa093",
+                  "#ffd6a2",
+                  "#fce8b3",
+                  "#89d3b2",
+                  "#a0eac9",
+                  "#a4c2f4",
+                  "#d0bcf1",
+                  "#fbc8d9",
+                  "#e66550",
+                  "#ffbc6b",
+                  "#fcda83",
+                  "#44b984",
+                  "#68dfa9",
+                  "#6d9eeb",
+                  "#b694e8",
+                  "#f7a7c0",
+                  "#cc3a21",
+                  "#eaa041",
+                  "#f2c960",
+                  "#149e60",
+                  "#3dc789",
+                  "#3c78d8",
+                  "#8e63ce",
+                  "#e07798",
+                  "#ac2b16",
+                  "#cf8933",
+                  "#d5ae49",
+                  "#0b804b",
+                  "#2a9c68",
+                  "#285bac",
+                  "#653e9b",
+                  "#b65775",
+                  "#464646",
+                  "#e7e7e7",
+                  "#0d3472",
+                  "#b6cff5",
+                  "#0d3b44",
+                  "#98d7e4",
+                  "#3d188e",
+                  "#e3d7ff",
+                  "#711a36",
+                  "#fbd3e0",
+                  "#8a1c0a",
+                  "#f2b2a8",
+                  "#7a2e0b",
+                  "#ffc8af",
+                  "#7a4706",
+                  "#ffdeb5",
+                  "#594c05",
+                  "#fbe983",
+                  "#684e07",
+                  "#fdedc1",
+                  "#0b4f30",
+                  "#b3efd3",
+                  "#04502e",
+                  "#a2dcc1",
+                  "#c2c2c2",
+                  "#4986e7",
+                  "#2da2bb",
+                  "#b99aff",
+                  "#994a64",
+                  "#f691b2",
+                  "#ff7537",
+                  "#ffad46",
+                  "#662e37",
+                  "#cca6ac",
+                  "#094228",
+                  "#42d692",
+                  "#076239",
+                  "#16a765",
+                  "#1a764d",
+                  "#1c4587",
+                  "#41236d",
+                  "#822111",
+                  "#83334c",
+                  "#a46a21",
+                  "#aa8831",
+                  "#ebdbde"
+                ],
+                "type": "string",
+                "examples": [
+                  "BLACK",
+                  "WHITE",
+                  "YELLOW",
+                  "RED",
+                  "BLUE",
+                  "GREEN",
+                  "#000000",
+                  "#ffffff",
+                  "ROYAL_BLUE"
+                ],
+                "description": "Text color for the label. Gmail only accepts colors from a predefined palette of 102 specific hex values. Common color names like 'YELLOW', 'RED', 'BLUE', 'GREEN', 'ORANGE', 'PURPLE', 'PINK' are automatically mapped to the closest Gmail palette color. Provide either a common color name, a Gmail palette color name (e.g., 'BLACK', 'ROYAL_BLUE'), or exact hex value (e.g., '#000000', '#4a86e8'). If only text_color is provided without background_color, a complementary background color (white or black) will be auto-selected for optimal contrast. Full palette: https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.labels#Color Must be supplied together with background_color \u2014 providing only one will cause a 400 error. The auto-selected complementary color behavior does not apply; both colors are required."
+              },
+              "background_color": {
+                "enum": [
+                  "#000000",
+                  "#434343",
+                  "#666666",
+                  "#999999",
+                  "#cccccc",
+                  "#efefef",
+                  "#f3f3f3",
+                  "#ffffff",
+                  "#fb4c2f",
+                  "#ffad47",
+                  "#fad165",
+                  "#16a766",
+                  "#43d692",
+                  "#4a86e8",
+                  "#a479e2",
+                  "#f691b3",
+                  "#f6c5be",
+                  "#ffe6c7",
+                  "#fef1d1",
+                  "#b9e4d0",
+                  "#c6f3de",
+                  "#c9daf8",
+                  "#e4d7f5",
+                  "#fcdee8",
+                  "#efa093",
+                  "#ffd6a2",
+                  "#fce8b3",
+                  "#89d3b2",
+                  "#a0eac9",
+                  "#a4c2f4",
+                  "#d0bcf1",
+                  "#fbc8d9",
+                  "#e66550",
+                  "#ffbc6b",
+                  "#fcda83",
+                  "#44b984",
+                  "#68dfa9",
+                  "#6d9eeb",
+                  "#b694e8",
+                  "#f7a7c0",
+                  "#cc3a21",
+                  "#eaa041",
+                  "#f2c960",
+                  "#149e60",
+                  "#3dc789",
+                  "#3c78d8",
+                  "#8e63ce",
+                  "#e07798",
+                  "#ac2b16",
+                  "#cf8933",
+                  "#d5ae49",
+                  "#0b804b",
+                  "#2a9c68",
+                  "#285bac",
+                  "#653e9b",
+                  "#b65775",
+                  "#464646",
+                  "#e7e7e7",
+                  "#0d3472",
+                  "#b6cff5",
+                  "#0d3b44",
+                  "#98d7e4",
+                  "#3d188e",
+                  "#e3d7ff",
+                  "#711a36",
+                  "#fbd3e0",
+                  "#8a1c0a",
+                  "#f2b2a8",
+                  "#7a2e0b",
+                  "#ffc8af",
+                  "#7a4706",
+                  "#ffdeb5",
+                  "#594c05",
+                  "#fbe983",
+                  "#684e07",
+                  "#fdedc1",
+                  "#0b4f30",
+                  "#b3efd3",
+                  "#04502e",
+                  "#a2dcc1",
+                  "#c2c2c2",
+                  "#4986e7",
+                  "#2da2bb",
+                  "#b99aff",
+                  "#994a64",
+                  "#f691b2",
+                  "#ff7537",
+                  "#ffad46",
+                  "#662e37",
+                  "#cca6ac",
+                  "#094228",
+                  "#42d692",
+                  "#076239",
+                  "#16a765",
+                  "#1a764d",
+                  "#1c4587",
+                  "#41236d",
+                  "#822111",
+                  "#83334c",
+                  "#a46a21",
+                  "#aa8831",
+                  "#ebdbde"
+                ],
+                "type": "string",
+                "examples": [
+                  "YELLOW",
+                  "RED",
+                  "BLUE",
+                  "GREEN",
+                  "ROYAL_BLUE",
+                  "CARIBBEAN_GREEN",
+                  "#4a86e8",
+                  "#43d692"
+                ],
+                "description": "Background color for the label. Gmail only accepts colors from a predefined palette of 102 specific hex values. Common color names like 'YELLOW', 'RED', 'BLUE', 'GREEN', 'ORANGE', 'PURPLE', 'PINK' are automatically mapped to the closest Gmail palette color. Provide either a common color name, a Gmail palette color name (e.g., 'ROYAL_BLUE', 'CARIBBEAN_GREEN'), or exact hex value (e.g., '#4a86e8', '#43d692'). If only background_color is provided without text_color, a complementary text color (white or black) will be auto-selected for optimal contrast. Full palette: https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.labels#Color Must be supplied together with text_color \u2014 providing only one will cause a 400 error. The auto-selected complementary color behavior does not apply; both colors are required."
+              },
+              "label_list_visibility": {
+                "enum": [
+                  "labelShow",
+                  "labelShowIfUnread",
+                  "labelHide"
+                ],
+                "type": "string",
+                "default": "labelShow",
+                "examples": [
+                  "labelShow",
+                  "labelShowIfUnread",
+                  "labelHide"
+                ],
+                "description": "Controls how the label is displayed in the label list in the Gmail sidebar. Valid values: 'labelShow' (always show), 'labelShowIfUnread' (show only if unread messages), 'labelHide' (hide from list)."
+              },
+              "message_list_visibility": {
+                "enum": [
+                  "show",
+                  "hide"
+                ],
+                "type": "string",
+                "default": "show",
+                "examples": [
+                  "show",
+                  "hide"
+                ],
+                "description": "Controls how messages with this label are displayed in the message list. Valid values: 'show' or 'hide'. Note: These values are different from label_list_visibility - do NOT use 'labelShow' or 'labelHide' here."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_GET_LABEL": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_GET_LABEL",
+          "description": "Gets details for a specified Gmail label. Use this to retrieve label information including name, type, visibility settings, message/thread counts, and color.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "examples": [
+                  "INBOX",
+                  "SENT",
+                  "Label_1",
+                  "Label_42"
+                ],
+                "description": "The ID of the label to retrieve. Can be a system label (e.g., INBOX, SENT, DRAFT, UNREAD, STARRED, SPAM, TRASH) or a user-created label ID (e.g., Label_1, Label_42)."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The user's email address. The special value 'me' can be used to indicate the authenticated user."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_PATCH_LABEL": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_PATCH_LABEL",
+          "description": "Patches the specified user-created label. System labels (e.g., INBOX, SENT, SPAM) cannot be modified...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_PATCH_LABEL"
+              ]
+            }
+          }
+        },
+        "GMAIL_DELETE_LABEL": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_DELETE_LABEL",
+          "description": "Permanently DELETES a user-created Gmail label from the account (not from a message). WARNING: This ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_DELETE_LABEL"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:49:33.679Z",
+        "current_time_utc_epoch_seconds": 1786564173,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "ball",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"ball\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_pw3ko_VBYmoR"
+  }
+}

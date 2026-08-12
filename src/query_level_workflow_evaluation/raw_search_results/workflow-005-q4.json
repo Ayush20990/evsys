@@ -1,0 +1,313 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-005-q4",
+    "workflow_id": 5,
+    "workflow_task": "Manage a partner-operations pipeline across Gmail, ClickUp, and Notion: create outreach drafts and task handoffs, inspect and update existing handoffs, scan recent email threads against CRM records, and write evidence-supported CRM status updates.",
+    "query": "update notion crm page status",
+    "required_tools": [
+      "NOTION_UPDATE_PAGE"
+    ],
+    "supporting_tools": [
+      "NOTION_RETRIEVE_PAGE"
+    ],
+    "rationale": "To write evidence-supported CRM status updates, the agent must update the corresponding Notion page.",
+    "candidate_tools": [
+      "CLICKUP_CREATE_TASK",
+      "CLICKUP_GET_TASK",
+      "CLICKUP_GET_TASKS",
+      "CLICKUP_UPDATE_TASK",
+      "GMAIL_CREATE_EMAIL_DRAFT",
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+      "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+      "GMAIL_GET_DRAFT",
+      "GMAIL_LIST_THREADS",
+      "NOTION_FETCH_DATABASE",
+      "NOTION_FETCH_ROW",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_QUERY_DATABASE_WITH_FILTER",
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_SEARCH_NOTION_PAGE",
+      "NOTION_UPDATE_PAGE"
+    ]
+  },
+  "request": {
+    "query": "update notion crm page status"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "update notion crm page status",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required Prerequisite (if target page/database/row unknown)] [Prerequisite]: Locate the right page/database using NOTION_SEARCH_NOTION_PAGE, then pinpoint matching rows using NOTION_QUERY_DATABASE_WITH_FILTER (paginate via has_more/next_cursor; collect results[].id).",
+            "[Optional (if access/state or page-vs-row type unclear)] [Prerequisite]: Preflight the candidate using NOTION_RETRIEVE_PAGE (confirm it\u2019s accessible, editable, and not archived/in_trash).",
+            "[Optional (if property keys/types/options unclear)] [Prerequisite]: Confirm schema using NOTION_FETCH_DATABASE and spot-check current values using NOTION_FETCH_ROW (capture exact property names, types, and option labels).",
+            "[Required (before write, to avoid overwrites)] [Prerequisite]: Re-read targets using NOTION_FETCH_ROW or NOTION_RETRIEVE_PAGE and client-merge any values you must preserve; get explicit confirmation before destructive/irreversible changes (e.g., archiving or title changes).",
+            "[Required Step 1] [Step]: Update only intended properties using NOTION_UPDATE_ROW_DATABASE (properties as a LIST of {name,type,value}; match schema exactly; for bulk edits run small batches; Optional: COMPOSIO_REMOTE_WORKBENCH).",
+            "[Fallback (if row update fails validation or page-level fields must change)] [Fallback]: Apply the change using NOTION_UPDATE_PAGE (properties as a dictionary; include only changed fields).",
+            "[Required Next Step (for correctness)] [Next Step]: Verify persisted values using NOTION_FETCH_ROW or NOTION_RETRIEVE_PAGE; if values drift due to concurrent edits, re-apply the minimal change once and re-verify."
+          ],
+          "known_pitfalls": [
+            "[NOTION_QUERY_DATABASE_WITH_FILTER] page_size is ~100 and requires has_more/next_cursor pagination; some responses nest results under data_preview or data.data\u2014unwrap before reading results[].id.",
+            "[NOTION_UPDATE_ROW_DATABASE] 400 validation_error if property name casing/spacing, type, option label, or row identifier format doesn\u2019t match the schema; properties must be a LIST, not a dictionary.",
+            "[NOTION_UPDATE_ROW_DATABASE] Can return status_code=200 while successful=false (or otherwise ambiguous); treat the successful flag/error as authoritative and confirm via NOTION_FETCH_ROW.",
+            "[NOTION_UPDATE_PAGE] properties payload shape differs (dictionary); malformed property wrapping triggers validation_error, rich_text-like arrays are replaced wholesale, and updates fail if the page is archived.",
+            "[NOTION_RETRIEVE_PAGE] Passing a database identifier where a page identifier is expected can yield 400 invalid identifier; writes may fail with connection errors (e.g., code 4302) if the toolkit connection is inactive."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Paginate NOTION_QUERY_DATABASE_WITH_FILTER safely (unwrap nested data before reading results/has_more)",
+              "code": "```python\ndef unwrap(r):\n    d=r.get('data') or {}\n    return d.get('data',d) if isinstance(d,dict) else {}\n\ndef iter_rows(run,database_id,flt=None):\n    cur=None\n    while True:\n        a={'database_id':database_id,'page_size':100,'filter':flt or {}}\n        if cur: a['start_cursor']=cur\n        resp,err=run('NOTION_QUERY_DATABASE_WITH_FILTER',a)\n        if err: raise RuntimeError(err)\n        data=unwrap(resp)\n        for x in data.get('results',[]):\n            yield x\n        if not data.get('has_more'): break\n        cur=data.get('next_cursor')\n```"
+            },
+            {
+              "description": "Minimal NOTION_UPDATE_ROW_DATABASE payload shape (list of name/type/value)",
+              "code": "```python\npayload={'row_id':'ROW_ID','properties':[{'name':'PROPERTY_NAME','type':'select','value':'OPTION_LABEL'}]}\nres,err=run('NOTION_UPDATE_ROW_DATABASE',payload)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "NOTION_UPDATE_ROW_DATABASE"
+          ],
+          "related_tool_slugs": [
+            "NOTION_FETCH_ROW",
+            "NOTION_FETCH_DATABASE",
+            "NOTION_UPDATE_PAGE",
+            "NOTION_QUERY_DATABASE_WITH_FILTER",
+            "NOTION_RETRIEVE_PAGE",
+            "NOTION_SEARCH_NOTION_PAGE"
+          ],
+          "toolkits": [
+            "notion"
+          ],
+          "plan_id": "514519dee4f144d08f575a54f6b19d9b"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "notion",
+          "has_active_connection": false,
+          "description": "Notion centralizes notes, docs, wikis, and tasks in a unified workspace, letting teams build custom workflows for collaboration and knowledge management",
+          "status_message": "No Active connection for toolkit=notion. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"notion\") to create a connection BEFORE executing any notion tools."
+        }
+      ],
+      "tool_schemas": {
+        "NOTION_UPDATE_ROW_DATABASE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_UPDATE_ROW_DATABASE",
+          "description": "Updates a specific row/page within a Notion database by its page UUID (row_id). IMPORTANT CLARIFICATION: This action updates INDIVIDUAL ROWS (pages) in a database, NOT the database structure. - To update a ROW/PAGE: Use THIS action with `row_id` (the page UUID) - To update DATABASE SCHEMA (columns, properties, title): Use NOTION_UPDATE_SCHEMA_DATABASE with `database_id` REQUIRED: `row_id` is MANDATORY. This is the UUID of the specific page/row to update. Do NOT pass `database_id` to this action - that parameter does not exist here. Common issues: (1) Use UUID from page URL, not the full URL (2) Ensure page is shared with integration (3) Match property names exactly as in database (4) Use 'status' type for Status properties, not 'select' (5) Retry on 409 Conflict errors (concurrent updates) Supports updating properties, icon, cover, or archiving the row.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "row_id"
+            ],
+            "properties": {
+              "icon": {
+                "type": "string",
+                "examples": [
+                  "\ud83d\ude3b",
+                  "\ud83e\udd14"
+                ],
+                "description": "The emoji to be used as the icon for the page. Must be a single emoji character (e.g., '\ud83d\ude3b', '\ud83e\udd14'). Empty strings or whitespace-only values are ignored."
+              },
+              "cover": {
+                "type": "string",
+                "examples": [
+                  "https://google.com/image.png"
+                ],
+                "description": "URL of an external image to be used as the cover for the page (e.g., 'https://google.com/image.png'). Empty strings or whitespace-only values are ignored."
+              },
+              "row_id": {
+                "type": "string",
+                "examples": [
+                  "59833787-2cf9-4fdf-8782-e53db20768a5"
+                ],
+                "description": "REQUIRED: The page UUID of the database row to update. This is a PAGE ID (not a database ID). A database row in Notion is actually a page - use the page's UUID here. Format: 32-character UUID with hyphens (e.g., '59833787-2cf9-4fdf-8782-e53db20768a5'). NOT a URL or page title. Find this ID in the page URL or via 'Copy link' in Notion. NOTE: To update DATABASE structure/schema, use NOTION_UPDATE_SCHEMA_DATABASE instead. This action only updates individual rows/pages within a database."
+              },
+              "delete_row": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "If true, the row (page) will be archived, effectively deleting it from the active view. If the page is already archived, the action will return success with the current page state. If false, the row will be updated with other provided data."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Name of the property"
+                    },
+                    "type": {
+                      "enum": [
+                        "title",
+                        "rich_text",
+                        "number",
+                        "select",
+                        "multi_select",
+                        "date",
+                        "people",
+                        "files",
+                        "checkbox",
+                        "url",
+                        "email",
+                        "phone_number",
+                        "formula",
+                        "relation",
+                        "rollup",
+                        "status",
+                        "created_time",
+                        "created_by",
+                        "last_edited_time",
+                        "last_edited_by",
+                        "place",
+                        "unique_id"
+                      ],
+                      "type": "string",
+                      "description": "Type of the property. Common types: title (ONE per database), rich_text, number, select (for dropdowns), multi_select, date, people, files, checkbox, url, email, phone_number, relation. \u26a0\ufe0f IMPORTANT: Use 'select' for dropdown properties - NOT 'status'. The 'status' type is a SPECIAL Notion property type (with 'To-do', 'In progress', 'Complete' groups) that most databases do NOT have. If your property shows a simple dropdown list, use 'select' even if the property is NAMED 'Status'. Read-only/unsupported types (auto-skipped): created_time, created_by, last_edited_time, last_edited_by, formula, rollup, unique_id, place. Title and rich_text values are written as literal plain text and split into Notion rich-text objects when needed."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "Value formatted according to the property type:\n- title, rich_text - literal text string. Values longer than 2,000 UTF-16 units are split across Notion rich-text objects; oversized values fail before writing instead of being truncated.\n- number - numeric string ex. \"23.4\"\n- select - single option name (no commas). For multiple values, use multi_select.\n- multi_select - comma separated values ex. \"India,USA\"\n- date - ISO 8601. Single: \"2021-05-11\". Range: \"2021-05-11/2021-05-15\" (slash-separated).\n- people - comma separated USER UUIDs (not names). Use NOTION_LIST_USERS to find UUIDs.\n- relation - comma separated PAGE UUIDs (not titles). Use NOTION_QUERY_DATABASE to find UUIDs.\n- url - a URL string.\n- files - comma separated HTTPS URLs only (no file:// or http://).\n- checkbox - \"True\" or \"False\"\n"
+                    }
+                  }
+                },
+                "default": [],
+                "description": "List of properties to update. Each property requires: (1) 'name' - exact property name as shown in Notion, (2) 'type' - the property type (title, rich_text, number, select, status, multi_select, date, people, relation, checkbox, url, email, phone_number, files), (3) 'value' - formatted according to type. IMPORTANT: Verify property names exist in the database and match the exact case. Use 'status' type for Status properties, NOT 'select'. Properties not listed will remain unchanged."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_FETCH_ROW": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_ROW",
+          "description": "Retrieves a Notion database row's properties and metadata; use fetch_block_contents for page content blocks.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id"
+            ],
+            "properties": {
+              "page_id": {
+                "type": "string",
+                "examples": [
+                  "6c6a9b6c-12a4-4c3e-98e2-3c7a1e4f2d2a"
+                ],
+                "description": "The UUID of the Notion page (which represents a row in a database) to retrieve. Must be a page ID, not a database ID. Each row in a Notion database is a page. Use actions like NOTION_FETCH_DATA or NOTION_QUERY_DATABASE to get page IDs from databases."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_FETCH_DATABASE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_DATABASE",
+          "description": "Fetches a Notion database's structural metadata (properties, title, etc.) via its `database_id`, not the data entries; `database_id` must reference an existing database.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "database_id"
+            ],
+            "properties": {
+              "database_id": {
+                "type": "string",
+                "examples": [
+                  "2ec43c10-7ecd-8159-a8f4-ff16630df66c"
+                ],
+                "minLength": 1,
+                "description": "Required. The unique identifier of the Notion database in UUID format (e.g., '2ec43c10-7ecd-8159-a8f4-ff16630df66c') or unhyphenated 32-char hex (e.g., '2ec43c107ecd8159a8f4ff16630df66c'). Must be a DATABASE ID, not a page ID. Linked databases are NOT supported - use the original source database ID. To find database IDs: use NOTION_SEARCH_NOTION_PAGE with filter_value='database', or extract from database URLs (notion.so/{database_id})."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_UPDATE_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_UPDATE_PAGE",
+          "description": "Update page properties, icon, cover, or archive status. IMPORTANT: Property names are workspace-spec...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_UPDATE_PAGE"
+              ]
+            }
+          }
+        },
+        "NOTION_QUERY_DATABASE_WITH_FILTER": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_QUERY_DATABASE_WITH_FILTER",
+          "description": "Tool to query a Notion database with server-side filtering, sorting, and pagination. Use when you ne...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_QUERY_DATABASE_WITH_FILTER"
+              ]
+            }
+          }
+        },
+        "NOTION_RETRIEVE_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_RETRIEVE_PAGE",
+          "description": "Retrieve a Notion page's properties/metadata (not block content) by page_id. Use when you have a pag...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_RETRIEVE_PAGE"
+              ]
+            }
+          }
+        },
+        "NOTION_SEARCH_NOTION_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_SEARCH_NOTION_PAGE",
+          "description": "Searches Notion pages and databases by title. Use specific search terms to find items by title (prim...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_SEARCH_NOTION_PAGE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:36:02.288Z",
+        "current_time_utc_epoch_seconds": 1786563362,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "plus",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"plus\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_bsjR1sJZI2oC"
+  }
+}

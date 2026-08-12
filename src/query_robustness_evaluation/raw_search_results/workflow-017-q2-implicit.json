@@ -1,0 +1,448 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-017-q2-implicit",
+    "workflow_id": 17,
+    "workflow_task": "Create AI avatar promo videos using a HeyGen avatar and voice, prepare supporting media, attempt social publishing, send a support email for infrastructure issues, and read/update a booking schedule.",
+    "query": "upload and share media to my social media feed",
+    "required_tools": [
+      "INSTAGRAM_POST_IG_USER_MEDIA",
+      "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH"
+    ],
+    "supporting_tools": [
+      "INSTAGRAM_GET_IG_USER_MEDIA"
+    ],
+    "rationale": "Attempting social publishing requires uploading the media container and subsequently publishing it on Instagram.",
+    "candidate_tools": [
+      "GMAIL_CREATE_EMAIL_DRAFT",
+      "GMAIL_DELETE_DRAFT",
+      "GMAIL_SEND_DRAFT",
+      "GMAIL_SEND_EMAIL",
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
+      "HEYGEN_RETRIEVE_AVATAR_DETAILS",
+      "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL",
+      "HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS",
+      "HEYGEN_UPLOAD_ASSET",
+      "HEYGEN_V1_AVATAR_LIST",
+      "HEYGEN_V2_USER_REMAINING_QUOTA",
+      "HEYGEN_V2_VIDEO_GENERATE",
+      "HEYGEN_V2_VOICES",
+      "INSTAGRAM_GET_IG_MEDIA",
+      "INSTAGRAM_GET_IG_USER_MEDIA",
+      "INSTAGRAM_LIST_ALL_MESSAGES",
+      "INSTAGRAM_POST_IG_USER_MEDIA",
+      "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH",
+      "INSTAGRAM_SEND_TEXT_MESSAGE"
+    ],
+    "source_query_id": "workflow-017-q2",
+    "variant_dimension": "implicit"
+  },
+  "request": {
+    "query": "upload and share media to my social media feed"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "upload and share media to my social media feed",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if you only have a public URL)] [Prerequisite]: Import the asset using GOOGLEDRIVE_UPLOAD_FROM_URL (create a Drive file id you can reliably fetch).",
+            "[Optional (if you staged via Drive)] [Prerequisite]: Fetch bytes using GOOGLEDRIVE_DOWNLOAD_FILE (use downloaded_file_content as the upload input).",
+            "[Optional (if media isn\u2019t already a stable reference like media.s3key)] [Prerequisite]: Stage/download the asset in COMPOSIO_REMOTE_WORKBENCH (obtain media.s3key plus media.name/media.mimetype).",
+            "[Required] [Step]: Upload standard images/media using TWITTER_UPLOAD_MEDIA (preferred) and capture the attachable id (often response.data.data.id; sometimes response.data.id).",
+            "[Optional (if TWITTER_UPLOAD_MEDIA fails due to a bad reference or you only have raw bytes)] [Fallback]: Upload using TWITTER_UPLOAD_MEDIA_BASE64 and capture the attachable id for later use.",
+            "[Optional (if upload returns processing_info and media is needed immediately)] [Next Step]: Poll readiness using TWITTER_GET_MEDIA_UPLOAD_STATUS until processing_info.state=succeeded or failed before attaching the id.",
+            "[Optional (for publishing, after explicit user confirmation)] [Next Step]: Create the post using TWITTER_CREATION_OF_A_POST (pass media_media_ids) and store the returned post id (may be nested under response.data.data.id or response.data.id)."
+          ],
+          "known_pitfalls": [
+            "[TWITTER_UPLOAD_MEDIA] Use the attachable id (often response.data.data.id); media_key is different, and ids can expire (expires_after_secs=86400) so upload close to posting.",
+            "[TWITTER_UPLOAD_MEDIA] Responses may include response.data.http_error/status_code even when other fields suggest success\u2014treat embedded http_error as failure and retry with a fresh upload.",
+            "[TWITTER_UPLOAD_MEDIA_BASE64] Can fail with 400 Bad Request and return error details under response.data.http_error/status_code\u2014switch back to TWITTER_UPLOAD_MEDIA when possible.",
+            "[TWITTER_GET_MEDIA_UPLOAD_STATUS] processing_info can exist at 100%; media isn\u2019t usable until processing_info.state=succeeded, and state can be failed despite HTTP 200 (re-encode/re-upload).",
+            "[TWITTER_CREATION_OF_A_POST] Enforces weighted-length (max 280; URLs count as 23; emojis/CJK often 2) and can fail 403 SpendCapReached until billing cap resets."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse attachable media id from upload responses before passing into TWITTER_CREATION_OF_A_POST",
+              "code": "```python\ndef extract_media_id(r):\n d=(r or {}).get('data',{})\n return (d.get('data') or {}).get('id') or d.get('id')\n```"
+            },
+            {
+              "description": "Compute an approximate Twitter weighted character count (URLs count as 23) before calling TWITTER_CREATION_OF_A_POST",
+              "code": "```python\nimport re,unicodedata\n\ndef weighted_count(text):\n clean=re.sub(r'https?://\\S+','_'*23,text)\n n=0\n for ch in clean:\n  n+=2 if unicodedata.east_asian_width(ch) in ('W','F') or ord(ch)>0x1F000 else 1\n return n\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "TWITTER_UPLOAD_MEDIA"
+          ],
+          "related_tool_slugs": [
+            "TWITTER_GET_MEDIA_UPLOAD_STATUS",
+            "TWITTER_CREATION_OF_A_POST",
+            "TWITTER_POST_LOOKUP_BY_POST_ID",
+            "TWITTER_UPLOAD_MEDIA_BASE64",
+            "GOOGLEDRIVE_UPLOAD_FROM_URL",
+            "GOOGLEDRIVE_DOWNLOAD_FILE"
+          ],
+          "toolkits": [
+            "googledrive",
+            "twitter"
+          ],
+          "plan_id": "3d9f682a600f4d70a61bdf1fa7833728"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledrive",
+          "has_active_connection": false,
+          "description": "Google Drive is a cloud storage solution for uploading, sharing, and collaborating on files across devices, with robust search and offline access. Special usecases: Sharing google sheets/docs or any G-Suite files with specific emails.",
+          "status_message": "No Active connection for toolkit=googledrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledrive\") to create a connection BEFORE executing any googledrive tools."
+        },
+        {
+          "toolkit": "twitter",
+          "has_active_connection": false,
+          "description": "Twitter, Inc. was an American social media company based in San Francisco, California, which operated and was named for named for its flagship social media network prior to its rebrand as X.",
+          "status_message": "No Active connection for toolkit=twitter. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"twitter\") to create a connection BEFORE executing any twitter tools."
+        }
+      ],
+      "tool_schemas": {
+        "TWITTER_UPLOAD_MEDIA": {
+          "toolkit": "TWITTER",
+          "tool_slug": "TWITTER_UPLOAD_MEDIA",
+          "description": "Upload media (images only) to X/Twitter using the v2 API. Supports tweet_image, dm_image, and subtitles media categories only. One file per call; the returned media_id expires (see expires_after_secs in response), so upload immediately before creating the tweet. For GIFs, videos, or any file larger than ~5 MB, use TWITTER_UPLOAD_LARGE_MEDIA instead.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "media"
+            ],
+            "properties": {
+              "media": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "The media file to upload. This action only supports images. For GIFs, videos, or any file larger than ~5 MB, use 'TWITTER_UPLOAD_LARGE_MEDIA' instead. Must include a valid mimetype (e.g., image/jpeg, image/png); incorrect or missing mimetype causes validation errors or misclassification.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "shared": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Whether this media is shared or not. Optional parameter."
+              },
+              "media_type": {
+                "type": "string",
+                "description": "The MIME type of the media being uploaded. Required for subtitle uploads. Examples: 'text/srt' for SRT subtitles, 'text/vtt' for VTT subtitles, 'image/jpeg' for JPEG images, 'image/png' for PNG images."
+              },
+              "media_category": {
+                "enum": [
+                  "tweet_image",
+                  "dm_image",
+                  "subtitles"
+                ],
+                "type": "string",
+                "description": "Media category for upload (v2 API)\n\nNote: The v2 media upload endpoint only supports these three categories.\nFor videos and GIFs, use TWITTER_UPLOAD_LARGE_MEDIA instead."
+              },
+              "additional_owners": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "2244994945",
+                    "783214"
+                  ]
+                ],
+                "description": "A list of user IDs to set as additional owners allowed to use the returned media_id in Tweets or Cards. Each user ID must be a string of 1-19 digits."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TWITTER_GET_MEDIA_UPLOAD_STATUS": {
+          "toolkit": "TWITTER",
+          "tool_slug": "TWITTER_GET_MEDIA_UPLOAD_STATUS",
+          "description": "Get the processing status of uploaded media (videos/GIFs) on X/Twitter. Only call this when the FINALIZE command returned a processing_info field. Poll every 3\u20135 seconds with a 60\u2013120 second maximum timeout to avoid HTTP 429 errors. Response state cycles through 'pending', 'in_progress', 'succeeded', and 'failed'. Only attach media_id to a tweet when state is 'succeeded'. State 'failed' is terminal \u2014 requires a completely new upload via TWITTER_UPLOAD_MEDIA or TWITTER_UPLOAD_LARGE_MEDIA. Video/GIF processing takes 30\u2013120 seconds; posting before 'succeeded' results in non-playable media.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "media_id"
+            ],
+            "properties": {
+              "media_id": {
+                "type": "string",
+                "pattern": "^[0-9]{1,19}$",
+                "maxLength": 19,
+                "minLength": 1,
+                "description": "Numeric media ID (1-19 digits) returned from a previous media upload."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TWITTER_CREATION_OF_A_POST": {
+          "toolkit": "TWITTER",
+          "tool_slug": "TWITTER_CREATION_OF_A_POST",
+          "description": "Creates a Tweet on Twitter; `text` is required unless `card_uri`, `media_media_ids`, `poll_options`, or `quote_tweet_id` is provided. Example - Creating a tweet with media and location: { \"text\": \"Check out our latest product update! \ud83d\ude80\", \"media_media_ids\": [\"1455952740635586573\"], \"geo_place_id\": \"df51dec6f4ee2b2c\" } Example - Quote tweet with commentary: { \"text\": \"This is a game-changer for the industry! Here's why... \ud83e\uddf5\", \"quote_tweet_id\": \"1453828617121234945\" } Example - Reply to a tweet: { \"text\": \"Great point! Here's my take on this...\", \"reply_in_reply_to_tweet_id\": \"1453828617121234945\" }",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "examples": [
+                  "Hello world!",
+                  "Check out this cool new feature! #innovation"
+                ],
+                "description": "Text content of the Tweet. Length limits are enforced by the X (Twitter) API and depend on the authenticated user's account tier \u2014 basic accounts are typically capped at 280 weighted characters (emojis/CJK count as 2, URLs count as 23 regardless of length), while X Premium accounts may post longer content. Validation is delegated to the API; over-length submissions return a 4xx error. At least one of `text`, `media_media_ids`, `card_uri`, `poll_options`, or `quote_tweet_id` must be provided with a non-empty value. Empty strings or whitespace-only strings are not valid. IMPORTANT: Do not include t.co URLs (Twitter's URL shortener) - use original URLs and Twitter will shorten them automatically. Also avoid URL placeholders like <URL>, [URL], or {URL} which will be rejected."
+              },
+              "card_uri": {
+                "type": "string",
+                "examples": [
+                  "https://example.com/my-card"
+                ],
+                "description": "URI of a card to attach. Mutually exclusive with `quote_tweet_id`, `poll` parameters, `media` parameters, and `direct_message_deep_link`."
+              },
+              "nullcast": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Marks the Tweet as a promoted-only post, not appearing in public timelines or served to followers."
+              },
+              "geo_place_id": {
+                "type": "string",
+                "examples": [
+                  "df51dec6f4ee2b2c"
+                ],
+                "description": "Twitter Place ID to associate with the Tweet."
+              },
+              "poll_options": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "Yes",
+                    "No"
+                  ],
+                  [
+                    "Option A",
+                    "Option B",
+                    "Option C"
+                  ]
+                ],
+                "description": "List of 2 to 4 poll options (max 25 characters each). Required if creating a poll. Mutually exclusive with `card_uri`."
+              },
+              "quote_tweet_id": {
+                "type": "string",
+                "examples": [
+                  "1346889436626259968"
+                ],
+                "description": "ID of the Tweet to quote. MUST be a numeric string containing only digits (1-19 digits). Accepts string or numeric types, automatically converted to string. Example: '1346889436626259968' is valid. Placeholder values like 'unknown', 'null', 'none' are NOT valid. Mutually exclusive with `card_uri`, `poll` parameters, and `direct_message_deep_link`."
+              },
+              "reply_settings": {
+                "enum": [
+                  "following",
+                  "mentionedUsers",
+                  "subscribers"
+                ],
+                "type": "string",
+                "examples": [
+                  "following",
+                  "mentionedUsers",
+                  "subscribers"
+                ],
+                "description": "Specifies who can reply to this Tweet. Valid values are: 'following' (users following the author), 'mentionedUsers' (users mentioned in the Tweet - note: use 'mentionedUsers', NOT 'mentioning'), or 'subscribers' (X Premium subscribers only)."
+              },
+              "media_media_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "1146032800000000000",
+                    "1146032800000000001"
+                  ]
+                ],
+                "description": "Up to 4 Media IDs obtained from prior uploads. Each Media ID MUST be a numeric string containing only digits (1-19 digits), matching the pattern ^[0-9]{1,19}$. Example: '1455952740635586573' is valid, 'PLACEHOLDER_MEDIA_ID' is invalid. At least one of `text` or `media_media_ids` must be provided. Mutually exclusive with `card_uri`."
+              },
+              "poll_reply_settings": {
+                "enum": [
+                  "following",
+                  "mentionedUsers",
+                  "subscribers",
+                  "verified"
+                ],
+                "type": "string",
+                "examples": [
+                  "following",
+                  "mentionedUsers",
+                  "subscribers",
+                  "verified"
+                ],
+                "description": "Per X's live TweetCreateRequest schema (poll.reply_settings), all 4\nvalues are valid - the same set as the top-level reply_settings enum,\nplus 'verified' (confirmed via api.x.com/2/openapi.json)."
+              },
+              "media_tagged_user_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "2244994945",
+                    "783214"
+                  ]
+                ],
+                "description": "User IDs to tag in media; tagged users must have enabled photo tagging. Mutually exclusive with `card_uri`."
+              },
+              "poll_duration_minutes": {
+                "type": "integer",
+                "examples": [
+                  60,
+                  1440,
+                  10080
+                ],
+                "description": "Poll duration in minutes (5-10080). Required if `poll_options` are provided. Mutually exclusive with `card_uri`."
+              },
+              "direct_message_deep_link": {
+                "type": "string",
+                "examples": [
+                  "https://twitter.com/messages/compose?recipient_id=12345&text=Hi"
+                ],
+                "description": "Deep link to a private Direct Message conversation. Mutually exclusive with `card_uri`."
+              },
+              "for_super_followers_only": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Restricts Tweet visibility to the author's Super Followers."
+              },
+              "reply_in_reply_to_tweet_id": {
+                "type": "string",
+                "examples": [
+                  "1346889436626259960"
+                ],
+                "description": "ID of the Tweet to which this is a reply. MUST be a numeric string containing only digits (1-19 digits). Accepts string or numeric types, automatically converted to string. Example: '1346889436626259960' is valid, 'Hello' is invalid. Required if creating a reply. Note: Twitter does not allow replies to tweets that have been edited - use quote_tweet_id instead for edited tweets."
+              },
+              "reply_exclude_reply_user_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "123456789",
+                    "987654321"
+                  ]
+                ],
+                "description": "User IDs to exclude from @mentioning in the reply; these users will not be notified. Used when `reply_in_reply_to_tweet_id` is set."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TWITTER_POST_LOOKUP_BY_POST_ID": {
+          "toolkit": "TWITTER",
+          "tool_slug": "TWITTER_POST_LOOKUP_BY_POST_ID",
+          "description": "Fetches comprehensive details for a single Tweet by its unique ID, provided the Tweet exists and is ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TWITTER_POST_LOOKUP_BY_POST_ID"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_UPLOAD_FROM_URL": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_UPLOAD_FROM_URL",
+          "description": "Tool to fetch a file from a provided URL server-side and upload it into Google Drive. Use when you n...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_UPLOAD_FROM_URL"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_DOWNLOAD_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_DOWNLOAD_FILE",
+          "description": "Downloads a file from Google Drive by its ID. For Google Workspace documents (Docs, Sheets, Slides),...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_DOWNLOAD_FILE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:53:26.202Z",
+        "current_time_utc_epoch_seconds": 1786564406,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "wear",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"wear\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_IMOG056Uf8pF"
+  }
+}

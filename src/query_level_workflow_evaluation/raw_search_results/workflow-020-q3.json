@@ -1,0 +1,291 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-020-q3",
+    "workflow_id": 20,
+    "workflow_task": "Maintain and reconcile CRM, portal, billing, and project documentation across Google Docs, Google Sheets, Zoho CRM, Google Drive, and QuickBooks while verifying live system fields and updating records.",
+    "query": "fetch module fields and execute zoho crm queries",
+    "required_tools": [
+      "ZOHO_GET_MODULE_FIELDS",
+      "ZOHO_PROXY_EXECUTE"
+    ],
+    "supporting_tools": [],
+    "rationale": "The agent needs to inspect Zoho CRM field schemas and execute live queries to verify customer records.",
+    "candidate_tools": [
+      "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+      "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+      "GOOGLEDOCS_INSERT_TEXT_ACTION",
+      "GOOGLEDOCS_REPLACE_ALL_TEXT",
+      "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "GOOGLESHEETS_PROXY_EXECUTE",
+      "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+      "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+      "GOOGLESHEETS_UPSERT_ROWS",
+      "GOOGLESHEETS_VALUES_GET",
+      "GOOGLESHEETS_VALUES_UPDATE",
+      "QUICKBOOKS_PROXY_EXECUTE",
+      "ZOHO_GET_MODULE_FIELDS",
+      "ZOHO_PROXY_EXECUTE"
+    ]
+  },
+  "request": {
+    "query": "fetch module fields and execute zoho crm queries"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "fetch module fields and execute zoho crm queries",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if module API name is unknown)] [Prerequisite]: Discover the correct module_api_name using ZOHO_LIST_MODULES (avoid querying the wrong/custom module).",
+            "[Required Step]: Search target module using ZOHO_SEARCH_ZOHO_RECORDS (COQL-like criteria; request key fields incl. id and info.more_records for traversal).",
+            "[Optional (if results empty but mismatch suspected)] [Next Step]: Retry using ZOHO_SEARCH_ZOHO_RECORDS with adjusted/normalized criteria (e.g., email casing or alternate match field).",
+            "[Optional (if field API names/line-item field are unknown)] [Prerequisite]: Inspect module schema using ZOHO_GET_MODULE_FIELDS (confirm criteria fields + any subform/line-item api_name and child keys).",
+            "[Optional (if you need full verification fields or already have IDs)] [Step]: Fetch exact records using ZOHO_GET_ZOHO_RECORDS (pass an explicit fields list to retrieve full payload, not just id).",
+            "[Optional (if related-list API name is unknown in a customized CRM)] [Prerequisite]: Enumerate link/related-list API names using ZOHO_GET_RELATED_LISTS (map display labels to API names).",
+            "[Required Step]: Traverse related entities using ZOHO_GET_RELATED_RECORDS (parent module + parent id + related-list API name; paginate pages until complete).",
+            "[Optional (if high-volume search exceeds page limits/needs continuation)] [Fallback]: Continue retrieval using ZOHO_GET_ZOHO_RECORDS with page_token (from info.next_page_token when present), iterating until next_page_token is absent."
+          ],
+          "known_pitfalls": [
+            "[ZOHO_SEARCH_ZOHO_RECORDS] HTTP success can still be no-match: data.data=[] with data.info.count=0; handle as \u201cnot found\u201d.",
+            "[ZOHO_SEARCH_ZOHO_RECORDS] info.more_records may remain true across many pages (per_page=200 observed); responses may omit info.next_page_token, limiting continuation beyond page-based pagination.",
+            "[ZOHO_GET_ZOHO_RECORDS] Omitting a fields list may return only the id in some runs; explicitly request needed fields (including subform/line-item api_name).",
+            "[ZOHO_GET_MODULE_FIELDS] If a subform/line-item field api_name is wrong/inaccessible, ZOHO_GET_ZOHO_RECORDS may return only top-level scalar fields; validate via module metadata.",
+            "[ZOHO_GET_RELATED_LISTS] ZOHO_GET_RELATED_RECORDS requires the related list API name (not the display label); mismatched parent module/id pairs commonly yield empty or error responses."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "ZOHO_SEARCH_ZOHO_RECORDS",
+            "ZOHO_GET_ZOHO_RECORDS"
+          ],
+          "related_tool_slugs": [
+            "ZOHO_GET_RELATED_LISTS",
+            "ZOHO_GET_RELATED_RECORDS",
+            "ZOHO_LIST_MODULES",
+            "ZOHO_GET_MODULE_FIELDS"
+          ],
+          "toolkits": [
+            "zoho"
+          ],
+          "plan_id": "8ad7727d925b4a73b8cd9e9542d8e16b"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "zoho",
+          "has_active_connection": false,
+          "description": "Zoho is a suite of cloud applications including CRM, email marketing, and collaboration tools, enabling businesses to automate and scale operations",
+          "status_message": "No Active connection for toolkit=zoho. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"zoho\") to create a connection BEFORE executing any zoho tools."
+        }
+      ],
+      "tool_schemas": {
+        "ZOHO_SEARCH_ZOHO_RECORDS": {
+          "toolkit": "ZOHO",
+          "tool_slug": "ZOHO_SEARCH_ZOHO_RECORDS",
+          "description": "Search for records within a Zoho CRM module using server-side queries. Use when you need to find specific records by criteria, email, phone, or keyword instead of listing all records. This avoids pagination limits and performs efficient server-side filtering.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "module_api_name"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "minimum": 1,
+                "description": "Page number to retrieve (default: 1). Maximum 2,000 records are accessible via search API. Maximum page number is floor(2000/per_page)."
+              },
+              "word": {
+                "type": "string",
+                "description": "Global search keyword across multiple fields in the module. Cannot be used together with criteria, email, or phone parameters."
+              },
+              "email": {
+                "type": "string",
+                "description": "Search for this email address across all email fields in the module. Cannot be used together with criteria, phone, or word parameters."
+              },
+              "phone": {
+                "type": "string",
+                "description": "Search for this phone number across all phone fields in the module. Cannot be used together with criteria, email, or word parameters."
+              },
+              "fields": {
+                "type": "string",
+                "description": "Comma-separated API names of fields to return in the response. If not specified, all fields are returned. Example: 'First_Name,Last_Name,Email,Phone'."
+              },
+              "criteria": {
+                "type": "string",
+                "description": "Advanced search using field conditions. Single condition format: (Field_API_Name:operator:value). Multiple conditions format: ((Field1:operator:value)and/or(Field2:operator:value)). Supported operators: equals, starts_with, in, not_equal, greater_equal, greater_than, less_equal, less_than, between. CRITICAL: 'contains' operator is NOT supported by Zoho API and will cause INVALID_QUERY errors. For substring matching on text fields, use 'equals' (performs substring search, e.g., 'equals:Smith' matches 'John Smith'). For prefix matching, use 'starts_with'. For exact matching on picklists, use 'equals'. For full-text search across multiple fields, use the 'word' parameter instead of criteria. Max 10 criteria. Example: ((Last_Name:equals:Smith)and(Email:starts_with:john)). Field names must be valid API names for the module. For datetime fields (e.g., Created_Time, Modified_Time), values MUST include timezone offset in format yyyy-MM-ddTHH:mm:ss+HH:mm. Example: (Created_Time:greater_than:2026-01-01T00:00:00+00:00)."
+              },
+              "per_page": {
+                "type": "integer",
+                "default": 200,
+                "maximum": 200,
+                "minimum": 1,
+                "description": "Number of records per page. Default and maximum is 200."
+              },
+              "module_api_name": {
+                "type": "string",
+                "description": "The API name of the module to search in. Standard modules use PascalCase (e.g., 'Leads', 'Contacts', 'Accounts', 'Deals'). Custom modules must use their exact API name as configured in Zoho CRM."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZOHO_GET_ZOHO_RECORDS": {
+          "toolkit": "ZOHO",
+          "tool_slug": "ZOHO_GET_ZOHO_RECORDS",
+          "description": "Retrieves records from a specified module in Zoho CRM. Notes: - Discrete (page/per_page) pagination is limited to the first 2,000 records. To retrieve records beyond this, use token-based pagination via page_token from the previous response's info.next_page_token. - Do not use page together with page_token. - You cannot use cvid together with sort_by.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "module_api_name"
+            ],
+            "properties": {
+              "ids": {
+                "type": "string",
+                "default": "",
+                "description": "Comma-separated record IDs to fetch specific records. Note: This parameter is ignored when page_token is provided."
+              },
+              "cvid": {
+                "type": "integer",
+                "description": "Custom view ID to filter the records. Cannot be used together with sort_by. Note: This parameter is ignored when page_token is provided."
+              },
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "minimum": 1,
+                "description": "Page number to retrieve. Without page_token, only the first 2,000 records are accessible using page/per_page. Maximum page number is floor(2000/per_page). Do not use together with page_token."
+              },
+              "fields": {
+                "type": "string",
+                "default": "First_Name,Last_Name,Email",
+                "minLength": 1,
+                "description": "Comma-separated API names of the fields to retrieve (max 50). At least one field must be specified (empty string not allowed). Field names are module-specific. Common fields: First_Name, Last_Name, Email, Phone, Mobile. For Leads: Company, Lead_Status, Lead_Source. For Accounts: Account_Name, Website, Industry. For Contacts: Account_Name, Mailing_Street. For Deals: Deal_Name, Amount, Stage, Closing_Date. Invalid or cross-module field names silently produce missing columns rather than explicit errors."
+              },
+              "sort_by": {
+                "enum": [
+                  "id",
+                  "Created_Time",
+                  "Modified_Time"
+                ],
+                "type": "string",
+                "description": "Valid fields for sorting Zoho CRM records."
+              },
+              "per_page": {
+                "type": "integer",
+                "default": 200,
+                "description": "Number of records per page (default and max is 200). Applies to both page and page_token pagination."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Token-based pagination parameter to fetch records beyond the 2,000-record discrete limit. Use the info.next_page_token from the previous response. Cannot be used together with page."
+              },
+              "sort_order": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "description": "Sort order for records."
+              },
+              "module_api_name": {
+                "type": "string",
+                "description": "The API name of the module to retrieve records from. Common supported modules: Leads, Contacts, Accounts, Deals, Tasks, Events, Calls, Products, Quotes, Sales_Orders, Purchase_Orders, Invoices, Campaigns, Vendors, Price_Books, Cases, Solutions, Notes. IMPORTANT: 'Activities' is NOT a supported module - use 'Tasks', 'Events', or 'Calls' instead. Must be the exact API name, not the UI display label \u2014 mismatches silently return empty results instead of an error."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZOHO_GET_RELATED_LISTS": {
+          "toolkit": "ZOHO",
+          "tool_slug": "ZOHO_GET_RELATED_LISTS",
+          "description": "Retrieves related list metadata for a Zoho CRM module to discover correct api_name values. Use this before updating related records to avoid INVALID_DATA errors from incorrect related_list_api_name. Returns api_name, display_label, href, and other details for each related list available in the module.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "module_api_name"
+            ],
+            "properties": {
+              "layout_id": {
+                "type": "string",
+                "description": "Optional layout ID to filter related lists by specific layout. If not specified, returns related lists for all layouts of the module."
+              },
+              "module_api_name": {
+                "type": "string",
+                "examples": [
+                  "Leads",
+                  "Contacts",
+                  "Accounts",
+                  "Deals"
+                ],
+                "description": "The API name of the module to retrieve related list metadata for. Examples: 'Leads', 'Contacts', 'Accounts', 'Deals', 'Tasks', etc. This must be a valid module API name in Zoho CRM."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZOHO_GET_RELATED_RECORDS": {
+          "toolkit": "ZOHO",
+          "tool_slug": "ZOHO_GET_RELATED_RECORDS",
+          "description": "Fetch related-list records (e.g., Notes, Attachments, Emails) for a Zoho CRM parent record using rel...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZOHO_GET_RELATED_RECORDS"
+              ]
+            }
+          }
+        },
+        "ZOHO_LIST_MODULES": {
+          "toolkit": "ZOHO",
+          "tool_slug": "ZOHO_LIST_MODULES",
+          "description": "Lists all available Zoho CRM modules (standard + custom) to reliably select module API names/IDs for...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZOHO_LIST_MODULES"
+              ]
+            }
+          }
+        },
+        "ZOHO_GET_MODULE_FIELDS": {
+          "toolkit": "ZOHO",
+          "tool_slug": "ZOHO_GET_MODULE_FIELDS",
+          "description": "Retrieves field metadata for a Zoho CRM module including API names, data types, permissions, and con...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZOHO_GET_MODULE_FIELDS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:38:47.109Z",
+        "current_time_utc_epoch_seconds": 1786563527,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "fish",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"fish\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_vYfRYq23ougo"
+  }
+}

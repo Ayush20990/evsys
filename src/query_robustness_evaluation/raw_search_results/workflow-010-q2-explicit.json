@@ -1,0 +1,444 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-010-q2-explicit",
+    "workflow_id": 10,
+    "workflow_task": "Reconcile an organization's QuickBooks bank-account ledger by querying existing transactions, removing or undoing incorrect entries, posting corrected ledger activity, creating adjustment entries, recording a customer payment, and verifying financial reports.",
+    "query": "create a journal entry for ledger adjustments in QuickBooks",
+    "required_tools": [
+      "QUICKBOOKS_CREATE_JOURNAL_ENTRY"
+    ],
+    "supporting_tools": [
+      "QUICKBOOKS_EXECUTE_BATCH_OPERATION"
+    ],
+    "rationale": "To post corrected activity and create adjustment entries, the agent needs tools for creating journal entries.",
+    "candidate_tools": [
+      "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
+      "QUICKBOOKS_EXECUTE_BATCH_OPERATION",
+      "QUICKBOOKS_GET_COMPANY_INFO",
+      "QUICKBOOKS_GET_REPORTS",
+      "QUICKBOOKS_PROXY_EXECUTE",
+      "QUICKBOOKS_QUERY_ENTITIES"
+    ],
+    "source_query_id": "workflow-010-q2",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "create a journal entry for ledger adjustments in QuickBooks"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create a journal entry for ledger adjustments in QuickBooks",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Confirm the target company context using QUICKBOOKS_GET_COMPANY_INFO (avoid posting to the wrong company).",
+            "[Required (if JournalEntry accounts unknown)] [Prerequisite]: Resolve posting and reconciliation accounts using QUICKBOOKS_QUERY_ACCOUNT (use returned Account.Id for JournalEntryLineDetail.AccountRef.value).",
+            "[Optional (if avoiding duplicate postings)] [Prerequisite]: Search for an already-posted JournalEntry using QUICKBOOKS_QUERY_ENTITIES (keep filters/select minimal; treat missing QueryResponse entity arrays as no results).",
+            "[Required] [Step]: Obtain user confirmation for the write, then post the balanced journal entry using QUICKBOOKS_CREATE_JOURNAL_ENTRY (>=2 lines; debits=credits; set JournalEntryLineDetail.AccountRef.value and JournalEntryLineDetail.PostingType; include memo/private note if needed).",
+            "[Required] [Next Step]: Read back the saved entry using QUICKBOOKS_GET_JOURNAL_ENTRY (verify lines and accounts; don\u2019t rely on create-response totals).",
+            "[Optional (for reconciliation evidence)] [Next Step]: Validate posting impact using QUICKBOOKS_GET_REPORT_TRIAL_BALANCE (use a tight period to isolate the change).",
+            "[Optional (if trial balance lacks detail)] [Next Step]: Inspect account-level effects using QUICKBOOKS_GET_GENERAL_LEDGER_REPORT (same tight period and affected accounts).",
+            "[Fallback (if entity search fails/validates)] [Fallback]: Re-run QUICKBOOKS_QUERY_ENTITIES with the simplest possible filters and minimal field selection; interpret absent entity arrays as empty results."
+          ],
+          "known_pitfalls": [
+            "[QUICKBOOKS_QUERY_ACCOUNT] Similar account names/types can map to different ledgers; always use returned Account.Id in AccountRef.value.",
+            "[QUICKBOOKS_QUERY_ENTITIES] Unsupported query syntax (e.g., OR) can trigger 400 ValidationFault (observed code 4000).",
+            "[QUICKBOOKS_QUERY_ENTITIES] Selecting unsupported fields can trigger ValidationFault with QueryValidationError code 4001; retry with a minimal select list.",
+            "[QUICKBOOKS_CREATE_JOURNAL_ENTRY] Create response may show TotalAmt=0 even when Line amounts exist; rely on QUICKBOOKS_GET_JOURNAL_ENTRY or reports for validation.",
+            "[QUICKBOOKS_GET_JOURNAL_ENTRY] 400 ValidationFault code 610 can occur when the Id is not a JournalEntry or referenced entities are inactive."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Sum report row amounts for entries matching a memo predicate (trial balance / ledger-style rows)",
+              "code": "```python\nimport json,sys\nfrom decimal import Decimal\n\ndef sum_amounts(report,pred):\n    rows=report.get('Rows',{}).get('Row',[])\n    tot=Decimal('0');cnt=0\n    for r in rows:\n        if r.get('type')!='Data':\n            continue\n        cd=r.get('ColData',[])\n        if not cd:\n            continue\n        memo=(cd[0].get('value') or '')\n        amt_s=(cd[-1].get('value') or '').replace('$','').replace(',','').strip()\n        if not amt_s:\n            continue\n        if pred(memo):\n            tot+=Decimal(amt_s);cnt+=1\n    return tot,cnt\n\nreport=json.loads(sys.stdin.read())\nprint(sum_amounts(report,lambda m:'match' in m.lower()))\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "QUICKBOOKS_CREATE_JOURNAL_ENTRY"
+          ],
+          "related_tool_slugs": [
+            "QUICKBOOKS_QUERY_ACCOUNT",
+            "QUICKBOOKS_GET_JOURNAL_ENTRY",
+            "QUICKBOOKS_GET_COMPANY_INFO",
+            "QUICKBOOKS_QUERY_ENTITIES",
+            "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE",
+            "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT"
+          ],
+          "toolkits": [
+            "quickbooks"
+          ],
+          "plan_id": "41cc7ecdb41c4a24b7dca861941ce6dc"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "quickbooks",
+          "has_active_connection": false,
+          "description": "Quickbooks is a cloud-based accounting software that helps you manage your finances, track your income and expenses, and get insights into your business",
+          "status_message": "No Active connection for toolkit=quickbooks. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"quickbooks\") to create a connection BEFORE executing any quickbooks tools."
+        }
+      ],
+      "tool_schemas": {
+        "QUICKBOOKS_CREATE_JOURNAL_ENTRY": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
+          "description": "Tool to create a new journal entry in QuickBooks Online. Use when you need to make adjusting or correcting entries that directly affect account balances. Journal entries require at least two lines with total debits equaling total credits.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "Line"
+            ],
+            "properties": {
+              "Line": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "Amount",
+                    "JournalEntryLineDetail"
+                  ],
+                  "properties": {
+                    "Id": {
+                      "type": "string",
+                      "description": "Line ID. Optional for creation, typically '0' or omitted."
+                    },
+                    "Amount": {
+                      "type": "number",
+                      "description": "Amount for this journal entry line. Must be a positive number.",
+                      "exclusiveMinimum": 0
+                    },
+                    "DetailType": {
+                      "type": "string",
+                      "default": "JournalEntryLineDetail",
+                      "description": "Type of line detail. Must be 'JournalEntryLineDetail' for journal entries."
+                    },
+                    "Description": {
+                      "type": "string",
+                      "maxLength": 4000,
+                      "description": "Description of this journal entry line. Maximum 4000 characters."
+                    },
+                    "JournalEntryLineDetail": {
+                      "type": "object",
+                      "required": [
+                        "AccountRef",
+                        "PostingType"
+                      ],
+                      "properties": {
+                        "Entity": {
+                          "type": "object",
+                          "required": [
+                            "Type",
+                            "EntityRef"
+                          ],
+                          "properties": {
+                            "Type": {
+                              "enum": [
+                                "Customer",
+                                "Vendor",
+                                "Employee"
+                              ],
+                              "type": "string",
+                              "description": "Type of entity: 'Customer', 'Vendor', or 'Employee'."
+                            },
+                            "EntityRef": {
+                              "type": "object",
+                              "required": [
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "description": "Name of the referenced entity."
+                                },
+                                "value": {
+                                  "type": "string",
+                                  "description": "ID of the referenced entity."
+                                }
+                              },
+                              "description": "Reference to the entity.",
+                              "additionalProperties": false
+                            }
+                          },
+                          "description": "Entity reference with type for journal entry lines.",
+                          "additionalProperties": false
+                        },
+                        "ClassRef": {
+                          "type": "object",
+                          "required": [
+                            "value"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "description": "Name of the referenced entity."
+                            },
+                            "value": {
+                              "type": "string",
+                              "description": "ID of the referenced entity."
+                            }
+                          },
+                          "description": "Reference to an entity.",
+                          "additionalProperties": false
+                        },
+                        "AccountRef": {
+                          "type": "object",
+                          "required": [
+                            "value"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "description": "Name of the referenced entity."
+                            },
+                            "value": {
+                              "type": "string",
+                              "description": "ID of the referenced entity."
+                            }
+                          },
+                          "description": "Reference to the account for this journal entry line. Must be a valid account ID from the company's chart of accounts.",
+                          "additionalProperties": false
+                        },
+                        "TaxCodeRef": {
+                          "type": "object",
+                          "required": [
+                            "value"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "description": "Name of the referenced entity."
+                            },
+                            "value": {
+                              "type": "string",
+                              "description": "ID of the referenced entity."
+                            }
+                          },
+                          "description": "Reference to an entity.",
+                          "additionalProperties": false
+                        },
+                        "PostingType": {
+                          "enum": [
+                            "Debit",
+                            "Credit"
+                          ],
+                          "type": "string",
+                          "description": "Type of posting: 'Debit' or 'Credit'."
+                        },
+                        "DepartmentRef": {
+                          "type": "object",
+                          "required": [
+                            "value"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "description": "Name of the referenced entity."
+                            },
+                            "value": {
+                              "type": "string",
+                              "description": "ID of the referenced entity."
+                            }
+                          },
+                          "description": "Reference to an entity.",
+                          "additionalProperties": false
+                        },
+                        "BillableStatus": {
+                          "type": "string",
+                          "description": "Billable status of the line. Valid values: 'Billable', 'NotBillable', 'HasBeenBilled'."
+                        }
+                      },
+                      "description": "Journal entry line detail containing account reference and posting type.",
+                      "additionalProperties": false
+                    }
+                  },
+                  "description": "Individual line item for a journal entry."
+                },
+                "minItems": 2,
+                "description": "List of journal entry lines. Each journal entry must have at least two lines, and the total debits must equal the total credits. Typically includes at least one debit line and one credit line with matching amounts."
+              },
+              "TxnDate": {
+                "type": "string",
+                "description": "Transaction date for the journal entry in YYYY-MM-DD format. If not provided, the current date is used."
+              },
+              "DocNumber": {
+                "type": "string",
+                "maxLength": 21,
+                "description": "Reference number for the journal entry. Maximum 21 characters."
+              },
+              "Adjustment": {
+                "type": "boolean",
+                "description": "Indicates if this is an adjustment journal entry. Set to true for adjusting entries."
+              },
+              "CurrencyRef": {
+                "type": "object",
+                "required": [
+                  "value"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Name of the referenced entity."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "ID of the referenced entity."
+                  }
+                },
+                "description": "Reference to an entity.",
+                "additionalProperties": false
+              },
+              "PrivateNote": {
+                "type": "string",
+                "maxLength": 4000,
+                "description": "Private note about the journal entry. Maximum 4000 characters."
+              },
+              "ExchangeRate": {
+                "type": "number",
+                "description": "Exchange rate for multi-currency journal entries."
+              },
+              "minorversion": {
+                "type": "integer",
+                "description": "QuickBooks API minor version number to use for this request (e.g., 65, 70, 75). Allows access to version-specific features. If not specified, uses the default API version."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_QUERY_ACCOUNT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_QUERY_ACCOUNT",
+          "description": "Query Account entities in QuickBooks using SQL-like syntax. IMPORTANT: Queries the Account entity ONLY (chart of accounts). For other entities (Purchase, Invoice, Bill, Payment, etc.), use their respective query actions. NOTE: API returns ALL fields with values regardless of SELECT clause (projections not supported). CRITICAL RESTRICTIONS: Parentheses and OR operator are NOT supported. Use IN operator for multiple values: WHERE AccountType IN ('Bank', 'Credit Card') Supports: WHERE clauses (=, <, >, LIKE, IN), AND operator, pattern matching (%), ORDER BY, pagination (MAXRESULTS up to 1000, STARTPOSITION), COUNT. Common fields: Id, Name, AccountType, AccountSubType, Classification, Active, FullyQualifiedName, CurrentBalance, AcctNum, Description, SubAccount. Examples: - SELECT * FROM Account WHERE AccountType = 'Expense' MAXRESULTS 100 - SELECT * FROM Account WHERE Active = true ORDER BY Name - SELECT * FROM Account WHERE AccountType IN ('Bank', 'Credit Card')",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "SELECT * FROM Account",
+                  "SELECT * FROM Account WHERE AccountType = 'Expense' MAXRESULTS 100",
+                  "SELECT * FROM Account WHERE Active = true ORDER BY Name",
+                  "SELECT * FROM Account WHERE Name LIKE '%Checking%' MAXRESULTS 10",
+                  "SELECT COUNT(*) FROM Account WHERE Classification = 'Asset'",
+                  "SELECT * FROM Account WHERE AccountType IN ('Expense', 'Income') MAXRESULTS 100",
+                  "SELECT * FROM Account WHERE Active = true AND AccountType IN ('Bank', 'Credit Card')",
+                  "SELECT * FROM Account ORDER BY Id STARTPOSITION 1 MAXRESULTS 100"
+                ],
+                "description": "SQL-like query string to filter and retrieve Account entities ONLY. Do NOT use for other entities (Purchase, Invoice, Bill, etc.) - use their respective query tools. \n\nQuery syntax: SELECT [fields] FROM Account [WHERE conditions] [ORDER BY field] [STARTPOSITION n] [MAXRESULTS n] \n\nCRITICAL SYNTAX RESTRICTIONS: - Parentheses for grouping are NOT supported - OR operator is NOT supported - use IN instead - Use: WHERE Active = true AND AccountType IN ('Bank', 'Credit Card') \n\nNOTE: QuickBooks API returns ALL fields regardless of SELECT clause. \n\nCommonly queryable fields: Id, Name, AccountType, AccountSubType, Classification, Active, FullyQualifiedName, CurrentBalance, AcctNum, Description, SubAccount. \n\nSupports: - WHERE with operators (=, <, >, <=, >=, IN) - LIKE with % wildcard - AND only (no OR - use IN for multiple values) - ORDER BY for sorting (MUST be two words, not 'ORDERBY'). Sortable fields: Name, Id. Non-sortable: AccountType, AccountSubType, Classification, and others. - MAXRESULTS (max 1000, default 100) and STARTPOSITION - COUNT"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_JOURNAL_ENTRY": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_JOURNAL_ENTRY",
+          "description": "Tool to read details of a specific QuickBooks journal entry by ID. Use when you need complete journal entry information including transaction date, line items, posting types, and account references.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "journal_entry_id"
+            ],
+            "properties": {
+              "minorversion": {
+                "type": "integer",
+                "examples": [
+                  75
+                ],
+                "description": "API minor version number (e.g., 75)"
+              },
+              "journal_entry_id": {
+                "type": "string",
+                "examples": [
+                  "1",
+                  "123"
+                ],
+                "description": "The ID of the journal entry to retrieve"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_COMPANY_INFO": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_COMPANY_INFO",
+          "description": "Tool to read company information from QuickBooks Online. Returns basic company info including name, ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_COMPANY_INFO"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_QUERY_ENTITIES": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_QUERY_ENTITIES",
+          "description": "Execute SQL-like queries on QuickBooks Online entities. Supports all entity types (Customer, Invoice...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_QUERY_ENTITIES"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE",
+          "description": "Generate a Trial Balance report showing account debits, credits, and balances for a specified period...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
+          "description": "Generate a General Ledger report showing all transactions with debits, credits, and running balances...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:48:49.493Z",
+        "current_time_utc_epoch_seconds": 1786564129,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "able",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"able\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_DoT3aDGqWuT7"
+  }
+}

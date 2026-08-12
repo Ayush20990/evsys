@@ -1,0 +1,440 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-012-q2-implicit",
+    "workflow_id": 12,
+    "workflow_task": "Retrieve Trello card comments, update Trello cards, and perform broader project-management and automation-maintenance operations across task boards, email, chat, and an automation platform.",
+    "query": "modify the information on the task card and set its status to closed",
+    "required_tools": [
+      "TRELLO_UPDATE_CARDS_BY_ID_CARD",
+      "TRELLO_UPDATE_CARDS_CLOSED_BY_ID_CARD"
+    ],
+    "supporting_tools": [],
+    "rationale": "Updating card properties and closing/archiving cards requires these specific mutation endpoints in Trello.",
+    "candidate_tools": [
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+      "SLACK_LIST_ALL_USERS",
+      "SLACK_SEARCH_MESSAGES",
+      "TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD",
+      "TRELLO_GET_BOARDS_ACTIONS_BY_ID_BOARD",
+      "TRELLO_GET_CARDS_ACTIONS_BY_ID_CARD",
+      "TRELLO_GET_CARDS_BY_ID_CARD",
+      "TRELLO_GET_SEARCH",
+      "TRELLO_UPDATE_CARDS_BY_ID_CARD",
+      "TRELLO_UPDATE_CARDS_CLOSED_BY_ID_CARD"
+    ],
+    "source_query_id": "workflow-012-q2",
+    "variant_dimension": "implicit"
+  },
+  "request": {
+    "query": "modify the information on the task card and set its status to closed"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "modify the information on the task card and set its status to closed",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if status values are unknown or a prior status change was rejected)] [Prerequisite]: Fetch list configuration using CLICKUP_GET_LIST (identify allowed status values).",
+            "[Optional (if custom field IDs/options/types are unknown)] [Prerequisite]: Fetch custom field schema using CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS (capture field_id and required value encoding).",
+            "[Optional (if a custom field expects people references)] [Prerequisite]: Fetch list members using CLICKUP_GET_LIST_MEMBERS (map people to member IDs used in field values).",
+            "[Required] [Prerequisite]: Fetch current task state using CLICKUP_GET_TASK (verify it exists; note current status and custom_fields to change/keep).",
+            "[Required (after explicit confirmation)] [Step]: Update task status (and other simple attributes) using CLICKUP_UPDATE_TASK (send at least one modifiable field).",
+            "[Required (after explicit confirmation)] [Step]: Set each custom field value using CLICKUP_SET_CUSTOM_FIELD_VALUE (one call per field_id with correct value shape).",
+            "[Optional (if a field must be cleared)] [Next Step]: Remove a stored custom field value using CLICKUP_REMOVE_CUSTOM_FIELD_VALUE (use when \u201cempty\u201d writes don\u2019t unset).",
+            "[Optional (for verification)] [Next Step]: Re-fetch the task using CLICKUP_GET_TASK (confirm status/custom field updates applied).",
+            "[Optional (if CLICKUP_UPDATE_TASK fails due to invalid status)] [Fallback]: Re-check allowed statuses using CLICKUP_GET_LIST (then retry with a valid status)."
+          ],
+          "known_pitfalls": [
+            "[CLICKUP_GET_TASK] Responses can be large; pull only needed fields (status, custom_fields) to avoid oversized context.",
+            "[CLICKUP_SET_CUSTOM_FIELD_VALUE] Value encoding is field-type specific (e.g., option IDs vs free text); mismatches commonly trigger validation errors.",
+            "[CLICKUP_UPDATE_TASK] Status changes can be rejected if the status is not enabled for the task\u2019s list; confirm allowed values via list configuration.",
+            "[CLICKUP_REMOVE_CUSTOM_FIELD_VALUE] Some field types do not clear via empty/blank writes; explicit removal is required to truly unset."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "CLICKUP_UPDATE_TASK",
+            "CLICKUP_SET_CUSTOM_FIELD_VALUE"
+          ],
+          "related_tool_slugs": [
+            "CLICKUP_GET_TASK",
+            "CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS",
+            "CLICKUP_GET_LIST",
+            "CLICKUP_REMOVE_CUSTOM_FIELD_VALUE",
+            "CLICKUP_GET_LIST_MEMBERS"
+          ],
+          "toolkits": [
+            "clickup"
+          ],
+          "plan_id": "07022101423a466cb76cedd4a3e5053c"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "clickup",
+          "has_active_connection": false,
+          "description": "ClickUp unifies tasks, docs, goals, and chat in a single platform, allowing teams to plan, organize, and collaborate across projects with customizable workflows",
+          "status_message": "No Active connection for toolkit=clickup. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"clickup\") to create a connection BEFORE executing any clickup tools."
+        }
+      ],
+      "tool_schemas": {
+        "CLICKUP_UPDATE_TASK": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_UPDATE_TASK",
+          "description": "Updates attributes of an existing task; `team_id` is required if `custom_task_ids` is true, use a single space (\" \") for `description` to clear it, and provide at least one modifiable field.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "task_id"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Finalize Q3 Report",
+                  "Urgent: Fix login bug"
+                ],
+                "description": "New task name."
+              },
+              "parent": {
+                "type": "string",
+                "examples": [
+                  "task_id_parent_abc",
+                  "task_id_parent_xyz"
+                ],
+                "description": "ID of new parent task to make this a subtask; cannot convert subtask to regular task this way."
+              },
+              "status": {
+                "type": "string",
+                "examples": [
+                  "in progress",
+                  "complete",
+                  "To Do"
+                ],
+                "description": "New task status (case-sensitive, must be valid in Workspace)."
+              },
+              "task_id": {
+                "type": "string",
+                "examples": [
+                  "abc123xyz",
+                  "custom-id-007"
+                ],
+                "description": "Unique task identifier; use custom task ID if `custom_task_ids` is true."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "123456"
+                ],
+                "description": "Team ID, required if `custom_task_ids` is true."
+              },
+              "archived": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "True to archive, false to unarchive."
+              },
+              "due_date": {
+                "type": "integer",
+                "examples": [
+                  "1678886400000",
+                  "1700000000000"
+                ],
+                "description": "New due date (Unix timestamp in milliseconds)."
+              },
+              "priority": {
+                "type": "integer",
+                "examples": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "description": "Priority: 1 (Urgent), 2 (High), 3 (Normal), 4 (Low). Omit or `None` to remove."
+              },
+              "start_date": {
+                "type": "integer",
+                "examples": [
+                  "1678880000000",
+                  "1690000000000"
+                ],
+                "description": "New start date (Unix timestamp in milliseconds)."
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "Updated task details.",
+                  " "
+                ],
+                "description": "New task description; use a single space (\" \") to clear."
+              },
+              "due_date_time": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "True if `due_date` includes time, false if all-day."
+              },
+              "time_estimate": {
+                "type": "integer",
+                "examples": [
+                  "3600000",
+                  "7200000"
+                ],
+                "description": "New time estimate in milliseconds."
+              },
+              "assignees__add": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "examples": [
+                  "[183]",
+                  "[123, 456]"
+                ],
+                "description": "List of user IDs to add as assignees."
+              },
+              "assignees__rem": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "examples": [
+                  "[789]",
+                  "[101, 202]"
+                ],
+                "description": "List of user IDs to remove as assignees."
+              },
+              "custom_item_id": {
+                "type": "integer",
+                "examples": [
+                  "1",
+                  "2"
+                ],
+                "description": "Custom task type ID. Use `1` for Milestone, its ID for custom type. Omit/`None` to make regular task (API's 'null' equivalent)."
+              },
+              "custom_task_ids": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "If true, `task_id` is a custom ID and `team_id` is required."
+              },
+              "start_date_time": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "True if `start_date` includes time, false if all-day."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_SET_CUSTOM_FIELD_VALUE": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_SET_CUSTOM_FIELD_VALUE",
+          "description": "Sets or updates a Custom Field's value for a task; the new value (with type-dependent structure, e.g., `{\"value\": \"text\"}` or `{\"value\": 123, \"value_options\": {\"currency_type\":\"USD\"}}`) is provided in the JSON request body.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "task_id",
+              "field_id",
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "examples": [
+                  "Hello World",
+                  42,
+                  true,
+                  "7a4e5845-8496-4b9f-9097-843b9c737692",
+                  1645502400000
+                ],
+                "description": "The value to set for the Custom Field. Structure depends on field type: Text/Short Text: string (e.g., 'Hello'). Number/Currency/Emoji(Rating): number (e.g., 42). Checkbox: boolean (true/false). Dropdown: option UUID string from type_config.options (e.g., '7a4e5845-8496-4b9f-9097-843b9c737692'). Date: Unix timestamp in milliseconds (e.g., 1645502400000). Email: valid email string. Phone: string with country code (e.g., '+1 123 456 7890'). URL: valid URL string. Labels: array of label UUIDs from type_config (e.g., ['label_id_1', 'label_id_2']). Users/Tasks: object with 'add' and/or 'rem' arrays of IDs (e.g., {'add': ['id1'], 'rem': ['id2']}). Location: object with 'location' (lat/lng) and 'formatted_address' (e.g., {'location': {'lat': -28.0, 'lng': 153.4}, 'formatted_address': 'Gold Coast, Australia'}). Manual Progress: object with 'current' value (e.g., {'current': 50})."
+              },
+              "task_id": {
+                "type": "string",
+                "examples": [
+                  "abc123de",
+                  "task-xyz-789"
+                ],
+                "description": "Task ID to update. Standard ID, or Custom Task ID if `custom_task_ids` is true."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "123",
+                  "45678"
+                ],
+                "description": "Team ID, required if `custom_task_ids` is true."
+              },
+              "field_id": {
+                "type": "string",
+                "examples": [
+                  "062f7a9a-5c92-4180-bb59-82a66947fed2",
+                  "c2b5e1f3-0a8d-4e6f-9b2c-7123456789ab"
+                ],
+                "description": "UUID of the Custom Field to update (must be in standard UUID format with hyphens, e.g., '0f079e26-feef-410d-8e8d-2a21a057ee5e'). Obtainable via 'Get Accessible Custom Fields' or 'Get Task' endpoints."
+              },
+              "value_options": {
+                "type": "object",
+                "examples": [
+                  {
+                    "time": true
+                  },
+                  {
+                    "currency_type": "USD"
+                  }
+                ],
+                "description": "Optional settings for certain field types. For Date fields: {'time': true} to display time in ClickUp UI. For Currency fields: {'currency_type': 'USD'} to specify currency.",
+                "additionalProperties": true
+              },
+              "custom_task_ids": {
+                "type": "boolean",
+                "description": "If true, `task_id` is treated as a Custom Task ID, and `team_id` is required."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_GET_TASK": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_TASK",
+          "description": "Retrieves comprehensive details for a ClickUp task by its ID, supporting standard or custom task IDs (requires `team_id` for custom IDs).",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "task_id"
+            ],
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "examples": [
+                  "9hz",
+                  "custom_id_example",
+                  "abc123_def456"
+                ],
+                "description": "The unique identifier of the task to retrieve. This can be the standard ClickUp task ID or a custom task ID if `custom_task_ids` is set to `true` (in which case `team_id` is also required)."
+              },
+              "team_id": {
+                "type": "integer",
+                "examples": [
+                  "123",
+                  "456789"
+                ],
+                "description": "The ID of the team. This parameter is required and used only when `custom_task_ids` is set to `true` to identify the custom task ID within that specific team. For example: `custom_task_ids=true&team_id=123`."
+              },
+              "custom_task_ids": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Set to `true` to indicate that the `task_id` provided is a custom task ID. If `true`, `team_id` must also be provided. If omitted or `false` (default), `task_id` is treated as a standard task ID."
+              },
+              "include_subtasks": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Set to `true` to include subtasks in the task details response. If omitted or `false` (default), subtasks are not included."
+              },
+              "include_markdown_description": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Set to `true` to return the task description in Markdown format. If omitted or `false` (default), the description is returned in plain text. For example: `?include_markdown_description=true`."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS",
+          "description": "Retrieves all accessible Custom Field definitions for a specified ClickUp List using its `list_id`.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_LIST": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_LIST",
+          "description": "Retrieves detailed information for an existing List in ClickUp, identified by its unique `list_id`.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_LIST"
+              ]
+            }
+          }
+        },
+        "CLICKUP_REMOVE_CUSTOM_FIELD_VALUE": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_REMOVE_CUSTOM_FIELD_VALUE",
+          "description": "Removes an existing value from a Custom Field on a specific task; this does not delete the Custom Fi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_REMOVE_CUSTOM_FIELD_VALUE"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_LIST_MEMBERS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_LIST_MEMBERS",
+          "description": "Retrieves all members of a specific, existing ClickUp List by its ID.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_LIST_MEMBERS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:50:01.627Z",
+        "current_time_utc_epoch_seconds": 1786564201,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "horn",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"horn\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_nrjIKCGsw7KO"
+  }
+}

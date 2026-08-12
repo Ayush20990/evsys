@@ -1,0 +1,222 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-012-q3-paraphrase",
+    "workflow_id": 12,
+    "workflow_task": "Retrieve Trello card comments, update Trello cards, and perform broader project-management and automation-maintenance operations across task boards, email, chat, and an automation platform.",
+    "query": "pull up project management discussions from the workspace along with all team members",
+    "required_tools": [
+      "SLACK_SEARCH_MESSAGES",
+      "SLACK_LIST_ALL_USERS"
+    ],
+    "supporting_tools": [],
+    "rationale": "Broader project management across chat requires searching through message history and identifying active users in the workspace.",
+    "candidate_tools": [
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+      "SLACK_LIST_ALL_USERS",
+      "SLACK_SEARCH_MESSAGES",
+      "TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD",
+      "TRELLO_GET_BOARDS_ACTIONS_BY_ID_BOARD",
+      "TRELLO_GET_CARDS_ACTIONS_BY_ID_CARD",
+      "TRELLO_GET_CARDS_BY_ID_CARD",
+      "TRELLO_GET_SEARCH",
+      "TRELLO_UPDATE_CARDS_BY_ID_CARD",
+      "TRELLO_UPDATE_CARDS_CLOSED_BY_ID_CARD"
+    ],
+    "source_query_id": "workflow-012-q3",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "pull up project management discussions from the workspace along with all team members"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "pull up project management discussions from the workspace along with all team members",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Fetch all teams using LINEAR_LIST_LINEAR_TEAMS (collect stable team IDs; extract from data.teams OR data.items; paginate via pageInfo/hasNextPage + endCursor/after or page_info.endCursor).",
+            "[Required] [Step]: Fetch all projects using LINEAR_LIST_LINEAR_PROJECTS (collect stable project IDs + basic metadata; extract from data.projects OR data.items; paginate via pageInfo/hasNextPage + endCursor/after or page_info.endCursor).",
+            "[Optional (if you need a readable team\u2192project mapping)] [Next Step]: Join any project references embedded in the LINEAR_LIST_LINEAR_TEAMS results to the full project index from LINEAR_LIST_LINEAR_PROJECTS (avoid per-project calls).",
+            "[Optional (if a selected project needs verification/enrichment)] [Next Step]: Retrieve a single project using LINEAR_GET_LINEAR_PROJECT (confirm access and fill any missing fields).",
+            "[Optional (if you only want results relevant to the active identity)] [Step]: Get the active identity using LINEAR_GET_CURRENT_USER and filter the already-fetched teams/projects client-side.",
+            "[Fallback (if list endpoints error or lack required fields)] [Fallback]: Use LINEAR_RUN_QUERY_OR_MUTATION with a minimal paginated GraphQL query (first/after + pageInfo) to fetch teams/projects in the exact shape needed."
+          ],
+          "known_pitfalls": [
+            "[LINEAR_LIST_LINEAR_TEAMS] Can return HTTP 400 INPUT_ERROR when the underlying query is too complex; use LINEAR_RUN_QUERY_OR_MUTATION with fewer fields.",
+            "[LINEAR_LIST_LINEAR_PROJECTS] Missing read scopes may surface as an empty list with only a warning rather than a hard error.",
+            "[LINEAR_LIST_LINEAR_TEAMS] Some responses populate data.teams while data.items is empty; reading only one path can look like \u201cno teams\u201d.",
+            "[LINEAR_LIST_LINEAR_PROJECTS] Some responses populate data.projects instead of data.items; extracting only data.items can look like \u201cno projects\u201d.",
+            "[LINEAR_RUN_QUERY_OR_MUTATION] Responses may be double-nested (response.data.data.<field>.nodes); handle both response.data.* and response.data.data.* when extracting nodes/pageInfo."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Join team project references to project objects using only IDs",
+              "code": "```python\nteams=(result_teams.get('teams') or result_teams.get('items') or [])\nprojects=(result_projects.get('projects') or result_projects.get('items') or [])\nproj_by_id={p.get('id'):p for p in projects}\nteam_map=[{'team_id':t.get('id'),'project_ids':[p.get('id') for p in (t.get('projects') or {}).get('nodes',[])]} for t in teams]\nproject_lookup=[proj_by_id.get(pid,{'id':pid}) for tm in team_map for pid in tm['project_ids']]\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "LINEAR_LIST_LINEAR_TEAMS",
+            "LINEAR_LIST_LINEAR_PROJECTS"
+          ],
+          "related_tool_slugs": [
+            "LINEAR_GET_LINEAR_PROJECT",
+            "LINEAR_GET_CURRENT_USER",
+            "LINEAR_RUN_QUERY_OR_MUTATION"
+          ],
+          "toolkits": [
+            "linear"
+          ],
+          "plan_id": "f0f9407b96464518a45b37f25d93d5c0"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "linear",
+          "has_active_connection": false,
+          "description": "Linear is a streamlined issue tracking and project planning tool for modern teams, featuring fast workflows, keyboard shortcuts, and GitHub integrations",
+          "status_message": "No Active connection for toolkit=linear. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"linear\") to create a connection BEFORE executing any linear tools."
+        }
+      ],
+      "tool_schemas": {
+        "LINEAR_LIST_LINEAR_TEAMS": {
+          "toolkit": "LINEAR",
+          "tool_slug": "LINEAR_LIST_LINEAR_TEAMS",
+          "description": "Retrieves all teams with their members and projects. Use stable team IDs or keys (not display names) for subsequent operations \u2014 names are non-unique. Results reflect only teams visible to the authenticated token scope; missing teams or members indicate permission limits. Large workspaces paginate via pageInfo.hasNextPage/endCursor \u2014 incomplete pagination silently drops teams or members. Members may belong to multiple teams; deduplicate user IDs when aggregating. Use LINEAR_GET_ALL_LINEAR_TEAMS instead when only identifiers are needed.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "description": "Cursor for pagination. Use the `endCursor` value from the previous response's `page_info` to fetch the next page."
+              },
+              "first": {
+                "type": "integer",
+                "default": 50,
+                "maximum": 250,
+                "minimum": 1,
+                "description": "Number of teams to return per page. Maximum 250. Use with `after` to paginate through all teams."
+              },
+              "project_id": {
+                "type": "string",
+                "examples": [
+                  "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                  null
+                ],
+                "description": "Optional project ID to filter teams' associated projects. If provided, only projects matching this ID will be included in each team's 'projects' list. If not provided, all projects for each team will be returned. Filtering is applied per-team after fetch; a project_id belonging to a different team silently returns an empty projects list rather than an error."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "LINEAR_LIST_LINEAR_PROJECTS": {
+          "toolkit": "LINEAR",
+          "tool_slug": "LINEAR_LIST_LINEAR_PROJECTS",
+          "description": "Retrieves all projects from the Linear account. Returns a flat array (not a GraphQL connection) with fields id and name; use LINEAR_RUN_QUERY_OR_MUTATION for progress, state, issues, or team linkage. No server-side filtering: all workspace projects are returned regardless of team or name \u2014 filter client-side. Multiple projects can share identical names; always confirm project_id before downstream use. Results are permission-scoped to the connected user. Pagination: loop while page_info.hasNextPage is true, passing page_info.endCursor as after, or results will be silently truncated. HTTP 429 may occur in large workspaces; apply exponential backoff between calls.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "description": "Cursor for pagination. Use the `endCursor` from the previous response's `page_info` to fetch the next page."
+              },
+              "first": {
+                "type": "integer",
+                "default": 50,
+                "maximum": 250,
+                "minimum": 1,
+                "description": "Number of projects to return per page. Use with `after` to paginate through all projects."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "LINEAR_GET_LINEAR_PROJECT": {
+          "toolkit": "LINEAR",
+          "tool_slug": "LINEAR_GET_LINEAR_PROJECT",
+          "description": "Retrieves a single Linear project by its unique identifier. Use when verifying a newly created or updated project, or when fetching detailed project information by ID.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "project_id"
+            ],
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "examples": [
+                  "ef19b35e-ce4f-4132-9705-811d4d6c8c08"
+                ],
+                "description": "The unique identifier (UUID) of the Linear project to retrieve."
+              },
+              "include_teams": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include teams associated with the project in the response."
+              },
+              "include_members": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include project members in the response."
+              },
+              "include_initiatives": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include related initiatives in the response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "LINEAR_GET_CURRENT_USER": {
+          "toolkit": "LINEAR",
+          "tool_slug": "LINEAR_GET_CURRENT_USER",
+          "description": "Gets the currently authenticated user's ID, name, email, and other profile information \u2014 this is the...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "LINEAR_GET_CURRENT_USER"
+              ]
+            }
+          }
+        },
+        "LINEAR_RUN_QUERY_OR_MUTATION": {
+          "toolkit": "LINEAR",
+          "tool_slug": "LINEAR_RUN_QUERY_OR_MUTATION",
+          "description": "Execute any GraphQL query or mutation against Linear's API. USE WHEN: No dedicated action exists, ne...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "LINEAR_RUN_QUERY_OR_MUTATION"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:50:23.118Z",
+        "current_time_utc_epoch_seconds": 1786564223,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "vote",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"vote\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_nmQNhSpPjw8t"
+  }
+}

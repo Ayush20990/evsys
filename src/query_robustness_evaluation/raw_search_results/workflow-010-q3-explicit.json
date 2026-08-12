@@ -1,0 +1,688 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-010-q3-explicit",
+    "workflow_id": 10,
+    "workflow_task": "Reconcile an organization's QuickBooks bank-account ledger by querying existing transactions, removing or undoing incorrect entries, posting corrected ledger activity, creating adjustment entries, recording a customer payment, and verifying financial reports.",
+    "query": "pull up QuickBooks financial reports to check the reconciliation status",
+    "required_tools": [
+      "QUICKBOOKS_GET_REPORTS"
+    ],
+    "supporting_tools": [
+      "QUICKBOOKS_GET_COMPANY_INFO"
+    ],
+    "rationale": "Verifying financial reports requires retrieving generated account reports to ensure the ledger matches up correctly.",
+    "candidate_tools": [
+      "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
+      "QUICKBOOKS_EXECUTE_BATCH_OPERATION",
+      "QUICKBOOKS_GET_COMPANY_INFO",
+      "QUICKBOOKS_GET_REPORTS",
+      "QUICKBOOKS_PROXY_EXECUTE",
+      "QUICKBOOKS_QUERY_ENTITIES"
+    ],
+    "source_query_id": "workflow-010-q3",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "pull up QuickBooks financial reports to check the reconciliation status"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "pull up QuickBooks financial reports to check the reconciliation status",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Define one reporting period (start/end) and one as-of cutoff, and apply consistently across period reports using QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT/QUICKBOOKS_GET_REPORT_CASH_FLOW vs snapshot reports using QUICKBOOKS_GET_BALANCE_SHEET_REPORT/QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT/QUICKBOOKS_GET_REPORT_AGED_PAYABLES.",
+            "[Required] [Step]: Retrieve operating results for the period using QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT (keep accounting_method consistent across the packet).",
+            "[Required] [Step]: Retrieve financial position at the cutoff using QUICKBOOKS_GET_BALANCE_SHEET_REPORT (use this as the point-in-time anchor for the packet).",
+            "[Required] [Step]: Retrieve cash movement for the period using QUICKBOOKS_GET_REPORT_CASH_FLOW.",
+            "[Required] [Step]: Retrieve receivables snapshot using QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT (use the same cutoff via report_date).",
+            "[Required] [Step]: Retrieve payables snapshot using QUICKBOOKS_GET_REPORT_AGED_PAYABLES (use the same cutoff via report_date).",
+            "[Optional (if statement lines need posting-level drill-down)] [Next Step]: Pull account activity using QUICKBOOKS_GET_GENERAL_LEDGER_REPORT (scope to relevant accounts and a bounded date window).",
+            "[Optional (if you need a comprehensive line-item listing or to cross-check totals)] [Next Step]: Pull detailed rows using QUICKBOOKS_GET_TRANSACTION_LIST_REPORT or QUICKBOOKS_GET_REPORT_TRIAL_BALANCE (reshape Columns/Rows before aggregating).",
+            "[Fallback (if report variants/options are unclear)] [Fallback]: Discover supported report names/options using QUICKBOOKS_GET_REPORTS, then rerun the chosen report tool with clarified inputs."
+          ],
+          "known_pitfalls": [
+            "[QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT] report_date is an as-of snapshot (not a range); mixing cutoffs with period statements can skew comparisons.",
+            "[QUICKBOOKS_GET_REPORT_CASH_FLOW] Header can default to an unexpected macro window; validate Header.StartPeriod/Header.EndPeriod before using totals.",
+            "[QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT] Preset periods may normalize; confirm effective dates via Header.StartPeriod/Header.EndPeriod and read section Summary.ColData for totals.",
+            "[QUICKBOOKS_GET_GENERAL_LEDGER_REPORT] Amount-related columns may be missing even when requested; switch to QUICKBOOKS_GET_TRANSACTION_LIST_REPORT if amounts aren\u2019t present in Columns.",
+            "[QUICKBOOKS_GET_TRANSACTION_LIST_REPORT] Large windows can be too big for inline previews; expect offloaded full responses and parse the complete Rows/Row/ColData payload."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Flatten report-shaped responses by mapping each Data row ColData to Columns.Column titles",
+              "code": "```python\ndef flatten(report):\n    cols=[c.get('ColTitle','') for c in report.get('Columns',{}).get('Column',[])]\n    out=[]\n    def walk(n):\n        if isinstance(n,list):\n            for x in n: walk(x)\n        elif isinstance(n,dict):\n            if n.get('type')=='Data':\n                vals=[(cd.get('value') if isinstance(cd,dict) else cd) for cd in (n.get('ColData') or [])]\n                out.append(dict(zip(cols,vals)))\n            for x in ((n.get('Rows') or {}).get('Row') or []):\n                walk(x)\n    walk(((report.get('Rows') or {}).get('Row') or []))\n    return out\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT",
+            "QUICKBOOKS_GET_BALANCE_SHEET_REPORT",
+            "QUICKBOOKS_GET_REPORT_CASH_FLOW",
+            "QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT",
+            "QUICKBOOKS_GET_REPORT_AGED_PAYABLES"
+          ],
+          "related_tool_slugs": [
+            "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
+            "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT",
+            "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE",
+            "QUICKBOOKS_GET_REPORTS",
+            "QUICKBOOKS_GET_PROFIT_AND_LOSS_DETAIL_REPORT"
+          ],
+          "toolkits": [
+            "quickbooks"
+          ],
+          "plan_id": "28e781d24dd44e5dbe763dd9199311b1"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "quickbooks",
+          "has_active_connection": false,
+          "description": "Quickbooks is a cloud-based accounting software that helps you manage your finances, track your income and expenses, and get insights into your business",
+          "status_message": "No Active connection for toolkit=quickbooks. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"quickbooks\") to create a connection BEFORE executing any quickbooks tools."
+        }
+      ],
+      "tool_schemas": {
+        "QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_PROFIT_AND_LOSS_REPORT",
+          "description": "Generate a Profit and Loss report showing company income and expenses over a period. Use when you need to analyze profitability, revenue, costs, and net income for a specific date range.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "end_date": {
+                "type": "string",
+                "description": "Report end date in YYYY-MM-DD format. If not provided, defaults to today's date."
+              },
+              "class_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of class IDs to filter the report. If not provided, the report includes all classes. Each ID should be the Class.Id value from the Class object (e.g., ['1', '3'])."
+              },
+              "date_macro": {
+                "enum": [
+                  "Today",
+                  "Yesterday",
+                  "This Week",
+                  "Last Week",
+                  "This Week-to-date",
+                  "Last Week-to-date",
+                  "Next Week",
+                  "Next 4 Weeks",
+                  "This Month",
+                  "Last Month",
+                  "This Month-to-date",
+                  "Last Month-to-date",
+                  "Next Month",
+                  "This Fiscal Quarter",
+                  "Last Fiscal Quarter",
+                  "This Fiscal Quarter-to-date",
+                  "Last Fiscal Quarter-to-date",
+                  "Next Fiscal Quarter",
+                  "This Fiscal Year",
+                  "Last Fiscal Year",
+                  "This Fiscal Year-to-date",
+                  "Last Fiscal Year-to-date",
+                  "Next Fiscal Year"
+                ],
+                "type": "string",
+                "description": "Predefined date range. Use if you want the report to cover a standard report date range; otherwise, use the start_date and end_date to cover an explicit report date range."
+              },
+              "sort_order": {
+                "enum": [
+                  "ascend",
+                  "descend"
+                ],
+                "type": "string",
+                "description": "The sort order."
+              },
+              "start_date": {
+                "type": "string",
+                "description": "Report start date in YYYY-MM-DD format. If not provided, defaults to the start of the current fiscal year."
+              },
+              "vendor_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of vendor IDs to filter the report. If not provided, the report includes all vendors. Each ID should be the Vendor.Id value from the Vendor object (e.g., ['1', '5', '20'])."
+              },
+              "report_date": {
+                "type": "string",
+                "description": "Start date to use for the report, in the format YYYY-MM-DD."
+              },
+              "customer_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of customer IDs to filter the report. If not provided, the report includes all customers. Each ID should be the Customer.Id value from the Customer object (e.g., ['1', '2', '10'])."
+              },
+              "department_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "One or more comma separated department IDs. Filters report contents to include information for specified departments if so configured in the company file. "
+              },
+              "accounting_method": {
+                "enum": [
+                  "Cash",
+                  "Accrual"
+                ],
+                "type": "string",
+                "description": "The accounting method used in the report. "
+              },
+              "summarize_column_by": {
+                "enum": [
+                  "Total",
+                  "Month",
+                  "Week",
+                  "Days",
+                  "Quarter",
+                  "Year",
+                  "Customers",
+                  "Vendors",
+                  "Classes",
+                  "Departments",
+                  "Employees",
+                  "ProductsAndServices"
+                ],
+                "type": "string",
+                "description": "The criteria by which to group the report results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_BALANCE_SHEET_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_BALANCE_SHEET_REPORT",
+          "description": "Generate a Balance Sheet report showing company assets, liabilities, and equity at a point in time. Use when you need to understand the financial position with what the company owns versus what it owes.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "date_macro": {
+                "enum": [
+                  "Today",
+                  "Yesterday",
+                  "This Week",
+                  "Last Week",
+                  "This Week-to-date",
+                  "Last Week-to-date",
+                  "Next Week",
+                  "Next 4 Weeks",
+                  "This Month",
+                  "Last Month",
+                  "This Month-to-date",
+                  "Last Month-to-date",
+                  "Next Month",
+                  "This Fiscal Quarter",
+                  "Last Fiscal Quarter",
+                  "This Fiscal Quarter-to-date",
+                  "Last Fiscal Quarter-to-date",
+                  "Next Fiscal Quarter",
+                  "This Fiscal Year",
+                  "Last Fiscal Year",
+                  "This Fiscal Year-to-date",
+                  "Last Fiscal Year-to-date",
+                  "Next Fiscal Year"
+                ],
+                "type": "string",
+                "description": "Predefined date range. Use if you want the report to cover a standard report date range; otherwise, use the start_date and end_date to cover an explicit report date range."
+              },
+              "sort_order": {
+                "enum": [
+                  "ascend",
+                  "descend"
+                ],
+                "type": "string",
+                "description": "The sort order."
+              },
+              "report_date": {
+                "type": "string",
+                "description": "Start date to use for the report, in the format YYYY-MM-DD."
+              },
+              "department_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "One or more comma separated department IDs. Filters report contents to include information for specified departments if so configured in the company file. "
+              },
+              "accounting_method": {
+                "enum": [
+                  "Cash",
+                  "Accrual"
+                ],
+                "type": "string",
+                "description": "The accounting method used in the report. "
+              },
+              "summarize_column_by": {
+                "enum": [
+                  "Total",
+                  "Month",
+                  "Week",
+                  "Days",
+                  "Quarter",
+                  "Year",
+                  "Customers",
+                  "Vendors",
+                  "Classes",
+                  "Departments",
+                  "Employees",
+                  "ProductsAndServices"
+                ],
+                "type": "string",
+                "description": "The criteria by which to group the report results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_REPORT_CASH_FLOW": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_REPORT_CASH_FLOW",
+          "description": "Generate a cash flow report in QuickBooks showing cash inflows and outflows categorized by operating, investing, and financing activities. Use when you need to analyze cash movement and liquidity over a specified period.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "date_macro": {
+                "enum": [
+                  "Today",
+                  "Yesterday",
+                  "This Week",
+                  "Last Week",
+                  "This Week-to-date",
+                  "Last Week-to-date",
+                  "Next Week",
+                  "Next 4 Weeks",
+                  "This Month",
+                  "Last Month",
+                  "This Month-to-date",
+                  "Last Month-to-date",
+                  "Next Month",
+                  "This Fiscal Quarter",
+                  "Last Fiscal Quarter",
+                  "This Fiscal Quarter-to-date",
+                  "Last Fiscal Quarter-to-date",
+                  "Next Fiscal Quarter",
+                  "This Fiscal Year",
+                  "Last Fiscal Year",
+                  "This Fiscal Year-to-date",
+                  "Last Fiscal Year-to-date",
+                  "Next Fiscal Year"
+                ],
+                "type": "string",
+                "description": "Predefined date range. Use if you want the report to cover a standard report date range; otherwise, use the start_date and end_date to cover an explicit report date range."
+              },
+              "sort_order": {
+                "enum": [
+                  "ascend",
+                  "descend"
+                ],
+                "type": "string",
+                "description": "The sort order."
+              },
+              "report_date": {
+                "type": "string",
+                "description": "Start date to use for the report, in the format YYYY-MM-DD."
+              },
+              "department_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "One or more comma separated department IDs. Filters report contents to include information for specified departments if so configured in the company file. "
+              },
+              "accounting_method": {
+                "enum": [
+                  "Cash",
+                  "Accrual"
+                ],
+                "type": "string",
+                "description": "The accounting method used in the report. "
+              },
+              "summarize_column_by": {
+                "enum": [
+                  "Total",
+                  "Month",
+                  "Week",
+                  "Days",
+                  "Quarter",
+                  "Year",
+                  "Customers",
+                  "Vendors",
+                  "Classes",
+                  "Departments",
+                  "Employees",
+                  "ProductsAndServices"
+                ],
+                "type": "string",
+                "description": "The criteria by which to group the report results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_AGED_RECEIVABLES_REPORT",
+          "description": "Generate an aged receivables report showing outstanding customer balances by age. Use when tracking overdue invoices and managing accounts receivable aging.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "arpaid": {
+                "enum": [
+                  "All",
+                  "Paid",
+                  "Unpaid"
+                ],
+                "type": "string",
+                "description": "Filters customers by payment status. Use 'All' for all customers, 'Paid' for customers with fully paid balances, or 'Unpaid' for customers with outstanding balances. Default is 'Unpaid'."
+              },
+              "date_macro": {
+                "type": "string",
+                "description": "Predefined date macro like 'Today', 'This Month', etc. Alternative to report_date for specifying the report date using a macro."
+              },
+              "num_periods": {
+                "type": "integer",
+                "maximum": 10,
+                "minimum": 1,
+                "description": "Number of aging periods to display in the report. Must be between 1 and 10. Defaults to 4 if not specified. Each period shows receivables within that age range."
+              },
+              "report_date": {
+                "type": "string",
+                "description": "Date for the aged receivables report in YYYY-MM-DD format. Defaults to today if not provided. This is the as-of date for calculating aging."
+              },
+              "aging_method": {
+                "enum": [
+                  "Report_Date",
+                  "Current"
+                ],
+                "type": "string",
+                "description": "Method for calculating aging. 'Report_Date' calculates aging from the report date, 'Current' calculates aging from the current date. Defaults to 'Report_Date' if not specified."
+              },
+              "aging_period": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Number of days per aging period. Must be at least 1. Defaults to 30 days if not specified. For example, with 30 days you get periods like 0-30, 31-60, etc."
+              },
+              "customer_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "One or more comma-separated customer IDs to filter the report. Filters report contents to include information for specified customers only. Provide customer IDs as returned in the Customer.Id attribute."
+              },
+              "minorversion": {
+                "type": "string",
+                "description": "API minor version number. Optional - defaults to x-minor-version header if not provided. Use this to access features from specific minor versions of the QuickBooks API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_REPORT_AGED_PAYABLES": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_REPORT_AGED_PAYABLES",
+          "description": "Retrieve an Aged Payables aging summary report from QuickBooks showing outstanding vendor balances grouped by age. Shows amounts owed to vendors categorized by aging periods (e.g., current, 1-30 days, 31-60 days overdue).",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "appaid": {
+                "enum": [
+                  "All",
+                  "Paid",
+                  "Unpaid"
+                ],
+                "type": "string",
+                "description": "Filters vendors by payment status. Use 'All' for all vendors, 'Paid' for vendors with fully paid balances, or 'Unpaid' for vendors with outstanding balances. Default is 'Unpaid'."
+              },
+              "date_macro": {
+                "type": "string",
+                "description": "Predefined date macro like 'Today', 'This Month', etc. Alternative to report_date for specifying the report date using a macro."
+              },
+              "vendor_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Filters report contents to include information for specified vendors. Provide one or more comma-separated vendor IDs as returned in the Vendor.Id attribute."
+              },
+              "num_periods": {
+                "type": "integer",
+                "maximum": 10,
+                "minimum": 1,
+                "description": "Number of aging periods to display in the report. Must be between 1 and 10. Defaults to 4 if not specified. Each period shows payables within that age range."
+              },
+              "report_date": {
+                "type": "string",
+                "description": "Date for the aged payables report in YYYY-MM-DD format. Defaults to today if not provided. This is the as-of date for calculating aging."
+              },
+              "aging_method": {
+                "enum": [
+                  "Report_Date",
+                  "Current"
+                ],
+                "type": "string",
+                "description": "Method for calculating aging. 'Report_Date' calculates aging from the report date, 'Current' calculates aging from the current date. Defaults to 'Report_Date' if not specified."
+              },
+              "aging_period": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Number of days per aging period. Must be at least 1. Defaults to 30 days if not specified. For example, with 30 days you get periods like 0-30, 31-60, etc."
+              },
+              "minorversion": {
+                "type": "string",
+                "description": "API minor version number. Optional - defaults to x-minor-version header if not provided. Use this to access features from specific minor versions of the QuickBooks API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
+          "description": "Generate a General Ledger report showing all transactions with debits, credits, and running balances. Use when you need a detailed view of all accounting transactions posted to each account.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "string",
+                "description": "Column types to show in the report. Comma-separated list of column names (e.g., 'tx_date,txn_type,doc_num,name,memo,account,debit,credit,balance')."
+              },
+              "sort_by": {
+                "type": "string",
+                "description": "The column type on which to base sorting (e.g., 'tx_date', 'account', 'txn_type'). Default is 'txn_type' if not specified."
+              },
+              "end_date": {
+                "type": "string",
+                "description": "End date for the report period in YYYY-MM-DD format."
+              },
+              "class_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of class IDs to filter the report. If not provided, the report includes all classes. Each ID should be the Class.Id value (e.g., ['1', '2'])."
+              },
+              "date_macro": {
+                "enum": [
+                  "Today",
+                  "Yesterday",
+                  "This Week",
+                  "Last Week",
+                  "This Week-to-date",
+                  "Last Week-to-date",
+                  "Next Week",
+                  "Next 4 Weeks",
+                  "This Month",
+                  "Last Month",
+                  "This Month-to-date",
+                  "Last Month-to-date",
+                  "Next Month",
+                  "This Fiscal Quarter",
+                  "Last Fiscal Quarter",
+                  "This Fiscal Quarter-to-date",
+                  "Last Fiscal Quarter-to-date",
+                  "Next Fiscal Quarter",
+                  "This Fiscal Year",
+                  "Last Fiscal Year",
+                  "This Fiscal Year-to-date",
+                  "Last Fiscal Year-to-date",
+                  "Next Fiscal Year"
+                ],
+                "type": "string",
+                "description": "Predefined date range. Use if you want the report to cover a standard report date range; otherwise, use start_date and end_date to cover an explicit report date range."
+              },
+              "sort_order": {
+                "enum": [
+                  "ascend",
+                  "descend"
+                ],
+                "type": "string",
+                "description": "The sort order for rows (ascending or descending). Default is ascending."
+              },
+              "start_date": {
+                "type": "string",
+                "description": "Start date for the report period in YYYY-MM-DD format."
+              },
+              "vendor_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of vendor IDs to filter the report. If not provided, the report includes all vendors. Each ID should be the Vendor.Id value (e.g., ['1', '3'])."
+              },
+              "account_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of account IDs to filter the report. If not provided, the report includes all accounts. Each ID should be the Account.Id value from the Account object (e.g., ['1', '35', '82'])."
+              },
+              "account_type": {
+                "type": "string",
+                "description": "Account type from which to include transactions (e.g., 'Bank', 'Expense', 'Income')."
+              },
+              "customer_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of customer IDs to filter the report. If not provided, the report includes all customers. Each ID should be the Customer.Id value (e.g., ['1', '5'])."
+              },
+              "department_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of department IDs to filter the report. If not provided, the report includes all departments. Filters report contents to include information for specified departments if so configured in the company file."
+              },
+              "accounting_method": {
+                "enum": [
+                  "Cash",
+                  "Accrual"
+                ],
+                "type": "string",
+                "description": "The accounting method used in the report (Cash or Accrual)."
+              },
+              "source_account_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of source account IDs to filter the report. Each ID should be the Account.Id value for the source account."
+              },
+              "source_account_type": {
+                "type": "string",
+                "description": "Source account type for transaction filtering."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT",
+          "description": "Get the Transaction List report showing all transactions in the company. Use when you need a compreh...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE",
+          "description": "Generate a Trial Balance report showing account debits, credits, and balances for a specified period...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_REPORTS": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_REPORTS",
+          "description": "Retrieve QuickBooks reports such as TransactionList, BalanceSheet, ProfitAndLoss, and others. Use wh...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_REPORTS"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_PROFIT_AND_LOSS_DETAIL_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_PROFIT_AND_LOSS_DETAIL_REPORT",
+          "description": "Generate a detailed Profit and Loss report showing company income and expenses with transaction-leve...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_PROFIT_AND_LOSS_DETAIL_REPORT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:49:06.079Z",
+        "current_time_utc_epoch_seconds": 1786564146,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "hill",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"hill\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_T6WduaBz_hp5"
+  }
+}

@@ -1,0 +1,299 @@
+{
+  "query_ground_truth": {
+    "query_id": "synthetic-008-q1",
+    "workflow_id": "synthetic-008",
+    "workflow_task": "As a project manager reorganizing our team's workflow, I need to set up a new project tracking column in our main Trello board for the upcoming sprint. Additionally, a key stakeholder asked for an update on a specific discussion in our team Slack channel, so I need to find that exact message and drop a thumbs-up emoji reaction on it to acknowledge their point before our daily standup meeting.",
+    "query": "create a new list named Sprint Backlog on our main project tracking Trello board",
+    "required_tools": [
+      "TRELLO_ADD_LISTS"
+    ],
+    "supporting_tools": [
+      "TRELLO_ADD_BOARDS_LISTS_BY_ID_BOARD"
+    ],
+    "rationale": "Creates the requested new list/column on the specified Trello board.",
+    "candidate_tools": [
+      "TRELLO_ADD_BOARDS_LISTS_BY_ID_BOARD",
+      "CLICKUP_AUTHORIZATION_GET_WORK_SPACE_LIST",
+      "SLACK_ADD_REACTION_TO_AN_ITEM",
+      "TRELLO_ADD_LISTS",
+      "SLACK_ADD_ENTERPRISE_USER_TO_WORKSPACE"
+    ],
+    "candidate_toolkits": [
+      "clickup",
+      "slack",
+      "trello"
+    ],
+    "plausibility_score": 5
+  },
+  "request": {
+    "query": "create a new list named Sprint Backlog on our main project tracking Trello board"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create a new list named Sprint Backlog on our main project tracking Trello board",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if avoiding duplicate titles or needing current order)] [Prerequisite]: Fetch existing lists using TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD (normalize titles; capture list ids and current positions).",
+            "[Required] [Prerequisite]: Confirm final list title(s), desired placement (top/bottom/numeric), and whether any existing lists should be kept, renamed, or archived before using TRELLO_ADD_LISTS.",
+            "[Optional (if removing unwanted/default lists)] [Step]: Archive selected existing lists using TRELLO_UPDATE_LISTS_CLOSED_BY_ID_LIST (repeat per list id).",
+            "[Required] [Step]: Create list(s) using TRELLO_ADD_LISTS (persist each returned list id immediately; if adding multiple to the same top position, create in reverse intended order).",
+            "[Optional (if ordering must be deterministic after create)] [Next Step]: Reorder using TRELLO_UPDATE_LISTS_POS_BY_ID_LIST (use persisted list ids; set numeric positions for stable order).",
+            "[Optional (if names must change after create)] [Next Step]: Rename using TRELLO_UPDATE_LISTS_NAME_BY_ID_LIST (pass the new title via the value field).",
+            "[Fallback (if create fails due to invalid board reference or permissions)] [Fallback]: Re-validate board using TRELLO_GET_BOARDS_BY_ID_BOARD (use canonical id from response), then retry TRELLO_ADD_LISTS and verify via TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD."
+          ],
+          "known_pitfalls": [
+            "[TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD] Response shape can be a bare array or wrapped (for example under data.lists); handle both before iterating/deduping.",
+            "[TRELLO_ADD_LISTS] Created list id may appear at data.id or inside nested data wrappers; extract defensively and persist immediately.",
+            "[TRELLO_ADD_LISTS] Returned pos is often a large numeric value even when a symbolic pos is requested; treat ordering as non-deterministic without a reorder pass.",
+            "[TRELLO_ADD_LISTS] Creating multiple lists with the same placement can yield overlapping/identical numeric pos values; enforce final order with TRELLO_UPDATE_LISTS_POS_BY_ID_LIST.",
+            "[TRELLO_ADD_LISTS] HTTP 400 validation errors (for example invalid board id) can occur when a non-canonical identifier is used; recover via TRELLO_GET_BOARDS_BY_ID_BOARD."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Pattern for bulk-creating lists and robustly extracting created list identifiers",
+              "code": "```python\nitems=[{\"idBoard\":\"BOARD_ID\",\"name\":\"LIST_TITLE\",\"pos\":\"bottom\"}]\nout=[]\nfor it in items:\n r,e=run_composio_tool(\"TRELLO_ADD_LISTS\",it)\n d=(r or {}).get(\"data\",{})\n d=d.get(\"data\",d)\n out.append({\"name\":it[\"name\"],\"list_id\":d.get(\"id\"),\"pos\":d.get(\"pos\"),\"error\":str(e) if e else None})\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "TRELLO_ADD_LISTS"
+          ],
+          "related_tool_slugs": [
+            "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD",
+            "TRELLO_UPDATE_LISTS_NAME_BY_ID_LIST",
+            "TRELLO_UPDATE_LISTS_POS_BY_ID_LIST",
+            "TRELLO_UPDATE_LISTS_CLOSED_BY_ID_LIST",
+            "TRELLO_GET_BOARDS_BY_ID_BOARD"
+          ],
+          "toolkits": [
+            "trello"
+          ],
+          "plan_id": "33cd746abf3141e7b16adc974d721bdf"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "trello",
+          "has_active_connection": false,
+          "description": "A web-based, kanban-style, list-making application.",
+          "status_message": "No Active connection for toolkit=trello. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"trello\") to create a connection BEFORE executing any trello tools."
+        }
+      ],
+      "tool_schemas": {
+        "TRELLO_ADD_LISTS": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_ADD_LISTS",
+          "description": "Creates a new list on a specified Trello board, with options to copy an existing list, set its position, initial state (archived/subscribed), and does not modify existing lists or move cards.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "pos": {
+                "type": "string",
+                "examples": [
+                  "top",
+                  "bottom",
+                  "1024"
+                ],
+                "description": "The position of the new list on the board. Valid values are `top`, `bottom`, or a positive number (e.g., '1', '2.5')."
+              },
+              "name": {
+                "type": "string",
+                "examples": [
+                  "To Do",
+                  "In Progress"
+                ],
+                "description": "The name for the new list. Must be a string with a length from 1 to 16384 characters. This is a required parameter."
+              },
+              "closed": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Indicates whether the list should be created as closed (archived). Set to `true` for closed, or `false` for open."
+              },
+              "idBoard": {
+                "type": "string",
+                "examples": [
+                  "5abbe4b7ddc1b351ef961414"
+                ],
+                "description": "The ID of the board to which the new list should be added. This is a required parameter."
+              },
+              "subscribed": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Indicates whether the user creating the list should be automatically subscribed to it. Set to `true` to subscribe, or `false` otherwise."
+              },
+              "idListSource": {
+                "type": "string",
+                "examples": [
+                  "5abbe4b7ddc1b351ef961234"
+                ],
+                "description": "The ID of an existing list to copy when creating the new list. If provided, the new list will be a copy of this source list."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD",
+          "description": "Retrieves lists from a specified Trello board, with options to filter lists and include card details.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "idBoard"
+            ],
+            "properties": {
+              "cards": {
+                "type": "string",
+                "default": "none",
+                "examples": [
+                  "none",
+                  "open",
+                  "all",
+                  "closed"
+                ],
+                "description": "Determines which cards should be returned within the lists. Valid values are 'all', 'closed', 'none', or 'open'."
+              },
+              "fields": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "all",
+                  "name,pos",
+                  "idBoard,subscribed"
+                ],
+                "description": "Specifies the fields of the lists to be returned. Use 'all' for all fields, or provide a comma-separated list of specific fields. Valid fields include: closed, idBoard, name, pos, or subscribed."
+              },
+              "filter": {
+                "type": "string",
+                "default": "open",
+                "examples": [
+                  "open",
+                  "all",
+                  "closed"
+                ],
+                "description": "Filters the lists to be returned based on their status. Valid values are 'all', 'closed', 'none', or 'open'."
+              },
+              "idBoard": {
+                "type": "string",
+                "examples": [
+                  "60d5f2f1c8a8b4002b8f0123",
+                  "TH6F0pTM"
+                ],
+                "description": "The ID of the Trello board. Valid formats: 24-character hexadecimal ID (e.g., '60d5f2f1c8a8b4002b8f0123') OR 8-character shortLink (e.g., 'TH6F0pTM'). Human-readable board names or URL slugs (e.g., 'my-board', 'tech-jcorp') are NOT valid identifiers. In the URL 'trello.com/b/TH6F0pTM/my-board', 'TH6F0pTM' is the valid shortLink, while 'my-board' is just a slug and cannot be used. To find your board ID or shortLink: use TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER to list your boards, or look at the board URL in your browser."
+              },
+              "card_fields": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "all",
+                  "name,desc,due",
+                  "idShort,labels"
+                ],
+                "description": "Specifies the fields of cards to be returned if the 'cards' parameter is not 'none'. Use 'all' for all fields, or provide a comma-separated list of specific fields. Valid fields include: badges, checkItemStates, closed, dateLastActivity, desc, descData, due, email, idAttachmentCover, idBoard, idChecklists, idLabels, idList, idMembers, idMembersVoted, idShort, labels, manualCoverAttachment, name, pos, shortLink, shortUrl, subscribed, or url."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TRELLO_UPDATE_LISTS_NAME_BY_ID_LIST": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_UPDATE_LISTS_NAME_BY_ID_LIST",
+          "description": "Updates the name of an existing Trello list, identified by its ID; this only changes the list's name, not its cards or position.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "idList",
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "string",
+                "examples": [
+                  "Updated Project Backlog"
+                ],
+                "description": "New name for the list. Must be between 1 and 16384 characters."
+              },
+              "idList": {
+                "type": "string",
+                "examples": [
+                  "5abbe4b7ddc1b351ef961414"
+                ],
+                "description": "ID of the list to rename."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TRELLO_UPDATE_LISTS_POS_BY_ID_LIST": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_UPDATE_LISTS_POS_BY_ID_LIST",
+          "description": "Changes a Trello list's order on a board to 'top', 'bottom', or a specified numeric position, affect...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TRELLO_UPDATE_LISTS_POS_BY_ID_LIST"
+              ]
+            }
+          }
+        },
+        "TRELLO_UPDATE_LISTS_CLOSED_BY_ID_LIST": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_UPDATE_LISTS_CLOSED_BY_ID_LIST",
+          "description": "Updates whether an existing Trello list is closed (archived); a closed list is hidden from the board...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TRELLO_UPDATE_LISTS_CLOSED_BY_ID_LIST"
+              ]
+            }
+          }
+        },
+        "TRELLO_GET_BOARDS_BY_ID_BOARD": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_BOARDS_BY_ID_BOARD",
+          "description": "Fetches comprehensive details for a specific Trello board by its ID; this is a read-only action.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TRELLO_GET_BOARDS_BY_ID_BOARD"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T20:08:53.844Z",
+        "current_time_utc_epoch_seconds": 1786565333,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "many",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"many\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_tiSCyO4-X6v2"
+  }
+}

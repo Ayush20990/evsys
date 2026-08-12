@@ -1,0 +1,405 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-009-q2-implicit",
+    "workflow_id": 9,
+    "workflow_task": "Create multimedia travel marketing assets from scripts and stock/generative media, then deliver generated files by email and provide downloadable presentation content.",
+    "query": "create a marketing video using the provided text and monitor its progress until it's ready",
+    "required_tools": [
+      "GEMINI_GENERATE_VIDEOS",
+      "GEMINI_WAIT_FOR_VIDEO"
+    ],
+    "supporting_tools": [],
+    "rationale": "Video generation is an asynchronous process requiring both a tool to start generation and a tool to wait for completion.",
+    "candidate_tools": [
+      "COMPOSIO_SEARCH_IMAGE",
+      "GEMINI_GENERATE_VIDEOS",
+      "GEMINI_WAIT_FOR_VIDEO",
+      "GMAIL_SEND_EMAIL"
+    ],
+    "source_query_id": "workflow-009-q2",
+    "variant_dimension": "implicit"
+  },
+  "request": {
+    "query": "create a marketing video using the provided text and monitor its progress until it's ready"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create a marketing video using the provided text and monitor its progress until it's ready",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step 1]: Generate a captioned/base video from a detailed text prompt using GEMINI_GENERATE_VIDEOS (specify visuals, exact overlay text, style/branding, aspect ratio, and a supported duration/resolution combo; store data.operation_name).",
+            "[Required] [Step 2]: Wait for completion and obtain a downloadable MP4 URL using GEMINI_WAIT_FOR_VIDEO (poll by operation_name; use data.video_file.s3url).",
+            "[Optional (if you need supporting assets like thumbnails/cards)] [Next Step]: Generate consistent imagery using GEMINI_GENERATE_IMAGE (match style/branding and overlay theme).",
+            "[Optional (if using HeyGen as the fallback generator)] [Prerequisite]: Check available quota using HEYGEN_V2_USER_REMAINING_QUOTA (avoid starting jobs without credit).",
+            "[Fallback (if GEMINI_GENERATE_VIDEOS is unavailable, errors, or 429)] [Fallback]: Generate the clip using HEYGEN_V2_VIDEO_GENERATE, then poll/retrieve final URLs or errors using HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS until status is terminal.",
+            "[Optional (if you need a share link for HeyGen output)] [Next Step]: Retrieve a shareable link using HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL."
+          ],
+          "known_pitfalls": [
+            "[GEMINI_GENERATE_VIDEOS] 429 RESOURCE_EXHAUSTED can occur\u2014use backoff or switch to HEYGEN_V2_VIDEO_GENERATE instead of tight retries.",
+            "[GEMINI_GENERATE_VIDEOS] Request validation can be strict; some duration/resolution combinations are rejected\u2014try another supported combo.",
+            "[GEMINI_WAIT_FOR_VIDEO] Preview-type operations may not return downloadable URLs; ensure you request a full generation operation.",
+            "[GEMINI_WAIT_FOR_VIDEO] Download URLs can expire; download promptly or re-call GEMINI_WAIT_FOR_VIDEO to refresh.",
+            "[HEYGEN_V2_VIDEO_GENERATE] Read timeouts can occur; if HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS ends in failed with insufficient credit and no video_url, treat as a hard stop and use GEMINI_GENERATE_VIDEOS."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GEMINI_GENERATE_VIDEOS",
+            "GEMINI_WAIT_FOR_VIDEO",
+            "HEYGEN_V2_VIDEO_GENERATE",
+            "HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS"
+          ],
+          "related_tool_slugs": [
+            "HEYGEN_V2_USER_REMAINING_QUOTA",
+            "GEMINI_GENERATE_IMAGE",
+            "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL"
+          ],
+          "toolkits": [
+            "gemini",
+            "heygen"
+          ],
+          "plan_id": "d63db8d2fc0a4ec8995de092a4d65104"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "gemini",
+          "has_active_connection": true,
+          "description": "Comprehensive Gemini integration supporting Veo 3 video generation, Gemini Flash text generation (Nano Banana), chat completions, and multimodal AI capabilities via the Google Gemini API.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        },
+        {
+          "toolkit": "heygen",
+          "has_active_connection": false,
+          "description": "HeyGen is an innovative video platform that harnesses the power of generative AI to streamline your video creation process",
+          "status_message": "No Active connection for toolkit=heygen. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"heygen\") to create a connection BEFORE executing any heygen tools."
+        }
+      ],
+      "tool_schemas": {
+        "GEMINI_GENERATE_VIDEOS": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_GENERATE_VIDEOS",
+          "description": "Generates videos from text prompts using Google's Veo models. Returns an operation_name for tracking; pass it verbatim (no edits) to GEMINI_WAIT_FOR_VIDEO or GEMINI_GET_VIDEOS_OPERATION. Jobs take 30\u2013180+ seconds; wait 10s before first poll, then poll every 10\u201330s (allow up to 12 min). Successful results include data.video_file.s3url \u2014 missing s3url means failure. If done=true but no video_file, check raiMediaFilteredReasons (safety block); revise prompt and regenerate. Text-only; cannot accept image inputs. Max ~3\u20135 concurrent jobs; 429 RESOURCE_EXHAUSTED requires exponential backoff. For retries, always start a fresh call \u2014 never reuse a failed operation_name.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "prompt"
+            ],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "description": "Seed value for reproducibility. Supported by the Veo 3.1 models."
+              },
+              "model": {
+                "enum": [
+                  "veo-3.1-lite-generate-preview"
+                ],
+                "type": "string",
+                "default": "veo-3.1-lite-generate-preview",
+                "description": "Video model. Only Veo 3.1 Lite ('veo-3.1-lite-generate-preview') is supported \u2014 you may omit this field. Any other value (e.g. the legacy 'veo-3.1-generate-preview' / 'veo-3.1-fast-generate-preview') is coerced to Lite rather than rejected, for backward compatibility."
+              },
+              "prompt": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Text prompt for Veo video generation. Must be a non-empty string describing the video to generate."
+              },
+              "resolution": {
+                "enum": [
+                  "720p"
+                ],
+                "type": "string",
+                "description": "Resolution for video generation.\n\nOnly 720p is offered. On Veo 3.1 Lite it is $0.05/s versus $0.08/s for\n1080p, and pinning it removes the 1080p-requires-8s duration constraint\nentirely (a common source of failed calls when a caller pairs 1080p with a\n4s/6s duration). 1080p is coerced to 720p rather than served (see\nGenerateVideosRequest.resolution)."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "16:9",
+                  "9:16"
+                ],
+                "type": "string",
+                "description": "Supported aspect ratios for video generation."
+              },
+              "negative_prompt": {
+                "type": "string",
+                "description": "Text describing content to avoid in the generated video (e.g., 'cartoon, drawing, low quality')."
+              },
+              "duration_seconds": {
+                "enum": [
+                  4,
+                  6,
+                  8
+                ],
+                "type": "integer",
+                "description": "Supported video durations in seconds (Veo 3.1: 4, 6, or 8)."
+              },
+              "person_generation": {
+                "enum": [
+                  "allow_all"
+                ],
+                "type": "string",
+                "description": "Person generation safety setting (Veo 3.1 supports only ALLOW_ALL)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GEMINI_WAIT_FOR_VIDEO": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_WAIT_FOR_VIDEO",
+          "description": "Polls a Veo video generation operation until completion, then downloads and returns the video file. Generation takes 30\u2013120+ seconds (up to ~10\u201312 min); long waits are normal, not failures. A done=true response without a video file indicates safety filter rejection (check raiMediaFilteredReasons) or quota exhaustion \u2014 adjust the prompt and regenerate. On timeout, use GEMINI_GET_VIDEOS_OPERATION with incremental backoff before starting a new job. Keep parallel jobs to 3\u20135 to avoid 429 RESOURCE_EXHAUSTED errors.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "operation_name"
+            ],
+            "properties": {
+              "operation_name": {
+                "type": "string",
+                "pattern": "^models/[a-zA-Z0-9._-]+/operations/[a-zA-Z0-9_-]+$",
+                "description": "The full operation name returned by GEMINI_GENERATE_VIDEOS. Format: 'models/<model-id>/operations/<operation-id>' where <operation-id> is an alphanumeric string (e.g., 'models/veo-3.1-generate-preview/operations/m8dl4dtqqzg8'). IMPORTANT: Do NOT use placeholder values like '...' - use the exact operation_name string from the generate videos response. Do not reuse operation_name from a failed GEMINI_GENERATE_VIDEOS job \u2014 always start a new GEMINI_GENERATE_VIDEOS call for retried requests."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HEYGEN_V2_VIDEO_GENERATE": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_V2_VIDEO_GENERATE",
+          "description": "Generates a customized video using Heygen's AI-driven platform. This endpoint allows you to create videos featuring digital avatars with specified voices, enabling dynamic content creation. It's ideal for producing personalized video content, such as explainer videos, product demonstrations, or interactive presentations. The endpoint supports multiple input configurations, allowing for complex video scenarios with different characters and voices. Use this when you need to programmatically create AI-generated videos with specific avatar and voice combinations. Note that while the endpoint offers extensive customization, real-time video generation is not supported, and processing times may vary based on complexity and system load.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "video_inputs"
+            ],
+            "properties": {
+              "test": {
+                "type": "boolean",
+                "description": "Test mode flag"
+              },
+              "title": {
+                "type": "string",
+                "description": "The title of the video"
+              },
+              "callback_id": {
+                "type": "string",
+                "description": "Optional callback ID"
+              },
+              "aspect_ratio": {
+                "type": "string",
+                "description": "Video aspect ratio"
+              },
+              "video_inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "character",
+                    "voice"
+                  ],
+                  "properties": {
+                    "voice": {
+                      "type": "object",
+                      "required": [
+                        "voice_id"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "default": "text",
+                          "description": "Type of voice input (text or audio)"
+                        },
+                        "speed": {
+                          "type": "number",
+                          "description": "Speech speed multiplier"
+                        },
+                        "voice_id": {
+                          "type": "string",
+                          "description": "ID of the voice"
+                        },
+                        "input_text": {
+                          "type": "string",
+                          "description": "Text to be spoken"
+                        }
+                      },
+                      "description": "Voice configuration",
+                      "additionalProperties": false
+                    },
+                    "character": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "default": "avatar",
+                          "description": "Type of character (avatar or talking_photo)"
+                        },
+                        "avatar_id": {
+                          "type": "string",
+                          "description": "ID of the avatar"
+                        },
+                        "avatar_style": {
+                          "type": "string",
+                          "description": "Style of the avatar (e.g., normal)"
+                        },
+                        "talking_photo_id": {
+                          "type": "string",
+                          "description": "ID of the talking photo (for talking_photo type)"
+                        }
+                      },
+                      "description": "Character configuration",
+                      "additionalProperties": false
+                    },
+                    "background": {
+                      "type": "object",
+                      "required": [
+                        "type"
+                      ],
+                      "properties": {
+                        "fit": {
+                          "enum": [
+                            "crop",
+                            "cover",
+                            "contain",
+                            "none"
+                          ],
+                          "type": "string",
+                          "description": "Background video fit enumeration"
+                        },
+                        "url": {
+                          "type": "string",
+                          "description": "URL of the uploaded image/video resource. For image/video types, provide either 'url' or the corresponding asset_id (exactly one)."
+                        },
+                        "type": {
+                          "enum": [
+                            "color",
+                            "image",
+                            "video"
+                          ],
+                          "type": "string",
+                          "description": "Specifies the background type: 'color', 'image', or 'video'"
+                        },
+                        "value": {
+                          "type": "string",
+                          "description": "Hex color code for the background (e.g., '#FFFFFF'). Required when type is 'color'."
+                        },
+                        "play_style": {
+                          "enum": [
+                            "freeze",
+                            "loop",
+                            "fit_to_scene",
+                            "once"
+                          ],
+                          "type": "string",
+                          "description": "Background video play style enumeration"
+                        },
+                        "image_asset_id": {
+                          "type": "string",
+                          "description": "Unique identifier of the uploaded image. For image type, provide either 'url' or 'image_asset_id' (exactly one)."
+                        },
+                        "video_asset_id": {
+                          "type": "string",
+                          "description": "Unique identifier of the uploaded video. For video type, provide either 'url' or 'video_asset_id' (exactly one)."
+                        }
+                      },
+                      "description": "Background configuration for video input. Supports color, image, or video backgrounds.\n\nFor color: Provide 'type' as 'color' and 'value' as hex color code (e.g., '#FFFFFF').\nFor image: Provide 'type' as 'image' and either 'url' or 'image_asset_id' (exactly one required).\nFor video: Provide 'type' as 'video' and either 'url' or 'video_asset_id' (exactly one required).",
+                      "additionalProperties": false
+                    }
+                  },
+                  "description": "Request schema for `V2VideoGeneratevideoInputs`"
+                },
+                "description": "Array of video input configurations"
+              },
+              "dimension__width": {
+                "type": "integer",
+                "description": "Video width in pixels"
+              },
+              "dimension__height": {
+                "type": "integer",
+                "description": "Video height in pixels"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS",
+          "description": "Tool to retrieve the current processing status and metadata for a specific video by ID. Use when you need to check video processing progress, get time-limited URLs for video downloads, or monitor video generation completion. Video rendering is asynchronous and typically takes 30\u2013180+ seconds; poll at moderate intervals rather than tight loops. Verify returned URLs are accessible before surfacing to users. Note that returned URLs expire after 7 days but can be regenerated by calling this endpoint again.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "video_id"
+            ],
+            "properties": {
+              "video_id": {
+                "type": "string",
+                "examples": [
+                  "6402dcae5b4a44e9b7d0586cb7d2144f"
+                ],
+                "description": "The unique identifier of the video to retrieve status for. This ID is returned when a video is created via the video generation API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HEYGEN_V2_USER_REMAINING_QUOTA": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_V2_USER_REMAINING_QUOTA",
+          "description": "Retrieves the current remaining quota for the authenticated user on the HeyGen platform. This endpoint allows users to check their available resources or actions within their account limits. It should be used to monitor usage and plan resource allocation effectively. The returned information helps users understand how much of their quota is left before reaching account limits. Note that this endpoint does not provide details on total quota or usage history, focusing solely on the remaining available quota.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "GEMINI_GENERATE_IMAGE": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_GENERATE_IMAGE",
+          "description": "Generates images from text prompts using Gemini models (Nano Banana). Supports models: 'gemini-2.5-f...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GEMINI_GENERATE_IMAGE"
+              ]
+            }
+          }
+        },
+        "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL",
+          "description": "Tool to generate a public, shareable URL for a specific video by ID. Use when you need to create a p...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:48:23.010Z",
+        "current_time_utc_epoch_seconds": 1786564103,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "fell",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"fell\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) You may call COMPOSIO_MANAGE_CONNECTIONS: Some toolkits lack active connections",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_xA-_mfvzpvh5"
+  }
+}

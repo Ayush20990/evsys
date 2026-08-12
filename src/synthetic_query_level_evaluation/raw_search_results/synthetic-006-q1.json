@@ -1,0 +1,521 @@
+{
+  "query_ground_truth": {
+    "query_id": "synthetic-006-q1",
+    "workflow_id": "synthetic-006",
+    "workflow_task": "A client recently emailed an urgent spreadsheet attachment regarding our upcoming project deadlines. I need to find that email, download the attached file to review the revised dates, and then set a quick Slack reminder for myself to follow up with the team tomorrow morning so we stay aligned on the new schedule.",
+    "query": "Find the recent email from the client containing the project deadline attachment and retrieve the attachment",
+    "required_tools": [
+      "GMAIL_GET_ATTACHMENT"
+    ],
+    "supporting_tools": [
+      "GMAIL_DELETE_MESSAGE"
+    ],
+    "rationale": "The agent needs to locate the incoming message and extract the specific file attachment mentioned by the client.",
+    "candidate_tools": [
+      "GOOGLECALENDAR_COLORS_GET",
+      "GMAIL_GET_ATTACHMENT",
+      "SLACK_ADD_REACTION_TO_AN_ITEM",
+      "GMAIL_DELETE_MESSAGE",
+      "SLACK_CREATE_A_REMINDER"
+    ],
+    "candidate_toolkits": [
+      "gmail",
+      "googlecalendar",
+      "slack"
+    ],
+    "plausibility_score": 5
+  },
+  "request": {
+    "query": "Find the recent email from the client containing the project deadline attachment and retrieve the attachment"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Find the recent email from the client containing the project deadline attachment and retrieve the attachment",
+          "execution_guidance": "Found 10 tools for this query. Look at the schemas to know how to use them.",
+          "primary_tool_slugs": [
+            "GOOGLESUPER_GET_ATTACHMENT",
+            "OUTLOOK_QUERY_EMAILS",
+            "OUTLOOK_GET_NESTED_FOLDER_MESSAGE_ATTACHMENT",
+            "GMAIL_GET_ATTACHMENT"
+          ],
+          "related_tool_slugs": [
+            "GOOGLESUPER_FETCH_MESSAGE_BY_MESSAGE_ID",
+            "GOOGLESUPER_FETCH_EMAILS",
+            "GOOGLESUPER_UPLOAD_FILE",
+            "OUTLOOK_LIST_MAIL_FOLDERS",
+            "OUTLOOK_SEARCH_MESSAGES",
+            "OUTLOOK_LIST_MESSAGE_ATTACHMENTS_FROM_CHILD_FOLDER"
+          ],
+          "toolkits": [
+            "googlesuper",
+            "outlook",
+            "gmail"
+          ]
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googlesuper",
+          "has_active_connection": false,
+          "description": "Google Super App combines all Google services including Drive, Calendar, Gmail, Sheets, Analytics, Ads, and more, providing a unified platform for seamless integration and management of your digital life.",
+          "status_message": "No Active connection for toolkit=googlesuper. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesuper\") to create a connection BEFORE executing any googlesuper tools."
+        },
+        {
+          "toolkit": "outlook",
+          "has_active_connection": false,
+          "description": "Outlook is Microsoft's email and calendaring platform integrating contacts and scheduling, enabling users to manage communications and events in a unified workspace",
+          "status_message": "No Active connection for toolkit=outlook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"outlook\") to create a connection BEFORE executing any outlook tools."
+        },
+        {
+          "toolkit": "gmail",
+          "has_active_connection": false,
+          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
+          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLESUPER_GET_ATTACHMENT": {
+          "toolkit": "GOOGLESUPER",
+          "tool_slug": "GOOGLESUPER_GET_ATTACHMENT",
+          "description": "Retrieves a specific attachment by ID from a message in a user's Gmail mailbox, requiring valid message and attachment IDs. Returns the downloaded file with its MIME type and filename. Attachments exceeding ~25 MB may be exposed as Google Drive links \u2014 use GOOGLEDRIVE_DOWNLOAD_FILE when a Drive file_id is present instead.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_id",
+              "attachment_id",
+              "file_name"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "User's email address ('me' for authenticated user)."
+              },
+              "file_name": {
+                "type": "string",
+                "examples": [
+                  "invoice.pdf",
+                  "report.docx"
+                ],
+                "minLength": 1,
+                "description": "Desired filename for the downloaded attachment. This is a required string field - do not pass null."
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "18exampleMessageId7f9"
+                ],
+                "minLength": 1,
+                "description": "Immutable ID of the message containing the attachment. This is a required string field - do not pass null. Obtain the message_id from Gmail API responses (e.g., fetchEmails, listThreads)."
+              },
+              "attachment_id": {
+                "type": "string",
+                "examples": [
+                  "ANGjdJ8sZ7example1234",
+                  "A_PART0.1_18exampleAttachmentId7f9"
+                ],
+                "minLength": 1,
+                "description": "The internal Gmail attachment ID (NOT the filename). This is a system-generated token string like 'ANGjdJ8s...'. Obtain this ID from the 'attachmentId' field in the 'attachmentList' array returned by fetchEmails or fetchMessageByMessageId actions. Do NOT pass the filename (e.g., 'report.pdf'). Requires a fully hydrated message payload: call GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID with format='full' to obtain valid attachment IDs \u2014 lightweight fetch modes may omit attachmentList entirely."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_QUERY_EMAILS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_QUERY_EMAILS",
+          "description": "Query Outlook emails within a SINGLE folder using OData filters. Build precise server-side filters for dates, read status, importance, subjects, attachments, and conversations. Best for structured queries on message metadata within a specific folder. Returns up to 100 messages per request with pagination support. \u2022 Searches SINGLE folder only (inbox, sentitems, etc.) - NOT across all folders \u2022 For cross-folder/mailbox-wide search: Use OUTLOOK_SEARCH_MESSAGES \u2022 Server-side filters: dates, importance, isRead, hasAttachments, subjects, conversationId \u2022 Pagination: use the returned next_page_token (pass it back as page_token) until it is absent \u2022 Limitations: Recipient/body filtering requires OUTLOOK_SEARCH_MESSAGES",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "default": 100,
+                "maximum": 1000,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50,
+                  100,
+                  500
+                ],
+                "description": "Maximum number of messages to return per request (1-1000). Default is 100. IMPORTANT: For large mailboxes, paginate using `next_page_token`. Pagination example: 1) Call with top=100, 2) Read `next_page_token` from the response, 3) If present, call again passing it back as `page_token`, 4) Repeat until `next_page_token` is absent."
+              },
+              "skip": {
+                "type": "integer",
+                "default": 0,
+                "minimum": 0,
+                "examples": [
+                  0,
+                  100,
+                  200
+                ],
+                "description": "Number of messages to skip for pagination. NOTE: For large result sets, prefer the returned `next_page_token` (pass it back as `page_token`) over manual skip."
+              },
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "isRead eq false",
+                  "importance eq 'high'",
+                  "hasAttachments eq true",
+                  "receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "receivedDateTime ge 2025-10-01T00:00:00Z and receivedDateTime lt 2025-10-08T00:00:00Z",
+                  "isRead eq false and receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "importance eq 'high' and hasAttachments eq true",
+                  "startswith(subject, '[Task Update]')",
+                  "startswith(subject, 'Re:') and hasAttachments eq true",
+                  "subject eq 'Weekly Report'",
+                  "conversationId eq 'AQQkADAwATY3ZmYAZS1hYQAzNC1lODkwLTAwAi0wMAoAEADJzjh8m93SQbP6BUCZcIuc'",
+                  "sentDateTime gt 2025-10-01T14:30:00Z and sentDateTime lt 2025-10-01T18:00:00Z",
+                  "isDraft eq false and isRead eq false and importance eq 'high'",
+                  "(isRead eq false or importance eq 'high') and receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "(isRead eq false or importance eq 'high') and hasAttachments eq true",
+                  "from/emailAddress/address eq 'user@example.com'",
+                  "startswith(from/emailAddress/address, 'support@')",
+                  "from/emailAddress/address eq 'boss@company.com' and isRead eq false",
+                  "categories/any(a:a eq 'Priority')",
+                  "categories/any(a:a eq 'Priority') or categories/any(b:b eq 'Urgent')",
+                  "categories/any(a:a eq 'Priority') and isRead eq false"
+                ],
+                "description": "OData $filter query string to filter email messages. Syntax: 'field operator value' combined with 'and', 'or', 'not'.\n\n        **Operators:** eq, ne, lt, le, gt, ge, startswith(), contains(), any()\n\n        **String Functions:**\n        - subject: contains(), startswith()\n        - from/sender: startswith() and eq only. contains() is NOT supported on sender/from fields\n        - endswith() is NOT reliably supported by Microsoft Graph API for message filtering\n\n        **Filterable Fields:**\n        - `isRead` - Boolean: true/false\n        - `importance` - String: 'low', 'normal', 'high'\n        - `subject` - String (exact match or startswith)\n        - `hasAttachments` - Boolean: true/false\n        - `receivedDateTime`, `sentDateTime` - DateTime (ISO 8601: 2025-10-01T00:00:00Z, NOT enclosed in quotes)\n        - `conversationId` - String (exact match)\n        - `categories` - Array (use any() operator: `categories/any(a:a eq 'CategoryName')`)\n        - `isDraft`, `flag/flagStatus` - Boolean/String flags\n        - `from/emailAddress/address`, `sender/emailAddress/address` - Sender email (ONLY 'address' is filterable, NOT 'name')\n\n        **NOT filterable:** toRecipients, ccRecipients, bccRecipients, body/content, id \u2014 use OUTLOOK_SEARCH_MESSAGES for these.\n\n        **Categories Filtering:**\n        - Single: `categories/any(a:a eq 'CategoryName')`\n        - Multiple (OR): Use SEPARATE any() calls: `categories/any(a:a eq 'Cat1') or categories/any(b:b eq 'Cat2')`\n        - For category names containing single quotes, escape them by doubling: `categories/any(a:a eq 'Owner''s Category')`\n\n        **Date Filtering:**\n        - ISO 8601 format: 2025-10-01T00:00:00Z (no quotes around datetime values)\n        - Operators: ge, gt, le, lt\n"
+              },
+              "folder": {
+                "type": "string",
+                "default": "inbox",
+                "examples": [
+                  "inbox",
+                  "sentitems",
+                  "drafts",
+                  "AAMkAGI0ZjExAAA="
+                ],
+                "description": "SINGLE mail folder to search within (cannot search across all folders). Well-known names (case-insensitive): 'inbox', 'sentitems', 'drafts', 'deleteditems', 'outbox', 'junkemail', 'archive', 'clutter', 'recoverableitemsdeletions'. For custom folders (e.g., 'Billing', 'Projects'), you MUST provide the folder ID (a long base64-like string like 'AAMkAGU0NTRiNDA4...'). Use OUTLOOK_LIST_MAIL_FOLDERS to get folder IDs for custom folders. Do NOT pass folder URLs or display names. IMPORTANT: To search across ALL folders, use OUTLOOK_SEARCH_MESSAGES instead (searches entire mailbox without folder restriction). NOTE: This parameter also accepts 'folder_id' as an alias for backwards compatibility."
+              },
+              "select": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "receivedDateTime"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "receivedDateTime",
+                    "webLink"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "toRecipients",
+                    "receivedDateTime",
+                    "hasAttachments",
+                    "webLink"
+                  ],
+                  [
+                    "subject",
+                    "from",
+                    "bodyPreview",
+                    "receivedDateTime",
+                    "internetMessageHeaders"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "body",
+                    "receivedDateTime"
+                  ]
+                ],
+                "description": "List of message properties to include in the response (accepts comma-separated string or list). Field names are automatically normalized to correct camelCase (e.g., 'bodypreview' -> 'bodyPreview', 'hasattachments' -> 'hasAttachments'). Valid fields: id, subject, from, sender, toRecipients, ccRecipients, bccRecipients, replyTo, receivedDateTime, sentDateTime, createdDateTime, lastModifiedDateTime, hasAttachments, importance, isRead, isDraft, body, bodyPreview, uniqueBody, categories, conversationId, conversationIndex, parentFolderId, changeKey, internetMessageId, internetMessageHeaders, webLink, flag, attachments, inferenceClassification, isReadReceiptRequested, isDeliveryReceiptRequested. NOTE: 'inReplyTo' is NOT a valid property for email messages in Microsoft Graph v1.0. When not specified, returns metadata without body. Include 'body' for full content. Pass [] for all fields."
+              },
+              "orderby": {
+                "type": "string",
+                "default": "receivedDateTime desc",
+                "examples": [
+                  "receivedDateTime desc",
+                  "sentDateTime desc",
+                  "subject asc",
+                  "importance desc,receivedDateTime desc",
+                  "receivedDateTime asc"
+                ],
+                "description": "Sort order as comma-separated string or list (accepts 'field asc/desc' format or JSON-serialized arrays). Input is automatically normalized to correct format. Common fields: receivedDateTime, sentDateTime, subject, importance, from. NOTE: Ordering may be automatically disabled by Microsoft Graph API when using certain filters (e.g., subject exact match, conversationId) to avoid 'InefficientFilter' errors. In those cases, results will be unsorted."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "Target user's email or 'me' for authenticated user. IMPORTANT: 'me' uses the currently connected account. For shared or delegated mailbox access, ensure the connected user has mailbox access and the app has Mail.Read.Shared. 403 errors indicate insufficient delegated/application permissions."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend any required identifier fields from the first call (the token supersedes their values). Optional filter, sort and timezone params need not be repeated; the token carries them."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_GET_NESTED_FOLDER_MESSAGE_ATTACHMENT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_GET_NESTED_FOLDER_MESSAGE_ATTACHMENT",
+          "description": "Tool to retrieve a specific attachment from a message located in a nested mail folder structure. Use when you need to get attachment details from messages in deeply nested folders.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "user_id",
+              "mail_folder_id",
+              "child_folder_ids",
+              "message_id",
+              "attachment_id"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "6640adbb5cb743b0",
+                  "user@example.com"
+                ],
+                "description": "The unique identifier of the user. Must be an actual user ID (e.g., '6640adbb5cb743b0') or user principal name (UPN). Cannot use 'me' alias for this endpoint."
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "AQMkADAwATMwMAExLTlmNjktOWVmYS0wMAItMDAKAEYAAAPLkCuWz0mbS4RvWyTvc1LKBwDGTYrvat2PSKIu8IS9hMqyAAACAQwAAADGTYrvat2PSKIu8IS9hMqyAAAASloHYQAAAA=="
+                ],
+                "description": "The unique identifier of the message containing the attachment."
+              },
+              "attachment_id": {
+                "type": "string",
+                "examples": [
+                  "AQMkADAwATMwMAExLTlmNjktOWVmYS0wMAItMDAKAEYAAAPLkCuWz0mbS4RvWyTvc1LKBwDGTYrvat2PSKIu8IS9hMqyAAACAQwAAADGTYrvat2PSKIu8IS9hMqyAAAASloHYQAAAAESABAArZR_wVhuAECmQypabbRT1g=="
+                ],
+                "description": "The unique identifier of the attachment to retrieve."
+              },
+              "mail_folder_id": {
+                "type": "string",
+                "examples": [
+                  "inbox",
+                  "AQMkADAwATMwMAExLTlmNjktOWVmYS0wMAItMDAKAC4AAAPLkCuWz0mbS4RvWyTvc1LKAQDGTYrvat2PSKIu8IS9hMqyAAACAQwAAAA="
+                ],
+                "description": "The ID of the parent mail folder. Can be a well-known folder name (e.g., 'inbox', 'drafts', 'sentitems') or a folder ID obtained from listing mail folders."
+              },
+              "child_folder_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "AQMkADAwATMwMAExLTlmNjktOWVmYS0wMAItMDAKAC4AAAPLkCuWz0mbS4RvWyTvc1LKAQDGTYrvat2PSKIu8IS9hMqyAAAAU0mZKAAAAA=="
+                  ]
+                ],
+                "minItems": 1,
+                "description": "List of child folder IDs representing the nested folder path. For a message in /folder1/subfolder1/subfolder2/, provide ['subfolder1_id', 'subfolder2_id']. Can be a single item for one level of nesting or multiple items for deeper nesting."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_GET_ATTACHMENT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_GET_ATTACHMENT",
+          "description": "Retrieves a specific attachment by ID from a message in a user's Gmail mailbox, requiring valid message and attachment IDs. Returns the downloaded file with its MIME type and filename. Attachments exceeding ~25 MB may be exposed as Google Drive links \u2014 use GOOGLEDRIVE_DOWNLOAD_FILE when a Drive file_id is present instead.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_id",
+              "attachment_id",
+              "file_name"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "User's email address ('me' for authenticated user)."
+              },
+              "file_name": {
+                "type": "string",
+                "examples": [
+                  "invoice.pdf",
+                  "report.docx"
+                ],
+                "minLength": 1,
+                "description": "Desired filename for the downloaded attachment. This is a required string field - do not pass null."
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "18exampleMessageId7f9"
+                ],
+                "minLength": 1,
+                "description": "Immutable ID of the message containing the attachment. This is a required string field - do not pass null. Obtain the message_id from Gmail API responses (e.g., fetchEmails, listThreads)."
+              },
+              "attachment_id": {
+                "type": "string",
+                "examples": [
+                  "ANGjdJ8sZ7example1234",
+                  "A_PART0.1_18exampleAttachmentId7f9"
+                ],
+                "minLength": 1,
+                "description": "The internal Gmail attachment ID (NOT the filename). This is a system-generated token string like 'ANGjdJ8s...'. Obtain this ID from the 'attachmentId' field in the 'attachmentList' array returned by fetchEmails or fetchMessageByMessageId actions. Do NOT pass the filename (e.g., 'report.pdf'). Requires a fully hydrated message payload: call GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID with format='full' to obtain valid attachment IDs \u2014 lightweight fetch modes may omit attachmentList entirely."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESUPER_FETCH_MESSAGE_BY_MESSAGE_ID": {
+          "toolkit": "GOOGLESUPER",
+          "tool_slug": "GOOGLESUPER_FETCH_MESSAGE_BY_MESSAGE_ID",
+          "description": "Fetches a specific email message by its ID, provided the `message_id` exists and is accessible to the authenticated `user_id`. Spam/trash messages are excluded unless upstream list/search calls used `include_spam_trash=true`. Use `internalDate` (milliseconds since epoch) rather than header `Date` for recency checks.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_id"
+            ],
+            "properties": {
+              "format": {
+                "type": "string",
+                "default": "full",
+                "examples": [
+                  "metadata",
+                  "minimal",
+                  "full",
+                  "raw"
+                ],
+                "description": "Format for message content. 'minimal': lightest (ID, thread ID, labels only). 'metadata': headers and message metadata without body content - ideal for summarization, analysis, or when you only need subject/sender/timestamp (recommended for most use cases). 'full': complete MIME structure with 50+ headers, nested parts, and base64url-encoded body data - heavy payload, only use when you need the complete raw MIME structure for parsing attachments or body content. 'raw': entire RFC 2822 formatted message as base64url string."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "user@example.com",
+                  "me"
+                ],
+                "description": "User's email address or 'me' for the authenticated user."
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "19b11732c1b578fd",
+                  "18c5e5b5f5d5e5b5",
+                  "1736ccf5d7b4d452"
+                ],
+                "minLength": 1,
+                "description": "The Gmail API message ID (hexadecimal string, typically 15-16 characters like '19b11732c1b578fd'). Must be obtained from Gmail API responses (e.g., List Messages, Search Messages). Do NOT use email subjects, dates, sender names, or custom identifiers. Do NOT use `threadId` (use GMAIL_FETCH_MESSAGE_BY_THREAD_ID for threads), the Message-ID email header, or any fabricated value \u2014 only IDs from Gmail API list/search responses."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESUPER_FETCH_EMAILS": {
+          "toolkit": "GOOGLESUPER",
+          "tool_slug": "GOOGLESUPER_FETCH_EMAILS",
+          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optiona...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESUPER_FETCH_EMAILS"
+              ]
+            }
+          }
+        },
+        "GOOGLESUPER_UPLOAD_FILE": {
+          "toolkit": "GOOGLESUPER",
+          "tool_slug": "GOOGLESUPER_UPLOAD_FILE",
+          "description": "Uploads a file (max 5MB) to Google Drive, placing it in the specified folder or root if no valid fol...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESUPER_UPLOAD_FILE"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_LIST_MAIL_FOLDERS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_MAIL_FOLDERS",
+          "description": "Tool to list a user's top-level mail folders. Use when you need folders like Inbox, Drafts, Sent Ite...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_LIST_MAIL_FOLDERS"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_SEARCH_MESSAGES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEARCH_MESSAGES",
+          "description": "Search Outlook messages using powerful KQL syntax. Supports sender (from:), recipient (to:, cc:), su...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_SEARCH_MESSAGES"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_LIST_MESSAGE_ATTACHMENTS_FROM_CHILD_FOLDER": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_MESSAGE_ATTACHMENTS_FROM_CHILD_FOLDER",
+          "description": "Tool to list attachments from a message in a nested child mail folder. Use when you need to retrieve...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_LIST_MESSAGE_ATTACHMENTS_FROM_CHILD_FOLDER"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T20:08:39.463Z",
+        "current_time_utc_epoch_seconds": 1786565319,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "wear",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"wear\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "Follow these steps carefully to begin the task:",
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_PcCptrRNZPxF"
+  }
+}

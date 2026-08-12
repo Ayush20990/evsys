@@ -1,0 +1,746 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-001-q3-explicit",
+    "workflow_id": 1,
+    "workflow_task": "Prepare HubSpot launch assets for a paid event registration flow: assess payment-link feasibility, create a review-only automated confirmation email, create a disabled confirmation workflow, verify the assets remain inert, and attempt to create a custom-object registration ledger.",
+    "query": "Set up a HubSpot workflow that is initially turned off",
+    "required_tools": [
+      "HUBSPOT_CREATE_WORKFLOW"
+    ],
+    "supporting_tools": [
+      "HUBSPOT_GET_WORKFLOWS"
+    ],
+    "rationale": "Building the registration workflow in a disabled state requires the workflow creation tool.",
+    "candidate_tools": [
+      "HUBSPOT_CLONE_MARKETING_EMAIL",
+      "HUBSPOT_CREATE_OBJECT_SCHEMA",
+      "HUBSPOT_CREATE_OR_UPDATE_DRAFT_VERSION",
+      "HUBSPOT_CREATE_WORKFLOW",
+      "HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUBSPOT_ACCOUNT",
+      "HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL",
+      "HUBSPOT_GET_WORKFLOWS",
+      "HUBSPOT_GET_WORKFLOW_BY_ID",
+      "HUBSPOT_LIST_GRANTED_SCOPES",
+      "HUBSPOT_SEARCH_EMAILS"
+    ],
+    "source_query_id": "workflow-001-q3",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "Set up a HubSpot workflow that is initially turned off"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Set up a HubSpot workflow that is initially turned off",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if avoiding duplicates/cloning)] [Prerequisite]: Audit existing automations using HUBSPOT_GET_WORKFLOWS (confirm naming/ownership and reuse opportunities).",
+            "[Required] [Prerequisite]: Confirm the integration has required permissions using HUBSPOT_LIST_GRANTED_SCOPES (ensure automation scopes exist before workflow writes).",
+            "[Optional (if copying a known-good action schema for email/delay actions)] [Prerequisite]: Inspect a reference workflow using HUBSPOT_GET_WORKFLOW_BY_ID (note actionTypeId and exact fields shape).",
+            "[Required] [Prerequisite]: Confirm valid internal property names using HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE (prevent enrollment/action property mismatches).",
+            "[Required] [Step]: Design workflow metadata and create it using HUBSPOT_CREATE_WORKFLOW (contacts objectTypeId, enrollmentCriteria, actions, isEnabled).",
+            "[Optional (for post-create inspection)] [Next Step]: Verify persisted action graph/order using HUBSPOT_GET_WORKFLOW_BY_ID (catch schema/connection issues early).",
+            "[Required] [Next Step]: Validate enrollment filters by previewing matches using HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA (page through results before concluding targeting is correct).",
+            "[Optional (if criteria looks incomplete)] [Next Step]: Spot-check property coverage by paging/browsing contacts using HUBSPOT_LIST_CONTACTS (verify fields used in enrollmentCriteria are populated).",
+            "[Required (if workflow depends on pre-setting/scoring fields)] [Next Step]: Apply programmatic property changes using HUBSPOT_UPDATE_CONTACT (keep updates idempotent and scoped to enrolled records).",
+            "[Required] [Fallback]: If workflow creation fails with missing permissions, re-check scopes using HUBSPOT_LIST_GRANTED_SCOPES (resolve MISSING_SCOPES before retrying)."
+          ],
+          "known_pitfalls": [
+            "[HUBSPOT_CREATE_WORKFLOW] 403 Forbidden with category=\"MISSING_SCOPES\" when automation scopes aren\u2019t granted; confirm via HUBSPOT_LIST_GRANTED_SCOPES before retrying.",
+            "[HUBSPOT_CREATE_WORKFLOW] 400 validation errors if actions[].fields is sent as an array\u2014fields must be a map/object; enrollmentCriteria branch/type shapes are strict.",
+            "[HUBSPOT_CREATE_WORKFLOW] Delay action field schema can trigger opaque 500 Internal Server Error if using fields.delayMillis (even with type changes); working workflows used fields.delta + fields.time_unit.",
+            "[HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA] Filters in a group are ANDed and groups are ORed; incorrect grouping yields unexpected enrollment/empty results.",
+            "[HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA] Paginated results; iterate limit/after until exhaustion before concluding criteria only matches the first page."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "HUBSPOT_CREATE_WORKFLOW",
+            "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+            "HUBSPOT_UPDATE_CONTACT"
+          ],
+          "related_tool_slugs": [
+            "HUBSPOT_GET_WORKFLOWS",
+            "HUBSPOT_LIST_CONTACTS",
+            "HUBSPOT_LIST_GRANTED_SCOPES",
+            "HUBSPOT_GET_WORKFLOW_BY_ID",
+            "HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE"
+          ],
+          "toolkits": [
+            "hubspot"
+          ],
+          "plan_id": "b65977e197c64301a75b140895f2636d"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "hubspot",
+          "has_active_connection": false,
+          "description": "HubSpot is an inbound marketing, sales, and customer service platform integrating CRM, email automation, and analytics to facilitate lead nurturing and seamless customer experiences",
+          "status_message": "No Active connection for toolkit=hubspot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"hubspot\") to create a connection BEFORE executing any hubspot tools."
+        }
+      ],
+      "tool_schemas": {
+        "HUBSPOT_CREATE_WORKFLOW": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_CREATE_WORKFLOW",
+          "description": "Creates a new HubSpot workflow to automate processes; ensure `enrollmentCriteria` and `actions` use properties relevant to the specified `objectTypeId`.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "name",
+              "startActionId",
+              "nextAvailableActionId",
+              "actions",
+              "enrollmentCriteria"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "New Lead Nurturing Q1"
+                ],
+                "description": "The unique name for the workflow."
+              },
+              "type": {
+                "enum": [
+                  "CONTACT_FLOW",
+                  "PLATFORM_FLOW"
+                ],
+                "type": "string",
+                "default": "CONTACT_FLOW",
+                "examples": [
+                  "CONTACT_FLOW",
+                  "PLATFORM_FLOW"
+                ],
+                "description": "'CONTACT_FLOW' for contact-based workflows, 'PLATFORM_FLOW' for workflows based on other CRM object types (deals, companies, tickets, custom objects)."
+              },
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Array of workflow action configurations. Each action must include: 'actionId' (unique string ID), 'type' (e.g., 'SINGLE_CONNECTION'), 'actionTypeId' (e.g., '0-1' for delay, '0-4' for email), 'actionTypeVersion' (typically 0), 'connection' (object with 'edgeType' and 'nextActionId'), and 'fields' (action-specific settings). Example: [{'actionId': '1', 'type': 'SINGLE_CONNECTION', 'actionTypeId': '0-1', 'actionTypeVersion': 0, 'connection': {'edgeType': 'STANDARD', 'nextActionId': '2'}, 'fields': {'delayMillis': 3600000}}]"
+              },
+              "flowType": {
+                "enum": [
+                  "WORKFLOW",
+                  "ACTION_SET",
+                  "UNKNOWN"
+                ],
+                "type": "string",
+                "default": "WORKFLOW",
+                "examples": [
+                  "WORKFLOW",
+                  "ACTION_SET"
+                ],
+                "description": "Flow category: 'WORKFLOW' for standard workflows, 'ACTION_SET' for reusable action sets that can be called from other workflows."
+              },
+              "isEnabled": {
+                "type": "boolean",
+                "default": false,
+                "description": "Set to true to activate the workflow immediately upon creation, or false to create it in disabled state for review."
+              },
+              "dataSources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Data source configurations for conditions or personalization."
+              },
+              "description": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "This workflow nurtures new leads acquired through the Q1 campaign."
+                ],
+                "description": "Optional explanation of the workflow's purpose and functionality."
+              },
+              "timeWindows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Configurations for periods when workflow actions can execute."
+              },
+              "blockedDates": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Configurations for dates when workflow actions should not execute."
+              },
+              "objectTypeId": {
+                "type": "string",
+                "default": "0-1",
+                "examples": [
+                  "0-1",
+                  "0-2",
+                  "0-3",
+                  "0-5"
+                ],
+                "description": "HubSpot internal ID for the CRM object type: '0-1' for Contacts, '0-2' for Companies, '0-3' for Deals, '0-5' for Tickets, or custom object type ID."
+              },
+              "startActionId": {
+                "type": "string",
+                "examples": [
+                  "action-1",
+                  "start-001"
+                ],
+                "description": "The unique ID of the first action in the workflow. This must match the actionId of one of the actions in the actions array."
+              },
+              "customProperties": {
+                "type": "object",
+                "description": "Custom key-value pairs for organization or tracking.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "enrollmentCriteria": {
+                "type": "object",
+                "description": "Required configuration defining enrollment triggers for the workflow. Must include: 'type' (either 'EVENT_BASED' or 'LIST_BASED'), 'shouldReEnroll' (boolean for allowing re-enrollment), and either 'eventFilterBranches' (for event-based) or 'listFilterBranch' (for list-based enrollment). Example for event-based: {'type': 'EVENT_BASED', 'shouldReEnroll': false, 'eventFilterBranches': [{'filterBranchType': 'OR', 'filterBranchOperator': 'OR', 'filters': [{'filterType': 'PROPERTY', 'property': 'email', 'operator': 'HAS_PROPERTY'}]}]}",
+                "additionalProperties": true
+              },
+              "suppressionListIds": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "examples": [
+                  [
+                    789,
+                    101
+                  ]
+                ],
+                "description": "HubSpot list IDs for contacts to be prevented from enrollment."
+              },
+              "unEnrollmentSetting": {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "ALL",
+                      "SELECTIVE"
+                    ],
+                    "type": "string",
+                    "description": "Unenrollment behavior: 'ALL' from all other workflows, 'SELECTIVE' from specified workflows."
+                  },
+                  "flowIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "examples": [
+                      [
+                        "wf_123",
+                        "wf_456"
+                      ]
+                    ],
+                    "description": "Workflow IDs for unenrollment if 'type' is 'SELECTIVE'."
+                  }
+                },
+                "description": "Defines if/how objects unenroll from other workflows upon enrolling in this one.",
+                "additionalProperties": false
+              },
+              "nextAvailableActionId": {
+                "type": "string",
+                "examples": [
+                  "2",
+                  "5",
+                  "10"
+                ],
+                "description": "The next available action ID number for sequencing. This should be one higher than the highest action ID number used in the workflow."
+              },
+              "canEnrollFromSalesforce": {
+                "type": "boolean",
+                "default": false,
+                "description": "Allow contacts to be enrolled directly from Salesforce."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+          "description": "Searches for HubSpot contacts using a text query, specific filter criteria (filters in a group are ANDed, groups are ORed), sorting, and pagination to retrieve selected properties.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "description": "The cursor token for pagination. Use the `after` value from the `paging.next` object of a previous response to fetch the next set of results. If `None` or an empty string, it fetches the first page."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 5,
+                "maximum": 200,
+                "examples": [
+                  10,
+                  25,
+                  100
+                ],
+                "description": "The maximum number of contacts to return."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "John Doe",
+                  "Acme Corp",
+                  "support@example.com"
+                ],
+                "description": "A string to search across HubSpot's default searchable contact properties ONLY: firstname, lastname, email, phone, hs_additional_emails, hs_object_id, hs_searchable_calculated_phone_number, company. IMPORTANT: This does NOT search custom properties. To search/filter by custom properties (e.g., 'icp_segment', 'lead_source'), use filterGroups with specific property filters instead. At least one of 'query' or 'filterGroups' must be provided."
+              },
+              "sorts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "propertyName",
+                    "direction"
+                  ],
+                  "properties": {
+                    "direction": {
+                      "enum": [
+                        "ASCENDING",
+                        "DESCENDING"
+                      ],
+                      "type": "string",
+                      "description": "The direction for sorting (`ASCENDING` or `DESCENDING`). See `DirectionEnm` for options."
+                    },
+                    "propertyName": {
+                      "type": "string",
+                      "description": "The HubSpot contact property to sort by. Supports both standard and custom property internal names."
+                    }
+                  },
+                  "description": "Defines a sorting criterion for search results, including the property name and sort direction."
+                },
+                "default": [],
+                "examples": [
+                  "{'propertyName': 'lastmodifieddate', 'direction': 'DESCENDING'}",
+                  "{'propertyName': 'email', 'direction': 'ASCENDING'}"
+                ],
+                "description": "A list of sort criteria to apply. Each criterion specifies a contact `propertyName` and a sort `direction`. Example: `[{'propertyName': 'lastname', 'direction': 'ASCENDING'}]` sorts contacts by last name."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  "firstname",
+                  "lastname",
+                  "email",
+                  "hs_object_id",
+                  "custom_field"
+                ],
+                "description": "A list of contact property internal names to include in the response. Supports both standard properties (firstname, email, etc.) and custom properties. If omitted, a default set is returned."
+              },
+              "filterGroups": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "filters"
+                  ],
+                  "properties": {
+                    "filters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "propertyName",
+                          "operator"
+                        ],
+                        "properties": {
+                          "value": {
+                            "type": "string",
+                            "examples": [
+                              "john.doe@example.com",
+                              "New York",
+                              "123",
+                              "1609459200000",
+                              "24h",
+                              "7d"
+                            ],
+                            "description": "The value to compare the property against. Required for most operators (e.g., `EQ`, `LT`). Must NOT be set with `IN`, `NOT_IN`, `HAS_PROPERTY`, `NOT_HAS_PROPERTY` operators. For datetime properties (createdate, lastmodifieddate, etc.), use epoch milliseconds (e.g., '1609459200000'). Relative time strings like '24h', '7d', '24 hours ago' are automatically converted to epoch milliseconds."
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "examples": [
+                              "customer",
+                              "lead",
+                              "subscriber"
+                            ],
+                            "maxItems": 100,
+                            "description": "A list of values for `IN` or `NOT_IN` operations. Required and only used when `operator` is `IN` or `NOT_IN`. Maximum 100 values allowed per filter (HubSpot API constraint). If you need more than 100 values, split into multiple filter groups (groups are ORed, preserving the logic)."
+                          },
+                          "operator": {
+                            "enum": [
+                              "EQ",
+                              "NEQ",
+                              "LT",
+                              "LTE",
+                              "GT",
+                              "GTE",
+                              "BETWEEN",
+                              "IN",
+                              "NOT_IN",
+                              "HAS_PROPERTY",
+                              "NOT_HAS_PROPERTY",
+                              "CONTAINS_TOKEN",
+                              "NOT_CONTAINS_TOKEN"
+                            ],
+                            "type": "string",
+                            "examples": [
+                              "EQ",
+                              "NEQ",
+                              "CONTAINS_TOKEN"
+                            ],
+                            "description": "The operator to use for filtering (e.g., `EQ`, `NEQ`, `LT`, `BETWEEN`, `IN`). Determines how the `propertyName` is compared with `value`, `values`, or `highValue`. See `OperatorEnm` for all options."
+                          },
+                          "highValue": {
+                            "type": "string",
+                            "examples": [
+                              "1000.00",
+                              "2023-12-31"
+                            ],
+                            "description": "The higher bound value for a `BETWEEN` operation. Required and only used when `operator` is `BETWEEN`."
+                          },
+                          "propertyName": {
+                            "type": "string",
+                            "examples": [
+                              "email",
+                              "lifecyclestage",
+                              "annualrevenue",
+                              "hs_object_id",
+                              "custom_field"
+                            ],
+                            "description": "The HubSpot contact property to filter on. Supports both standard properties (email, lifecyclestage, etc.) and custom properties. IMPORTANT: To filter by contact ID, use 'hs_object_id' (not 'id')."
+                          }
+                        },
+                        "description": "Represents a single filter criterion for searching contacts, specifying a property, operator, and value(s)."
+                      },
+                      "description": "A list of filter criteria objects. All filters within this list are combined using AND logic."
+                    }
+                  },
+                  "description": "Defines a group of filters. Filters within a group are ANDed. Multiple filter groups in a search request are ORed."
+                },
+                "default": [],
+                "examples": [
+                  "{'filters': [{'propertyName': 'email', 'operator': 'EQ', 'value': 'test@example.com'}]}",
+                  "{'filters': [{'propertyName': 'lifecyclestage', 'operator': 'IN', 'values': ['lead', 'marketingqualifiedlead']}]}",
+                  "{'filters': [{'propertyName': 'icp_segment', 'operator': 'EQ', 'value': 'Construction'}]}"
+                ],
+                "maxItems": 5,
+                "description": "A list of filter groups. HubSpot enforces strict limits: maximum 5 filterGroups and maximum 18 total filters across all groups combined. Filters within a group are ANDed. Multiple groups are ORed. Use filterGroups to search/filter by ANY property (including custom properties) with precise operators. At least one of 'query' or 'filterGroups' must be provided. For custom property filtering (e.g., icp_segment='Construction'), use filterGroups instead of query. Example: `[{'filters': [{'propertyName': 'icp_segment', 'operator': 'EQ', 'value': 'Construction'}]}]`. If you need more filter groups or filters, split your search into multiple requests."
+              },
+              "custom_properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  "custom_region",
+                  "my_internal_score_field"
+                ],
+                "description": "A list of internal names for custom contact properties to retrieve (e.g., `custom_lead_score`). This is a convenience alias that gets merged into `properties` before the API call - you can also include custom properties directly in the `properties` field instead."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_UPDATE_CONTACT": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_UPDATE_CONTACT",
+          "description": "Updates properties for an existing HubSpot contact.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "contactId"
+            ],
+            "properties": {
+              "contactId": {
+                "type": "string",
+                "examples": [
+                  "12345",
+                  "50021"
+                ],
+                "description": "Unique HubSpot identifier for the contact to be partially updated. Can also be provided as 'contact_id' (snake_case)."
+              },
+              "properties": {
+                "type": "object",
+                "properties": {
+                  "fax": {
+                    "type": "string",
+                    "description": "Fax number."
+                  },
+                  "zip": {
+                    "type": "string",
+                    "description": "Postal/ZIP code of residence."
+                  },
+                  "city": {
+                    "type": "string",
+                    "description": "City of residence."
+                  },
+                  "email": {
+                    "type": "string",
+                    "description": "Primary email address (HubSpot unique identifier by default)."
+                  },
+                  "phone": {
+                    "type": "string",
+                    "description": "Primary phone number."
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "State/region of residence."
+                  },
+                  "degree": {
+                    "type": "string",
+                    "description": "Highest educational degree."
+                  },
+                  "gender": {
+                    "type": "string",
+                    "description": "Gender (e.g., 'Male', 'Female', 'Other')."
+                  },
+                  "school": {
+                    "type": "string",
+                    "description": "School name attended/attending."
+                  },
+                  "address": {
+                    "type": "string",
+                    "description": "Full street address."
+                  },
+                  "company": {
+                    "type": "string",
+                    "description": "Company name."
+                  },
+                  "country": {
+                    "type": "string",
+                    "description": "Country of residence."
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "General message/note, often from form submission."
+                  },
+                  "website": {
+                    "type": "string",
+                    "description": "Personal or company website URL."
+                  },
+                  "industry": {
+                    "type": "string",
+                    "description": "Industry of contact or company."
+                  },
+                  "jobtitle": {
+                    "type": "string",
+                    "description": "Job title."
+                  },
+                  "lastname": {
+                    "type": "string",
+                    "description": "Last name."
+                  },
+                  "firstname": {
+                    "type": "string",
+                    "description": "First name."
+                  },
+                  "seniority": {
+                    "type": "string",
+                    "description": "Seniority level (e.g., 'Entry-level', 'Manager', 'VP')."
+                  },
+                  "salutation": {
+                    "type": "string",
+                    "description": "Salutation (e.g., 'Mr.', 'Ms.', 'Dr.')."
+                  },
+                  "work_email": {
+                    "type": "string",
+                    "description": "Work email address."
+                  },
+                  "mobilephone": {
+                    "type": "string",
+                    "description": "Mobile phone number."
+                  },
+                  "company_size": {
+                    "type": "string",
+                    "description": "Company size (e.g., '1-10 employees', '500+ employees')."
+                  },
+                  "job_function": {
+                    "type": "string",
+                    "description": "Job function or department (e.g., 'Marketing', 'Sales', 'Engineering')."
+                  },
+                  "numemployees": {
+                    "type": "string",
+                    "description": "Number of employees in company (numeric value as string)."
+                  },
+                  "annualrevenue": {
+                    "type": "string",
+                    "description": "Annual revenue (numeric value stored as string)."
+                  },
+                  "date_of_birth": {
+                    "type": "string",
+                    "description": "Date of birth (e.g., 'YYYY-MM-DD')."
+                  },
+                  "field_of_study": {
+                    "type": "string",
+                    "description": "Primary field of academic study."
+                  },
+                  "hs_lead_status": {
+                    "type": "string",
+                    "description": "Lead status. Valid values: NEW, OPEN, IN_PROGRESS, OPEN_DEAL, UNQUALIFIED, ATTEMPTED_TO_CONTACT, CONNECTED, BAD_TIMING."
+                  },
+                  "lifecyclestage": {
+                    "type": "string",
+                    "examples": [
+                      "subscriber",
+                      "lead",
+                      "marketingqualifiedlead",
+                      "salesqualifiedlead",
+                      "opportunity",
+                      "customer",
+                      "evangelist",
+                      "other"
+                    ],
+                    "description": "Current lifecycle stage. Valid values: subscriber, lead, marketingqualifiedlead, salesqualifiedlead, opportunity, customer, evangelist, other."
+                  },
+                  "marital_status": {
+                    "type": "string",
+                    "description": "Marital status (e.g., 'Single', 'Married')."
+                  },
+                  "graduation_date": {
+                    "type": "string",
+                    "description": "Graduation date (e.g., 'YYYY-MM-DD')."
+                  },
+                  "hubspot_owner_id": {
+                    "type": "string",
+                    "description": "ID of the HubSpot user owning this contact."
+                  },
+                  "hs_additional_emails": {
+                    "type": "string",
+                    "description": "Semicolon-separated additional email addresses."
+                  }
+                },
+                "description": "Standard HubSpot contact properties. Use these for common contact fields.",
+                "additionalProperties": false
+              },
+              "custom_properties": {
+                "type": "object",
+                "description": "Custom HubSpot properties to update. Use this for any custom properties you've created in your HubSpot account. Keys must be the internal property names (e.g., 'my_custom_field'). Values must be strings. Use HUBSPOT_LIST_CONTACT_PROPERTIES with custom_only=true to discover available custom property names. These are merged with standard properties before sending to the API.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_GET_WORKFLOWS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_GET_WORKFLOWS",
+          "description": "Retrieves a list of workflow summaries (ID, name, type, status) from HubSpot, using the 'limit' parameter for pagination.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 100,
+                "examples": [
+                  "50",
+                  "200"
+                ],
+                "description": "Maximum number of workflows to retrieve per API call, used for pagination."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_LIST_CONTACTS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_LIST_CONTACTS",
+          "description": "Retrieves a paginated list of HubSpot contacts.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_LIST_CONTACTS"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_LIST_GRANTED_SCOPES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_LIST_GRANTED_SCOPES",
+          "description": "Tool to introspect the current OAuth access token and return its granted scopes and metadata. Use wh...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_LIST_GRANTED_SCOPES"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_GET_WORKFLOW_BY_ID": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_GET_WORKFLOW_BY_ID",
+          "description": "Retrieves comprehensive details for an existing HubSpot workflow by its unique ID; unsupported actio...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_GET_WORKFLOW_BY_ID"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE",
+          "description": "Retrieves definitions and metadata (not actual values) for properties of a specified HubSpot CRM obj...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:44:22.573Z",
+        "current_time_utc_epoch_seconds": 1786563862,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "zulu",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"zulu\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_AnyG_xojQGxR"
+  }
+}

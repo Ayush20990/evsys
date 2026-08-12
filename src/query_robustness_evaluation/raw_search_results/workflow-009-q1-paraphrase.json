@@ -1,0 +1,317 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-009-q1-paraphrase",
+    "workflow_id": 9,
+    "workflow_task": "Create multimedia travel marketing assets from scripts and stock/generative media, then deliver generated files by email and provide downloadable presentation content.",
+    "query": "look up commercial promotional photos",
+    "required_tools": [
+      "COMPOSIO_SEARCH_IMAGE"
+    ],
+    "supporting_tools": [],
+    "rationale": "The agent needs to find visual assets based on the travel marketing script.",
+    "candidate_tools": [
+      "COMPOSIO_SEARCH_IMAGE",
+      "GEMINI_GENERATE_VIDEOS",
+      "GEMINI_WAIT_FOR_VIDEO",
+      "GMAIL_SEND_EMAIL"
+    ],
+    "source_query_id": "workflow-009-q1",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "look up commercial promotional photos"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "look up commercial promotional photos",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Confirm stock-library-only vs broader web sourcing, whether licensing/provenance must be checked, and define 1\u20133 query variants before calling PEXELS_SEARCH_PHOTOS or COMPOSIO_SEARCH_IMAGE.",
+            "[Required] [Step]: Search stock assets using PEXELS_SEARCH_PHOTOS (try query variants/orientation/size) and shortlist direct image file URLs from photo.src.original or photo.src.large2x.",
+            "[Optional (if keyword results miss the desired style)] [Step]: Browse discovery sets using PEXELS_CURATED_PHOTOS to expand candidates and shortlist photo.src.<size> URLs.",
+            "[Optional (if a specific stock asset is selected and you need full metadata/sizes)] [Next Step]: Retrieve details using PEXELS_GET_PHOTO and choose the best photo.src.<size> variant for delivery.",
+            "[Fallback (if PEXELS_SEARCH_PHOTOS is insufficient/unavailable/auth fails, or broader web sourcing is allowed)] [Fallback]: Use COMPOSIO_SEARCH_IMAGE per query variant; paginate for more results and dedupe by images_results[*].original while preferring higher original_width/original_height.",
+            "[Optional (if you must confirm usage terms/attribution for non-stock results)] [Step]: Inspect the source page using COMPOSIO_SEARCH_FETCH_URL_CONTENT from images_results[*].link to locate licensing/terms context."
+          ],
+          "known_pitfalls": [
+            "[PEXELS_SEARCH_PHOTOS] photo.url is a provider page; use photo.src.* for direct image file URLs.",
+            "[PEXELS_SEARCH_PHOTOS] HTTP 401 Unauthorized typically indicates missing/invalid credentials; switch to COMPOSIO_SEARCH_IMAGE.",
+            "[PEXELS_SEARCH_PHOTOS] Large multi-query outputs may look truncated in previews; extract via per-item fields (photos[*].src.*).",
+            "[COMPOSIO_SEARCH_IMAGE] num is capped at 1\u2013100 per call; use pagination to collect more than 100 results.",
+            "[COMPOSIO_SEARCH_IMAGE] Batched results can nest under results[i].response.data.images_results; extract images_results[*].original and related resolution/license fields."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse batched COMPOSIO_SEARCH_IMAGE payloads and keep direct image originals",
+              "code": "```python\nimport json,re\nobj=json.loads(BLOB)\nout=[]\nfor item in obj.get('results',[]):\n  data=((item.get('response') or {}).get('data') or {})\n  for im in (data.get('images_results') or []):\n    u=im.get('original')\n    if u and '?' not in u and re.search(r'\\.(jpe?g|png|webp)$',u,re.I):\n      out.append({'original':u,'link':im.get('link'),'source':im.get('source'),'w':im.get('original_width'),'h':im.get('original_height')})\nprint(out[:20])\n```"
+            },
+            {
+              "description": "Flatten a COMPOSIO_SEARCH_IMAGE response into review rows",
+              "code": "```python\nimport json\nobj=json.loads(BLOB)\ndata=((obj.get('results') or [{}])[0].get('response') or {}).get('data') or {}\nimgs=data.get('images_results') or []\nrows=[{'title':i.get('title'),'source':i.get('source'),'original':i.get('original'),'link':i.get('link'),'w':i.get('original_width'),'h':i.get('original_height'),'license':i.get('license_details_url')} for i in imgs]\nprint(rows[:10])\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "PEXELS_SEARCH_PHOTOS",
+            "COMPOSIO_SEARCH_IMAGE"
+          ],
+          "related_tool_slugs": [
+            "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+            "PEXELS_GET_PHOTO",
+            "PEXELS_CURATED_PHOTOS"
+          ],
+          "toolkits": [
+            "composio_search",
+            "pexels"
+          ],
+          "plan_id": "c758e08f28d543e8b3a55fafacd1aa5e"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "composio_search",
+          "has_active_connection": true,
+          "description": "Composio Search provides comprehensive web search across travel (flights, hotels, events), e-commerce (Amazon, Walmart, shopping), financial markets, news, academic research, images, and location services.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        },
+        {
+          "toolkit": "pexels",
+          "has_active_connection": false,
+          "description": "Pexels offers a free API that provides access to a vast library of high-quality photos and videos, enabling seamless integration into applications and websites.",
+          "status_message": "No Active connection for toolkit=pexels. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"pexels\") to create a connection BEFORE executing any pexels tools."
+        }
+      ],
+      "tool_schemas": {
+        "PEXELS_SEARCH_PHOTOS": {
+          "toolkit": "PEXELS",
+          "tool_slug": "PEXELS_SEARCH_PHOTOS",
+          "description": "Tool to search for photos on Pexels. Use when you need to retrieve photos by a search term and optional filters. Call after confirming you have a valid Pexels API key. Response image URLs are nested under `photo.src.<size>` (e.g., `photo.src.original`, `photo.src.landscape`, `photo.src.medium`); the top-level `url` field is not sufficient for accessing specific image sizes.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "minimum": 1,
+                "examples": [
+                  1
+                ],
+                "description": "Page number of results to retrieve, must be >= 1."
+              },
+              "size": {
+                "enum": [
+                  "large",
+                  "medium",
+                  "small"
+                ],
+                "type": "string",
+                "examples": [
+                  "medium"
+                ],
+                "description": "Filter by photo size."
+              },
+              "color": {
+                "type": "string",
+                "examples": [
+                  "#FF5733"
+                ],
+                "description": "Filter by photo color. Accepts standard color names or hex codes, e.g., 'red' or '#00ff00'."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Nature"
+                ],
+                "description": "Search term to find photos. Use specific, descriptive terms (e.g., 'plated chicken overhead shot' instead of 'chicken') to improve result relevance."
+              },
+              "locale": {
+                "type": "string",
+                "examples": [
+                  "en-US"
+                ],
+                "description": "Language locale for search results, e.g., 'en-US', 'pt-BR'."
+              },
+              "per_page": {
+                "type": "integer",
+                "default": 15,
+                "maximum": 80,
+                "minimum": 1,
+                "examples": [
+                  15
+                ],
+                "description": "Number of results per page (1-80). Defaults to 15."
+              },
+              "orientation": {
+                "enum": [
+                  "landscape",
+                  "portrait",
+                  "square"
+                ],
+                "type": "string",
+                "examples": [
+                  "landscape"
+                ],
+                "description": "Filter by photo orientation."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_IMAGE": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_IMAGE",
+          "description": "The ImageSearch class performs an image search using the Composio Image Search API, targeting image metadata and URLs (not binary data) via Google Images. Returns results under `results.images_results`; each entry exposes `original` (full resolution) and `thumbnail` (low resolution) URLs \u2014 verify URLs are publicly accessible before passing downstream. Check `license_details_url` per result before commercial reuse. The number of results is controlled by `num` (1\u2013100, default 20). For >100 images, paginate using `serpapi_pagination.next`. Rate limit: throttle to ~1\u20132 calls/second; apply exponential backoff on HTTP 429.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "ijn": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Image page number for pagination. Starts at 0 (first page). Each page returns up to 100 results. Use incrementing values (0, 1, 2, ...) to retrieve additional pages."
+              },
+              "num": {
+                "type": "integer",
+                "default": 20,
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  20,
+                  50
+                ],
+                "description": "Number of image results to return. Defaults to 20 if not specified. Google typically returns up to 100 results."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Apple"
+                ],
+                "description": "The search query for the Composio Image Search API, specifying the image topic."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_FETCH_URL_CONTENT": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+          "description": "Fetch and extract clean, readable page text (markdown) from public web pages (HTML content) using the Exa API. Use when you need to retrieve actual content from search results or documentation links to extract setup steps, requirements, or citations. Only works with web page URLs - does not support direct links to images, PDFs, or other binary files.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "urls"
+            ],
+            "properties": {
+              "text": {
+                "type": "boolean",
+                "default": true,
+                "description": "Include extracted markdown text content from the page. Defaults to true."
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "https://example.com/article",
+                    "https://docs.python.org/"
+                  ]
+                ],
+                "description": "List of public URLs to web pages (HTML content) to fetch content from. URLs must be valid and publicly accessible. Do not use direct links to images (.jpg, .png, .gif), PDFs, or other binary files - use web page URLs only. Also accepts a single URL string."
+              },
+              "extras": {
+                "type": "object",
+                "description": "Additional content options like imageLinks or links counts (e.g., {'imageLinks': 3, 'links': 5}).",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "summary": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Include AI-generated summary of the page content. Can be boolean or object with query/schema options."
+              },
+              "max_characters": {
+                "type": "integer",
+                "description": "Maximum number of characters to extract from each page. Maps to text.maxCharacters in Exa API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "PEXELS_GET_PHOTO": {
+          "toolkit": "PEXELS",
+          "tool_slug": "PEXELS_GET_PHOTO",
+          "description": "Tool to retrieve detailed information about a specific photo. Use when you have a valid photo ID to ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "PEXELS_GET_PHOTO"
+              ]
+            }
+          }
+        },
+        "PEXELS_CURATED_PHOTOS": {
+          "toolkit": "PEXELS",
+          "tool_slug": "PEXELS_CURATED_PHOTOS",
+          "description": "Tool to get real-time curated photos. Use when you need to fetch curated photos with pagination supp...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "PEXELS_CURATED_PHOTOS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:48:17.538Z",
+        "current_time_utc_epoch_seconds": 1786564097,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "leaf",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"leaf\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) You may call COMPOSIO_MANAGE_CONNECTIONS: Some toolkits lack active connections",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_tPqv3uRo1Trb"
+  }
+}

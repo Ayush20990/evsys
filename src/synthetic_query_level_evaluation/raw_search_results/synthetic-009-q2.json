@@ -1,0 +1,459 @@
+{
+  "query_ground_truth": {
+    "query_id": "synthetic-009-q2",
+    "workflow_id": "synthetic-009",
+    "workflow_task": "As part of our annual CRM and marketing cleanup, we need to retire obsolete data across platforms. First, I need to look up all the LinkedIn company pages and organizations where my account holds administrative roles so we know which brand spaces are active. Then, I need to clean out several outdated products from our product catalog and remove a batch of old promotional email records that are no longer needed for compliance archiving.",
+    "query": "Archive the outdated product catalog items by their specific product IDs in HubSpot.",
+    "required_tools": [
+      "HUBSPOT_ARCHIVE_PRODUCTS"
+    ],
+    "supporting_tools": [],
+    "rationale": "Targets the HubSpot product archiving function to remove obsolete inventory items.",
+    "candidate_tools": [
+      "HUBSPOT_ARCHIVE_EMAILS",
+      "LINKEDIN_GET_COMPANY_INFO",
+      "HUBSPOT_ARCHIVE_PROPERTY_BY_OBJECT_TYPE_AND_NAME",
+      "HUBSPOT_ARCHIVE_PRODUCTS"
+    ],
+    "candidate_toolkits": [
+      "hubspot",
+      "linkedin"
+    ],
+    "plausibility_score": 5
+  },
+  "request": {
+    "query": "Archive the outdated product catalog items by their specific product IDs in HubSpot."
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Archive the outdated product catalog items by their specific product IDs in HubSpot.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (for safety before irreversible change)] [Prerequisite]: Verify the target record using HUBSPOT_READ_CRM_OBJECT_BY_ID (confirm object type aligns to the internal objectId, then get explicit user confirmation).",
+            "[Fallback (if objectId is unknown)] [Fallback]: Locate candidate records using HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA (paginate via data.paging.next.after) or HUBSPOT_READ_APAGE_OF_OBJECTS_BY_TYPE (browse to collect IDs); for contacts specifically, HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA can be used.",
+            "[Required] [Step]: Archive/delete the record using HUBSPOT_ARCHIVE_CRM_OBJECT_BY_ID (requires correct objectType + objectId).",
+            "[Optional (if archiving many records of one type)] [Next Step]: Archive in bulk using HUBSPOT_ARCHIVE_BATCH_OF_OBJECTS (single objectType; chunk ~100 IDs per call).",
+            "[Optional (for verification after archive/batch)] [Next Step]: Confirm outcome using HUBSPOT_READ_CRM_OBJECT_BY_ID (expect not-found when archived=false; optionally re-check with archived=true or re-run HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA to ensure it no longer appears)."
+          ],
+          "known_pitfalls": [
+            "[HUBSPOT_ARCHIVE_CRM_OBJECT_BY_ID] Risk of archiving the wrong record if objectType is incorrect\u2014do not guess types.",
+            "[HUBSPOT_READ_CRM_OBJECT_BY_ID] Not-found can indicate an external identifier was used; ensure the internal CRM objectId is supplied.",
+            "[HUBSPOT_READ_CRM_OBJECT_BY_ID] After archiving, reading with archived=false may return not-found rather than an object marked archived.",
+            "[HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA] Large result sets require pagination via data.paging.next.after; searches can return multiple matches requiring careful selection.",
+            "[HUBSPOT_ARCHIVE_BATCH_OF_OBJECTS] One objectType per call; chunking (~100) and deduping avoids validation/duplicate issues, and responses may not include clear per-record outcomes."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Pagination pattern for HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA using paging.next.after",
+              "code": "```python\nafter=None\nitems=[]\nfor _ in range(max_pages):\n  params={\"objectType\":\"objects\",\"limit\":100,\"filterGroups\":[{\"filters\":[{\"propertyName\":\"property\",\"operator\":\"EQ\",\"value\":value}]}]}\n  if after: params[\"after\"]=after\n  r=run_composio_tool(\"HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA\",params)[0]\n  items+=r[\"data\"].get(\"results\",[])\n  after=r[\"data\"].get(\"paging\",{}).get(\"next\",{}).get(\"after\")\n  if not after: break\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "HUBSPOT_ARCHIVE_CRM_OBJECT_BY_ID"
+          ],
+          "related_tool_slugs": [
+            "HUBSPOT_READ_CRM_OBJECT_BY_ID",
+            "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+            "HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA",
+            "HUBSPOT_ARCHIVE_BATCH_OF_OBJECTS",
+            "HUBSPOT_READ_APAGE_OF_OBJECTS_BY_TYPE"
+          ],
+          "toolkits": [
+            "hubspot"
+          ],
+          "plan_id": "a865acb9490541a9aeb32af2ff9bb0fd"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "hubspot",
+          "has_active_connection": false,
+          "description": "HubSpot is an inbound marketing, sales, and customer service platform integrating CRM, email automation, and analytics to facilitate lead nurturing and seamless customer experiences",
+          "status_message": "No Active connection for toolkit=hubspot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"hubspot\") to create a connection BEFORE executing any hubspot tools."
+        }
+      ],
+      "tool_schemas": {
+        "HUBSPOT_ARCHIVE_CRM_OBJECT_BY_ID": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_ARCHIVE_CRM_OBJECT_BY_ID",
+          "description": "Archives a specific HubSpot CRM object by its type and ID, moving it to the recycling bin; this action is irreversible via the API but objects can often be restored via the HubSpot UI.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "objectType",
+              "objectId"
+            ],
+            "properties": {
+              "objectId": {
+                "type": "string",
+                "examples": [
+                  "1234567",
+                  "ff91c2e8-e494-4a7c-8787-98285b4c6c76"
+                ],
+                "description": "The unique identifier for the CRM object to be archived. This ID must correspond to an existing object of the specified `objectType`. The format is typically a string of numbers or a UUID. Ensure the correct ID is provided as this operation is irreversible via the API."
+              },
+              "objectType": {
+                "type": "string",
+                "examples": [
+                  "contacts",
+                  "companies",
+                  "deals",
+                  "quotes"
+                ],
+                "description": "The type of CRM object to be archived. This value is case-sensitive, must be a valid HubSpot CRM object type (e.g., contacts, companies, deals, quotes), and should be provided in lowercase plural form (e.g., 'contacts', not 'Contact')."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_READ_CRM_OBJECT_BY_ID": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_CRM_OBJECT_BY_ID",
+          "description": "Retrieves a specific CRM object (e.g., contact, company, deal, ticket) by its ID or a unique property, optionally including specific properties, history, and associations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "objectType",
+              "objectId"
+            ],
+            "properties": {
+              "archived": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Set to `true` to retrieve only archived objects. Defaults to `false` (non-archived objects)."
+              },
+              "objectId": {
+                "type": "string",
+                "examples": [
+                  "123456789",
+                  "my-custom-deal-id"
+                ],
+                "description": "The unique identifier of the CRM object, or the value of the unique property if `idProperty` is specified. Accepts both string and numeric values (numeric IDs are converted to strings automatically)."
+              },
+              "idProperty": {
+                "type": "string",
+                "examples": [
+                  "email",
+                  "domain",
+                  "hs_unique_creation_key"
+                ],
+                "description": "The name of a unique property (e.g., 'email' for contacts, 'domain' for companies) to use for lookup instead of the internal object ID. If omitted, the internal object ID is used."
+              },
+              "objectType": {
+                "type": "string",
+                "examples": [
+                  "contacts",
+                  "companies",
+                  "deals",
+                  "tickets"
+                ],
+                "description": "The type of CRM object to retrieve. Valid standard object types are: 'contacts', 'companies', 'deals', 'tickets', 'line_items', 'products', 'quotes', 'calls', 'emails', 'meetings', 'notes', 'tasks', 'postal_mail', 'communications', 'feedback_submissions', 'goals', 'leads', 'invoices', 'subscriptions', 'orders', 'payments', 'carts', 'appointments', 'courses', 'listings', 'services', 'users'. You can also use numeric object type IDs (e.g., '0-1' for contacts, '0-2' for companies, '0-3' for deals, '0-5' for tickets). For custom objects, use 'p_{internal_name}' format or the objectTypeId (e.g., '2-12345'). Note: 'owners' is NOT a valid object type - use the dedicated Owners API instead."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "firstname",
+                  "lastname",
+                  "email",
+                  "dealstage"
+                ],
+                "description": "A list of property names to include in the response. Non-existent properties are ignored. If omitted, a default set of properties is returned."
+              },
+              "associations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "contacts",
+                  "companies",
+                  "deals"
+                ],
+                "description": "A list of object types (e.g., 'contacts', 'companies') for which to retrieve associated IDs (e.g., to get associated companies for a contact). Non-existent associations are ignored."
+              },
+              "propertiesWithHistory": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "dealstage",
+                  "lifecyclestage",
+                  "lead_status"
+                ],
+                "description": "A list of property names to retrieve value history for, showing changes over time. Non-existent properties or those without history are ignored."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+          "description": "Searches for HubSpot contacts using a text query, specific filter criteria (filters in a group are ANDed, groups are ORed), sorting, and pagination to retrieve selected properties.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "description": "The cursor token for pagination. Use the `after` value from the `paging.next` object of a previous response to fetch the next set of results. If `None` or an empty string, it fetches the first page."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 5,
+                "maximum": 200,
+                "examples": [
+                  10,
+                  25,
+                  100
+                ],
+                "description": "The maximum number of contacts to return."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "John Doe",
+                  "Acme Corp",
+                  "support@example.com"
+                ],
+                "description": "A string to search across HubSpot's default searchable contact properties ONLY: firstname, lastname, email, phone, hs_additional_emails, hs_object_id, hs_searchable_calculated_phone_number, company. IMPORTANT: This does NOT search custom properties. To search/filter by custom properties (e.g., 'icp_segment', 'lead_source'), use filterGroups with specific property filters instead. At least one of 'query' or 'filterGroups' must be provided."
+              },
+              "sorts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "propertyName",
+                    "direction"
+                  ],
+                  "properties": {
+                    "direction": {
+                      "enum": [
+                        "ASCENDING",
+                        "DESCENDING"
+                      ],
+                      "type": "string",
+                      "description": "The direction for sorting (`ASCENDING` or `DESCENDING`). See `DirectionEnm` for options."
+                    },
+                    "propertyName": {
+                      "type": "string",
+                      "description": "The HubSpot contact property to sort by. Supports both standard and custom property internal names."
+                    }
+                  },
+                  "description": "Defines a sorting criterion for search results, including the property name and sort direction."
+                },
+                "default": [],
+                "examples": [
+                  "{'propertyName': 'lastmodifieddate', 'direction': 'DESCENDING'}",
+                  "{'propertyName': 'email', 'direction': 'ASCENDING'}"
+                ],
+                "description": "A list of sort criteria to apply. Each criterion specifies a contact `propertyName` and a sort `direction`. Example: `[{'propertyName': 'lastname', 'direction': 'ASCENDING'}]` sorts contacts by last name."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  "firstname",
+                  "lastname",
+                  "email",
+                  "hs_object_id",
+                  "custom_field"
+                ],
+                "description": "A list of contact property internal names to include in the response. Supports both standard properties (firstname, email, etc.) and custom properties. If omitted, a default set is returned."
+              },
+              "filterGroups": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "filters"
+                  ],
+                  "properties": {
+                    "filters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "propertyName",
+                          "operator"
+                        ],
+                        "properties": {
+                          "value": {
+                            "type": "string",
+                            "examples": [
+                              "john.doe@example.com",
+                              "New York",
+                              "123",
+                              "1609459200000",
+                              "24h",
+                              "7d"
+                            ],
+                            "description": "The value to compare the property against. Required for most operators (e.g., `EQ`, `LT`). Must NOT be set with `IN`, `NOT_IN`, `HAS_PROPERTY`, `NOT_HAS_PROPERTY` operators. For datetime properties (createdate, lastmodifieddate, etc.), use epoch milliseconds (e.g., '1609459200000'). Relative time strings like '24h', '7d', '24 hours ago' are automatically converted to epoch milliseconds."
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "examples": [
+                              "customer",
+                              "lead",
+                              "subscriber"
+                            ],
+                            "maxItems": 100,
+                            "description": "A list of values for `IN` or `NOT_IN` operations. Required and only used when `operator` is `IN` or `NOT_IN`. Maximum 100 values allowed per filter (HubSpot API constraint). If you need more than 100 values, split into multiple filter groups (groups are ORed, preserving the logic)."
+                          },
+                          "operator": {
+                            "enum": [
+                              "EQ",
+                              "NEQ",
+                              "LT",
+                              "LTE",
+                              "GT",
+                              "GTE",
+                              "BETWEEN",
+                              "IN",
+                              "NOT_IN",
+                              "HAS_PROPERTY",
+                              "NOT_HAS_PROPERTY",
+                              "CONTAINS_TOKEN",
+                              "NOT_CONTAINS_TOKEN"
+                            ],
+                            "type": "string",
+                            "examples": [
+                              "EQ",
+                              "NEQ",
+                              "CONTAINS_TOKEN"
+                            ],
+                            "description": "The operator to use for filtering (e.g., `EQ`, `NEQ`, `LT`, `BETWEEN`, `IN`). Determines how the `propertyName` is compared with `value`, `values`, or `highValue`. See `OperatorEnm` for all options."
+                          },
+                          "highValue": {
+                            "type": "string",
+                            "examples": [
+                              "1000.00",
+                              "2023-12-31"
+                            ],
+                            "description": "The higher bound value for a `BETWEEN` operation. Required and only used when `operator` is `BETWEEN`."
+                          },
+                          "propertyName": {
+                            "type": "string",
+                            "examples": [
+                              "email",
+                              "lifecyclestage",
+                              "annualrevenue",
+                              "hs_object_id",
+                              "custom_field"
+                            ],
+                            "description": "The HubSpot contact property to filter on. Supports both standard properties (email, lifecyclestage, etc.) and custom properties. IMPORTANT: To filter by contact ID, use 'hs_object_id' (not 'id')."
+                          }
+                        },
+                        "description": "Represents a single filter criterion for searching contacts, specifying a property, operator, and value(s)."
+                      },
+                      "description": "A list of filter criteria objects. All filters within this list are combined using AND logic."
+                    }
+                  },
+                  "description": "Defines a group of filters. Filters within a group are ANDed. Multiple filter groups in a search request are ORed."
+                },
+                "default": [],
+                "examples": [
+                  "{'filters': [{'propertyName': 'email', 'operator': 'EQ', 'value': 'test@example.com'}]}",
+                  "{'filters': [{'propertyName': 'lifecyclestage', 'operator': 'IN', 'values': ['lead', 'marketingqualifiedlead']}]}",
+                  "{'filters': [{'propertyName': 'icp_segment', 'operator': 'EQ', 'value': 'Construction'}]}"
+                ],
+                "maxItems": 5,
+                "description": "A list of filter groups. HubSpot enforces strict limits: maximum 5 filterGroups and maximum 18 total filters across all groups combined. Filters within a group are ANDed. Multiple groups are ORed. Use filterGroups to search/filter by ANY property (including custom properties) with precise operators. At least one of 'query' or 'filterGroups' must be provided. For custom property filtering (e.g., icp_segment='Construction'), use filterGroups instead of query. Example: `[{'filters': [{'propertyName': 'icp_segment', 'operator': 'EQ', 'value': 'Construction'}]}]`. If you need more filter groups or filters, split your search into multiple requests."
+              },
+              "custom_properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  "custom_region",
+                  "my_internal_score_field"
+                ],
+                "description": "A list of internal names for custom contact properties to retrieve (e.g., `custom_lead_score`). This is a convenience alias that gets merged into `properties` before the API call - you can also include custom properties directly in the `properties` field instead."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA",
+          "description": "Searches HubSpot CRM objects (e.g., 'contacts', 'companies') by `objectType` using complex criteria ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_ARCHIVE_BATCH_OF_OBJECTS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_ARCHIVE_BATCH_OF_OBJECTS",
+          "description": "Archives a batch of existing, non-archived CRM objects of a specified `objectType` by their IDs, eff...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_ARCHIVE_BATCH_OF_OBJECTS"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_READ_APAGE_OF_OBJECTS_BY_TYPE": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_APAGE_OF_OBJECTS_BY_TYPE",
+          "description": "Retrieves a paginated list of objects for a specified and valid HubSpot CRM object type (e.g., 'cont...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_READ_APAGE_OF_OBJECTS_BY_TYPE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T20:09:02.243Z",
+        "current_time_utc_epoch_seconds": 1786565342,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "thou",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"thou\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_psz_QdJgRq_4"
+  }
+}

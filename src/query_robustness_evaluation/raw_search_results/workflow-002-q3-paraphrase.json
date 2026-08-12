@@ -1,0 +1,629 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-002-q3-paraphrase",
+    "workflow_id": 2,
+    "workflow_task": "Retrieve upcoming Google Calendar meeting events and create or update Notion content containing a large structured dataset, with verification after writing.",
+    "query": "check the existing data against what is currently written on the page",
+    "required_tools": [
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_GET_PAGE_MARKDOWN"
+    ],
+    "supporting_tools": [],
+    "rationale": "Searches for tools to read back and verify the content that was just written to the Notion page.",
+    "candidate_tools": [
+      "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_CREATE_NOTION_PAGE",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_REPLACE_PAGE_CONTENT",
+      "NOTION_RETRIEVE_PAGE"
+    ],
+    "source_query_id": "workflow-002-q3",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "check the existing data against what is currently written on the page"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "check the existing data against what is currently written on the page",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "Optional (if you need to discover URLs first) Prerequisite: Generate a deduped URL list using FIRECRAWL_MAP_MULTIPLE_URLS_BASED_ON_OPTIONS (seed crawl targets).",
+            "Required Step 1: Start parallel scraping using FIRECRAWL_BATCH_SCRAPE (capture HTTP status + content and, if needed, outbound links for issue checks).",
+            "Required Step 2: Poll and retrieve completed results using FIRECRAWL_BATCH_SCRAPE_GET (review data[].metadata.statusCode plus any data[].metadata.error to flag page-level issues).",
+            "Required Step 3: Retrieve batch failures using FIRECRAWL_BATCH_SCRAPE_GET_ERRORS (include timeouts/blocked/robotsBlocked in the final issue report).",
+            "Optional Fallback (if a specific URL fails or batch scrape isn\u2019t suitable) Fallback: Fetch that page using WEBSCRAPING_AI_GET_HTML (single-URL raw HTML check).",
+            "Optional Next Step (if you need broader coverage beyond the initial list) Next Step: Expand with FIRECRAWL_CRAWL and review failures using FIRECRAWL_CRAWL_GET_ERRORS.",
+            "Optional Next Step (if scraping large sets or using heavy formats) Next Step: Monitor quota/spend using FIRECRAWL_CREDIT_USAGE (avoid unexpected credit exhaustion)."
+          ],
+          "known_pitfalls": [
+            "[FIRECRAWL_BATCH_SCRAPE] Returns a batch job id (and may include invalidURLs); page data is only available after FIRECRAWL_BATCH_SCRAPE_GET.",
+            "[FIRECRAWL_BATCH_SCRAPE_GET] Jobs can be \"completed\" while individual pages still show problems in data[].metadata.error or non-200 data[].metadata.statusCode\u2014check per-page metadata.",
+            "[FIRECRAWL_BATCH_SCRAPE_GET] Large payloads when collecting content + links across many URLs can be difficult to handle in one response; plan to process incrementally/offline if needed.",
+            "[FIRECRAWL_BATCH_SCRAPE_GET_ERRORS] Can be empty even when some pages return non-200; use it for batch-level failures and rely on per-page statusCode for completeness.",
+            "[FIRECRAWL_CREDIT_USAGE] Credit-based quotas can be exhausted unexpectedly on large batches or rich formats; monitor before scaling up retries on blocked sites."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse a large FIRECRAWL_BATCH_SCRAPE_GET response to list non-200 pages and count status codes",
+              "code": "```python\nimport json\nr=json.load(open('/path/to/batch_scrape_get.json'))\nd=r['results'][0]['response']['data']['data']\nrows=[(x['metadata'].get('url'),x['metadata'].get('statusCode'),x['metadata'].get('error')) for x in d]\nnon200=[t for t in rows if isinstance(t[1],int) and t[1]!=200]\ncounts={}\nfor _,sc,_ in rows: counts[sc]=counts.get(sc,0)+1\n(non200[:50],counts)\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "FIRECRAWL_BATCH_SCRAPE",
+            "FIRECRAWL_BATCH_SCRAPE_GET",
+            "FIRECRAWL_BATCH_SCRAPE_GET_ERRORS"
+          ],
+          "related_tool_slugs": [
+            "FIRECRAWL_MAP_MULTIPLE_URLS_BASED_ON_OPTIONS",
+            "FIRECRAWL_CRAWL",
+            "FIRECRAWL_CRAWL_GET_ERRORS",
+            "WEBSCRAPING_AI_GET_HTML",
+            "FIRECRAWL_CREDIT_USAGE"
+          ],
+          "toolkits": [
+            "firecrawl",
+            "webscraping_ai"
+          ],
+          "plan_id": "9c34d5a3411541d386b648a4c7a54b5f"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "firecrawl",
+          "has_active_connection": false,
+          "description": "Firecrawl automates web crawling and data extraction, enabling organizations to gather content, index sites, and gain insights from online sources at scale",
+          "status_message": "No Active connection for toolkit=firecrawl. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"firecrawl\") to create a connection BEFORE executing any firecrawl tools."
+        },
+        {
+          "toolkit": "webscraping_ai",
+          "has_active_connection": false,
+          "description": "WebScraping.AI provides an API for web scraping with features like Chrome JS rendering, rotating proxies, and HTML parsing.",
+          "status_message": "No Active connection for toolkit=webscraping_ai. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"webscraping_ai\") to create a connection BEFORE executing any webscraping_ai tools."
+        }
+      ],
+      "tool_schemas": {
+        "FIRECRAWL_BATCH_SCRAPE": {
+          "toolkit": "FIRECRAWL",
+          "tool_slug": "FIRECRAWL_BATCH_SCRAPE",
+          "description": "Tool to scrape multiple URLs in batch with concurrent processing. Use when you need to scrape multiple web pages efficiently with customizable formats and content filtering.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "urls"
+            ],
+            "properties": {
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "https://example.com",
+                    "https://www.firecrawl.dev"
+                  ],
+                  [
+                    "https://docs.firecrawl.dev/api-reference/endpoint/batch-scrape"
+                  ]
+                ],
+                "minItems": 1,
+                "description": "The URLs to be scraped in batch. At least one URL is required."
+              },
+              "proxy": {
+                "enum": [
+                  "basic",
+                  "stealth",
+                  "auto"
+                ],
+                "type": "string",
+                "examples": [
+                  "basic",
+                  "stealth",
+                  "auto"
+                ],
+                "description": "Proxy type to use for requests."
+              },
+              "maxAge": {
+                "type": "integer",
+                "examples": [
+                  0,
+                  3600000,
+                  172800000
+                ],
+                "description": "Cache validity period in milliseconds. Default is 2 days."
+              },
+              "mobile": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, emulate a mobile device when scraping. Defaults to false."
+              },
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "examples": [
+                        "Enter",
+                        "Escape",
+                        "Tab"
+                      ],
+                      "description": "Key to press (e.g., 'Enter', 'Escape')."
+                    },
+                    "text": {
+                      "type": "string",
+                      "examples": [
+                        "Hello world",
+                        "user@example.com"
+                      ],
+                      "description": "Text to be typed into an element."
+                    },
+                    "type": {
+                      "type": "string",
+                      "examples": [
+                        "click",
+                        "write",
+                        "wait",
+                        "press",
+                        "scroll"
+                      ],
+                      "description": "The type of browser action to perform on the page before scraping. Supported actions: 'wait', 'click', 'screenshot', 'write', 'press', 'scroll'."
+                    },
+                    "selector": {
+                      "type": "string",
+                      "examples": [
+                        "#submit-button",
+                        ".product-title"
+                      ],
+                      "description": "CSS selector for the HTML element targeted by the action."
+                    },
+                    "milliseconds": {
+                      "type": "integer",
+                      "examples": [
+                        500,
+                        1000,
+                        2000
+                      ],
+                      "description": "Duration in milliseconds for the action."
+                    }
+                  },
+                  "description": "Action to perform on the page"
+                },
+                "description": "Browser actions to perform on each page before scraping."
+              },
+              "formats": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "markdown",
+                    "html",
+                    "rawHtml",
+                    "links",
+                    "screenshot",
+                    "json",
+                    "screenshot@fullPage"
+                  ],
+                  "type": "string"
+                },
+                "default": [
+                  "markdown"
+                ],
+                "examples": [
+                  [
+                    "markdown"
+                  ],
+                  [
+                    "html",
+                    "screenshot"
+                  ],
+                  [
+                    "json"
+                  ]
+                ],
+                "description": "Desired output formats for the scraped content. Defaults to ['markdown']."
+              },
+              "headers": {
+                "type": "object",
+                "examples": [
+                  {
+                    "User-Agent": "CustomBot/1.0"
+                  }
+                ],
+                "description": "Custom HTTP headers to send with each request.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "timeout": {
+                "type": "integer",
+                "examples": [
+                  5000,
+                  30000,
+                  60000
+                ],
+                "description": "Request timeout in milliseconds."
+              },
+              "waitFor": {
+                "type": "integer",
+                "default": 0,
+                "examples": [
+                  0,
+                  1000,
+                  5000
+                ],
+                "description": "Delay in milliseconds before content retrieval. Useful for pages with dynamic content. Defaults to 0."
+              },
+              "webhook": {
+                "type": "object",
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "examples": [
+                      "https://api.example.com/webhook/firecrawl"
+                    ],
+                    "description": "Destination URL for webhook notifications."
+                  },
+                  "events": {
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "completed",
+                        "page",
+                        "failed",
+                        "started"
+                      ],
+                      "type": "string"
+                    },
+                    "examples": [
+                      [
+                        "completed",
+                        "failed"
+                      ],
+                      [
+                        "page"
+                      ]
+                    ],
+                    "description": "Event types to trigger webhook notifications."
+                  },
+                  "headers": {
+                    "type": "object",
+                    "examples": [
+                      {
+                        "Authorization": "Bearer token123"
+                      }
+                    ],
+                    "description": "Custom headers to include in webhook requests.",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "examples": [
+                      {
+                        "job_id": "abc123",
+                        "user_id": "user456"
+                      }
+                    ],
+                    "description": "Custom metadata to include in webhook payloads.",
+                    "additionalProperties": true
+                  }
+                },
+                "description": "Webhook configuration for batch scrape notifications",
+                "additionalProperties": false
+              },
+              "blockAds": {
+                "type": "boolean",
+                "default": true,
+                "description": "If true, block advertisements during scraping. Defaults to true."
+              },
+              "location": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string",
+                    "default": "US",
+                    "examples": [
+                      "US",
+                      "AU",
+                      "DE",
+                      "JP"
+                    ],
+                    "description": "ISO 3166-1 alpha-2 country code to make the request from."
+                  },
+                  "languages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "examples": [
+                      [
+                        "en-US",
+                        "en"
+                      ],
+                      [
+                        "fr-CA",
+                        "fr"
+                      ],
+                      [
+                        "de-DE"
+                      ]
+                    ],
+                    "description": "List of preferred languages and locales for the request, in order of priority."
+                  }
+                },
+                "description": "Location settings for the request",
+                "additionalProperties": false
+              },
+              "excludeTags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "script",
+                    "style"
+                  ],
+                  [
+                    "nav",
+                    "footer"
+                  ]
+                ],
+                "description": "HTML tags to specifically exclude from the output."
+              },
+              "includeTags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "h1",
+                    "p"
+                  ],
+                  [
+                    "article",
+                    "section"
+                  ]
+                ],
+                "description": "HTML tags to specifically include in the output."
+              },
+              "storeInCache": {
+                "type": "boolean",
+                "default": true,
+                "description": "If true, store scraped content in cache for future use. Defaults to true."
+              },
+              "maxConcurrency": {
+                "type": "integer",
+                "examples": [
+                  5,
+                  10,
+                  20
+                ],
+                "description": "Maximum number of concurrent scrape operations. Controls how many URLs are scraped simultaneously."
+              },
+              "onlyMainContent": {
+                "type": "boolean",
+                "default": true,
+                "description": "If true, extract only the main content, excluding headers, footers, navigation bars, and ads. Defaults to true."
+              },
+              "ignoreInvalidURLs": {
+                "type": "boolean",
+                "default": true,
+                "description": "If true, skip invalid URLs instead of failing the entire batch. Defaults to true."
+              },
+              "zeroDataRetention": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, do not retain any scraped data. Defaults to false."
+              },
+              "removeBase64Images": {
+                "type": "boolean",
+                "default": true,
+                "description": "If true, remove base64-encoded images from the scraped content. Defaults to true."
+              },
+              "skipTlsVerification": {
+                "type": "boolean",
+                "default": true,
+                "description": "If true, skip TLS certificate verification. Defaults to true."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FIRECRAWL_BATCH_SCRAPE_GET": {
+          "toolkit": "FIRECRAWL",
+          "tool_slug": "FIRECRAWL_BATCH_SCRAPE_GET",
+          "description": "Retrieves the current status and results of a batch scrape job using the job ID. Use this to check batch scrape progress and retrieve scraped data.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "examples": [
+                  "019b0806-d718-767a-bbde-6e6d9f25d961"
+                ],
+                "description": "The ID of the batch scrape job. Must be a valid UUID format obtained when the batch scrape was initiated."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FIRECRAWL_BATCH_SCRAPE_GET_ERRORS": {
+          "toolkit": "FIRECRAWL",
+          "tool_slug": "FIRECRAWL_BATCH_SCRAPE_GET_ERRORS",
+          "description": "Tool to retrieve error details from a batch scrape job, including failed URLs and URLs blocked by robots.txt. Use when you need to debug or understand why certain pages failed to scrape in a batch operation.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "examples": [
+                  "019b0806-593a-728c-acca-a75e6c7c2db4"
+                ],
+                "description": "Unique identifier (UUID) of the batch scrape job."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FIRECRAWL_MAP_MULTIPLE_URLS_BASED_ON_OPTIONS": {
+          "toolkit": "FIRECRAWL",
+          "tool_slug": "FIRECRAWL_MAP_MULTIPLE_URLS_BASED_ON_OPTIONS",
+          "description": "Maps a website by discovering URLs from a starting base URL, with options to customize the crawl via search query, subdomain inclusion, sitemap handling, and result limits; search effectiveness is site-dependent.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "pattern": "^https?://[^\\s]+$",
+                "examples": [
+                  "https://example.com",
+                  "https://docs.firecrawl.dev",
+                  "https://sub.example.com/path"
+                ],
+                "description": "The starting website URL to map and discover links from. Must be a valid HTTP/HTTPS URL string (e.g., 'https://example.com'). Do NOT pass code snippets, SDK examples, or anything other than a plain URL."
+              },
+              "limit": {
+                "type": "integer",
+                "examples": [
+                  100,
+                  1000,
+                  10000
+                ],
+                "description": "Maximum number of links to return. Defaults to 5000. Maximum allowed is 100000."
+              },
+              "search": {
+                "type": "string",
+                "examples": [
+                  "product reviews",
+                  "articles about AI",
+                  "contact us page"
+                ],
+                "description": "Optional search query to guide URL mapping, prioritizing or finding specific page types. 'Smart' search is limited to 1000 initial results in Alpha, but overall mapping can exceed this."
+              },
+              "sitemap": {
+                "type": "string",
+                "examples": [
+                  "include",
+                  "skip",
+                  "only"
+                ],
+                "description": "Sitemap handling mode: 'skip' to exclude sitemaps, 'include' to use sitemaps with other discovery methods (default behavior), or 'only' to return only sitemap URLs."
+              },
+              "timeout": {
+                "type": "integer",
+                "examples": [
+                  30000,
+                  60000
+                ],
+                "description": "Timeout in milliseconds. No timeout is applied by default."
+              },
+              "location": {
+                "type": "object",
+                "examples": [
+                  {
+                    "country": "US",
+                    "languages": [
+                      "en"
+                    ]
+                  },
+                  {
+                    "country": "DE",
+                    "languages": [
+                      "de"
+                    ]
+                  }
+                ],
+                "description": "Geographic settings for location-based request processing. Object with 'country' (ISO 3166-1 alpha-2 code, e.g., 'US', 'DE', 'JP') and optionally 'languages' (array of language codes, e.g., ['en'], ['de', 'en']).",
+                "additionalProperties": true
+              },
+              "ignoreCache": {
+                "type": "boolean",
+                "description": "If true, bypasses cached sitemap data. Useful when sitemaps have been recently updated. Sitemap data is cached for up to 7 days. Defaults to false."
+              },
+              "includeSubdomains": {
+                "type": "boolean",
+                "description": "If true, includes subdomains of the base URL in the mapping. E.g., if `url` is example.com, blog.example.com is mapped. Defaults to true."
+              },
+              "ignoreQueryParameters": {
+                "type": "boolean",
+                "description": "If true, excludes URLs with query parameters from results. Defaults to true."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FIRECRAWL_CRAWL": {
+          "toolkit": "FIRECRAWL",
+          "tool_slug": "FIRECRAWL_CRAWL",
+          "description": "Initiates a Firecrawl web crawl from a given URL, applying various filtering and content extraction ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FIRECRAWL_CRAWL"
+              ]
+            }
+          }
+        },
+        "FIRECRAWL_CRAWL_GET_ERRORS": {
+          "toolkit": "FIRECRAWL",
+          "tool_slug": "FIRECRAWL_CRAWL_GET_ERRORS",
+          "description": "Tool to retrieve errors from a Firecrawl crawl job. Use when you need to understand why certain page...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FIRECRAWL_CRAWL_GET_ERRORS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:45:10.705Z",
+        "current_time_utc_epoch_seconds": 1786563910,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "cold",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"cold\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_qMmbgJBfQFko"
+  }
+}

@@ -1,0 +1,362 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-005-q3",
+    "workflow_id": 5,
+    "workflow_task": "Manage a partner-operations pipeline across Gmail, ClickUp, and Notion: create outreach drafts and task handoffs, inspect and update existing handoffs, scan recent email threads against CRM records, and write evidence-supported CRM status updates.",
+    "query": "create clickup task handoff",
+    "required_tools": [
+      "CLICKUP_CREATE_TASK"
+    ],
+    "supporting_tools": [
+      "CLICKUP_GET_TASKS"
+    ],
+    "rationale": "The agent needs to create a new task in ClickUp for partner-operations handoffs.",
+    "candidate_tools": [
+      "CLICKUP_CREATE_TASK",
+      "CLICKUP_GET_TASK",
+      "CLICKUP_GET_TASKS",
+      "CLICKUP_UPDATE_TASK",
+      "GMAIL_CREATE_EMAIL_DRAFT",
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+      "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+      "GMAIL_GET_DRAFT",
+      "GMAIL_LIST_THREADS",
+      "NOTION_FETCH_DATABASE",
+      "NOTION_FETCH_ROW",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_QUERY_DATABASE_WITH_FILTER",
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_SEARCH_NOTION_PAGE",
+      "NOTION_UPDATE_PAGE"
+    ]
+  },
+  "request": {
+    "query": "create clickup task handoff"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create clickup task handoff",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if workspace context unknown or scope errors)] [Prerequisite]: Discover accessible workspaces using CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES (select a valid team_id for downstream calls).",
+            "[Optional (if space_id unknown)] [Prerequisite]: List spaces using CLICKUP_GET_SPACES (select target space_id for list discovery).",
+            "[Required (if list_id unknown, stale, or may be unwritable)] [Prerequisite]: Discover a writable destination list using CLICKUP_GET_FOLDERS (scan nested folders\u2192lists; handle offloaded/truncated results[0].response.data shapes; capture list_id exactly).",
+            "[Optional (if no suitable list found under folders)] [Fallback]: Find a writable list using CLICKUP_GET_FOLDERLESS_LISTS (choose one that allows task creation).",
+            "[Optional (if setting status or unsure allowed values)] [Prerequisite]: Validate list configuration using CLICKUP_GET_LIST (use an allowed status label verbatim or omit status).",
+            "[Required] [Step]: Create the task/subtask using CLICKUP_CREATE_TASK (send intended fields; use UTC epoch-ms for schedule fields with *_date_time flags; set parent only for subtasks; capture created task identifier).",
+            "[Optional (for verification or if create response is verbose/truncated)] [Next Step]: Retrieve the created task using CLICKUP_GET_TASK (verify status, assignees, custom fields, and date normalization)."
+          ],
+          "known_pitfalls": [
+            "[CLICKUP_GET_SPACES] 401 ECODE OAUTH_176/OAUTH_192 can indicate wrong team_id or missing scopes\u2014reselect via CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES.",
+            "[CLICKUP_GET_FOLDERS] Large nested payloads may be truncated/offloaded; lists can appear only under results[0].response.data and folders may look empty even when lists exist.",
+            "[CLICKUP_GET_FOLDERLESS_LISTS] Can legitimately return an empty lists array even when foldered lists exist\u2014treat as fallback only.",
+            "[CLICKUP_GET_LIST] 400 ECODE CRTSK_001 if status is invalid/localized; avoid guessing status labels.",
+            "[CLICKUP_CREATE_TASK] 404 ECODE SHARD_006 with invalid/stale destination identifiers; 400 ECODE FIELD_158 when label-type custom fields need option IDs; some destinations reject multiple assignees (e.g., ITEM_417)."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Convert a calendar date to Unix ms UTC for CLICKUP_CREATE_TASK scheduling fields",
+              "code": "```python\nfrom datetime import datetime,timezone\n\ndef to_unix_ms(y,m,d):\n    return int(datetime(y,m,d,tzinfo=timezone.utc).timestamp()*1000)\n```"
+            },
+            {
+              "description": "Handle offloaded multi-result payloads by locating folders under results[0].response.data.folders",
+              "code": "```python\nfolders=payload.get('results',[{}])[0].get('response',{}).get('data',{}).get('folders',[])\nlist_id=(folders[0].get('lists') or [{}])[0].get('id') if folders else None\nprint(list_id)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "CLICKUP_CREATE_TASK"
+          ],
+          "related_tool_slugs": [
+            "CLICKUP_GET_LIST",
+            "CLICKUP_GET_FOLDERS",
+            "CLICKUP_GET_FOLDERLESS_LISTS",
+            "CLICKUP_GET_SPACES",
+            "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES",
+            "CLICKUP_GET_TASK"
+          ],
+          "toolkits": [
+            "clickup"
+          ],
+          "plan_id": "65bbb9fdc014444bb1056c150226db09"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "clickup",
+          "has_active_connection": false,
+          "description": "ClickUp unifies tasks, docs, goals, and chat in a single platform, allowing teams to plan, organize, and collaborate across projects with customizable workflows",
+          "status_message": "No Active connection for toolkit=clickup. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"clickup\") to create a connection BEFORE executing any clickup tools."
+        }
+      ],
+      "tool_schemas": {
+        "CLICKUP_CREATE_TASK": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_CREATE_TASK",
+          "description": "Creates a new ClickUp task in a specific list, optionally as a subtask if a `parent` task ID (which cannot be a subtask itself and must be in the same list) is provided.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "list_id",
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Implement user authentication module"
+                ],
+                "description": "The name of the new task."
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "important",
+                  "backend_dev"
+                ],
+                "description": "Tag names to apply."
+              },
+              "parent": {
+                "type": "string",
+                "description": "ID of an existing task to be the parent (creating a subtask). Parent must not be a subtask and must be in the same list."
+              },
+              "status": {
+                "type": "string",
+                "description": "Status name for the task. IMPORTANT: Each ClickUp list has its own unique status configuration. Common names like 'todo', 'done', or 'in progress' often do NOT exist - you must use the exact status names (case-sensitive) configured in the target list. To get valid statuses, call GET /list/{list_id} and check the 'statuses' array in the response for available status names. If omitted, uses the list's default status (recommended when valid statuses are unknown)."
+              },
+              "list_id": {
+                "type": "string",
+                "examples": [
+                  "901234567890"
+                ],
+                "description": "The ID of the list where the task will be created."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "123456789"
+                ],
+                "description": "Team ID, required only if `custom_task_ids` is `true`."
+              },
+              "due_date": {
+                "type": "integer",
+                "examples": [
+                  "1700000000000"
+                ],
+                "description": "Due date as a Unix timestamp in milliseconds."
+              },
+              "links_to": {
+                "type": "string",
+                "description": "ID of an existing task to link as a dependency."
+              },
+              "priority": {
+                "type": "integer",
+                "examples": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "description": "Priority level: 1 (Urgent), 2 (High), 3 (Normal), 4 (Low)."
+              },
+              "assignees": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "examples": [
+                  "183",
+                  "281"
+                ],
+                "description": "User IDs to assign to the task."
+              },
+              "notify_all": {
+                "type": "boolean",
+                "description": "`True` to send notifications to all task watchers, including the creator."
+              },
+              "start_date": {
+                "type": "integer",
+                "examples": [
+                  "1690000000000"
+                ],
+                "description": "Start date as a Unix timestamp in milliseconds."
+              },
+              "description": {
+                "type": "string",
+                "description": "Task's detailed description."
+              },
+              "custom_fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Custom fields to apply. See ClickUp API for structure."
+              },
+              "due_date_time": {
+                "type": "boolean",
+                "description": "`True` if `due_date` includes a specific time, `false` if it's an all-day task."
+              },
+              "time_estimate": {
+                "type": "integer",
+                "examples": [
+                  "3600000"
+                ],
+                "description": "Estimated time to complete, in milliseconds."
+              },
+              "custom_item_id": {
+                "type": "integer",
+                "description": "Custom task type ID. Omit or use `null` for standard tasks (recommended). Custom task types including Milestones (ID `1`) are subject to workspace plan quotas. Only specify a custom_item_id if you have confirmed the workspace has available quota for that task type. Use GET /team/{team_id}/custom_item to check available custom task types and their quotas."
+              },
+              "custom_task_ids": {
+                "type": "boolean",
+                "description": "Enables referencing tasks by custom task ID; requires `team_id` if `true`."
+              },
+              "start_date_time": {
+                "type": "boolean",
+                "description": "`True` if `start_date` includes a specific time, `false` if it's an all-day task."
+              },
+              "check_required_custom_fields": {
+                "type": "boolean",
+                "description": "`True` to enforce filling all required Custom Fields upon creation."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_GET_LIST": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_LIST",
+          "description": "Retrieves detailed information for an existing List in ClickUp, identified by its unique `list_id`.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "list_id"
+            ],
+            "properties": {
+              "list_id": {
+                "type": "string",
+                "examples": [
+                  "12345678"
+                ],
+                "description": "The unique identifier for the List to retrieve. This ID can be found by right-clicking a List in the ClickUp sidebar, selecting 'Copy link', and the ID is the last part of the URL after '/l/' or '/li/'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_GET_FOLDERS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_FOLDERS",
+          "description": "Retrieves Folders within a specified ClickUp Space, ensuring `space_id` is valid, with an option to filter by archived status.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "space_id"
+            ],
+            "properties": {
+              "archived": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Filter Folders by archived status. `True` for archived, `False` for unarchived. Omit to return both."
+              },
+              "space_id": {
+                "type": "string",
+                "examples": [
+                  "1234567",
+                  "9876543"
+                ],
+                "description": "The unique numeric identifier of the Space from which to retrieve Folders."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_GET_FOLDERLESS_LISTS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_FOLDERLESS_LISTS",
+          "description": "Retrieves all Lists within a specified Space that are not located in any Folder.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_FOLDERLESS_LISTS"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_SPACES": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_SPACES",
+          "description": "Retrieves Spaces for a Team ID; member information for private Spaces is returned only if the authen...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_SPACES"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES",
+          "description": "Retrieves a list of Workspaces (Teams) the authenticated user can access.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_TASK": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_TASK",
+          "description": "Retrieves comprehensive details for a ClickUp task by its ID, supporting standard or custom task IDs...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_TASK"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:35:52.597Z",
+        "current_time_utc_epoch_seconds": 1786563352,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "that",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"that\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_eiOORRO4Z-tH"
+  }
+}

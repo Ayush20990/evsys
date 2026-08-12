@@ -1,0 +1,444 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-021-q4",
+    "workflow_id": 21,
+    "workflow_task": "Read reference documents and a spreadsheet, discover fiscal-period logic from available workspace sources, update spreadsheet formulas, and create a summary worksheet.",
+    "query": "add new sheet and update spreadsheet formulas with batch update",
+    "required_tools": [
+      "GOOGLESHEETS_ADD_SHEET",
+      "GOOGLESHEETS_BATCH_UPDATE"
+    ],
+    "supporting_tools": [],
+    "rationale": "The final steps of the workflow require creating a new summary worksheet and writing updated formulas into the spreadsheet in a single cohesive batch action.",
+    "candidate_tools": [
+      "GMAIL_FETCH_EMAILS",
+      "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+      "GOOGLEDRIVE_FIND_FILE",
+      "GOOGLESHEETS_ADD_SHEET",
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_BATCH_UPDATE",
+      "GOOGLESHEETS_GET_SPREADSHEET_INFO"
+    ]
+  },
+  "request": {
+    "query": "add new sheet and update spreadsheet formulas with batch update"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "add new sheet and update spreadsheet formulas with batch update",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if tab label may be wrong/case-variant)] [Prerequisite]: Confirm the exact tab label using GOOGLESHEETS_GET_SHEET_NAMES (avoid A1 targeting errors).",
+            "[Optional (if the target tab is absent)] [Step]: Create the tab using GOOGLESHEETS_ADD_SHEET (choose an initial grid size that covers the intended write area).",
+            "[Required] [Prerequisite]: Fetch spreadsheet + tab metadata using GOOGLESHEETS_GET_SPREADSHEET_INFO (confirm target tab and capture numeric sheet identifier + current grid bounds).",
+            "[Required] [Prerequisite]: Read header row and a small alignment window using GOOGLESHEETS_BATCH_GET (map header\u2192column index; tolerate empty/missing values arrays).",
+            "[Optional (if writing beyond current grid bounds without shifting)] [Step]: Expand row/column capacity using GOOGLESHEETS_APPEND_DIMENSION (prevent out-of-bounds updates).",
+            "[Required (when adding columns that must shift existing data)] [Step]: Insert column dimension(s) using GOOGLESHEETS_INSERT_DIMENSION (insert multiple columns right-to-left; when inserting at end, inherit from prior column).",
+            "[Required] [Step]: Write headers/cells/formulas using GOOGLESHEETS_UPDATE_VALUES_BATCH (RAW vs USER_ENTERED; each range must match a 2D matrix exactly).",
+            "[Required] [Next Step]: Validate placement/results using GOOGLESHEETS_BATCH_GET (sample impacted ranges and cross-check the update response fields like updatedRange/updatedCells).",
+            "[Fallback (if one batch sub-range fails due to shape/range issues)] [Fallback]: Retry only the failing A1 block using GOOGLESHEETS_VALUES_UPDATE (provide an exactly sized 2D matrix for that range)."
+          ],
+          "known_pitfalls": [
+            "[GOOGLESHEETS_GET_SPREADSHEET_INFO] 403 PERMISSION_DENIED blocks access to the numeric sheet identifier needed for GOOGLESHEETS_INSERT_DIMENSION.",
+            "[GOOGLESHEETS_BATCH_GET] May intermittently return 500 \"Internal error encountered\" on multi-range reads; reduce ranges and retry.",
+            "[GOOGLESHEETS_BATCH_GET] Empty/sparse regions can yield missing or short values arrays; don\u2019t assume fixed width/height.",
+            "[GOOGLESHEETS_UPDATE_VALUES_BATCH] 400 can occur when A1 ranges are malformed (e.g., tab title formatting not accepted) or when the 2D matrix shape doesn\u2019t match the range.",
+            "[GOOGLESHEETS_VALUES_UPDATE] Large writes require the provided 2D matrix dimensions to exactly match the target range; rely on updatedRange to confirm what applied."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Build a key-aligned 2D matrix for updates (handles ragged rows and missing keys)",
+              "code": "```python\ndef safe_cell(row, idx, default=''):\n    return row[idx] if isinstance(row, list) and idx < len(row) else default\n\ndef build_map(values, key_idx, take_idxs):\n    out={}\n    for r in (values[1:] if values else []):\n        k=str(safe_cell(r,key_idx,'')).strip()\n        if k:\n            out[k]=[safe_cell(r,i,'') for i in take_idxs]\n    return out\n\ndef join(target_values, m, key_idx, header, empty_cols):\n    rows=[header]\n    for r in (target_values[1:] if target_values else []):\n        k=str(safe_cell(r,key_idx,'')).strip()\n        rows.append(m.get(k) or list(empty_cols))\n    return rows\n```"
+            },
+            {
+              "description": "Assert row-count alignment for a planned write block",
+              "code": "```python\ndef assert_height(values_2d,start_row,end_row):\n    h=end_row-start_row+1\n    if len(values_2d)!=h:\n        raise ValueError((len(values_2d),h))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLESHEETS_INSERT_DIMENSION",
+            "GOOGLESHEETS_UPDATE_VALUES_BATCH"
+          ],
+          "related_tool_slugs": [
+            "GOOGLESHEETS_GET_SHEET_NAMES",
+            "GOOGLESHEETS_ADD_SHEET",
+            "GOOGLESHEETS_VALUES_UPDATE",
+            "GOOGLESHEETS_APPEND_DIMENSION",
+            "GOOGLESHEETS_BATCH_GET",
+            "GOOGLESHEETS_GET_SPREADSHEET_INFO"
+          ],
+          "toolkits": [
+            "googlesheets"
+          ],
+          "plan_id": "95250d5904d241f5934804abd6468039"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googlesheets",
+          "has_active_connection": false,
+          "description": "Google Sheets is a cloud-based spreadsheet tool enabling real-time collaboration, data analysis, and integration with other Google Workspace apps. STRICT RATE LIMITS apply - max 60 reads/minute and 60 writes/minute. Exceeding this causes errors.",
+          "status_message": "No Active connection for toolkit=googlesheets. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesheets\") to create a connection BEFORE executing any googlesheets tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLESHEETS_INSERT_DIMENSION": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_INSERT_DIMENSION",
+          "description": "Tool to insert new rows or columns into a sheet at a specified location. Use when you need to add empty rows or columns within an existing Google Sheet.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id",
+              "insert_dimension"
+            ],
+            "properties": {
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "abc123spreadsheetId"
+                ],
+                "description": "The ID of the spreadsheet to update."
+              },
+              "response_ranges": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Limits the ranges of the spreadsheet to include in the response."
+              },
+              "insert_dimension": {
+                "type": "object",
+                "required": [
+                  "range"
+                ],
+                "properties": {
+                  "range": {
+                    "type": "object",
+                    "required": [
+                      "sheet_id",
+                      "dimension",
+                      "start_index",
+                      "end_index"
+                    ],
+                    "properties": {
+                      "sheet_id": {
+                        "type": "integer",
+                        "examples": [
+                          0,
+                          123456789
+                        ],
+                        "description": "The numeric ID of the sheet (tab) where dimensions will be inserted. For newly created spreadsheets, the first sheet typically has sheet_id=0. However, sheet IDs are not guaranteed to be 0 or sequential for all spreadsheets. If you encounter a 'No grid with id' error, retrieve the actual sheet ID from spreadsheet metadata using GOOGLESHEETS_GET_SPREADSHEET_INFO or GOOGLESHEETS_GET_SHEET_NAMES (found in 'sheets[].properties.sheetId')."
+                      },
+                      "dimension": {
+                        "enum": [
+                          "ROWS",
+                          "COLUMNS"
+                        ],
+                        "type": "string",
+                        "examples": [
+                          "ROWS"
+                        ],
+                        "description": "The dimension to insert. Valid values are \"ROWS\" or \"COLUMNS\"."
+                      },
+                      "end_index": {
+                        "type": "integer",
+                        "examples": [
+                          3
+                        ],
+                        "description": "The 0-based exclusive end index. Must be greater than start_index. The number of rows/columns inserted equals (end_index - start_index). For example, to insert 3 rows starting at row 1, use start_index=1 and end_index=4."
+                      },
+                      "start_index": {
+                        "type": "integer",
+                        "examples": [
+                          1
+                        ],
+                        "description": "The 0-based index where the new rows/columns will be inserted. For example, to insert at row 1 (the second row), use start_index=1. Must be less than end_index."
+                      }
+                    },
+                    "description": "Specifies the dimensions to insert. Can be provided as a nested object with sheet_id, dimension, start_index, and end_index, or these fields can be provided directly in insert_dimension (will be auto-wrapped).",
+                    "additionalProperties": false
+                  },
+                  "inherit_from_before": {
+                    "type": "boolean",
+                    "examples": [
+                      true
+                    ],
+                    "description": "If true, the new dimensions will inherit properties from the dimension before the startIndex. If false (default), they will inherit from the dimension at the startIndex. startIndex must be greater than 0 if inheritFromBefore is true."
+                  }
+                },
+                "description": "The details for the insert dimension request.",
+                "additionalProperties": false
+              },
+              "response_include_grid_data": {
+                "type": "boolean",
+                "description": "True if grid data should be included in the response (if includeSpreadsheetInResponse is true)."
+              },
+              "include_spreadsheet_in_response": {
+                "type": "boolean",
+                "description": "True if the updated spreadsheet should be included in the response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_UPDATE_VALUES_BATCH": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+          "description": "Tool to set values in one or more ranges of a spreadsheet. Use when you need to update multiple ranges in a single operation for better performance.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id",
+              "valueInputOption",
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "range",
+                    "values"
+                  ],
+                  "properties": {
+                    "range": {
+                      "type": "string",
+                      "examples": [
+                        "Sheet1!A1:B2",
+                        "Sheet1!D1:E2"
+                      ],
+                      "description": "The A1 notation of the range to update (e.g., 'Sheet1!A1:B2', 'Sheet1!C:C', or 'A1:D5'). The range must specify which cells to update."
+                    },
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "examples": [
+                        [
+                          [
+                            "Name",
+                            "Score"
+                          ],
+                          [
+                            "Alice",
+                            "95"
+                          ]
+                        ]
+                      ],
+                      "description": "The data to write. This is an array of arrays, the outer array representing all the data and each inner array representing a major dimension. Each item in the inner array corresponds with one cell. Supports string, number, boolean, and null values."
+                    },
+                    "majorDimension": {
+                      "enum": [
+                        "ROWS",
+                        "COLUMNS"
+                      ],
+                      "type": "string",
+                      "examples": [
+                        "ROWS"
+                      ],
+                      "description": "The major dimension of the values. ROWS (default) means each inner array is a row of values. COLUMNS means each inner array is a column of values."
+                    }
+                  },
+                  "description": "Data within a range of the spreadsheet."
+                },
+                "minItems": 1,
+                "description": "The new values to apply to the spreadsheet. Each ValueRange specifies a range and the values to write to that range. Multiple ranges can be updated in a single request."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "examples": [
+                  "16k0mZLTGKySpihrjTycQalUVQQwq4SuLSdD3r_T164A"
+                ],
+                "description": "The ID of the spreadsheet to update. This ID can be found in the URL of the spreadsheet (e.g., https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit). Must be a valid Google Sheets spreadsheet ID."
+              },
+              "valueInputOption": {
+                "enum": [
+                  "INPUT_VALUE_OPTION_UNSPECIFIED",
+                  "RAW",
+                  "USER_ENTERED"
+                ],
+                "type": "string",
+                "examples": [
+                  "USER_ENTERED"
+                ],
+                "description": "How the input data should be interpreted. RAW: Values are stored exactly as entered, without parsing. USER_ENTERED: Values are parsed as if typed by a user (numbers stay numbers, strings prefixed with '=' become formulas, etc.). INPUT_VALUE_OPTION_UNSPECIFIED: Default input value option is not specified."
+              },
+              "includeValuesInResponse": {
+                "type": "boolean",
+                "examples": [
+                  false
+                ],
+                "description": "Determines if the update response should include the values of the cells that were updated. By default, responses do not include the updated values."
+              },
+              "responseValueRenderOption": {
+                "enum": [
+                  "FORMATTED_VALUE",
+                  "UNFORMATTED_VALUE",
+                  "FORMULA"
+                ],
+                "type": "string",
+                "examples": [
+                  "FORMATTED_VALUE"
+                ],
+                "description": "Determines how values in the response should be rendered. Only used if includeValuesInResponse is true. FORMATTED_VALUE (default): Values are formatted as displayed in the UI. UNFORMATTED_VALUE: Values are unformatted. FORMULA: Formulas are not evaluated."
+              },
+              "responseDateTimeRenderOption": {
+                "enum": [
+                  "SERIAL_NUMBER",
+                  "FORMATTED_STRING"
+                ],
+                "type": "string",
+                "examples": [
+                  "SERIAL_NUMBER"
+                ],
+                "description": "Determines how dates, times, and durations in the response should be rendered. Only used if includeValuesInResponse is true. SERIAL_NUMBER (default): Dates are returned as numbers. FORMATTED_STRING: Dates are returned as formatted strings."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_GET_SHEET_NAMES": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_GET_SHEET_NAMES",
+          "description": "Lists all worksheet names from a specified Google Spreadsheet (which must exist), useful for discovering sheets before further operations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id"
+            ],
+            "properties": {
+              "exclude_hidden": {
+                "type": "boolean",
+                "default": false,
+                "description": "When True, hidden sheets will be excluded from the results. When False (default), all sheets including hidden ones are returned. Hidden sheets are sheets that have been hidden via the 'Hide sheet' option in Google Sheets UI."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1qpyC0XzvTcKT6EISywY_7H7D7No1tpxEXAMPLE_ID"
+                ],
+                "description": "The unique identifier of the Google Spreadsheet (alphanumeric string, typically 44 characters). Extract only the ID portion from URLs - do not include leading/trailing slashes, '/edit' suffixes, query parameters, or URL fragments. From 'https://docs.google.com/spreadsheets/d/1qpyC0XzvTcKT6EISywY/edit#gid=0', use only '1qpyC0XzvTcKT6EISywY'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_ADD_SHEET": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_ADD_SHEET",
+          "description": "Adds a new sheet to a spreadsheet. Supports three sheet types: GRID, OBJECT, and DATA_SOURCE. SHEET ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_ADD_SHEET"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_VALUES_UPDATE": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_VALUES_UPDATE",
+          "description": "Tool to set values in a range of a Google Spreadsheet. Use when you need to update or overwrite exis...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_VALUES_UPDATE"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_APPEND_DIMENSION": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_APPEND_DIMENSION",
+          "description": "Tool to append new rows or columns to a sheet, increasing its size. Use when you need to add empty r...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_APPEND_DIMENSION"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_BATCH_GET": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_BATCH_GET",
+          "description": "Retrieves data from specified cell ranges in a Google Spreadsheet.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_BATCH_GET"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_GET_SPREADSHEET_INFO": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+          "description": "Retrieves metadata for a Google Spreadsheet using its ID. By default, returns essential information ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_GET_SPREADSHEET_INFO"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:38:59.539Z",
+        "current_time_utc_epoch_seconds": 1786563539,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "calm",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"calm\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_41S3Y-9BXWZ9"
+  }
+}

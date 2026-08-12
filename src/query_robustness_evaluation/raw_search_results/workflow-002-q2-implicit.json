@@ -1,0 +1,386 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-002-q2-implicit",
+    "workflow_id": 2,
+    "workflow_task": "Retrieve upcoming Google Calendar meeting events and create or update Notion content containing a large structured dataset, with verification after writing.",
+    "query": "create a fresh document and insert formatted sections into it",
+    "required_tools": [
+      "NOTION_CREATE_NOTION_PAGE",
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT"
+    ],
+    "supporting_tools": [
+      "NOTION_REPLACE_PAGE_CONTENT"
+    ],
+    "rationale": "Compositional query to find tools for creating a new page and populating it with a large structured dataset.",
+    "candidate_tools": [
+      "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_CREATE_NOTION_PAGE",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_REPLACE_PAGE_CONTENT",
+      "NOTION_RETRIEVE_PAGE"
+    ],
+    "source_query_id": "workflow-002-q2",
+    "variant_dimension": "implicit"
+  },
+  "request": {
+    "query": "create a fresh document and insert formatted sections into it"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create a fresh document and insert formatted sections into it",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Create a formatted report doc using GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN (title + small starter markdown aligned to document_type; keep payload modest; store only document reference).",
+            "[Fallback (if create fails with HTTP 400 invalid argument or permission/scope errors)] [Fallback]: Create a blank doc using GOOGLEDOCS_CREATE_DOCUMENT, then write content in chunks using GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN (append by omitting start_index).",
+            "[Optional (if content is long or multi-section)] [Step]: Append remaining sections using GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN (append mode; keep each call small; avoid index targeting).",
+            "[Optional (if a specific section must be replaced)] [Prerequisite]: Locate safe anchors/ranges using GOOGLEDOCS_GET_DOCUMENT_BY_ID, then replace that bounded region using GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN (ensure indices fall within an existing paragraph).",
+            "[Optional (if markdown tables are rejected or need stricter layout)] [Step]: Create table structure using GOOGLEDOCS_INSERT_TABLE_ACTION, then add surrounding text using GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN.",
+            "[Optional (if a full rewrite is acceptable)] [Step]: Overwrite the body using GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN (retry via smaller section updates if validation fails).",
+            "[Required] [Next Step]: Spot-check rendering using GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT (headings/lists/tables) and return the document reference; [Optional (if a PDF deliverable is needed)] [Next Step]: Export using GOOGLEDOCS_EXPORT_DOCUMENT_AS_PDF."
+          ],
+          "known_pitfalls": [
+            "[GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN] Can hard-fail when markdown contains more than one table; split tables into separate writes.",
+            "[GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN] Successful responses may include very large write-operation payloads; persist only the document identifier/reference.",
+            "[GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN] HTTP 400 invalid argument if start_index/end_index are not inside an existing paragraph; append mode is safest for multi-section writes.",
+            "[GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN] Replaces the entire body and may validate strictly on the required markdown field; repeated calls overwrite prior content.",
+            "[GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT] Plain-text output can be very large and may appear truncated in previews; use it for spot-checks, not lossless export."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract a document identifier from create responses",
+              "code": "```python\ndef extract_document_id(result):\n    d=result.get('data',{})\n    return d.get('document_id') or d.get('documentId') or d.get('response_data',{}).get('documentId')\n```"
+            },
+            {
+              "description": "Split markdown into chunks with at most one table per chunk",
+              "code": "```python\ndef split_on_tables(md):\n    parts=[]; cur=[]; in_table=False; tc=0\n    for line in md.splitlines(True):\n        is_table=line.lstrip().startswith('|')\n        if is_table and not in_table:\n            tc+=1\n            if tc>1:\n                parts.append(''.join(cur).strip()); cur=[]; tc=1\n            in_table=True\n        if (not is_table) and in_table: in_table=False\n        cur.append(line)\n    if cur: parts.append(''.join(cur).strip())\n    return [p for p in parts if p]\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN",
+            "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN"
+          ],
+          "related_tool_slugs": [
+            "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+            "GOOGLEDOCS_CREATE_DOCUMENT",
+            "GOOGLEDOCS_EXPORT_DOCUMENT_AS_PDF",
+            "GOOGLEDOCS_INSERT_TABLE_ACTION",
+            "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+            "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN"
+          ],
+          "toolkits": [
+            "googledocs"
+          ],
+          "plan_id": "312c76e1bdef4ea3b0bc95f59664ae5a"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledocs",
+          "has_active_connection": false,
+          "description": "Google Docs is a cloud-based word processor with real-time collaboration, version history, and integration with other Google Workspace apps",
+          "status_message": "No Active connection for toolkit=googledocs. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledocs\") to create a connection BEFORE executing any googledocs tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN",
+          "description": "Creates a new Google Docs document, optionally initializing it with a title and content provided as Markdown text.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "title"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "examples": [
+                  "Meeting Notes Q3",
+                  "Project Alpha Proposal",
+                  "My New Story Draft"
+                ],
+                "description": "The title for the new Google Docs document."
+              },
+              "image_assets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "file"
+                  ],
+                  "properties": {
+                    "file": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "mimetype",
+                        "s3key"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "examples": [
+                            "document.pdf",
+                            "image.jpg",
+                            "report.docx"
+                          ],
+                          "description": "The filename that will be used when uploading the file to the destination service"
+                        },
+                        "s3key": {
+                          "type": "string",
+                          "examples": [
+                            "47563/gmail/GET_ATTACHMENT/response/12345"
+                          ],
+                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                        },
+                        "mimetype": {
+                          "type": "string",
+                          "examples": [
+                            "application/pdf",
+                            "image/jpeg",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ],
+                          "description": "The MIME type of the file"
+                        }
+                      },
+                      "description": "Uploaded image file. The action converts it into a temporary public URL that Google Docs can fetch.",
+                      "file_uploadable": true,
+                      "additionalProperties": false
+                    },
+                    "name": {
+                      "type": "string",
+                      "examples": [
+                        "diagram",
+                        "diagram.png"
+                      ],
+                      "description": "Name used to reference the uploaded image from Markdown, for example attachment://diagram or ./diagram.png."
+                    }
+                  }
+                },
+                "description": "Optional uploaded images that Markdown can reference by name. Use Markdown image syntax like ![Alt](attachment://diagram). Public HTTPS image URLs in markdown do not need image_assets."
+              },
+              "markdown_text": {
+                "type": "string",
+                "default": "",
+                "description": "The initial content for the document, formatted as Markdown. Also accepts 'content' as an alias. Supports headings, real Google Docs lists including nested lists, multiple Markdown tables, task-list markers, images via publicly accessible URLs or matching image_assets uploads (max 2KB URL length after resolution; formats: JPEG, PNG, GIF; SVG not supported), blockquotes, code blocks, hyperlinks (e.g., [text](url)), and text formatting (bold, italic, etc.). If empty or omitted, creates document with title only."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN",
+          "description": "Tool to insert or replace a section of a Google Docs document with Markdown content. Use when you need to update only a section of a document by specifying start and optional end indices. Supports full Markdown formatting.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "document_id",
+              "markdown_text"
+            ],
+            "properties": {
+              "tab_id": {
+                "type": "string",
+                "examples": [
+                  "t.abc123"
+                ],
+                "description": "Optional tab ID to update with the rendered Markdown. When omitted, the first tab is updated."
+              },
+              "end_index": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Optional one-based end index of the content to replace (exclusive); must be greater than or equal to start_index. If end_index is not provided, the content is inserted at the start_index without replacing existing content. Requires start_index to be provided - if start_index is omitted (append mode), end_index is ignored. Important: Use the exact indices from GOOGLEDOCS_GET_DOCUMENT_BY_ID without modification. The Google Docs API does not allow deleting the last newline character of a document segment (body, header, footer, etc.), so ensure end_index does not include the final segment newline."
+              },
+              "document_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "minLength": 10,
+                "description": "The unique ID of the Google Docs document to update. This is the alphanumeric string found in the document URL: https://docs.google.com/document/d/{DOCUMENT_ID}/edit. Valid IDs are typically 44 characters long and contain only letters, numbers, hyphens, and underscores (e.g., '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms'). To get a document ID: create a new document using GOOGLEDOCS_CREATE_DOCUMENT, or extract it from an existing document's URL. Also accepts parameter aliases: 'id', 'doc_id', 'documentId', or 'docId'."
+              },
+              "start_index": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "One-based UTF-16 code unit index where to insert or start replacement. If not provided, content will be appended to the end of the document. Use 1 to insert at the very beginning of the document. To insert at a specific position, first use GOOGLEDOCS_GET_DOCUMENT_BY_ID to retrieve the document structure and find the desired index from the body.content elements' start_index/end_index values. If the provided index equals or exceeds the document segment's end index, it will be automatically adjusted to the last valid position (end_index - 1) and a message will be included in the response."
+              },
+              "markdown_text": {
+                "type": "string",
+                "description": "Markdown content to insert or replace in the document section. Large content is automatically split into smaller batches to avoid API limits. Also accepts 'markdown', 'content', 'text', 'body', 'markdownText', or 'markdown_content'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+          "description": "Retrieve a Google Doc by ID and return a best-effort plain-text rendering. Converts document structure into plain text including paragraphs, lists, and tables without requiring clients to traverse complex Docs API JSON.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "document_id"
+            ],
+            "properties": {
+              "tab_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Optional tab IDs to include when include_tabs_content=true. Nested child tabs are searched recursively."
+              },
+              "document_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                  "https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
+                ],
+                "minLength": 1,
+                "description": "The unique identifier for the Google Document. Accepts either a document ID (typically a 44-character alphanumeric string) or a full Google Docs URL. When a URL is provided, the document ID will be automatically extracted. Note: This parameter also accepts 'id' as an alias for consistency with other GOOGLEDOCS tools."
+              },
+              "include_tables": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include table content in the plain text output. Tables are rendered with configurable cell and row delimiters."
+              },
+              "include_footers": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include footer text in the plain text output. Footers are appended with a clear section separator."
+              },
+              "include_headers": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include header text in the plain text output. Headers are appended with a clear section separator."
+              },
+              "include_footnotes": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include footnote text in the plain text output. Footnotes are appended with a clear section separator."
+              },
+              "table_row_delimiter": {
+                "type": "string",
+                "default": "\n",
+                "examples": [
+                  "\n",
+                  "\n\n"
+                ],
+                "description": "The delimiter to use between table rows (default: newline character)."
+              },
+              "include_tabs_content": {
+                "type": "boolean",
+                "default": false,
+                "description": "When true, fetch the document using includeTabsContent=true query parameter to render all tabs. When false, only the main body content is rendered."
+              },
+              "table_cell_delimiter": {
+                "type": "string",
+                "default": "\t",
+                "examples": [
+                  "\t",
+                  " | ",
+                  ", "
+                ],
+                "description": "The delimiter to use between table cells (default: tab character)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_CREATE_DOCUMENT": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_CREATE_DOCUMENT",
+          "description": "Creates a new Google Docs document using the provided title as filename and inserts the initial text...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDOCS_CREATE_DOCUMENT"
+              ]
+            }
+          }
+        },
+        "GOOGLEDOCS_EXPORT_DOCUMENT_AS_PDF": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_EXPORT_DOCUMENT_AS_PDF",
+          "description": "Tool to export a Google Docs file as PDF using the Google Drive API. Use when you need to generate a...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDOCS_EXPORT_DOCUMENT_AS_PDF"
+              ]
+            }
+          }
+        },
+        "GOOGLEDOCS_INSERT_TABLE_ACTION": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_INSERT_TABLE_ACTION",
+          "description": "Tool to insert a table into a Google Document. Use when you need to add a new table at a specific lo...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDOCS_INSERT_TABLE_ACTION"
+              ]
+            }
+          }
+        },
+        "GOOGLEDOCS_GET_DOCUMENT_BY_ID": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+          "description": "Retrieves an existing Google Document by its ID; will error if the document is not found.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDOCS_GET_DOCUMENT_BY_ID"
+              ]
+            }
+          }
+        },
+        "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN",
+          "description": "Replaces the entire content of an existing Google Docs document with new Markdown text; requires edi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:44:55.687Z",
+        "current_time_utc_epoch_seconds": 1786563895,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "wore",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"wore\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_Aq0pumY2g__a"
+  }
+}

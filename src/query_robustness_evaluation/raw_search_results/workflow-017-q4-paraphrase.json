@@ -1,0 +1,590 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-017-q4-paraphrase",
+    "workflow_id": 17,
+    "workflow_task": "Create AI avatar promo videos using a HeyGen avatar and voice, prepare supporting media, attempt social publishing, send a support email for infrastructure issues, and read/update a booking schedule.",
+    "query": "pull up the appointment timetable and add new rows",
+    "required_tools": [
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND"
+    ],
+    "supporting_tools": [],
+    "rationale": "Reading current booking data and appending new schedule entries requires batch reading and appending values.",
+    "candidate_tools": [
+      "GMAIL_CREATE_EMAIL_DRAFT",
+      "GMAIL_DELETE_DRAFT",
+      "GMAIL_SEND_DRAFT",
+      "GMAIL_SEND_EMAIL",
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
+      "HEYGEN_RETRIEVE_AVATAR_DETAILS",
+      "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL",
+      "HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS",
+      "HEYGEN_UPLOAD_ASSET",
+      "HEYGEN_V1_AVATAR_LIST",
+      "HEYGEN_V2_USER_REMAINING_QUOTA",
+      "HEYGEN_V2_VIDEO_GENERATE",
+      "HEYGEN_V2_VOICES",
+      "INSTAGRAM_GET_IG_MEDIA",
+      "INSTAGRAM_GET_IG_USER_MEDIA",
+      "INSTAGRAM_LIST_ALL_MESSAGES",
+      "INSTAGRAM_POST_IG_USER_MEDIA",
+      "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH",
+      "INSTAGRAM_SEND_TEXT_MESSAGE"
+    ],
+    "source_query_id": "workflow-017-q4",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "pull up the appointment timetable and add new rows"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "pull up the appointment timetable and add new rows",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Retrieve recent/past Cal bookings using CAL_FETCH_ALL_BOOKINGS (set afterStart/beforeEnd + status as needed; paginate via take/skip until pagination.hasNextPage is false).",
+            "[Optional (if results appear incomplete due to team context)] [Fallback]: Discover team IDs using CAL_GET_TEAMS_LIST, then retrieve team-scoped bookings using CAL_GET_TEAM_BOOKINGS (paginate similarly).",
+            "[Optional (if filtering/segmenting by booking type)] [Prerequisite]: List event types using CAL_LIST_EVENT_TYPES (pick relevant identifiers, then re-run CAL_FETCH_ALL_BOOKINGS with that filter).",
+            "[Optional (if also querying native Google calendars)] [Prerequisite]: List calendars using GOOGLECALENDAR_LIST_CALENDARS (select the correct calendarId).",
+            "[Required (if Google Calendar is in scope)] [Step]: Fetch recent events using GOOGLECALENDAR_EVENTS_LIST (filter by timeMin/timeMax; paginate using nextPageToken until absent).",
+            "[Required] [Next Step]: Normalize outputs (Cal response.data.data + pagination; Google items) into a unified list/table and compute summary stats (e.g., counts by event type/weekday)."
+          ],
+          "known_pitfalls": [
+            "[CAL_FETCH_ALL_BOOKINGS] afterStart/beforeEnd must be valid RFC3339/ISO8601 with explicit timezone; flipped/invalid ranges often yield empty results.",
+            "[CAL_FETCH_ALL_BOOKINGS] Can fail with \"No active connection found for toolkit(s) 'cal'\" if the Cal integration isn\u2019t authenticated/active.",
+            "[CAL_FETCH_ALL_BOOKINGS] Querying with status like \"past\" may return items whose per-booking status is \"accepted\"; don\u2019t treat that as a filter mismatch when summarizing.",
+            "[GOOGLECALENDAR_EVENTS_LIST] timeMin/timeMax must be RFC3339 and timeMax > timeMin; all-day/canceled items may require adjusting filters if results look unexpectedly empty.",
+            "[GOOGLECALENDAR_EVENTS_LIST] nextPageToken can appear even with maxResults set\u2014loop until it\u2019s absent to avoid missing events."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse CAL_FETCH_ALL_BOOKINGS result safely (workbench path) and extract the bookings array",
+              "code": "```python\nresult, error = run_composio_tool(\"CAL_FETCH_ALL_BOOKINGS\", {\"status\": [\"past\"]})\nbookings = [] if error else (result.get(\"data\", {}).get(\"data\", []) or [])\n\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "CAL_FETCH_ALL_BOOKINGS",
+            "GOOGLECALENDAR_EVENTS_LIST"
+          ],
+          "related_tool_slugs": [
+            "CAL_GET_TEAM_BOOKINGS",
+            "CAL_GET_TEAMS_LIST",
+            "CAL_LIST_EVENT_TYPES",
+            "CAL_GET_ORGANIZATION_ID",
+            "GOOGLECALENDAR_LIST_CALENDARS"
+          ],
+          "toolkits": [
+            "cal",
+            "googlecalendar"
+          ],
+          "plan_id": "386533f3906a47588196408c6142b9e1"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "cal",
+          "has_active_connection": false,
+          "description": "Cal simplifies meeting coordination by providing shareable booking pages, calendar syncing, and availability management to streamline the scheduling process",
+          "status_message": "No Active connection for toolkit=cal. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"cal\") to create a connection BEFORE executing any cal tools."
+        },
+        {
+          "toolkit": "googlecalendar",
+          "has_active_connection": false,
+          "description": "Google Calendar is a time management tool providing scheduling features, event reminders, and integration with email and other apps for streamlined organization",
+          "status_message": "No Active connection for toolkit=googlecalendar. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlecalendar\") to create a connection BEFORE executing any googlecalendar tools."
+        }
+      ],
+      "tool_schemas": {
+        "CAL_FETCH_ALL_BOOKINGS": {
+          "toolkit": "CAL",
+          "tool_slug": "CAL_FETCH_ALL_BOOKINGS",
+          "description": "Fetches a list of bookings, optionally filtered by status, attendee, date range, or by event/team IDs (which must belong to/include the authenticated user respectively), with support for pagination and sorting.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "skip": {
+                "type": "integer",
+                "examples": [
+                  "0",
+                  "10",
+                  "20"
+                ],
+                "description": "Number of bookings to skip from the beginning of results (for pagination)."
+              },
+              "take": {
+                "type": "integer",
+                "examples": [
+                  "10",
+                  "50",
+                  "100"
+                ],
+                "description": "Maximum number of bookings to return (for pagination)."
+              },
+              "status": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "upcoming",
+                    "recurring",
+                    "past",
+                    "cancelled",
+                    "unconfirmed"
+                  ],
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "upcoming",
+                    "past"
+                  ],
+                  [
+                    "recurring"
+                  ],
+                  [
+                    "cancelled",
+                    "unconfirmed"
+                  ]
+                ],
+                "description": "Filter bookings by status. Provide a list of status values (e.g., `[\"upcoming\", \"past\"]`)."
+              },
+              "teamId": {
+                "type": "integer",
+                "examples": [
+                  123,
+                  456
+                ],
+                "description": "Filter bookings by a single team ID (numeric) of which the user is a member."
+              },
+              "sortEnd": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "examples": [
+                  "asc",
+                  "desc"
+                ],
+                "description": "Sort results by booking end time."
+              },
+              "teamsIds": {
+                "type": "string",
+                "examples": [
+                  "123,456",
+                  "789"
+                ],
+                "description": "Filter bookings by one or more team IDs (comma-separated numeric IDs) of which the user is a member."
+              },
+              "beforeEnd": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31",
+                  "2024-06-20T18:00:00Z"
+                ],
+                "description": "Filter bookings ending before this ISO 8601 date or date-time string."
+              },
+              "sortStart": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "examples": [
+                  "asc",
+                  "desc"
+                ],
+                "description": "Sort results by booking start time."
+              },
+              "afterStart": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01",
+                  "2024-03-15T10:00:00Z"
+                ],
+                "description": "Filter bookings starting after this ISO 8601 date or date-time string."
+              },
+              "eventTypeId": {
+                "type": "integer",
+                "examples": [
+                  123,
+                  456
+                ],
+                "description": "Filter bookings by a single event type ID (numeric) belonging to the user."
+              },
+              "sortCreated": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "examples": [
+                  "asc",
+                  "desc"
+                ],
+                "description": "Sort results by booking creation time."
+              },
+              "attendeeName": {
+                "type": "string",
+                "examples": [
+                  "John Doe",
+                  "Smith"
+                ],
+                "description": "Filter bookings by the name of an attendee."
+              },
+              "eventTypeIds": {
+                "type": "string",
+                "examples": [
+                  "123,456",
+                  "789"
+                ],
+                "description": "Filter bookings by one or more event type IDs (comma-separated numeric IDs) belonging to the user."
+              },
+              "attendeeEmail": {
+                "type": "string",
+                "examples": [
+                  "john.doe@example.com",
+                  "jane.smith@example.com"
+                ],
+                "description": "Filter bookings by the exact email address of an attendee."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLECALENDAR_EVENTS_LIST": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_EVENTS_LIST",
+          "description": "Returns events on the specified calendar. TIMEZONE WARNING: When using timeMin/timeMax with UTC timestamps (ending in 'Z'), the time window is interpreted in UTC regardless of the calendar's timezone. For example, querying '2026-01-19T00:00:00Z' to '2026-01-20T00:00:00Z' on a calendar in America/Los_Angeles (UTC-8) covers 2026-01-18 4pm to 2026-01-19 4pm local time, potentially missing events on the intended local date. To query for a specific local date, use timestamps with the appropriate timezone offset in timeMin/timeMax (e.g., '2026-01-19T00:00:00-08:00' for PST).",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "description": "Free text search terms to find events that match these terms in various fields. Optional."
+              },
+              "iCalUID": {
+                "type": "string",
+                "description": "Specifies an event ID in the iCalendar format to be provided in the response. Optional. Use this if you want to search for an event by its iCalendar ID."
+              },
+              "orderBy": {
+                "type": "string",
+                "description": "The order of the events returned in the result. Optional. The default is an unspecified, stable order. Acceptable values are: \"startTime\", \"updated\". When set to \"startTime\", singleEvents must be true. The action automatically sets singleEvents=true when orderBy='startTime'."
+              },
+              "timeMax": {
+                "type": "string",
+                "description": "Upper bound (exclusive) for an event's start time to filter by. Optional. If unset, no start-time upper bound is applied. Must be an RFC3339 timestamp with mandatory time zone offset (e.g., 2011-06-03T10:00:00-07:00 or 2011-06-03T10:00:00Z). Milliseconds may be provided but are ignored. If timeMin is set, timeMax must be greater than timeMin. TIMEZONE WARNING: If using UTC times (ending in 'Z') but the calendar is in a different timezone, the time window may not align with local calendar dates. For example, '2026-01-19T00:00:00Z' to '2026-01-20T00:00:00Z' covers 2026-01-18 4pm to 2026-01-19 4pm in America/Los_Angeles (UTC-8). To query a specific local date, use timestamps with the appropriate local timezone offset (e.g., '2026-01-19T00:00:00-08:00' for PST). NOTE: Natural language expressions like 'today', 'tomorrow', 'next week' are NOT supported."
+              },
+              "timeMin": {
+                "type": "string",
+                "description": "Lower bound (exclusive) for an event's end time to filter by. Optional. If unset, no end-time lower bound is applied. Must be an RFC3339 timestamp with mandatory time zone offset (e.g., 2011-06-03T10:00:00-07:00 or 2011-06-03T10:00:00Z). Milliseconds may be provided but are ignored. If timeMax is set, timeMin must be smaller than timeMax. TIMEZONE WARNING: If using UTC times (ending in 'Z') but the calendar is in a different timezone, the time window may not align with local calendar dates. For example, '2026-01-19T00:00:00Z' to '2026-01-20T00:00:00Z' covers 2026-01-18 4pm to 2026-01-19 4pm in America/Los_Angeles (UTC-8). To query a specific local date, use timestamps with the appropriate local timezone offset (e.g., '2026-01-19T00:00:00-08:00' for PST). NOTE: Natural language expressions like 'today', 'tomorrow', 'next week' are NOT supported."
+              },
+              "timeZone": {
+                "type": "string",
+                "description": "Time zone used in the response for formatting event times. Optional. Use an IANA time zone identifier (e.g., America/Los_Angeles). Defaults to the user's primary time zone. Offsets (e.g., '-03:00', 'UTC+0') and abbreviations (e.g., 'IST', 'PST') are invalid. NOTE: This parameter only affects how event times are displayed in the response. It does NOT change how timeMin/timeMax filtering is interpreted. To query a specific local date, use timestamps with the appropriate timezone offset directly in timeMin/timeMax (e.g., '2026-01-19T00:00:00-08:00')."
+              },
+              "pageToken": {
+                "type": "string",
+                "description": "Opaque pagination token from a previous response's nextPageToken field. Must be the exact string returned by the API - do not use placeholder values like 'NEXT', 'next', '1', '2', etc. Omit this parameter entirely for the first page of results. Optional."
+              },
+              "syncToken": {
+                "type": "string",
+                "description": "Token from nextSyncToken to return only entries changed since the last list. Cannot be combined with iCalUID, orderBy, privateExtendedProperty, q, sharedExtendedProperty, timeMin, timeMax, or updatedMin. Deletions since the previous list are always included; showDeleted cannot be false in this mode. The action automatically removes conflicting parameters when syncToken is provided."
+              },
+              "calendarId": {
+                "type": "string",
+                "default": "primary",
+                "examples": [
+                  "primary"
+                ],
+                "description": "Calendar identifier. Use \"primary\" for the user's main calendar, or a calendar ID from the user's accessible calendar list. Arbitrary email addresses will NOT work - the calendar must exist in the user's calendar list. Use GOOGLECALENDAR_LIST_CALENDARS to retrieve valid calendar IDs. Defaults to \"primary\". Empty strings will be treated as \"primary\". Do NOT use Composio internal IDs like connectedAccountId (which start with \"ca_\") - these will be automatically replaced with \"primary\"."
+              },
+              "eventTypes": {
+                "type": "string",
+                "description": "Event types to return. Optional. Pass a single value only. If unset, returns all event types. Acceptable values are: \"birthday\", \"default\", \"focusTime\", \"fromGmail\", \"outOfOffice\", \"workingLocation\"."
+              },
+              "maxResults": {
+                "type": "integer",
+                "maximum": 2500,
+                "minimum": 1,
+                "description": "Maximum number of events returned on one result page. The number of events in the resulting page may be less than this value, or none at all, even if there are more events matching the query. Incomplete pages can be detected by a non-empty nextPageToken field in the response. By default the value is 250 events. The page size can never be larger than 2500 events. Optional. Must be >= 1 if provided."
+              },
+              "updatedMin": {
+                "type": "string",
+                "description": "Lower bound for an event's last modification time (RFC3339). When specified, entries deleted since this time are always included regardless of showDeleted. Optional."
+              },
+              "showDeleted": {
+                "type": "boolean",
+                "description": "Include cancelled events (status=\"cancelled\"). Optional; default is false. This surfaces cancelled (soft-deleted) events, not items in the Trash. When syncToken or updatedMin is used, deletions since those markers are included regardless of showDeleted. Recurring interaction: if singleEvents=false and showDeleted=false, cancelled instances of a recurring series may still be included; if showDeleted=true and singleEvents=true, only single deleted instances (not parent series) are returned."
+              },
+              "maxAttendees": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The maximum number of attendees to include in the response. If there are more than the specified number of attendees, only the participant is returned. Optional. Must be >= 1 if provided."
+              },
+              "singleEvents": {
+                "type": "boolean",
+                "description": "Whether to expand recurring events into instances and only return single one-off events and instances of recurring events. Optional. The default is False."
+              },
+              "alwaysIncludeEmail": {
+                "type": "boolean",
+                "description": "Deprecated and ignored."
+              },
+              "showHiddenInvitations": {
+                "type": "boolean",
+                "description": "Whether to include hidden invitations in the result. Optional. The default is False. Hidden invitations are events where your attendee entry has responseStatus='needsAction' and attendees[].self==true. When true, such invitations are included."
+              },
+              "sharedExtendedProperty": {
+                "type": "string",
+                "description": "Extended properties constraint specified as propertyName=value. Matches only shared properties. This parameter might be repeated multiple times to return events that match all given constraints."
+              },
+              "privateExtendedProperty": {
+                "type": "string",
+                "description": "Extended properties constraint specified as propertyName=value. Matches only private properties. This parameter might be repeated multiple times to return events that match all given constraints."
+              },
+              "composio_replaced_calendar_id": {
+                "type": "string",
+                "description": "Internal field to track if calendarId was replaced"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CAL_GET_TEAM_BOOKINGS": {
+          "toolkit": "CAL",
+          "tool_slug": "CAL_GET_TEAM_BOOKINGS",
+          "description": "Retrieves all bookings for a specified team, optionally filtered by status, attendee details, date ranges, or event type IDs, with support for pagination and sorting.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "teamId"
+            ],
+            "properties": {
+              "skip": {
+                "type": "integer",
+                "examples": [
+                  0,
+                  10,
+                  20
+                ],
+                "description": "Number of bookings to skip from the beginning of results (for pagination)."
+              },
+              "take": {
+                "type": "integer",
+                "examples": [
+                  10,
+                  50,
+                  100
+                ],
+                "description": "Maximum number of bookings to return (for pagination)."
+              },
+              "status": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "upcoming",
+                    "recurring",
+                    "past",
+                    "cancelled",
+                    "unconfirmed"
+                  ],
+                  "type": "string",
+                  "description": "Status values for filtering bookings."
+                },
+                "examples": [
+                  [
+                    "upcoming",
+                    "past"
+                  ],
+                  [
+                    "cancelled"
+                  ]
+                ],
+                "description": "Filter bookings by status. Provide a list of status values to filter by multiple statuses."
+              },
+              "teamId": {
+                "type": "integer",
+                "examples": [
+                  184346,
+                  12345
+                ],
+                "description": "The unique numeric identifier of the team whose bookings you want to retrieve."
+              },
+              "sortEnd": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "examples": [
+                  "asc",
+                  "desc"
+                ],
+                "description": "Sort order for end time."
+              },
+              "beforeEnd": {
+                "type": "string",
+                "examples": [
+                  "2025-03-07T11:00:00.000Z",
+                  "2024-12-31T23:59:59Z"
+                ],
+                "description": "Filter bookings ending before this ISO 8601 date or date-time string."
+              },
+              "sortStart": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "examples": [
+                  "asc",
+                  "desc"
+                ],
+                "description": "Sort order for start time."
+              },
+              "afterStart": {
+                "type": "string",
+                "examples": [
+                  "2025-03-07T10:00:00.000Z",
+                  "2024-01-01T00:00:00Z"
+                ],
+                "description": "Filter bookings starting after this ISO 8601 date or date-time string."
+              },
+              "bookingUid": {
+                "type": "string",
+                "examples": [
+                  "2NtaeaVcKfpmSZ4CthFdfk",
+                  "abc123xyz"
+                ],
+                "description": "Filter bookings by the unique booking UID."
+              },
+              "eventTypeId": {
+                "type": "string",
+                "examples": [
+                  "100",
+                  "456"
+                ],
+                "description": "Filter bookings by a single event type ID belonging to the team."
+              },
+              "sortCreated": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "examples": [
+                  "asc",
+                  "desc"
+                ],
+                "description": "Sort order for creation time."
+              },
+              "attendeeName": {
+                "type": "string",
+                "examples": [
+                  "John Doe",
+                  "Jane Smith"
+                ],
+                "description": "Filter bookings by the name of an attendee."
+              },
+              "eventTypeIds": {
+                "type": "string",
+                "examples": [
+                  "100,200",
+                  "123"
+                ],
+                "description": "Filter bookings by one or more event type IDs (comma-separated) belonging to the team."
+              },
+              "attendeeEmail": {
+                "type": "string",
+                "examples": [
+                  "john.doe@example.com",
+                  "attendee@company.com"
+                ],
+                "description": "Filter bookings by the exact email address of an attendee."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CAL_GET_TEAMS_LIST": {
+          "toolkit": "CAL",
+          "tool_slug": "CAL_GET_TEAMS_LIST",
+          "description": "Retrieves all teams the user belongs to, including their names and members.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CAL_GET_TEAMS_LIST"
+              ]
+            }
+          }
+        },
+        "CAL_LIST_EVENT_TYPES": {
+          "toolkit": "CAL",
+          "tool_slug": "CAL_LIST_EVENT_TYPES",
+          "description": "Retrieves Cal event types, filterable by `username` (required if `eventSlug` is provided), multiple ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CAL_LIST_EVENT_TYPES"
+              ]
+            }
+          }
+        },
+        "CAL_GET_ORGANIZATION_ID": {
+          "toolkit": "CAL",
+          "tool_slug": "CAL_GET_ORGANIZATION_ID",
+          "description": "Retrieves the organization ID associated with the currently authenticated user from the Cal.com /v2/...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CAL_GET_ORGANIZATION_ID"
+              ]
+            }
+          }
+        },
+        "GOOGLECALENDAR_LIST_CALENDARS": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_LIST_CALENDARS",
+          "description": "Retrieves calendars from the user's Google Calendar list, with options for pagination and filtering....",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLECALENDAR_LIST_CALENDARS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:53:49.829Z",
+        "current_time_utc_epoch_seconds": 1786564429,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "same",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"same\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_WUvo5v-sIIeE"
+  }
+}

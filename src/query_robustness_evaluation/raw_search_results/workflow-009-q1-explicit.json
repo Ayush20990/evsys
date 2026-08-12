@@ -1,0 +1,224 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-009-q1-explicit",
+    "workflow_id": 9,
+    "workflow_task": "Create multimedia travel marketing assets from scripts and stock/generative media, then deliver generated files by email and provide downloadable presentation content.",
+    "query": "search for marketing stock images using Google Images",
+    "required_tools": [
+      "COMPOSIO_SEARCH_IMAGE"
+    ],
+    "supporting_tools": [],
+    "rationale": "The agent needs to find visual assets based on the travel marketing script.",
+    "candidate_tools": [
+      "COMPOSIO_SEARCH_IMAGE",
+      "GEMINI_GENERATE_VIDEOS",
+      "GEMINI_WAIT_FOR_VIDEO",
+      "GMAIL_SEND_EMAIL"
+    ],
+    "source_query_id": "workflow-009-q1",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "search for marketing stock images using Google Images"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search for marketing stock images using Google Images",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Define a precise visual query plus a few broader/narrower variants and minimum quality targets using COMPOSIO_SEARCH_IMAGE (subject, style, minimum dimensions, safe-only expectations).",
+            "[Required] [Step]: Retrieve a bounded first batch using COMPOSIO_SEARCH_IMAGE (over-fetch once, then slice locally to reduce repeated calls).",
+            "[Required] [Next Step]: Normalize/extract items from COMPOSIO_SEARCH_IMAGE across response shapes (data vs response.data vs data_preview; sometimes results[*].response.data.images_results); optionally use COMPOSIO_REMOTE_WORKBENCH if inline payloads are truncated.",
+            "[Required] [Next Step]: Filter/rank COMPOSIO_SEARCH_IMAGE candidates (require an original URL, drop suggestion/non-asset/product-like/unsafe entries, de-dupe by original URL, prefer higher original_width/original_height and working alternates).",
+            "[Optional (if more variety/volume is needed)] [Next Step]: Paginate or iterate query variants using COMPOSIO_SEARCH_IMAGE (use ijn/next-page when present), then merge and de-dupe before returning a page-sized slice.",
+            "[Optional (if attribution/context must be verified)] [Next Step]: Use COMPOSIO_SEARCH_FETCH_URL_CONTENT on shortlisted result page URLs (not direct image binaries) to confirm context, capture attribution, and possibly discover higher-quality asset URLs.",
+            "[Required] [Fallback]: If COMPOSIO_SEARCH_IMAGE stays empty/repetitive/off-target, use COMPOSIO_SEARCH_WEB to find better descriptors or authoritative source pages, then rerun COMPOSIO_SEARCH_IMAGE."
+          ],
+          "known_pitfalls": [
+            "[COMPOSIO_SEARCH_IMAGE] Response nesting varies (data vs response.data vs data_preview; batched results can be under results[*].response.data.images_results), so single-path parsing can miss images_results.",
+            "[COMPOSIO_SEARCH_IMAGE] Large payloads may be truncated in the client view; reduce batch size or rely on structured extraction (optionally via COMPOSIO_REMOTE_WORKBENCH).",
+            "[COMPOSIO_SEARCH_IMAGE] Some original URLs fail (403/404) or return non-image Content-Type (e.g., text/html); keep alternates and validate usability before finalizing.",
+            "[COMPOSIO_SEARCH_IMAGE] Pagination indicators are not uniform (e.g., ijn, next-page, or serpapi-style pagination); ignoring them can make results look artificially limited.",
+            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] Intended for HTML pages; direct image/binary URLs may fail, and multi-URL fetch can partially fail\u2014use per-URL statuses to keep successes."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract image results across common COMPOSIO_SEARCH_IMAGE response shapes (single vs batched, full vs preview).",
+              "code": "```python\ndef extract_images(p):\n    def _imgs(x):\n        d=(x.get('data') or x.get('data_preview') or {}) if isinstance(x,dict) else {}\n        return d.get('images_results') or []\n    if isinstance(p,dict) and isinstance(p.get('results'),list):\n        out=[]\n        for r in p['results']:\n            out+=_imgs((r.get('response') or {}) if isinstance(r,dict) else {})\n        return out\n    return _imgs(p)\n```"
+            },
+            {
+              "description": "Validate candidate originals (HTTP 200 + Content-Type contains image).",
+              "code": "```python\nimport requests\nfrom concurrent.futures import ThreadPoolExecutor,as_completed\n\ndef check(u):\n    r=requests.get(u,timeout=15,stream=True,headers={'User-Agent':'Mozilla/5.0'})\n    ok=r.status_code==200 and 'image' in (r.headers.get('Content-Type','').lower())\n    r.close();return u,ok\n\ndef validate(urls,workers=5):\n    out={}\n    with ThreadPoolExecutor(max_workers=workers) as ex:\n        for f in as_completed([ex.submit(check,u) for u in urls]):\n            u,ok=f.result();out[u]=ok\n    return out\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "COMPOSIO_SEARCH_IMAGE"
+          ],
+          "related_tool_slugs": [
+            "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+            "COMPOSIO_SEARCH_WEB"
+          ],
+          "toolkits": [
+            "composio_search"
+          ],
+          "plan_id": "d3273e8b5feb46bca932ba34ef94e372"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "composio_search",
+          "has_active_connection": true,
+          "description": "Composio Search provides comprehensive web search across travel (flights, hotels, events), e-commerce (Amazon, Walmart, shopping), financial markets, news, academic research, images, and location services.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        }
+      ],
+      "tool_schemas": {
+        "COMPOSIO_SEARCH_IMAGE": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_IMAGE",
+          "description": "The ImageSearch class performs an image search using the Composio Image Search API, targeting image metadata and URLs (not binary data) via Google Images. Returns results under `results.images_results`; each entry exposes `original` (full resolution) and `thumbnail` (low resolution) URLs \u2014 verify URLs are publicly accessible before passing downstream. Check `license_details_url` per result before commercial reuse. The number of results is controlled by `num` (1\u2013100, default 20). For >100 images, paginate using `serpapi_pagination.next`. Rate limit: throttle to ~1\u20132 calls/second; apply exponential backoff on HTTP 429.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "ijn": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0,
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Image page number for pagination. Starts at 0 (first page). Each page returns up to 100 results. Use incrementing values (0, 1, 2, ...) to retrieve additional pages."
+              },
+              "num": {
+                "type": "integer",
+                "default": 20,
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  20,
+                  50
+                ],
+                "description": "Number of image results to return. Defaults to 20 if not specified. Google typically returns up to 100 results."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Apple"
+                ],
+                "description": "The search query for the Composio Image Search API, specifying the image topic."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_FETCH_URL_CONTENT": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+          "description": "Fetch and extract clean, readable page text (markdown) from public web pages (HTML content) using the Exa API. Use when you need to retrieve actual content from search results or documentation links to extract setup steps, requirements, or citations. Only works with web page URLs - does not support direct links to images, PDFs, or other binary files.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "urls"
+            ],
+            "properties": {
+              "text": {
+                "type": "boolean",
+                "default": true,
+                "description": "Include extracted markdown text content from the page. Defaults to true."
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "https://example.com/article",
+                    "https://docs.python.org/"
+                  ]
+                ],
+                "description": "List of public URLs to web pages (HTML content) to fetch content from. URLs must be valid and publicly accessible. Do not use direct links to images (.jpg, .png, .gif), PDFs, or other binary files - use web page URLs only. Also accepts a single URL string."
+              },
+              "extras": {
+                "type": "object",
+                "description": "Additional content options like imageLinks or links counts (e.g., {'imageLinks': 3, 'links': 5}).",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "summary": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Include AI-generated summary of the page content. Can be boolean or object with query/schema options."
+              },
+              "max_characters": {
+                "type": "integer",
+                "description": "Maximum number of characters to extract from each page. Maps to text.maxCharacters in Exa API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_WEB": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_WEB",
+          "description": "Perform a web search using the Exa API. Returns a nested structure: narrative summary under results.answer, sources under results.citations (and optionally results.organic_results). Prioritize results.citations as primary evidence over results.answer, which can be vague. Only indexes publicly available content \u2014 no paywalled, login-gated, or private content. No date filters enforced; include recency terms in query and verify dates in snippets manually. Throttle to ~1\u20132 requests/second; bursty queries trigger HTTP 429. Large responses may be stored remotely \u2014 use structure_info to locate results.answer and results.citations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Coffee"
+                ],
+                "description": "The search query for the Composio Exa API. Must be non-empty; using any other parameter name (e.g., 'q') causes an invalid-request error. Include qualifiers (year, region, platform, intent) for better results \u2014 broad queries return generic content; excessive site: or quoted-term filters can return zero results. Add disambiguating terms (city, role, domain) when searching for people or organizations with common names."
+              }
+            }
+          },
+          "hasFullSchema": true
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:48:10.321Z",
+        "current_time_utc_epoch_seconds": 1786564090,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "pine",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"pine\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) Connections active, proceed to next step",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_yvQ5njA19VgK"
+  }
+}

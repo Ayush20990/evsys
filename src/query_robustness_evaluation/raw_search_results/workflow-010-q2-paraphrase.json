@@ -1,0 +1,935 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-010-q2-paraphrase",
+    "workflow_id": 10,
+    "workflow_task": "Reconcile an organization's QuickBooks bank-account ledger by querying existing transactions, removing or undoing incorrect entries, posting corrected ledger activity, creating adjustment entries, recording a customer payment, and verifying financial reports.",
+    "query": "add a new journal voucher to adjust the general ledger",
+    "required_tools": [
+      "QUICKBOOKS_CREATE_JOURNAL_ENTRY"
+    ],
+    "supporting_tools": [
+      "QUICKBOOKS_EXECUTE_BATCH_OPERATION"
+    ],
+    "rationale": "To post corrected activity and create adjustment entries, the agent needs tools for creating journal entries.",
+    "candidate_tools": [
+      "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
+      "QUICKBOOKS_EXECUTE_BATCH_OPERATION",
+      "QUICKBOOKS_GET_COMPANY_INFO",
+      "QUICKBOOKS_GET_REPORTS",
+      "QUICKBOOKS_PROXY_EXECUTE",
+      "QUICKBOOKS_QUERY_ENTITIES"
+    ],
+    "source_query_id": "workflow-010-q2",
+    "variant_dimension": "paraphrase"
+  },
+  "request": {
+    "query": "add a new journal voucher to adjust the general ledger"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "add a new journal voucher to adjust the general ledger",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "=== QUICKBOOKS WORKFLOW ===",
+            "[Required] [Prerequisite]: Confirm the target company context using QUICKBOOKS_GET_COMPANY_INFO (avoid posting to the wrong company).",
+            "[Required (if JournalEntry accounts unknown)] [Prerequisite]: Resolve posting and reconciliation accounts using QUICKBOOKS_QUERY_ACCOUNT (use returned Account.Id for JournalEntryLineDetail.AccountRef.value).",
+            "[Optional (if avoiding duplicate postings)] [Prerequisite]: Search for an already-posted JournalEntry using QUICKBOOKS_QUERY_ENTITIES (keep filters/select minimal; treat missing QueryResponse entity arrays as no results).",
+            "[Required] [Step]: Obtain user confirmation for the write, then post the balanced journal entry using QUICKBOOKS_CREATE_JOURNAL_ENTRY (>=2 lines; debits=credits; set JournalEntryLineDetail.AccountRef.value and JournalEntryLineDetail.PostingType; include memo/private note if needed).",
+            "[Required] [Next Step]: Read back the saved entry using QUICKBOOKS_GET_JOURNAL_ENTRY (verify lines and accounts; don\u2019t rely on create-response totals).",
+            "[Optional (for reconciliation evidence)] [Next Step]: Validate posting impact using QUICKBOOKS_GET_REPORT_TRIAL_BALANCE (use a tight period to isolate the change).",
+            "[Optional (if trial balance lacks detail)] [Next Step]: Inspect account-level effects using QUICKBOOKS_GET_GENERAL_LEDGER_REPORT (same tight period and affected accounts).",
+            "[Fallback (if entity search fails/validates)] [Fallback]: Re-run QUICKBOOKS_QUERY_ENTITIES with the simplest possible filters and minimal field selection; interpret absent entity arrays as empty results.",
+            "=== ZOHO_BOOKS WORKFLOW ===",
+            "[Required] [Prerequisite]: List accessible organizations using ZOHO_BOOKS_LIST_ORGANIZATIONS (select correct organization_id).",
+            "[Required] [Prerequisite]: Fetch details for the chosen organization_id using ZOHO_BOOKS_GET_ORGANIZATION (confirm you\u2019re targeting the intended books).",
+            "[Required] [Prerequisite]: List accounts using ZOHO_BOOKS_LIST_CHART_OF_ACCOUNTS (map each journal line item to valid account_id values).",
+            "[Required (if creating a new entry)] [Step]: Create the journal entry using ZOHO_BOOKS_CREATE_JOURNAL (provide journal_date/reference_number/notes and debit/credit line_items).",
+            "[Optional (if ZOHO_BOOKS_CREATE_JOURNAL returns 400 validation)] [Fallback]: Retry ZOHO_BOOKS_CREATE_JOURNAL after removing/adjusting rejected fields (e.g., omit journal_type when \u201cInvalid value passed for journal_type\u201d).",
+            "[Optional (if updating an existing entry)] [Prerequisite]: Fetch current journal fields using ZOHO_BOOKS_GET_JOURNAL_DETAILS_V4 (avoid overwriting unintended fields).",
+            "[Required (if updating an existing entry)] [Step]: Update the journal entry using ZOHO_BOOKS_UPDATE_JOURNAL (apply edits to the intended journal_id).",
+            "[Optional (if org settings must change)] [Next Step]: Apply organization changes using ZOHO_BOOKS_UPDATE_ORGANIZATION (only after reviewing current org details)."
+          ],
+          "known_pitfalls": [
+            "=== QUICKBOOKS PITFALLS ===",
+            "[QUICKBOOKS_QUERY_ACCOUNT] Similar account names/types can map to different ledgers; always use returned Account.Id in AccountRef.value.",
+            "[QUICKBOOKS_QUERY_ENTITIES] Unsupported query syntax (e.g., OR) can trigger 400 ValidationFault (observed code 4000).",
+            "[QUICKBOOKS_QUERY_ENTITIES] Selecting unsupported fields can trigger ValidationFault with QueryValidationError code 4001; retry with a minimal select list.",
+            "[QUICKBOOKS_CREATE_JOURNAL_ENTRY] Create response may show TotalAmt=0 even when Line amounts exist; rely on QUICKBOOKS_GET_JOURNAL_ENTRY or reports for validation.",
+            "[QUICKBOOKS_GET_JOURNAL_ENTRY] 400 ValidationFault code 610 can occur when the Id is not a JournalEntry or referenced entities are inactive.",
+            "=== ZOHO_BOOKS PITFALLS ===",
+            "[ZOHO_BOOKS_LIST_ORGANIZATIONS] Multiple orgs may be returned; using the wrong organization_id creates/updates entries in the wrong books.",
+            "[ZOHO_BOOKS_LIST_CHART_OF_ACCOUNTS] Line items must reference valid account_id values; invalid/unmapped accounts trigger request validation failures.",
+            "[ZOHO_BOOKS_CREATE_JOURNAL] Total debits must equal total credits; unbalanced journals fail validation.",
+            "[ZOHO_BOOKS_CREATE_JOURNAL] HTTP 400 \"Invalid value passed for journal_type\" can occur if the enum/casing is not accepted; omitting journal_type may succeed (journal_type may default to \"both\").",
+            "[ZOHO_BOOKS_UPDATE_JOURNAL] Updating without first reading the current entry can unintentionally overwrite fields; prefer fetch-then-edit with ZOHO_BOOKS_GET_JOURNAL_DETAILS_V4."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Sum report row amounts for entries matching a memo predicate (trial balance / ledger-style rows)",
+              "code": "```python\nimport json,sys\nfrom decimal import Decimal\n\ndef sum_amounts(report,pred):\n    rows=report.get('Rows',{}).get('Row',[])\n    tot=Decimal('0');cnt=0\n    for r in rows:\n        if r.get('type')!='Data':\n            continue\n        cd=r.get('ColData',[])\n        if not cd:\n            continue\n        memo=(cd[0].get('value') or '')\n        amt_s=(cd[-1].get('value') or '').replace('$','').replace(',','').strip()\n        if not amt_s:\n            continue\n        if pred(memo):\n            tot+=Decimal(amt_s);cnt+=1\n    return tot,cnt\n\nreport=json.loads(sys.stdin.read())\nprint(sum_amounts(report,lambda m:'match' in m.lower()))\n```"
+            }
+          ],
+          "primary_tool_slugs": [
+            "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
+            "ZOHO_BOOKS_CREATE_JOURNAL",
+            "ZOHO_BOOKS_UPDATE_JOURNAL",
+            "ZOHO_BOOKS_GET_ORGANIZATION"
+          ],
+          "related_tool_slugs": [
+            "QUICKBOOKS_QUERY_ACCOUNT",
+            "QUICKBOOKS_GET_JOURNAL_ENTRY",
+            "QUICKBOOKS_GET_COMPANY_INFO",
+            "QUICKBOOKS_QUERY_ENTITIES",
+            "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE",
+            "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
+            "ZOHO_BOOKS_LIST_ORGANIZATIONS",
+            "ZOHO_BOOKS_LIST_CHART_OF_ACCOUNTS",
+            "ZOHO_BOOKS_GET_JOURNAL_DETAILS_V4",
+            "ZOHO_BOOKS_UPDATE_ORGANIZATION"
+          ],
+          "toolkits": [
+            "quickbooks",
+            "zoho_books"
+          ],
+          "plan_id": "41cc7ecdb41c4a24b7dca861941ce6dc,65bafd9afb2d48feaae46dcf5504446e"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "quickbooks",
+          "has_active_connection": false,
+          "description": "Quickbooks is a cloud-based accounting software that helps you manage your finances, track your income and expenses, and get insights into your business",
+          "status_message": "No Active connection for toolkit=quickbooks. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"quickbooks\") to create a connection BEFORE executing any quickbooks tools."
+        },
+        {
+          "toolkit": "zoho_books",
+          "has_active_connection": false,
+          "description": "Zoho Books handles accounting, invoicing, and expense tracking, offering real-time collaboration and integrations within the Zoho ecosystem",
+          "status_message": "No Active connection for toolkit=zoho_books. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"zoho_books\") to create a connection BEFORE executing any zoho_books tools."
+        }
+      ],
+      "tool_schemas": {
+        "QUICKBOOKS_CREATE_JOURNAL_ENTRY": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
+          "description": "Tool to create a new journal entry in QuickBooks Online. Use when you need to make adjusting or correcting entries that directly affect account balances. Journal entries require at least two lines with total debits equaling total credits.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "Line"
+            ],
+            "properties": {
+              "Line": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "Amount",
+                    "JournalEntryLineDetail"
+                  ],
+                  "properties": {
+                    "Id": {
+                      "type": "string",
+                      "description": "Line ID. Optional for creation, typically '0' or omitted."
+                    },
+                    "Amount": {
+                      "type": "number",
+                      "description": "Amount for this journal entry line. Must be a positive number.",
+                      "exclusiveMinimum": 0
+                    },
+                    "DetailType": {
+                      "type": "string",
+                      "default": "JournalEntryLineDetail",
+                      "description": "Type of line detail. Must be 'JournalEntryLineDetail' for journal entries."
+                    },
+                    "Description": {
+                      "type": "string",
+                      "maxLength": 4000,
+                      "description": "Description of this journal entry line. Maximum 4000 characters."
+                    },
+                    "JournalEntryLineDetail": {
+                      "type": "object",
+                      "required": [
+                        "AccountRef",
+                        "PostingType"
+                      ],
+                      "properties": {
+                        "Entity": {
+                          "type": "object",
+                          "required": [
+                            "Type",
+                            "EntityRef"
+                          ],
+                          "properties": {
+                            "Type": {
+                              "enum": [
+                                "Customer",
+                                "Vendor",
+                                "Employee"
+                              ],
+                              "type": "string",
+                              "description": "Type of entity: 'Customer', 'Vendor', or 'Employee'."
+                            },
+                            "EntityRef": {
+                              "type": "object",
+                              "required": [
+                                "value"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "description": "Name of the referenced entity."
+                                },
+                                "value": {
+                                  "type": "string",
+                                  "description": "ID of the referenced entity."
+                                }
+                              },
+                              "description": "Reference to the entity.",
+                              "additionalProperties": false
+                            }
+                          },
+                          "description": "Entity reference with type for journal entry lines.",
+                          "additionalProperties": false
+                        },
+                        "ClassRef": {
+                          "type": "object",
+                          "required": [
+                            "value"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "description": "Name of the referenced entity."
+                            },
+                            "value": {
+                              "type": "string",
+                              "description": "ID of the referenced entity."
+                            }
+                          },
+                          "description": "Reference to an entity.",
+                          "additionalProperties": false
+                        },
+                        "AccountRef": {
+                          "type": "object",
+                          "required": [
+                            "value"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "description": "Name of the referenced entity."
+                            },
+                            "value": {
+                              "type": "string",
+                              "description": "ID of the referenced entity."
+                            }
+                          },
+                          "description": "Reference to the account for this journal entry line. Must be a valid account ID from the company's chart of accounts.",
+                          "additionalProperties": false
+                        },
+                        "TaxCodeRef": {
+                          "type": "object",
+                          "required": [
+                            "value"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "description": "Name of the referenced entity."
+                            },
+                            "value": {
+                              "type": "string",
+                              "description": "ID of the referenced entity."
+                            }
+                          },
+                          "description": "Reference to an entity.",
+                          "additionalProperties": false
+                        },
+                        "PostingType": {
+                          "enum": [
+                            "Debit",
+                            "Credit"
+                          ],
+                          "type": "string",
+                          "description": "Type of posting: 'Debit' or 'Credit'."
+                        },
+                        "DepartmentRef": {
+                          "type": "object",
+                          "required": [
+                            "value"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "description": "Name of the referenced entity."
+                            },
+                            "value": {
+                              "type": "string",
+                              "description": "ID of the referenced entity."
+                            }
+                          },
+                          "description": "Reference to an entity.",
+                          "additionalProperties": false
+                        },
+                        "BillableStatus": {
+                          "type": "string",
+                          "description": "Billable status of the line. Valid values: 'Billable', 'NotBillable', 'HasBeenBilled'."
+                        }
+                      },
+                      "description": "Journal entry line detail containing account reference and posting type.",
+                      "additionalProperties": false
+                    }
+                  },
+                  "description": "Individual line item for a journal entry."
+                },
+                "minItems": 2,
+                "description": "List of journal entry lines. Each journal entry must have at least two lines, and the total debits must equal the total credits. Typically includes at least one debit line and one credit line with matching amounts."
+              },
+              "TxnDate": {
+                "type": "string",
+                "description": "Transaction date for the journal entry in YYYY-MM-DD format. If not provided, the current date is used."
+              },
+              "DocNumber": {
+                "type": "string",
+                "maxLength": 21,
+                "description": "Reference number for the journal entry. Maximum 21 characters."
+              },
+              "Adjustment": {
+                "type": "boolean",
+                "description": "Indicates if this is an adjustment journal entry. Set to true for adjusting entries."
+              },
+              "CurrencyRef": {
+                "type": "object",
+                "required": [
+                  "value"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Name of the referenced entity."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "ID of the referenced entity."
+                  }
+                },
+                "description": "Reference to an entity.",
+                "additionalProperties": false
+              },
+              "PrivateNote": {
+                "type": "string",
+                "maxLength": 4000,
+                "description": "Private note about the journal entry. Maximum 4000 characters."
+              },
+              "ExchangeRate": {
+                "type": "number",
+                "description": "Exchange rate for multi-currency journal entries."
+              },
+              "minorversion": {
+                "type": "integer",
+                "description": "QuickBooks API minor version number to use for this request (e.g., 65, 70, 75). Allows access to version-specific features. If not specified, uses the default API version."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZOHO_BOOKS_CREATE_JOURNAL": {
+          "toolkit": "ZOHO_BOOKS",
+          "tool_slug": "ZOHO_BOOKS_CREATE_JOURNAL",
+          "description": "Tool to create a journal entry in Zoho Books. Use when recording manual journal entries with debit and credit line items.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "organization_id",
+              "journal_date",
+              "line_items"
+            ],
+            "properties": {
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "tag_id",
+                    "tag_option_id"
+                  ],
+                  "properties": {
+                    "tag_id": {
+                      "type": "string",
+                      "description": "ID of the tag."
+                    },
+                    "tag_option_id": {
+                      "type": "string",
+                      "description": "ID of the selected tag option."
+                    }
+                  },
+                  "description": "Reporting tag with ID and option."
+                },
+                "description": "Reporting tags for the journal."
+              },
+              "notes": {
+                "type": "string",
+                "description": "Notes or description for the journal."
+              },
+              "line_items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "account_id",
+                    "amount",
+                    "debit_or_credit"
+                  ],
+                  "properties": {
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "tag_id",
+                          "tag_option_id"
+                        ],
+                        "properties": {
+                          "tag_id": {
+                            "type": "string",
+                            "description": "ID of the tag."
+                          },
+                          "tag_option_id": {
+                            "type": "string",
+                            "description": "ID of the selected tag option."
+                          }
+                        },
+                        "description": "Reporting tag with ID and option."
+                      },
+                      "description": "Reporting tags for this line."
+                    },
+                    "amount": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Amount for this line item."
+                    },
+                    "tax_id": {
+                      "type": "string",
+                      "description": "Tax identifier for this line."
+                    },
+                    "account_id": {
+                      "type": "string",
+                      "description": "Account ID for this line item. Required for each line."
+                    },
+                    "project_id": {
+                      "type": "string",
+                      "description": "Project assignment."
+                    },
+                    "customer_id": {
+                      "type": "string",
+                      "description": "Customer or vendor identifier for this line."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Description for the line item."
+                    },
+                    "location_id": {
+                      "type": "string",
+                      "description": "Location identifier."
+                    },
+                    "debit_or_credit": {
+                      "enum": [
+                        "debit",
+                        "credit"
+                      ],
+                      "type": "string",
+                      "description": "Whether this line is a debit or credit entry."
+                    },
+                    "tax_exemption_id": {
+                      "type": "string",
+                      "description": "Tax exemption ID (IN/AU/CA)."
+                    },
+                    "acquisition_vat_id": {
+                      "type": "string",
+                      "description": "UK only: acquisition VAT ID."
+                    },
+                    "tax_exemption_code": {
+                      "type": "string",
+                      "description": "Tax exemption code (IN/AU/CA/MX)."
+                    },
+                    "reverse_charge_vat_id": {
+                      "type": "string",
+                      "description": "UK only: reverse-charge VAT ID."
+                    }
+                  },
+                  "description": "Journal line item details for creating a journal."
+                },
+                "description": "Array of line items. At least 2 line items are required (debit and credit entries must balance)."
+              },
+              "currency_id": {
+                "type": "string",
+                "description": "Currency identifier for multi-currency organizations."
+              },
+              "journal_date": {
+                "type": "string",
+                "format": "date",
+                "examples": [
+                  "2026-02-17"
+                ],
+                "description": "Date on which the journal is to be recorded, in YYYY-MM-DD format."
+              },
+              "journal_type": {
+                "enum": [
+                  "Cash",
+                  "Both"
+                ],
+                "type": "string",
+                "description": "Enum for journal type."
+              },
+              "custom_fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "customfield_id",
+                    "value"
+                  ],
+                  "properties": {
+                    "value": {
+                      "type": "string",
+                      "description": "Value for the custom field."
+                    },
+                    "customfield_id": {
+                      "type": "string",
+                      "description": "Custom field ID."
+                    }
+                  },
+                  "description": "Custom field with value."
+                },
+                "description": "Custom fields for the journal."
+              },
+              "exchange_rate": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Exchange rate between currencies."
+              },
+              "organization_id": {
+                "type": "string",
+                "examples": [
+                  "913373484",
+                  "60000000011"
+                ],
+                "description": "Zoho Books organization ID. Required query parameter."
+              },
+              "reference_number": {
+                "type": "string",
+                "examples": [
+                  "JRN-TEST-001"
+                ],
+                "description": "Reference identifier for the journal."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZOHO_BOOKS_UPDATE_JOURNAL": {
+          "toolkit": "ZOHO_BOOKS",
+          "tool_slug": "ZOHO_BOOKS_UPDATE_JOURNAL",
+          "description": "Tool to update a journal entry in Zoho Books. Use when modifying existing journal entries\u2014changing line items, dates, amounts, or other journal fields.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "journal_id",
+              "organization_id"
+            ],
+            "properties": {
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "tag_id",
+                    "tag_option_id"
+                  ],
+                  "properties": {
+                    "tag_id": {
+                      "type": "string",
+                      "description": "ID of the tag."
+                    },
+                    "tag_option_id": {
+                      "type": "string",
+                      "description": "ID of the selected tag option."
+                    }
+                  },
+                  "description": "Reporting tag with ID and option."
+                },
+                "description": "Reporting tags for the journal."
+              },
+              "notes": {
+                "type": "string",
+                "description": "Notes or description for the journal."
+              },
+              "journal_id": {
+                "type": "string",
+                "examples": [
+                  "460000000038001",
+                  "8394101000000161067"
+                ],
+                "description": "Unique identifier of the journal to update."
+              },
+              "line_items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "account_id",
+                    "amount",
+                    "debit_or_credit"
+                  ],
+                  "properties": {
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "tag_id",
+                          "tag_option_id"
+                        ],
+                        "properties": {
+                          "tag_id": {
+                            "type": "string",
+                            "description": "ID of the tag."
+                          },
+                          "tag_option_id": {
+                            "type": "string",
+                            "description": "ID of the selected tag option."
+                          }
+                        },
+                        "description": "Reporting tag with ID and option."
+                      },
+                      "description": "Reporting tags for this line."
+                    },
+                    "amount": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Amount for this line item."
+                    },
+                    "tax_id": {
+                      "type": "string",
+                      "description": "Tax identifier for this line."
+                    },
+                    "line_id": {
+                      "type": "string",
+                      "description": "Unique identifier of an existing line item. Required for updating existing lines."
+                    },
+                    "account_id": {
+                      "type": "string",
+                      "description": "Account ID for this line item. Required for each line."
+                    },
+                    "project_id": {
+                      "type": "string",
+                      "description": "Project assignment."
+                    },
+                    "customer_id": {
+                      "type": "string",
+                      "description": "Customer or vendor identifier for this line."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Description for the line item."
+                    },
+                    "location_id": {
+                      "type": "string",
+                      "description": "Location identifier."
+                    },
+                    "debit_or_credit": {
+                      "enum": [
+                        "debit",
+                        "credit"
+                      ],
+                      "type": "string",
+                      "description": "Whether this line is a debit or credit entry."
+                    },
+                    "tax_exemption_id": {
+                      "type": "string",
+                      "description": "Tax exemption ID (IN/AU/CA)."
+                    },
+                    "acquisition_vat_id": {
+                      "type": "string",
+                      "description": "UK only: acquisition VAT ID."
+                    },
+                    "tax_exemption_code": {
+                      "type": "string",
+                      "description": "Tax exemption code (IN/AU/CA/MX)."
+                    },
+                    "reverse_charge_vat_id": {
+                      "type": "string",
+                      "description": "UK only: reverse-charge VAT ID."
+                    }
+                  },
+                  "description": "Journal line item details for updating a journal."
+                },
+                "description": "Array of line items. At least 2 line items are required (debit and credit entries must balance). Include line_id for existing lines to update them."
+              },
+              "currency_id": {
+                "type": "string",
+                "description": "Currency identifier for multi-currency organizations."
+              },
+              "journal_date": {
+                "type": "string",
+                "format": "date",
+                "examples": [
+                  "2024-02-17"
+                ],
+                "description": "Date on which the journal is to be recorded, in YYYY-MM-DD format."
+              },
+              "journal_type": {
+                "enum": [
+                  "Cash",
+                  "Both"
+                ],
+                "type": "string",
+                "description": "Enum for journal type."
+              },
+              "custom_fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "customfield_id",
+                    "value"
+                  ],
+                  "properties": {
+                    "value": {
+                      "type": "string",
+                      "description": "Value for the custom field."
+                    },
+                    "customfield_id": {
+                      "type": "string",
+                      "description": "Custom field ID."
+                    }
+                  },
+                  "description": "Custom field with value."
+                },
+                "description": "Custom fields for the journal."
+              },
+              "exchange_rate": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Exchange rate between currencies."
+              },
+              "organization_id": {
+                "type": "string",
+                "examples": [
+                  "913368679",
+                  "903642962"
+                ],
+                "description": "Zoho Books organization ID. Required query parameter."
+              },
+              "reference_number": {
+                "type": "string",
+                "examples": [
+                  "TEST-REF-UPDATED"
+                ],
+                "description": "Reference identifier for the journal."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZOHO_BOOKS_GET_ORGANIZATION": {
+          "toolkit": "ZOHO_BOOKS",
+          "tool_slug": "ZOHO_BOOKS_GET_ORGANIZATION",
+          "description": "Tool to fetch details of a specific organization. Use when you need to retrieve comprehensive organization information by its ID.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "organization_id"
+            ],
+            "properties": {
+              "organization_id": {
+                "type": "string",
+                "examples": [
+                  "10229182"
+                ],
+                "description": "Unique identifier of the organization"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_QUERY_ACCOUNT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_QUERY_ACCOUNT",
+          "description": "Query Account entities in QuickBooks using SQL-like syntax. IMPORTANT: Queries the Account entity ONLY (chart of accounts). For other entities (Purchase, Invoice, Bill, Payment, etc.), use their respective query actions. NOTE: API returns ALL fields with values regardless of SELECT clause (projections not supported). CRITICAL RESTRICTIONS: Parentheses and OR operator are NOT supported. Use IN operator for multiple values: WHERE AccountType IN ('Bank', 'Credit Card') Supports: WHERE clauses (=, <, >, LIKE, IN), AND operator, pattern matching (%), ORDER BY, pagination (MAXRESULTS up to 1000, STARTPOSITION), COUNT. Common fields: Id, Name, AccountType, AccountSubType, Classification, Active, FullyQualifiedName, CurrentBalance, AcctNum, Description, SubAccount. Examples: - SELECT * FROM Account WHERE AccountType = 'Expense' MAXRESULTS 100 - SELECT * FROM Account WHERE Active = true ORDER BY Name - SELECT * FROM Account WHERE AccountType IN ('Bank', 'Credit Card')",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "SELECT * FROM Account",
+                  "SELECT * FROM Account WHERE AccountType = 'Expense' MAXRESULTS 100",
+                  "SELECT * FROM Account WHERE Active = true ORDER BY Name",
+                  "SELECT * FROM Account WHERE Name LIKE '%Checking%' MAXRESULTS 10",
+                  "SELECT COUNT(*) FROM Account WHERE Classification = 'Asset'",
+                  "SELECT * FROM Account WHERE AccountType IN ('Expense', 'Income') MAXRESULTS 100",
+                  "SELECT * FROM Account WHERE Active = true AND AccountType IN ('Bank', 'Credit Card')",
+                  "SELECT * FROM Account ORDER BY Id STARTPOSITION 1 MAXRESULTS 100"
+                ],
+                "description": "SQL-like query string to filter and retrieve Account entities ONLY. Do NOT use for other entities (Purchase, Invoice, Bill, etc.) - use their respective query tools. \n\nQuery syntax: SELECT [fields] FROM Account [WHERE conditions] [ORDER BY field] [STARTPOSITION n] [MAXRESULTS n] \n\nCRITICAL SYNTAX RESTRICTIONS: - Parentheses for grouping are NOT supported - OR operator is NOT supported - use IN instead - Use: WHERE Active = true AND AccountType IN ('Bank', 'Credit Card') \n\nNOTE: QuickBooks API returns ALL fields regardless of SELECT clause. \n\nCommonly queryable fields: Id, Name, AccountType, AccountSubType, Classification, Active, FullyQualifiedName, CurrentBalance, AcctNum, Description, SubAccount. \n\nSupports: - WHERE with operators (=, <, >, <=, >=, IN) - LIKE with % wildcard - AND only (no OR - use IN for multiple values) - ORDER BY for sorting (MUST be two words, not 'ORDERBY'). Sortable fields: Name, Id. Non-sortable: AccountType, AccountSubType, Classification, and others. - MAXRESULTS (max 1000, default 100) and STARTPOSITION - COUNT"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_JOURNAL_ENTRY": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_JOURNAL_ENTRY",
+          "description": "Tool to read details of a specific QuickBooks journal entry by ID. Use when you need complete journa...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_JOURNAL_ENTRY"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_COMPANY_INFO": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_COMPANY_INFO",
+          "description": "Tool to read company information from QuickBooks Online. Returns basic company info including name, ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_COMPANY_INFO"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_QUERY_ENTITIES": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_QUERY_ENTITIES",
+          "description": "Execute SQL-like queries on QuickBooks Online entities. Supports all entity types (Customer, Invoice...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_QUERY_ENTITIES"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE",
+          "description": "Generate a Trial Balance report showing account debits, credits, and balances for a specified period...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_REPORT_TRIAL_BALANCE"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
+          "description": "Generate a General Ledger report showing all transactions with debits, credits, and running balances...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT"
+              ]
+            }
+          }
+        },
+        "ZOHO_BOOKS_LIST_ORGANIZATIONS": {
+          "toolkit": "ZOHO_BOOKS",
+          "tool_slug": "ZOHO_BOOKS_LIST_ORGANIZATIONS",
+          "description": "Tool to list all organizations for the authenticated user. Use when you need to obtain the organizat...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZOHO_BOOKS_LIST_ORGANIZATIONS"
+              ]
+            }
+          }
+        },
+        "ZOHO_BOOKS_LIST_CHART_OF_ACCOUNTS": {
+          "toolkit": "ZOHO_BOOKS",
+          "tool_slug": "ZOHO_BOOKS_LIST_CHART_OF_ACCOUNTS",
+          "description": "Tool to list chart of accounts. Use when you need to fetch all chart of accounts with optional filte...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZOHO_BOOKS_LIST_CHART_OF_ACCOUNTS"
+              ]
+            }
+          }
+        },
+        "ZOHO_BOOKS_GET_JOURNAL_DETAILS_V4": {
+          "toolkit": "ZOHO_BOOKS",
+          "tool_slug": "ZOHO_BOOKS_GET_JOURNAL_DETAILS_V4",
+          "description": "Tool to fetch details of a specific journal entry from Zoho Books API v4 (Beta). Use when you need c...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZOHO_BOOKS_GET_JOURNAL_DETAILS_V4"
+              ]
+            }
+          }
+        },
+        "ZOHO_BOOKS_UPDATE_ORGANIZATION": {
+          "toolkit": "ZOHO_BOOKS",
+          "tool_slug": "ZOHO_BOOKS_UPDATE_ORGANIZATION",
+          "description": "Tool to update an organization's settings and details. Use when you need to modify organization info...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZOHO_BOOKS_UPDATE_ORGANIZATION"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:49:02.816Z",
+        "current_time_utc_epoch_seconds": 1786564142,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "wood",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"wood\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_UFlGlF6wTyZB"
+  }
+}

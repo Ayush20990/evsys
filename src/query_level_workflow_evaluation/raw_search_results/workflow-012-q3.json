@@ -1,0 +1,443 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-012-q3",
+    "workflow_id": 12,
+    "workflow_task": "Retrieve Trello card comments, update Trello cards, and perform broader project-management and automation-maintenance operations across task boards, email, chat, and an automation platform.",
+    "query": "search Slack messages and list users for project management",
+    "required_tools": [
+      "SLACK_SEARCH_MESSAGES",
+      "SLACK_LIST_ALL_USERS"
+    ],
+    "supporting_tools": [],
+    "rationale": "Broader project management across chat requires searching through message history and identifying active users in the workspace.",
+    "candidate_tools": [
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+      "SLACK_LIST_ALL_USERS",
+      "SLACK_SEARCH_MESSAGES",
+      "TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD",
+      "TRELLO_GET_BOARDS_ACTIONS_BY_ID_BOARD",
+      "TRELLO_GET_CARDS_ACTIONS_BY_ID_CARD",
+      "TRELLO_GET_CARDS_BY_ID_CARD",
+      "TRELLO_GET_SEARCH",
+      "TRELLO_UPDATE_CARDS_BY_ID_CARD",
+      "TRELLO_UPDATE_CARDS_CLOSED_BY_ID_CARD"
+    ]
+  },
+  "request": {
+    "query": "search Slack messages and list users for project management"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search Slack messages and list users for project management",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Define topic keywords/synonyms, a bounded time window (state timezone or use UTC), and intended channel/DM/user scope before SLACK_SEARCH_MESSAGES.",
+            "[Required (if channel or author scope is needed)] [Prerequisite]: Resolve identifiers using SLACK_FIND_CHANNELS and/or SLACK_FIND_USERS to build stable SLACK_SEARCH_MESSAGES query modifiers.",
+            "[Required] [Step]: Run SLACK_SEARCH_MESSAGES with a non-empty keyword query; collect hits from data.messages.matches (timestamp, channel reference, author reference, snippet, permalink if present).",
+            "[Required (if multiple pages/queries are needed)] [Next Step]: Paginate SLACK_SEARCH_MESSAGES using exactly one mode (page OR cursor), merge and de-duplicate by permalink (or channel+timestamp), and optionally bucket counts in COMPOSIO_REMOTE_WORKBENCH.",
+            "[Required (if results are too large, truncated, or unexpectedly empty)] [Next Step]: Refine and rerun SLACK_SEARCH_MESSAGES (tighter window, phrases/negative terms, add in:/from: modifiers, optionally exclude automated senders) until the set is analyzable.",
+            "[Optional (if snippets are insufficient or thread activity/links are needed)] [Next Step]: Hydrate selected hits with SLACK_FETCH_CONVERSATION_HISTORY around the hit time; expand replies via SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION (use parent message timestamp); use SLACK_RETRIEVE_MESSAGE_PERMALINK_URL when only channel+timestamp is available.",
+            "[Fallback (if message search misses relevant activity)] [Fallback]: Run SLACK_SEARCH_ALL with the same keywords, inspect data.messages.matches (and data.files.matches if present), then narrow back to SLACK_SEARCH_MESSAGES for timestamp-based analysis."
+          ],
+          "known_pitfalls": [
+            "[SLACK_SEARCH_MESSAGES] Empty or keywordless queries can fail validation; time filters alone may still yield no matches.",
+            "[SLACK_SEARCH_MESSAGES] Hits are under data.messages.matches; paging metadata may appear as data.messages.paging or data.messages.pagination (shape can vary).",
+            "[SLACK_SEARCH_MESSAGES] ok/HTTP success can still return matches=[] and total/pages=0; treat as valid no-results and adjust scope/window/keywords if unexpected.",
+            "[SLACK_FETCH_CONVERSATION_HISTORY] Can return error=\"ratelimited\" (HTTP 429) or error=\"missing_scope\"; ok=true with messages=[]/is_limited=true can indicate limited visibility; token_revoked may appear as an error string even with HTTP 200.",
+            "[SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION] Using a non-parent timestamp can fail with thread_not_found; [SLACK_RETRIEVE_MESSAGE_PERMALINK_URL] incorrect message_ts can fail with message_not_found."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Fetch all pages of a Slack message search using page counts, then aggregate matches.",
+              "code": "```python\nfirst,err=run_composio_tool('SLACK_SEARCH_MESSAGES',{'query':query,'sort':'timestamp','sort_dir':'desc','count':100,'page':1})\nmsg=first['data']['messages']\npaging=msg.get('paging') or msg.get('pagination') or {}\npage_count=paging.get('pages') or paging.get('page_count') or 1\nall_matches=list(msg.get('matches') or [])\nfor p in range(2,int(page_count)+1):\n  r,e=run_composio_tool('SLACK_SEARCH_MESSAGES',{'query':query,'sort':'timestamp','sort_dir':'desc','count':100,'page':p})\n  all_matches.extend(((r.get('data',{}).get('messages',{}) or {}).get('matches')) or [])\n```"
+            },
+            {
+              "description": "Cursor-paginate a conversation history window around a hit timestamp.",
+              "code": "```python\nall_msgs=[]\ncursor=None\nwhile True:\n  args={'channel':channel_id,'oldest':oldest_ts,'limit':200}\n  if cursor: args['cursor']=cursor\n  r,err=run_composio_tool('SLACK_FETCH_CONVERSATION_HISTORY',args)\n  all_msgs.extend(r.get('data',{}).get('messages',[]) or [])\n  cursor=r.get('data',{}).get('response_metadata',{}).get('next_cursor','')\n  if not cursor: break\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "SLACK_SEARCH_MESSAGES"
+          ],
+          "related_tool_slugs": [
+            "SLACK_FIND_CHANNELS",
+            "SLACK_FIND_USERS",
+            "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION",
+            "SLACK_FETCH_CONVERSATION_HISTORY",
+            "SLACK_SEARCH_ALL",
+            "SLACK_RETRIEVE_MESSAGE_PERMALINK_URL"
+          ],
+          "toolkits": [
+            "slack"
+          ],
+          "plan_id": "20dacc95c5c84f149dc16df98c2e9bfc"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "slack",
+          "has_active_connection": false,
+          "description": "Slack is a channel-based messaging platform. With Slack, people can work together more effectively, connect all their software tools and services, and find the information they need to do their best work - all within a secure, enterprise-grade enviro",
+          "status_message": "No Active connection for toolkit=slack. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"slack\") to create a connection BEFORE executing any slack tools."
+        }
+      ],
+      "tool_schemas": {
+        "SLACK_SEARCH_MESSAGES": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_SEARCH_MESSAGES",
+          "description": "Workspace\u2011wide Slack message search with date ranges and filters. Use `query` modifiers (e.g., in:#channel, from:@user, before/after:YYYY-MM-DD), sorting (score/timestamp), and pagination.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer",
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Page number for manual pagination control. Cannot be used with auto_paginate - choose either automatic collection OR manual page control, not both."
+              },
+              "sort": {
+                "type": "string",
+                "examples": [
+                  "score",
+                  "timestamp"
+                ],
+                "description": "Sort results by `score` (relevance) or `timestamp` (chronological)."
+              },
+              "count": {
+                "type": "integer",
+                "default": 1,
+                "examples": [
+                  20,
+                  50,
+                  100,
+                  500,
+                  1000
+                ],
+                "description": "Without auto_paginate: Number of messages per page (max 100). With auto_paginate: Total messages desired. Set count=500 to get 500 messages with automatic pagination handling."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "on:2025-09-25",
+                  "after:2025-01-01 before:2025-12-31",
+                  "during:september",
+                  "during:2025-09-25",
+                  "product launch in:#marketing",
+                  "bug report from:@jane has:file",
+                  "\"meeting notes\" on:2024-07-20",
+                  "urgent -resolved in:#support",
+                  "\"project update\" on:2025-09-25 from:@john in:#team-updates",
+                  "has:link during:august from:@bot",
+                  "deployment after:2025-09-20 in:#engineering"
+                ],
+                "description": "Search query supporting various modifiers for precise filtering:\n\n        **Location Modifiers:**\n        - `in:#channel-name` - Messages in specific channel\n        - `in:@username` - Direct messages with user\n\n        **User Modifiers:**\n        - `from:@username` - Messages from specific user\n        - `from:botname` - Messages from bot\n\n        **Content Modifiers:**\n        - `has:link` - Messages with links\n        - `has:file` - Messages with files\n        - `has::star:` - Starred messages\n        - `has::pin:` - Pinned messages\n\n        **Special Characters:**\n        - `\"exact phrase\"` - Search exact phrase\n        - `*wildcard` - Wildcard matching\n        - `-exclude` - Exclude words\n\n        **Combinations:** Mix modifiers with date filters like `\"project update\" on:2025-09-25 in:#marketing from:@john`"
+              },
+              "cursor": {
+                "type": "string",
+                "examples": [
+                  "*",
+                  "dXNlcjpVMEc5V0ZYTlo="
+                ],
+                "description": "Cursor for cursor-mark pagination. Use `*` for the first call, then use `next_cursor` from the previous response for subsequent calls. This is the modern pagination approach recommended by Slack. Cannot be used with `page` parameter - choose either cursor-based or page-based pagination."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "T1234567890"
+                ],
+                "description": "ID of the Slack workspace (team) to operate on, e.g. T0123456789. Use only with org-level Enterprise Grid tokens when you need to target a specific workspace; omit for single-workspace tokens."
+              },
+              "sort_dir": {
+                "type": "string",
+                "examples": [
+                  "asc",
+                  "desc"
+                ],
+                "description": "Sort direction: `asc` (ascending) or `desc` (descending)."
+              },
+              "highlight": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Enable highlighting of search terms in results."
+              },
+              "auto_paginate": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "When enabled, 'count' becomes the total messages desired instead of per-page limit. System automatically handles pagination to collect the specified total. Cannot be used with 'page' parameter - choose either automatic collection or manual page control. Usage: If you fetched 100 messages but pagination shows 500 total available, set auto_paginate=true and count=500 to get all results at once."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACK_FIND_CHANNELS": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_FIND_CHANNELS",
+          "description": "Find channels in a Slack workspace by any criteria - name, topic, purpose, or description. Returns channel IDs (C*/G* prefixed) required by most Slack tools \u2014 always resolve names to IDs here before passing to other tools. NOTE: This action searches channels and conversations visible to the authenticated user. Empty results may indicate: - No channels match the search query in name, topic, or purpose - The target private channel or DM is not accessible to the authenticated user because they are not a member - The connection lacks required read scopes (channels:read, groups:read, im:read, mpim:read). If empty, retry with exact_match=false or exclude_archived=false to avoid false negatives. In large workspaces, paginate using next_cursor to avoid missing matches. Check 'composio_execution_message' and 'total_channels_searched' in the response for details.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 50,
+                "examples": [
+                  10,
+                  50,
+                  100,
+                  200,
+                  500
+                ],
+                "description": "Maximum number of channels to return (1 to 999). Defaults to 50. Slack recommends no more than 200 results at a time for optimal performance."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "general",
+                  "#general",
+                  "marketing",
+                  "dev",
+                  "announcements",
+                  "project"
+                ],
+                "description": "Search query to find channels. Searches across channel name, topic, purpose, and description (case-insensitive partial matching). Leading '#' prefix is automatically stripped."
+              },
+              "types": {
+                "type": "string",
+                "default": "public_channel,private_channel",
+                "examples": [
+                  "public_channel",
+                  "private_channel",
+                  "public_channel,private_channel"
+                ],
+                "description": "Comma-separated list of channel types to include: `public_channel`, `private_channel`, `mpim` (multi-person direct message), `im` (direct message). Defaults to public and private channels."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "T1234567890",
+                  "T9876543210"
+                ],
+                "description": "ID of the Slack workspace (team) to operate on, e.g. T0123456789. Use only with org-level Enterprise Grid tokens when you need to target a specific workspace; omit for single-workspace tokens."
+              },
+              "exact_match": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "When true, only return channels whose name exactly matches the query (case-insensitive). Also matches against previous channel names and the 'general' flag. When false, returns partial matches across name, topic, and purpose. Defaults to false."
+              },
+              "member_only": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Only return channels the user is a member of. Defaults to false."
+              },
+              "exclude_archived": {
+                "type": "boolean",
+                "default": true,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Exclude archived channels from search results. Defaults to true."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACK_FIND_USERS": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_FIND_USERS",
+          "description": "Find users in a Slack workspace by any criteria - email, name, display name, or other text. Includes optimized email lookup for exact email matches. Zero results may reflect email visibility restrictions or workspace policies, not global absence. Repeated calls may trigger HTTP 429; honor the Retry-After header.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "email": {
+                "type": "string",
+                "examples": [
+                  "john.doe@company.com",
+                  "jane@example.com"
+                ],
+                "description": "Email address to search for. This is a convenience parameter that automatically performs an email-based search. Either email or search_query parameter is required."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 50,
+                "examples": [
+                  10,
+                  25,
+                  100,
+                  200
+                ],
+                "description": "Maximum number of users to return (1 to 1000). Slack recommends no more than 200 for optimal performance. Defaults to 50. Large workspaces may require pagination or repeated queries to cover all users."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "T123456789",
+                  "T0984H91R2N"
+                ],
+                "description": "ID of the Slack workspace (team) to operate on, e.g. T0123456789. Use only with org-level Enterprise Grid tokens when you need to target a specific workspace; omit for single-workspace tokens."
+              },
+              "exact_match": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "When true, only returns users with exact matches on name, display name, real name, first name, last name, or email fields (case-insensitive). For email queries, uses Slack's dedicated email lookup endpoint. When false, allows partial/substring matching. Defaults to false."
+              },
+              "include_bots": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include bot users in search results. Defaults to false."
+              },
+              "search_query": {
+                "type": "string",
+                "examples": [
+                  "U012ABCDEF",
+                  "john",
+                  "john.doe@company.com",
+                  "john doe",
+                  "smith"
+                ],
+                "description": "Search query to find users. Can be a Slack user ID (e.g., 'U012ABCDEF'), email address, or name. For user IDs (starting with 'U' or 'W'), uses Slack's users.info API directly. For email addresses with exact_match=true, uses Slack's email lookup endpoint. For other queries, searches across name, display name, real name, email, first name, last name, and status text (case-insensitive partial matching). Either search_query (or 'query' as alias), or email parameter is required. Name-based queries can return multiple matches \u2014 verify exactly one user ID before passing to downstream tools like SLACK_OPEN_DM or SLACK_SEND_MESSAGE; disambiguate using email or real_name fields."
+              },
+              "include_locale": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include the `locale` field for each user. Defaults to `false`."
+              },
+              "include_deleted": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include deleted/deactivated users in search results. Defaults to false."
+              },
+              "include_restricted": {
+                "type": "boolean",
+                "default": true,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include restricted (guest) users in search results. Defaults to true."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION",
+          "description": "Retrieves replies to a specific parent message in a Slack conversation, using the channel ID and the...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION"
+              ]
+            }
+          }
+        },
+        "SLACK_FETCH_CONVERSATION_HISTORY": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_FETCH_CONVERSATION_HISTORY",
+          "description": "Fetches a chronological list of messages and events from a specified Slack conversation, accessible ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_FETCH_CONVERSATION_HISTORY"
+              ]
+            }
+          }
+        },
+        "SLACK_SEARCH_ALL": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_SEARCH_ALL",
+          "description": "Tool to search all messages and files. Use when you need unified content search across channels and ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_SEARCH_ALL"
+              ]
+            }
+          }
+        },
+        "SLACK_RETRIEVE_MESSAGE_PERMALINK_URL": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_RETRIEVE_MESSAGE_PERMALINK_URL",
+          "description": "Retrieves a permalink URL for a specific message in a Slack channel or conversation; the permalink r...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_RETRIEVE_MESSAGE_PERMALINK_URL"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:37:19.149Z",
+        "current_time_utc_epoch_seconds": 1786563439,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "tune",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"tune\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_y7a90UcphvK_"
+  }
+}

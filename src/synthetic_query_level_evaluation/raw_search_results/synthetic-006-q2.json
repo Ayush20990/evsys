@@ -1,0 +1,276 @@
+{
+  "query_ground_truth": {
+    "query_id": "synthetic-006-q2",
+    "workflow_id": "synthetic-006",
+    "workflow_task": "A client recently emailed an urgent spreadsheet attachment regarding our upcoming project deadlines. I need to find that email, download the attached file to review the revised dates, and then set a quick Slack reminder for myself to follow up with the team tomorrow morning so we stay aligned on the new schedule.",
+    "query": "Set a Slack reminder for tomorrow morning to follow up with the team about the project schedule",
+    "required_tools": [
+      "SLACK_CREATE_A_REMINDER"
+    ],
+    "supporting_tools": [],
+    "rationale": "The agent needs to schedule a timely notification in Slack to ensure the user follows up.",
+    "candidate_tools": [
+      "GOOGLECALENDAR_COLORS_GET",
+      "GMAIL_GET_ATTACHMENT",
+      "SLACK_ADD_REACTION_TO_AN_ITEM",
+      "GMAIL_DELETE_MESSAGE",
+      "SLACK_CREATE_A_REMINDER"
+    ],
+    "candidate_toolkits": [
+      "gmail",
+      "googlecalendar",
+      "slack"
+    ],
+    "plausibility_score": 5
+  },
+  "request": {
+    "query": "Set a Slack reminder for tomorrow morning to follow up with the team about the project schedule"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Set a Slack reminder for tomorrow morning to follow up with the team about the project schedule",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Collect reminder text plus exact trigger time/date (and recurrence if needed) and confirm timezone assumption before SLACK_CREATE_A_REMINDER (avoid unintended send time).",
+            "[Required] [Step]: Create the reminder using SLACK_CREATE_A_REMINDER (personal reminder).",
+            "[Optional (if user-owned creation fails or a bot-owned reminder is required)] [Fallback]: Retry creation using SLACKBOT_CREATE_A_REMINDER (same text/time/recurrence).",
+            "[Optional (if verification is needed)] [Next Step]: Confirm the reminder exists using SLACK_LIST_REMINDERS (match on both text and scheduled time/recurrence).",
+            "[Optional (if you need a channel-visible future post or cleanup is required)] [Next Step]: Schedule a channel message using SLACK_SCHEDULE_MESSAGE (use the known channel identifier), and manage items via SLACK_LIST_SCHEDULED_MESSAGES + SLACK_DELETE_SCHEDULED_MESSAGE; remove a reminder via SLACK_DELETE_REMINDER if it must be canceled/updated."
+          ],
+          "known_pitfalls": [
+            "[SLACK_CREATE_A_REMINDER] Successful calls may still include response_metadata.warnings; treat ok=true as success but inspect warnings if behavior is unexpected.",
+            "[SLACK_CREATE_A_REMINDER] vs [SLACKBOT_CREATE_A_REMINDER] Reminder ownership/recipient depends on the Slack identity used; choose based on who should receive it.",
+            "[SLACK_LIST_REMINDERS] Text-only matches can be ambiguous; validate using both reminder text and scheduled time (and recurrence if applicable).",
+            "[SLACK_SCHEDULE_MESSAGE] Responses can include response_metadata.warnings; persist scheduled_message_id so you can delete/recreate reliably if needed."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "SLACK_CREATE_A_REMINDER"
+          ],
+          "related_tool_slugs": [
+            "SLACKBOT_CREATE_A_REMINDER",
+            "SLACK_LIST_REMINDERS",
+            "SLACK_DELETE_REMINDER",
+            "SLACK_SCHEDULE_MESSAGE",
+            "SLACK_LIST_SCHEDULED_MESSAGES",
+            "SLACK_DELETE_SCHEDULED_MESSAGE"
+          ],
+          "toolkits": [
+            "slack",
+            "slackbot"
+          ],
+          "plan_id": "d8d84a5603494d04b9168d6e2450ebf3"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "slack",
+          "has_active_connection": false,
+          "description": "Slack is a channel-based messaging platform. With Slack, people can work together more effectively, connect all their software tools and services, and find the information they need to do their best work - all within a secure, enterprise-grade enviro",
+          "status_message": "No Active connection for toolkit=slack. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"slack\") to create a connection BEFORE executing any slack tools."
+        },
+        {
+          "toolkit": "slackbot",
+          "has_active_connection": false,
+          "description": "Slackbot gives agents workspace-wide read access to a Slack workspace on behalf of the installing user - search messages and files, browse channel and thread history, and look up users and channels - while continuing to post and react as the bot. Inc",
+          "status_message": "No Active connection for toolkit=slackbot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"slackbot\") to create a connection BEFORE executing any slackbot tools."
+        }
+      ],
+      "tool_schemas": {
+        "SLACK_CREATE_A_REMINDER": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_CREATE_A_REMINDER",
+          "description": "Creates a Slack reminder with specified text and time; time accepts Unix timestamps, seconds from now, or natural language (e.g., 'in 15 minutes', 'every Thursday at 2pm').",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "text",
+              "time"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "examples": [
+                  "Submit weekly report",
+                  "Follow up with Jane Doe"
+                ],
+                "description": "The textual content of the reminder message."
+              },
+              "time": {
+                "type": "string",
+                "examples": [
+                  "1735689600",
+                  "900",
+                  "in 20 minutes",
+                  "every Monday at 10am",
+                  "every day at 9am"
+                ],
+                "description": "Specifies when the reminder should occur. This can be a Unix timestamp (integer, up to five years from now), the number of seconds until the reminder (integer, if within 24 hours, e.g., '300' for 5 minutes), or a natural language description (string, e.g., \"in 15 minutes,\" or \"every Thursday at 2pm\", \"daily\"). For recurring reminders, express the recurrence in this field using natural language (e.g., 'every day at 9am', 'every Monday at 10am'). Natural language is parsed relative to the user's workspace timezone; use Unix timestamps when target timezone is uncertain."
+              },
+              "user": {
+                "type": "string",
+                "examples": [
+                  "U012AB3CD4E",
+                  "W1234567890"
+                ],
+                "description": "The ID of the user who will receive the reminder (e.g., 'U012AB3CD4E'). If not specified, the reminder will be sent to the user who created it. NOTE: Setting reminders for other users is no longer supported for user tokens - only bot tokens can set reminders for other users."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "T1234567890"
+                ],
+                "description": "ID of the Slack workspace (team) to operate on, e.g. T0123456789. Use only with org-level Enterprise Grid tokens when you need to target a specific workspace; omit for single-workspace tokens."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACKBOT_CREATE_A_REMINDER": {
+          "toolkit": "SLACKBOT",
+          "tool_slug": "SLACKBOT_CREATE_A_REMINDER",
+          "description": "Creates a Slack reminder with specified text and time; time accepts Unix timestamps, seconds from now, or natural language (e.g., 'in 15 minutes', 'every Thursday at 2pm').",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "text",
+              "time"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "examples": [
+                  "Submit weekly report",
+                  "Follow up with Jane Doe"
+                ],
+                "description": "The textual content of the reminder message."
+              },
+              "time": {
+                "type": "string",
+                "examples": [
+                  "1735689600",
+                  "900",
+                  "in 20 minutes",
+                  "every Monday at 10am",
+                  "every day at 9am"
+                ],
+                "description": "Specifies when the reminder should occur. This can be a Unix timestamp (integer, up to five years from now), the number of seconds until the reminder (integer, if within 24 hours, e.g., '300' for 5 minutes), or a natural language description (string, e.g., \"in 15 minutes,\" or \"every Thursday at 2pm\", \"daily\"). For recurring reminders, express the recurrence in this field using natural language (e.g., 'every day at 9am', 'every Monday at 10am'). Natural language is parsed relative to the user's workspace timezone; use Unix timestamps when target timezone is uncertain."
+              },
+              "user": {
+                "type": "string",
+                "examples": [
+                  "U012AB3CD4E",
+                  "W1234567890"
+                ],
+                "description": "The ID of the user who will receive the reminder (e.g., 'U012AB3CD4E'). If not specified, the reminder will be sent to the user who created it. NOTE: Setting reminders for other users is no longer supported for user tokens - only bot tokens can set reminders for other users."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "T1234567890"
+                ],
+                "description": "ID of the Slack workspace (team) to operate on, e.g. T0123456789. Use only with org-level Enterprise Grid tokens when you need to target a specific workspace; omit for single-workspace tokens."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACK_LIST_REMINDERS": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_LIST_REMINDERS",
+          "description": "Lists all reminders with their details for the authenticated Slack user; returns an empty array if no reminders exist (valid state, not an error). Reminder text is not unique\u2014perform client-side matching on returned objects before extracting a reminder ID for use with SLACK_DELETE_A_SLACK_REMINDER.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "T1234567890"
+                ],
+                "description": "ID of the Slack workspace (team) to operate on, e.g. T0123456789. Use only with org-level Enterprise Grid tokens when you need to target a specific workspace; omit for single-workspace tokens."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACK_DELETE_REMINDER": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_DELETE_REMINDER",
+          "description": "Deletes an existing Slack reminder, typically when it is no longer relevant or a task is completed; ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_DELETE_REMINDER"
+              ]
+            }
+          }
+        },
+        "SLACK_SCHEDULE_MESSAGE": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_SCHEDULE_MESSAGE",
+          "description": "Schedules a message to a Slack channel, DM, or private group for a future time (`post_at`), requirin...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_SCHEDULE_MESSAGE"
+              ]
+            }
+          }
+        },
+        "SLACK_LIST_SCHEDULED_MESSAGES": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_LIST_SCHEDULED_MESSAGES",
+          "description": "Retrieves a list of pending (not yet delivered) messages scheduled in a specific Slack channel, or a...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_LIST_SCHEDULED_MESSAGES"
+              ]
+            }
+          }
+        },
+        "SLACK_DELETE_SCHEDULED_MESSAGE": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_DELETE_SCHEDULED_MESSAGE",
+          "description": "Deletes a pending, unsent scheduled message from the specified Slack channel, identified by its `sch...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_DELETE_SCHEDULED_MESSAGE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T20:08:42.199Z",
+        "current_time_utc_epoch_seconds": 1786565322,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "then",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"then\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_M0Q5vnCTBlXL"
+  }
+}

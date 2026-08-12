@@ -1,0 +1,326 @@
+{
+  "query_ground_truth": {
+    "query_id": "synthetic-010-q1",
+    "workflow_id": "synthetic-010",
+    "workflow_task": "A high-priority client onboarding checklist needs to be set up on our project tracking board, with specific team members assigned to review the documentation. Once the cards are prepped, the onboarding action items, including code repository access steps and required security toggles, must be appended directly into our central Notion workspace documentation page for the engineering team.",
+    "query": "add checklists to the onboarding card on the project board and assign the designated team members",
+    "required_tools": [
+      "TRELLO_ADD_CHECKLISTS",
+      "TRELLO_ADD_MEMBER_TO_CARD"
+    ],
+    "supporting_tools": [],
+    "rationale": "These Trello tools are needed to set up the checklist structure and assign members to the card.",
+    "candidate_tools": [
+      "NOTION_APPEND_TASK_BLOCKS",
+      "TRELLO_ADD_MEMBER_TO_CARD",
+      "NOTION_ARCHIVE_NOTION_PAGE",
+      "TRELLO_CREATE_ACTION_REACTION",
+      "TRELLO_ADD_CHECKLISTS",
+      "NOTION_APPEND_CODE_BLOCKS",
+      "TRELLO_ADD_BOARDS_LISTS_BY_ID_BOARD",
+      "TRELLO_ARCHIVE_ALL_LIST_CARDS"
+    ],
+    "candidate_toolkits": [
+      "notion",
+      "trello"
+    ],
+    "plausibility_score": 5
+  },
+  "request": {
+    "query": "add checklists to the onboarding card on the project board and assign the designated team members"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "add checklists to the onboarding card on the project board and assign the designated team members",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if the card identifier may be non-canonical or writes previously failed)] [Prerequisite]: Resolve the canonical card identifier using TRELLO_GET_CARDS_BY_ID_CARD (use returned data.id for all subsequent writes).",
+            "[Optional (if checklist identifier unknown or avoiding duplicates)] [Prerequisite]: Enumerate existing checklists using TRELLO_GET_CARDS_CHECKLISTS_BY_ID_CARD (check items may be nested under data.details[*].checkItems) and decide whether to reuse or create.",
+            "[Required] [Prerequisite]: Confirm the target checklist name(s) and the final checklist item lists before issuing multiple write operations using TRELLO_ADD_CHECKLISTS.",
+            "[Required] [Step]: Create checklist(s) on the card using TRELLO_ADD_CHECKLISTS (or TRELLO_ADD_CARDS_CHECKLISTS_BY_ID_CARD) and store response.data.id as idChecklist for each checklist.",
+            "[Required] [Step]: Populate each checklist using TRELLO_ADD_CHECKLISTS_CHECK_ITEMS_BY_ID_CHECKLIST (one call per item; run sequentially if strict ordering is required, otherwise controlled parallelism is acceptable).",
+            "[Optional (if some item creates fail)] [Fallback]: Re-attempt only failed items using TRELLO_ADD_CARDS_CHECKLIST_CHECK_ITEM_BY_ID_CARD_BY_ID_CHECKLIST (targets a specific card+checklist).",
+            "[Optional (for verification or to capture item identifiers)] [Next Step]: Fetch checklist items using TRELLO_GET_CHECKLISTS_CHECK_ITEMS_BY_ID_CHECKLIST (confirm count/state and capture item ids).",
+            "[Optional (if edits needed after creation and tool is available)] [Next Step]: Modify checklist item fields using TRELLO_UPDATE_CARDS_CHECK_ITEM (requires item id; card identifier is passed via the tool field named id)."
+          ],
+          "known_pitfalls": [
+            "[TRELLO_ADD_CHECKLISTS] Can return HTTP 400 (e.g., invalid card reference) when a non-canonical card identifier is used; resolve with TRELLO_GET_CARDS_BY_ID_CARD and retry using returned data.id.",
+            "[TRELLO_GET_CARDS_CHECKLISTS_BY_ID_CARD] When no checklists exist, data.details may be empty and check items may appear only under data.details[*].checkItems\u2014treat as \u201cnone found,\u201d not an error.",
+            "[TRELLO_ADD_CHECKLISTS_CHECK_ITEMS_BY_ID_CHECKLIST] One request per item; for large lists, avoid relying on pos because it may collide\u2014track created items by returned data.id.",
+            "[TRELLO_ADD_CHECKLISTS] Downstream item creation must use response.data.id as idChecklist; checklist names/other fields are not valid identifiers.",
+            "[TRELLO_UPDATE_CARDS_CHECK_ITEM] The card identifier parameter is id (not idCard); also some environments may report \u201ctool not found,\u201d so treat updates as optional and validate tool availability early."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract total checklist item count from TRELLO_GET_CARDS_CHECKLISTS_BY_ID_CARD output",
+              "code": "```python\ndef count_checkitems(r):\n    p=(r.get('data',{}) or {}).get('data',r.get('data',{}))\n    d=p.get('details',[]) if isinstance(p,dict) else []\n    return sum(len((cl.get('checkItems') or [])) for cl in d)\n```"
+            },
+            {
+              "description": "Parallelize many item creations when order is not important",
+              "code": "```python\nfrom concurrent.futures import ThreadPoolExecutor\n\ndef add_one(t):\n    cl_id,name,state=t\n    return TRELLO_ADD_CHECKLISTS_CHECK_ITEMS_BY_ID_CHECKLIST(idChecklist=cl_id,name=name,state=state)\n\nwith ThreadPoolExecutor(max_workers=10) as ex:\n    results=list(ex.map(add_one,tasks))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "TRELLO_ADD_CHECKLISTS",
+            "TRELLO_ADD_CHECKLISTS_CHECK_ITEMS_BY_ID_CHECKLIST"
+          ],
+          "related_tool_slugs": [
+            "TRELLO_GET_CARDS_CHECKLISTS_BY_ID_CARD",
+            "TRELLO_GET_CARDS_BY_ID_CARD",
+            "TRELLO_UPDATE_CARDS_CHECK_ITEM",
+            "TRELLO_GET_CHECKLISTS_CHECK_ITEMS_BY_ID_CHECKLIST",
+            "TRELLO_ADD_CARDS_CHECKLIST_CHECK_ITEM_BY_ID_CARD_BY_ID_CHECKLIST",
+            "TRELLO_ADD_CARDS_CHECKLISTS_BY_ID_CARD"
+          ],
+          "toolkits": [
+            "trello"
+          ],
+          "plan_id": "471d4406128447b99cb91096e1e50af3"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "trello",
+          "has_active_connection": false,
+          "description": "A web-based, kanban-style, list-making application.",
+          "status_message": "No Active connection for toolkit=trello. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"trello\") to create a connection BEFORE executing any trello tools."
+        }
+      ],
+      "tool_schemas": {
+        "TRELLO_ADD_CHECKLISTS": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_ADD_CHECKLISTS",
+          "description": "Creates a new checklist on a Trello card, either by name or by copying from `idChecklistSource`, targeting an `idCard` or `idBoard`; this action creates only the checklist structure, not its items.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "pos": {
+                "type": "string",
+                "examples": [
+                  "top",
+                  "bottom",
+                  "1",
+                  "2.5"
+                ],
+                "description": "The position of the new checklist on its card. Accepted values are 'top', 'bottom', or a positive number (integer or float)."
+              },
+              "name": {
+                "type": "string",
+                "description": "The name for the new checklist. Required if `idChecklistSource` is not provided. Must be a string with length between 0 and 16384 characters."
+              },
+              "idCard": {
+                "type": "string",
+                "description": "The ID of the Trello card to which the checklist will be added. If provided, the checklist is added to this specific card. One of `idBoard` or `idCard` is required."
+              },
+              "idBoard": {
+                "type": "string",
+                "description": "The ID of the Trello board. If `idCard` is not specified, this board will be targeted, potentially for creating a new card to host the checklist. One of `idBoard` or `idCard` is required."
+              },
+              "idChecklistSource": {
+                "type": "string",
+                "description": "The ID of an existing checklist to be copied. If provided, the `name` parameter is ignored, and the new checklist will be a duplicate of this source."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TRELLO_ADD_CHECKLISTS_CHECK_ITEMS_BY_ID_CHECKLIST": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_ADD_CHECKLISTS_CHECK_ITEMS_BY_ID_CHECKLIST",
+          "description": "Adds a new check item to a specified Trello checklist; this action does not update existing check items.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "idChecklist"
+            ],
+            "properties": {
+              "pos": {
+                "type": "string",
+                "examples": [
+                  "top",
+                  "bottom",
+                  "1",
+                  "10.5",
+                  "16384"
+                ],
+                "description": "Position for the new check item: 'top', 'bottom', or a positive number. Defaults to bottom."
+              },
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Review documentation",
+                  "Submit expense report",
+                  "Draft initial proposal"
+                ],
+                "description": "Name/title for the new check item (1-16384 characters). Required by the Trello API for successful creation."
+              },
+              "checked": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Initial completion status: 'true' or 'false'. Defaults to unchecked."
+              },
+              "idChecklist": {
+                "type": "string",
+                "examples": [
+                  "5f9f1b9b3b9b4e001f3e8b9a",
+                  "60d5f1b9b3b9b4e001f3e8b9b"
+                ],
+                "description": "ID of the checklist to add the new check item to."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TRELLO_GET_CARDS_CHECKLISTS_BY_ID_CARD": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_CARDS_CHECKLISTS_BY_ID_CARD",
+          "description": "Retrieves all checklists, including their check items, for a Trello card specified by its ID or shortlink, if the card exists and is accessible.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "idCard"
+            ],
+            "properties": {
+              "cards": {
+                "type": "string",
+                "default": "none",
+                "examples": [
+                  "all",
+                  "closed",
+                  "none",
+                  "open",
+                  "visible"
+                ],
+                "description": "Filters which cards' checklists are retrieved. Valid values: 'all' (all cards), 'closed' (closed cards), 'none' (no cards, default), 'open' (open cards), or 'visible' (cards visible to the user)."
+              },
+              "fields": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "all",
+                  "name,pos",
+                  "idCard,name"
+                ],
+                "description": "Specifies the fields to return for each checklist. Use 'all' for all fields (default), or provide a comma-separated list of desired fields. Available fields: 'idBoard', 'idCard', 'name', 'pos'."
+              },
+              "filter": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "all",
+                  "none"
+                ],
+                "description": "Filters which checklists are returned. Valid values: 'all' (default, returns all checklists) or 'none' (returns no checklists)."
+              },
+              "idCard": {
+                "type": "string",
+                "examples": [
+                  "dYK2r9Am",
+                  "mEpj9E4s"
+                ],
+                "description": "The ID or shortlink of the Trello card."
+              },
+              "checkItems": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "all",
+                  "none"
+                ],
+                "description": "Filters the check items to be returned within each checklist. Valid values: 'all' (default) or 'none'."
+              },
+              "card_fields": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "all",
+                  "name,desc,due",
+                  "idBoard,idList"
+                ],
+                "description": "Specifies the fields to return for associated card objects. Use 'all' for all fields (default), or provide a comma-separated list of desired fields. Available fields: 'badges', 'checkItemStates', 'closed', 'dateLastActivity', 'desc', 'descData', 'due', 'email', 'idAttachmentCover', 'idBoard', 'idChecklists', 'idLabels', 'idList', 'idMembers', 'idMembersVoted', 'idShort', 'labels', 'manualCoverAttachment', 'name', 'pos', 'shortLink', 'shortUrl', 'subscribed', 'url'."
+              },
+              "checkItem_fields": {
+                "type": "string",
+                "default": "name,nameData,pos,state",
+                "examples": [
+                  "all",
+                  "name,state",
+                  "name,pos,type"
+                ],
+                "description": "Specifies the fields to return for each check item. Use 'all' for all fields, or provide a comma-separated list of desired fields (default is 'name,nameData,pos,state'). Available fields: 'name', 'nameData', 'pos', 'state', 'type'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TRELLO_GET_CARDS_BY_ID_CARD": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_CARDS_BY_ID_CARD",
+          "description": "Retrieves a Trello card by its ID or shortlink, with options to include related data like actions, a...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TRELLO_GET_CARDS_BY_ID_CARD"
+              ]
+            }
+          }
+        },
+        "TRELLO_GET_CHECKLISTS_CHECK_ITEMS_BY_ID_CHECKLIST": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_CHECKLISTS_CHECK_ITEMS_BY_ID_CHECKLIST",
+          "description": "Retrieves all check items from a Trello checklist. Returns item details including name, position, co...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TRELLO_GET_CHECKLISTS_CHECK_ITEMS_BY_ID_CHECKLIST"
+              ]
+            }
+          }
+        },
+        "TRELLO_ADD_CARDS_CHECKLISTS_BY_ID_CARD": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_ADD_CARDS_CHECKLISTS_BY_ID_CARD",
+          "description": "Adds a checklist to a Trello card: use `value` to add a specific existing checklist, `idChecklistSou...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TRELLO_ADD_CARDS_CHECKLISTS_BY_ID_CARD"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T20:09:09.073Z",
+        "current_time_utc_epoch_seconds": 1786565349,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "sign",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"sign\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_E5sH4RMnwSPE"
+  }
+}

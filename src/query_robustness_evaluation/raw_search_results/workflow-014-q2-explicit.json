@@ -1,0 +1,603 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-014-q2-explicit",
+    "workflow_id": 14,
+    "workflow_task": "Find software engineering job listings matching role, location, remote-work, and salary criteria, compile the results, and send or provide them to someone.",
+    "query": "fetch job posting details from https://example.com/job-listing using Web Scraper",
+    "required_tools": [
+      "COMPOSIO_SEARCH_FETCH_URL_CONTENT"
+    ],
+    "supporting_tools": [
+      "COMPOSIO_SEARCH_WEB"
+    ],
+    "rationale": "Retrieves the full text and specific requirements from promising job listing URLs found during the search.",
+    "candidate_tools": [
+      "BROWSER_TOOL_CREATE_TASK",
+      "BROWSER_TOOL_WATCH_TASK",
+      "COMPOSIO_SEARCH_EXA_ANSWER",
+      "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+      "COMPOSIO_SEARCH_GROQ_CHAT",
+      "COMPOSIO_SEARCH_NEWS",
+      "COMPOSIO_SEARCH_WEB",
+      "GMAIL_PROXY_EXECUTE",
+      "GMAIL_SEND_EMAIL"
+    ],
+    "source_query_id": "workflow-014-q2",
+    "variant_dimension": "explicit"
+  },
+  "request": {
+    "query": "fetch job posting details from https://example.com/job-listing using Web Scraper"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "fetch job posting details from https://example.com/job-listing using Web Scraper",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "=== SCRAPE_DO WORKFLOW ===",
+            "Required Prerequisite: Fetch the first search/results page using SCRAPE_DO_GET_PAGE (validate the page contains real listings, not just navigation).",
+            "Required Step: Paginate 1\u2013N results pages using SCRAPE_DO_GET_PAGE and store each response content for link extraction.",
+            "Optional (if results page looks like a thin shell or missing body text) Fallback: Re-fetch the same URL using SCRAPE_DO_GET_PAGE (enable rendering and increase timeout to capture dynamic content).",
+            "Required Step: Extract candidate listing URLs from results content, de-duplicate, then fetch each listing detail page using SCRAPE_DO_GET_PAGE (use rendering when details are incomplete without it).",
+            "Optional (if scraping many listing URLs) Step: Batch URLs via SCRAPE_DO_CREATE_ASYNC_JOB, poll status with SCRAPE_DO_GET_ASYNC_JOB, then read per-URL outputs using SCRAPE_DO_GET_ASYNC_TASK.",
+            "Optional (if you need to manage usage before expanding scope) Next Step: Check remaining credits/limits using SCRAPE_DO_GET_ACCOUNT_INFO.",
+            "=== BRIGHTDATA WORKFLOW ===",
+            "[Required] [Prerequisite]: Identify a usable non-browser zone using BRIGHTDATA_LIST_WEB_UNLOCKER_ZONES (pick an unblocker/web-unlocker style zone; if none returned, resolve access before proceeding).",
+            "[Required] [Step]: Retrieve the target page using BRIGHTDATA_WEB_UNLOCKER (set url and zone; start with data_format=markdown for readable text).",
+            "[Required] [Next Step]: Verify BRIGHTDATA_WEB_UNLOCKER output quality (data.content non-empty and not just challenge/login/redirect scaffolding; inspect data.headers for x-brd-status-code and x-brd-error-code to catch silent blocks even when HTTP status is 200).",
+            "[Optional (if markdown is thin or parsing needs full markup)] [Next Step]: Re-run the same request using BRIGHTDATA_WEB_UNLOCKER (switch to data_format=raw to capture full HTML).",
+            "[Optional (if repeated blocks/timeouts persist or batching multiple URLs)] [Fallback]: Run BRIGHTDATA_CRAWL_API (submit URL list, capture snapshot id), then poll BRIGHTDATA_GET_SNAPSHOT_STATUS until complete and only then download via BRIGHTDATA_GET_SNAPSHOT_RESULTS."
+          ],
+          "known_pitfalls": [
+            "=== SCRAPE_DO PITFALLS ===",
+            "[SCRAPE_DO_GET_PAGE] A successful response can still omit main content (e.g., mostly layout); verify content quality and retry with rendering when needed.",
+            "[SCRAPE_DO_GET_PAGE] Rendered fetches can cost more than non-rendered requests; monitor usage to avoid exhausting credits during large runs.",
+            "[SCRAPE_DO_GET_PAGE] Multi-page and multi-listing runs can return very large text blobs; plan to parse responses programmatically rather than inspecting inline.",
+            "=== BRIGHTDATA PITFALLS ===",
+            "[BRIGHTDATA_LIST_WEB_UNLOCKER_ZONES] data.zones can be empty or the call can fail with HTTP 401; scraping cannot proceed until permissions/credentials are fixed.",
+            "[BRIGHTDATA_WEB_UNLOCKER] Using an invalid/unprovisioned zone often fails with HTTP 400; browser-type zones can yield client_10090 and empty content.",
+            "[BRIGHTDATA_WEB_UNLOCKER] HTTP 200 can still indicate failure; check headers for x-brd-status-code signals like 403/406 and x-brd-error-code (e.g., policy/compliance blocks).",
+            "[BRIGHTDATA_WEB_UNLOCKER] Proxy/auth or navigation issues may surface as 407 or x-brd-error-code=navigation_timeout with x-brd-status-code=502; retries may still fail without changing approach.",
+            "[BRIGHTDATA_GET_SNAPSHOT_RESULTS] Downloading before BRIGHTDATA_GET_SNAPSHOT_STATUS indicates completion can return empty or partial results."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse a JSON scrape response from stdin and extract candidate links from markdown-like content fields.",
+              "code": "```python\nimport sys,json,re,urllib.parse as up\nobj=json.load(sys.stdin)\nallowed_host=obj.get('allowed_host','example.invalid')\nfor r in obj.get('results',[]):\n d=r.get('response',{}).get('data',{})\n c=d.get('content','')\n links=[u for u in re.findall(r'\\[[^\\]]+\\]\\((https?://[^)]+)\\)',c)]\n out=[u for u in links if up.urlparse(u).netloc.endswith(allowed_host)]\n print(out[:50])\n```"
+            },
+            {
+              "description": "Quickly sanity-check a saved Web Unlocker response payload (via stdin) for extracted text length and basic error-page indicators before deeper parsing.",
+              "code": "```python\nimport json,sys\np=json.load(sys.stdin)\ncontent=p[\"results\"][0][\"response\"][\"data\"][\"content\"]\nprint(len(content))\nprint(content[:800])\nl=content.lower();print(\"not found\" in l,\"login\" in l)\n```"
+            }
+          ],
+          "primary_tool_slugs": [
+            "SCRAPE_DO_GET_PAGE",
+            "SCRAPE_DO_CREATE_ASYNC_JOB",
+            "BRIGHTDATA_LIST_WEB_UNLOCKER_ZONES",
+            "BRIGHTDATA_WEB_UNLOCKER"
+          ],
+          "related_tool_slugs": [
+            "SCRAPE_DO_GET_ASYNC_JOB",
+            "SCRAPE_DO_GET_ASYNC_TASK",
+            "SCRAPE_DO_GET_ACCOUNT_INFO",
+            "SCRAPE_DO_PROXY_MODE",
+            "SCRAPE_DO_SCRAPE_URL_POST",
+            "BRIGHTDATA_CRAWL_API",
+            "BRIGHTDATA_GET_SNAPSHOT_STATUS",
+            "BRIGHTDATA_GET_SNAPSHOT_RESULTS"
+          ],
+          "toolkits": [
+            "scrape_do",
+            "brightdata"
+          ],
+          "plan_id": "41d8d79c0d9c451e9fb294c44485785c,7ee920296e2f422e80886d818b2afd6f"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "scrape_do",
+          "has_active_connection": false,
+          "description": "Scrape.do is a web scraping API offering rotating residential, data-center, and mobile proxies with headless browser support and session management to bypass anti-bot protections (e.g., Cloudflare, Akamai) and extract data at scale in formats like JS",
+          "status_message": "No Active connection for toolkit=scrape_do. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"scrape_do\") to create a connection BEFORE executing any scrape_do tools."
+        },
+        {
+          "toolkit": "brightdata",
+          "has_active_connection": false,
+          "description": "Bright Data provides the world's #1 web data platform with Web Unlocker for bypassing anti-bot systems, SERP API for search engine data, and pre-made scrapers for popular websites. Collect any web data at scale.",
+          "status_message": "No Active connection for toolkit=brightdata. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"brightdata\") to create a connection BEFORE executing any brightdata tools."
+        }
+      ],
+      "tool_schemas": {
+        "SCRAPE_DO_GET_PAGE": {
+          "toolkit": "SCRAPE_DO",
+          "tool_slug": "SCRAPE_DO_GET_PAGE",
+          "description": "A tool to scrape web pages using scrape.do's API service. Makes a basic GET request to fetch webpage content while handling anti-bot protections and proxy rotation automatically. Does not execute JavaScript by default \u2014 pages requiring client-side rendering (SPAs, dynamically loaded content) will return incomplete HTML; use SCRAPE_DO_GET_RENDER_PAGE or set render=true for those cases.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "examples": [
+                  "https://www.example.com",
+                  "http://localhost:8080",
+                  "https://192.168.1.1/path"
+                ],
+                "description": "Target web page URL to scrape"
+              },
+              "super": {
+                "type": "boolean",
+                "default": false,
+                "description": "Use residential & mobile proxy networks"
+              },
+              "width": {
+                "type": "integer",
+                "default": 1920,
+                "maximum": 4096,
+                "minimum": 1,
+                "description": "Browser viewport width (requires render=true)"
+              },
+              "device": {
+                "enum": [
+                  "desktop",
+                  "mobile",
+                  "tablet"
+                ],
+                "type": "string",
+                "default": "desktop",
+                "description": "Specify device type (desktop, mobile, tablet)"
+              },
+              "height": {
+                "type": "integer",
+                "default": 1080,
+                "maximum": 4096,
+                "minimum": 1,
+                "description": "Browser viewport height (requires render=true)"
+              },
+              "output": {
+                "enum": [
+                  "raw",
+                  "markdown"
+                ],
+                "type": "string",
+                "default": "raw",
+                "description": "Output format (raw or markdown)"
+              },
+              "render": {
+                "type": "boolean",
+                "default": false,
+                "description": "Enable headless browser rendering Use for JS-heavy pages, SPAs, or sites with anti-bot JS challenges. Increase `timeout` when enabling to ensure full page load before cutoff."
+              },
+              "timeout": {
+                "type": "integer",
+                "maximum": 120000,
+                "minimum": 5000,
+                "description": "Maximum request timeout in ms (5000-120000)"
+              },
+              "geo_code": {
+                "type": "string",
+                "pattern": "^[A-Za-z]{2}$",
+                "description": "Choose country for target web page (e.g. 'us', 'gb')"
+              },
+              "return_json": {
+                "type": "boolean",
+                "default": false,
+                "description": "Return network requests in JSON format"
+              },
+              "set_cookies": {
+                "type": "string",
+                "description": "Set cookies for target web page"
+              },
+              "extra_headers": {
+                "type": "boolean",
+                "default": false,
+                "description": "Add/modify headers"
+              },
+              "retry_timeout": {
+                "type": "integer",
+                "maximum": 55000,
+                "minimum": 5000,
+                "description": "Maximum retry timeout in ms (5000-55000)"
+              },
+              "custom_headers": {
+                "type": "boolean",
+                "default": false,
+                "description": "Handle all request headers"
+              },
+              "block_resources": {
+                "type": "boolean",
+                "default": true,
+                "description": "Block CSS and image sources"
+              },
+              "disable_redirection": {
+                "type": "boolean",
+                "default": false,
+                "description": "Disable request redirection"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SCRAPE_DO_CREATE_ASYNC_JOB": {
+          "toolkit": "SCRAPE_DO",
+          "tool_slug": "SCRAPE_DO_CREATE_ASYNC_JOB",
+          "description": "Tool to create an asynchronous scraping job with specified targets and options. Use when you need to scrape multiple URLs in parallel without waiting for results. Returns a job ID immediately for polling results later via the get job status action.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "Targets"
+            ],
+            "properties": {
+              "Body": {
+                "type": "string",
+                "description": "HTTP request body for POST/PUT/PATCH requests"
+              },
+              "Super": {
+                "type": "boolean",
+                "description": "Use residential/mobile proxy networks (default: false)"
+              },
+              "Device": {
+                "enum": [
+                  "desktop",
+                  "mobile",
+                  "tablet"
+                ],
+                "type": "string",
+                "description": "Device types for scraping emulation."
+              },
+              "Method": {
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "HEAD",
+                  "DELETE"
+                ],
+                "type": "string",
+                "description": "HTTP methods for async scraping requests."
+              },
+              "Output": {
+                "enum": [
+                  "raw",
+                  "markdown"
+                ],
+                "type": "string",
+                "description": "Output format for scraped content."
+              },
+              "Render": {
+                "type": "object",
+                "properties": {
+                  "WaitUntil": {
+                    "type": "string",
+                    "description": "Wait condition: load, domcontentloaded, networkidle0, networkidle2"
+                  },
+                  "CustomWait": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Custom wait time in milliseconds"
+                  },
+                  "ReturnJSON": {
+                    "type": "boolean",
+                    "description": "Return network requests in JSON format"
+                  },
+                  "Screenshot": {
+                    "type": "boolean",
+                    "description": "Capture screenshot of visible viewport"
+                  },
+                  "WaitSelector": {
+                    "type": "string",
+                    "description": "CSS selector to wait for before considering page loaded"
+                  },
+                  "BlockResources": {
+                    "type": "boolean",
+                    "description": "Block CSS and image resources for faster rendering"
+                  },
+                  "FullScreenshot": {
+                    "type": "boolean",
+                    "description": "Capture full-page screenshot"
+                  },
+                  "PlayWithBrowser": {
+                    "type": "string",
+                    "description": "JavaScript code to execute in browser context"
+                  },
+                  "ParticularScreenshot": {
+                    "type": "string",
+                    "description": "CSS selector for specific element screenshot"
+                  }
+                },
+                "description": "Options for headless browser rendering.",
+                "additionalProperties": false
+              },
+              "GeoCode": {
+                "type": "string",
+                "pattern": "^[A-Za-z]{2}$",
+                "description": "Country code for geo-targeting (e.g., 'us', 'gb', 'de')"
+              },
+              "Headers": {
+                "type": "object",
+                "description": "Custom HTTP headers to send with requests",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "Targets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "https://httpbin.org/html",
+                    "https://example.com"
+                  ]
+                ],
+                "minItems": 1,
+                "description": "Array of target URLs to scrape. Each URL will be processed asynchronously."
+              },
+              "Timeout": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Total request timeout in milliseconds (default: 60000)"
+              },
+              "SessionID": {
+                "type": "string",
+                "description": "Sticky session ID to reuse same IP address across requests"
+              },
+              "SetCookies": {
+                "type": "string",
+                "description": "Cookies to include with the request"
+              },
+              "WebhookURL": {
+                "type": "string",
+                "description": "Webhook URL to send results to when job completes"
+              },
+              "DisableRetry": {
+                "type": "boolean",
+                "description": "Disable automatic retry mechanism (default: false)"
+              },
+              "RetryTimeout": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Retry timeout per request in milliseconds (default: 15000)"
+              },
+              "ForwardHeaders": {
+                "type": "boolean",
+                "description": "Use only provided headers, discard default headers (default: false)"
+              },
+              "WebhookHeaders": {
+                "type": "object",
+                "description": "Additional headers to send with webhook notification",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "RegionalGeoCode": {
+                "type": "string",
+                "description": "Regional code for more specific geo-targeting"
+              },
+              "DisableRedirection": {
+                "type": "boolean",
+                "description": "Disable following HTTP redirects (default: false)"
+              },
+              "TransparentResponse": {
+                "type": "boolean",
+                "description": "Return raw target website response without processing (default: false)"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "BRIGHTDATA_LIST_WEB_UNLOCKER_ZONES": {
+          "toolkit": "BRIGHTDATA",
+          "tool_slug": "BRIGHTDATA_LIST_WEB_UNLOCKER_ZONES",
+          "description": "Tool to list your configured Web Unlocker zones and proxy endpoints. Use to view available zones for web scraping and bot protection bypass.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "BRIGHTDATA_WEB_UNLOCKER": {
+          "toolkit": "BRIGHTDATA",
+          "tool_slug": "BRIGHTDATA_WEB_UNLOCKER",
+          "description": "Tool to bypass bot detection, captcha, and other anti-scraping measures to extract content from websites. Use when you need to scrape websites that block automated access or require JavaScript rendering. Some responses may still contain CAPTCHA challenge pages or incomplete HTML; inspect the response before retrying, and avoid aggressive retry loops.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "url",
+              "zone"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "examples": [
+                  "https://www.example.com"
+                ],
+                "description": "The URL of the website to unlock and scrape."
+              },
+              "zone": {
+                "type": "string",
+                "examples": [
+                  "web_unlocker1",
+                  "composio_datacenter_proxy1"
+                ],
+                "minLength": 1,
+                "description": "Web Unlocker zone name (required, non-empty). Call BRIGHTDATA_LIST_WEB_UNLOCKER_ZONES first to get available zones."
+              },
+              "format": {
+                "enum": [
+                  "json",
+                  "raw"
+                ],
+                "type": "string",
+                "default": "raw",
+                "examples": [
+                  "raw"
+                ],
+                "description": "Response format - 'raw' returns HTML content as string, 'json' returns structured data."
+              },
+              "country": {
+                "type": "string",
+                "examples": [
+                  "us"
+                ],
+                "description": "ISO 3166-1 alpha-2 country code for the proxy location (e.g., 'us', 'gb', 'de')."
+              },
+              "data_format": {
+                "type": "string",
+                "const": "markdown",
+                "examples": [
+                  "markdown"
+                ],
+                "description": "Set to 'markdown' to convert page content to markdown format."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SCRAPE_DO_GET_ASYNC_JOB": {
+          "toolkit": "SCRAPE_DO",
+          "tool_slug": "SCRAPE_DO_GET_ASYNC_JOB",
+          "description": "Tool to retrieve details and status of a specific asynchronous scraping job. Use when you need to check the progress, status, or results of a previously created async job. Returns job metadata including creation time, completion time, task counts, and detailed task list.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "jobID"
+            ],
+            "properties": {
+              "jobID": {
+                "type": "string",
+                "examples": [
+                  "337b909c-285f-4244-ab40-f18d965d3156"
+                ],
+                "description": "Unique identifier of the job to retrieve"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SCRAPE_DO_GET_ASYNC_TASK": {
+          "toolkit": "SCRAPE_DO",
+          "tool_slug": "SCRAPE_DO_GET_ASYNC_TASK",
+          "description": "Tool to retrieve the result of a specific task within an asynchronous job. Returns the scraped conte...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SCRAPE_DO_GET_ASYNC_TASK"
+              ]
+            }
+          }
+        },
+        "SCRAPE_DO_GET_ACCOUNT_INFO": {
+          "toolkit": "SCRAPE_DO",
+          "tool_slug": "SCRAPE_DO_GET_ACCOUNT_INFO",
+          "description": "Retrieves account information and usage statistics from Scrape.do. This action makes a GET request t...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SCRAPE_DO_GET_ACCOUNT_INFO"
+              ]
+            }
+          }
+        },
+        "SCRAPE_DO_PROXY_MODE": {
+          "toolkit": "SCRAPE_DO",
+          "tool_slug": "SCRAPE_DO_PROXY_MODE",
+          "description": "This tool implements the Proxy Mode functionality of scrape.do, which allows routing requests throug...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SCRAPE_DO_PROXY_MODE"
+              ]
+            }
+          }
+        },
+        "SCRAPE_DO_SCRAPE_URL_POST": {
+          "toolkit": "SCRAPE_DO",
+          "tool_slug": "SCRAPE_DO_SCRAPE_URL_POST",
+          "description": "Tool to scrape web pages using POST method via scrape.do API. Use when you need to send POST request...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SCRAPE_DO_SCRAPE_URL_POST"
+              ]
+            }
+          }
+        },
+        "BRIGHTDATA_CRAWL_API": {
+          "toolkit": "BRIGHTDATA",
+          "tool_slug": "BRIGHTDATA_CRAWL_API",
+          "description": "Tool to trigger an asynchronous site crawl job to extract content across multiple pages or entire do...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BRIGHTDATA_CRAWL_API"
+              ]
+            }
+          }
+        },
+        "BRIGHTDATA_GET_SNAPSHOT_STATUS": {
+          "toolkit": "BRIGHTDATA",
+          "tool_slug": "BRIGHTDATA_GET_SNAPSHOT_STATUS",
+          "description": "Tool to check the processing status of a crawl job using snapshot ID. Call before attempting to down...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BRIGHTDATA_GET_SNAPSHOT_STATUS"
+              ]
+            }
+          }
+        },
+        "BRIGHTDATA_GET_SNAPSHOT_RESULTS": {
+          "toolkit": "BRIGHTDATA",
+          "tool_slug": "BRIGHTDATA_GET_SNAPSHOT_RESULTS",
+          "description": "Tool to retrieve the scraped data from a completed crawl job by snapshot ID. Only call after confirm...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BRIGHTDATA_GET_SNAPSHOT_RESULTS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T19:51:16.940Z",
+        "current_time_utc_epoch_seconds": 1786564276,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "rope",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"rope\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_mFt79L47LVrc"
+  }
+}
