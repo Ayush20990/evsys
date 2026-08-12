@@ -1,0 +1,466 @@
+{
+  "use_case_id": 79,
+  "prompt": "Audit and manage a YouTube channel by collecting channel/video data, analyzing performance, listing and restructuring playlists, adding/removing/reordering playlist videos, and researching high-performing YouTube topics.",
+  "expected_tools": [
+    "YOUTUBE_LIST_CHANNEL_VIDEOS",
+    "YOUTUBE_ADD_VIDEO_TO_PLAYLIST",
+    "YOUTUBE_LIST_CHANNEL_SECTIONS",
+    "YOUTUBE_UPDATE_PLAYLIST",
+    "YOUTUBE_DELETE_PLAYLIST_ITEM",
+    "YOUTUBE_GET_CHANNEL_STATISTICS",
+    "YOUTUBE_SEARCH_YOU_TUBE",
+    "YOUTUBE_CREATE_PLAYLIST",
+    "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+    "YOUTUBE_UPDATE_PLAYLIST_ITEM",
+    "YOUTUBE_LIST_PLAYLIST_ITEMS",
+    "YOUTUBE_LIST_USER_PLAYLISTS"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Audit and manage a YouTube channel by collecting channel/video data, analyzing performance, listing and restructuring playlists, adding/removing/reordering playlist videos, and researching high-performing YouTube topics.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Prepare an uploadable video asset reference plus core metadata and confirm publish intent using YOUTUBE_UPLOAD_VIDEO (double-check the intended authenticated channel if multiple connections exist).",
+            "[Optional (if channel identifier is unknown for targeting/listing)] [Prerequisite]: Resolve the channel identifier using YOUTUBE_GET_CHANNEL_ID_BY_HANDLE (save for later listing calls).",
+            "[Optional (if you need a quick auth/readiness check before write actions)] [Prerequisite]: Perform a lightweight read using YOUTUBE_LIST_USER_PLAYLISTS (verify the account can access the API).",
+            "[Optional (if uploading new content)] [Step]: Upload using YOUTUBE_UPLOAD_VIDEO (capture the returned video_id for all downstream actions).",
+            "[Required] [Next Step]: After user confirmation for public-impact changes, update metadata/privacy using YOUTUBE_UPDATE_VIDEO (prefer edits over reupload for the same video_id).",
+            "[Optional (if managing an existing library)] [Step]: Enumerate channel videos using YOUTUBE_LIST_CHANNEL_VIDEOS (paginate using returned tokens only; extract the nested resource video identifier for selection).",
+            "[Optional (if richer fields/verification are needed before edits)] [Step]: Fetch details in bulk using YOUTUBE_GET_VIDEO_DETAILS_BATCH (batch selected video_ids).",
+            "[Optional (if organizing into playlists)] [Step]: Select playlists using YOUTUBE_LIST_USER_PLAYLISTS, create missing via YOUTUBE_CREATE_PLAYLIST, then insert videos using YOUTUBE_ADD_VIDEO_TO_PLAYLIST.",
+            "[Fallback (if YOUTUBE_UPLOAD_VIDEO fails)] [Fallback]: Upload using YOUTUBE_MULTIPART_UPLOAD_VIDEO (capture video_id) then continue with YOUTUBE_UPDATE_VIDEO and playlist steps."
+          ],
+          "known_pitfalls": [
+            "[YOUTUBE_UPLOAD_VIDEO] The created video identifier may be nested in the response payload rather than top-level; persist it immediately for follow-on calls.",
+            "[YOUTUBE_MULTIPART_UPLOAD_VIDEO] Upload may require a pre-staged object reference (not a direct external link) for the video file input.",
+            "[YOUTUBE_UPDATE_VIDEO] Supplying tags overwrites the full tag set, and updates can fail with HTTP 403 when the authenticated account does not own the video.",
+            "[YOUTUBE_LIST_CHANNEL_VIDEOS] Returned items are playlist entries; use the nested resource\u2019s video identifier (not the item id), and listing can hard-fail when channel id is omitted.",
+            "[YOUTUBE_ADD_VIDEO_TO_PLAYLIST] Setting an explicit position can trigger HTTP 400 for out-of-range values; bursts of inserts may intermittently return HTTP 409 and need retry with delay."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Sequential playlist inserts with simple throttling and failure capture for later retries during many YOUTUBE_ADD_VIDEO_TO_PLAYLIST calls.",
+              "code": "```python\nimport time\n\ndef add_many(playlist_id, video_ids):\n    failed=[]\n    for vid in video_ids:\n        r,e=run_composio_tool('YOUTUBE_ADD_VIDEO_TO_PLAYLIST',{'playlistId':playlist_id,'videoId':vid})\n        if e: failed.append((vid,str(e)))\n        time.sleep(0.5)\n    return failed\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "YOUTUBE_UPLOAD_VIDEO",
+            "YOUTUBE_UPDATE_VIDEO",
+            "YOUTUBE_LIST_CHANNEL_VIDEOS"
+          ],
+          "related_tool_slugs": [
+            "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+            "YOUTUBE_CREATE_PLAYLIST",
+            "YOUTUBE_ADD_VIDEO_TO_PLAYLIST",
+            "YOUTUBE_MULTIPART_UPLOAD_VIDEO",
+            "YOUTUBE_GET_CHANNEL_ID_BY_HANDLE",
+            "YOUTUBE_LIST_USER_PLAYLISTS"
+          ],
+          "toolkits": [
+            "youtube"
+          ],
+          "plan_id": "32ca877e35a74188a84b10fe5824fd1f"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "youtube",
+          "has_active_connection": false,
+          "description": "YouTube is a video-sharing platform with user-generated content, live streaming, and monetization opportunities, widely used for marketing, education, and entertainment",
+          "status_message": "No Active connection for toolkit=youtube. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"youtube\") to create a connection BEFORE executing any youtube tools."
+        }
+      ],
+      "tool_schemas": {
+        "YOUTUBE_UPLOAD_VIDEO": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_UPLOAD_VIDEO",
+          "description": "Uploads a video file to a YouTube channel; the video file must be in a YouTube-supported format.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "title",
+              "description",
+              "tags",
+              "categoryId",
+              "privacyStatus",
+              "videoFilePath"
+            ],
+            "properties": {
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "['educational', 'python', 'coding tutorial']"
+                ],
+                "description": "List of keyword tags (strings) for the video, used to improve discoverability."
+              },
+              "title": {
+                "type": "string",
+                "examples": [
+                  "My Awesome Video Adventure"
+                ],
+                "description": "The title for the video."
+              },
+              "categoryId": {
+                "type": "string",
+                "examples": [
+                  "22"
+                ],
+                "description": "YouTube category ID (e.g., '22' for People & Blogs). Can be provided as a string or integer. See YouTube Data API docs for a full list of category IDs."
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "A detailed walkthrough of my latest project, showcasing all its features."
+                ],
+                "description": "Detailed description of the video content, optionally including keywords and context."
+              },
+              "privacyStatus": {
+                "enum": [
+                  "public",
+                  "private",
+                  "unlisted"
+                ],
+                "type": "string",
+                "examples": [
+                  "public"
+                ],
+                "description": "Privacy status."
+              },
+              "videoFilePath": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "Video file to upload to YouTube.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_UPDATE_VIDEO": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_UPDATE_VIDEO",
+          "description": "Updates metadata for a YouTube video identified by videoId, which must exist; an empty list for tags removes all existing tags.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "video_id"
+            ],
+            "properties": {
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "updatedTag1",
+                    "updatedTag2"
+                  ]
+                ],
+                "description": "New tags as a list of strings. Must be an actual list/array like ['tag1', 'tag2'], NOT a JSON string. Replaces all existing tags. An empty list removes all tags. No change if omitted or `None`. YouTube restrictions: (1) Angle brackets < > are forbidden and will be removed automatically. (2) Total characters across all tags must not exceed 500 (spaces in tags add 2 extra characters due to internal quoting, and commas between tags count toward the limit)."
+              },
+              "title": {
+                "type": "string",
+                "examples": [
+                  "My Updated Awesome Video"
+                ],
+                "description": "New video title as a string. Must be a text string, not a number. Maximum 100 characters. No change if omitted or `None`."
+              },
+              "video_id": {
+                "type": "string",
+                "examples": [
+                  "dQw4w9WgXcQ"
+                ],
+                "description": "The video's unique YouTube ID (string). Typically an 11-character alphanumeric string found in the video URL (e.g., 'dQw4w9WgXcQ')."
+              },
+              "category_id": {
+                "type": "string",
+                "examples": [
+                  "22"
+                ],
+                "description": "New YouTube category ID as a string. No change if omitted or `None`. Numeric values will be converted to strings."
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "This is an updated description of my awesome video."
+                ],
+                "description": "New video description as a string. Maximum 5000 bytes (not characters). Multibyte UTF-8 characters like emojis (4 bytes each) and accented letters (2 bytes each) count more than ASCII characters. No change if omitted or `None`."
+              },
+              "privacy_status": {
+                "enum": [
+                  "public",
+                  "private",
+                  "unlisted"
+                ],
+                "type": "string",
+                "examples": [
+                  "public"
+                ],
+                "description": "New privacy status. No change if omitted or `None`."
+              },
+              "composio_execution_message": {
+                "type": "string",
+                "description": "Internal field for execution messages about input processing."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_LIST_CHANNEL_VIDEOS": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_LIST_CHANNEL_VIDEOS",
+          "description": "Lists videos from a specified YouTube channel. This action primarily uses the playlistItems.list endpoint with the channel's uploads playlist, which is the recommended approach by YouTube. The uploads playlist ID is obtained by fetching the channel resource via the Channels API and extracting the playlist ID from contentDetails.relatedPlaylists.uploads field. If the uploads playlist returns a 404 error (which can happen due to a known YouTube API bug where the returned playlist ID doesn't actually exist), the action automatically falls back to the search.list endpoint to retrieve channel videos. Note that the search fallback has higher quota cost (100 units vs 1 unit) and is limited to 500 results. If a channel exists but has no uploads playlist (e.g., brand accounts, channels with all videos deleted, or channels that haven't uploaded any public content), an empty result set is returned instead of an error.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "mine": {
+                "type": "boolean",
+                "description": "Set to true to list videos from the authenticated user's channel. When true, channelId is automatically set to 'me'. Either channelId or mine must be provided."
+              },
+              "part": {
+                "type": "string",
+                "default": "snippet",
+                "examples": [
+                  "snippet"
+                ],
+                "description": "This parameter specifies which parts of the playlist item resource to return. The snippet includes basic video details like ID, title, description, and thumbnails."
+              },
+              "channelId": {
+                "type": "string",
+                "examples": [
+                  "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+                  "@Google",
+                  "me",
+                  "https://www.youtube.com/@Google"
+                ],
+                "maxLength": 2048,
+                "minLength": 1,
+                "description": "The YouTube channel identifier (exactly 24 characters for UC IDs). Accepts: (1) channel ID starting with 'UC' followed by 22 characters (e.g., 'UC_x5XG1OV2P6uZZ5FSM9Ttw'), (2) channel handle starting with '@' (e.g., '@Google'), (3) 'me' for the authenticated user's channel, or (4) YouTube channel URLs with /@handle or /channel/UC... format. Do NOT pass OAuth tokens, API keys, or other credentials here - only channel identifiers. Legacy /user/username URLs are supported but legacy /c/ custom URLs are not. Either channelId or mine must be provided."
+              },
+              "pageToken": {
+                "type": "string",
+                "examples": [
+                  "CAUQAA"
+                ],
+                "description": "Token for pagination; use `nextPageToken` from a previous response for the next page, or `prevPageToken` for the previous page. Page tokens are opaque, ephemeral values that must come directly from a previous LIST_CHANNEL_VIDEOS response and cannot be constructed or reused across different queries."
+              },
+              "maxResults": {
+                "type": "integer",
+                "default": 5,
+                "maximum": 50,
+                "minimum": 1,
+                "examples": [
+                  "5"
+                ],
+                "description": "The maximum number of videos to return per page."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_GET_VIDEO_DETAILS_BATCH": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+          "description": "Retrieves multiple YouTube video resource parts in a single batch call. Use when you need cohort-level metrics for many videos to reduce quota usage and latency.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "hl": {
+                "type": "string",
+                "examples": [
+                  "en"
+                ],
+                "description": "Language for localized metadata (snippet.localized); IETF language tag, e.g., 'en'."
+              },
+              "id": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "dQw4w9WgXcQ",
+                    "eX2qFMC8cFo"
+                  ]
+                ],
+                "minItems": 1,
+                "description": "List of YouTube video IDs to retrieve. At least one video ID is required. Accepts a list or comma-separated string. Also accepts 'videoIds' as an alias. The YouTube API limits each request to 50 video IDs; if more are provided, they will be automatically split into multiple requests and the results merged."
+              },
+              "parts": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "contentDetails",
+                    "fileDetails",
+                    "id",
+                    "liveStreamingDetails",
+                    "localizations",
+                    "paidProductPlacementDetails",
+                    "player",
+                    "processingDetails",
+                    "recordingDetails",
+                    "snippet",
+                    "statistics",
+                    "status",
+                    "suggestions",
+                    "topicDetails"
+                  ],
+                  "type": "string"
+                },
+                "default": [
+                  "snippet",
+                  "statistics"
+                ],
+                "examples": [
+                  [
+                    "snippet",
+                    "statistics"
+                  ],
+                  [
+                    "snippet",
+                    "contentDetails",
+                    "statistics"
+                  ]
+                ],
+                "minItems": 1,
+                "description": "Video resource properties to include. At least one part is required. Accepts a list of parts or a comma-separated string. Also accepts 'part' (singular) as an alias. Valid parts: snippet, contentDetails, statistics, status, player, topicDetails, recordingDetails, fileDetails, processingDetails, suggestions, liveStreamingDetails, localizations, paidProductPlacementDetails, id. Defaults to ['snippet', 'statistics'] if not specified."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_CREATE_PLAYLIST": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_CREATE_PLAYLIST",
+          "description": "Tool to create a new YouTube playlist on the authenticated user's channel. Use when organizing video...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_CREATE_PLAYLIST"
+              ]
+            }
+          }
+        },
+        "YOUTUBE_ADD_VIDEO_TO_PLAYLIST": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_ADD_VIDEO_TO_PLAYLIST",
+          "description": "Tool to add a video to a playlist by inserting a playlist item. Use when organizing videos into play...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_ADD_VIDEO_TO_PLAYLIST"
+              ]
+            }
+          }
+        },
+        "YOUTUBE_MULTIPART_UPLOAD_VIDEO": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_MULTIPART_UPLOAD_VIDEO",
+          "description": "Uploads a video to YouTube using multipart upload in a single request. Use when you want to upload b...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_MULTIPART_UPLOAD_VIDEO"
+              ]
+            }
+          }
+        },
+        "YOUTUBE_GET_CHANNEL_ID_BY_HANDLE": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_GET_CHANNEL_ID_BY_HANDLE",
+          "description": "Retrieves the YouTube Channel ID for a specific YouTube channel handle.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_GET_CHANNEL_ID_BY_HANDLE"
+              ]
+            }
+          }
+        },
+        "YOUTUBE_LIST_USER_PLAYLISTS": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_LIST_USER_PLAYLISTS",
+          "description": "Retrieves playlists owned by the authenticated user, implicitly using mine=True.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_LIST_USER_PLAYLISTS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:37:27.797Z",
+        "current_time_utc_epoch_seconds": 1786541847,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "bent",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"bent\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_5FZoe3MBab2d"
+  }
+}

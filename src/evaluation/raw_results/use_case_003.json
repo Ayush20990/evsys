@@ -1,0 +1,429 @@
+{
+  "use_case_id": 3,
+  "prompt": "Find a spreadsheet in OneDrive, download it, programmatically add comparison summary worksheets/sections, upload the modified workbook back to the same OneDrive item, and verify the cloud copy.",
+  "expected_tools": [
+    "ONE_DRIVE_GET_ITEM",
+    "ONE_DRIVE_SEARCH_ITEMS",
+    "ONE_DRIVE_DOWNLOAD_FILE",
+    "ONE_DRIVE_UPDATE_FILE_CONTENT"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Find a spreadsheet in OneDrive, download it, programmatically add comparison summary worksheets/sections, upload the modified workbook back to the same OneDrive item, and verify the cloud copy.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Confirm the identifier points to a file (not folder/shortcut) using ONE_DRIVE_GET_ITEM (avoid overwriting the wrong item).",
+            "[Required] [Step]: Download current content using ONE_DRIVE_DOWNLOAD_FILE (use the returned content reference to obtain bytes, then generate updated bytes externally).",
+            "[Required] [Step]: Create an overwrite upload session using ONE_DRIVE_UPDATE_FILE_CONTENT (capture uploadUrl; if validation fails, retry with minimal required inputs).",
+            "[Required] [Step]: Upload the updated bytes to the uploadUrl from ONE_DRIVE_UPDATE_FILE_CONTENT (single request for small files; chunk if the service requires ranged uploads).",
+            "[Optional (if uploadUrl expires or session upload cannot complete)] [Fallback]: Overwrite using ONE_DRIVE_ONEDRIVE_UPLOAD_FILE (requires a valid staged file reference for the replacement content).",
+            "[Optional (for verification)] [Next Step]: Re-check item metadata using ONE_DRIVE_GET_ITEM and, if needed, re-download using ONE_DRIVE_DOWNLOAD_FILE (confirm updated content persisted).",
+            "[Optional (if rollback is needed)] [Next Step]: List available versions using ONE_DRIVE_GET_ITEM_VERSIONS (select a prior version to restore by re-uploading content via ONE_DRIVE_UPDATE_FILE_CONTENT)."
+          ],
+          "known_pitfalls": [
+            "[ONE_DRIVE_DOWNLOAD_FILE] Returns a content locator/reference rather than inline bytes; treating the JSON response as file content can corrupt edits.",
+            "[ONE_DRIVE_UPDATE_FILE_CONTENT] Can return HTTP 400 invalid-request when optional/extra fields are provided; retry with only required/minimal inputs.",
+            "[ONE_DRIVE_UPDATE_FILE_CONTENT] When creating a session without providing a file, the returned uploadUrl can expire; upload promptly or regenerate the session.",
+            "[ONE_DRIVE_ONEDRIVE_UPLOAD_FILE] Requires a valid staged file reference (including name/mimetype/storage key); missing or unstaged storage can fail (for example 403 or not-found errors).",
+            "[ONE_DRIVE_GET_ITEM] Updated size/modified metadata may lag briefly after overwrite; retry verification if values look stale."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "ONE_DRIVE_UPDATE_FILE_CONTENT"
+          ],
+          "related_tool_slugs": [
+            "ONE_DRIVE_GET_ITEM",
+            "ONE_DRIVE_DOWNLOAD_FILE",
+            "ONE_DRIVE_GET_ITEM_VERSIONS",
+            "ONE_DRIVE_ONEDRIVE_UPLOAD_FILE"
+          ],
+          "toolkits": [
+            "one_drive"
+          ],
+          "plan_id": "3acf90e397f24d6d83cdef88fb79b6a4"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "one_drive",
+          "has_active_connection": false,
+          "description": "OneDrive is Microsoft\u2019s cloud storage solution enabling users to store, sync, and share files across devices, offering offline access, real-time collaboration, and enterprise-grade security",
+          "status_message": "No Active connection for toolkit=one_drive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"one_drive\") to create a connection BEFORE executing any one_drive tools."
+        }
+      ],
+      "tool_schemas": {
+        "ONE_DRIVE_UPDATE_FILE_CONTENT": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_UPDATE_FILE_CONTENT",
+          "description": "Tool to update an existing file's content in OneDrive. When called without a `file` parameter, creates an upload session and returns its uploadUrl (legacy behavior \u2014 caller drives the PUT uploads). When called with a `file`, the action streams the file's bytes in chunks via the upload session and returns the final updated DriveItem. The item's ID is preserved (existing share links remain valid) unless conflict_behavior=rename causes the server to create a new item.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "item_id"
+            ],
+            "properties": {
+              "file": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "Optional file content to upload. When provided, the action creates an upload session, streams the file bytes in chunks, and returns the updated DriveItem (id/name/size/file). When omitted, the action only creates the upload session and returns its uploadUrl + session metadata, leaving subsequent PUT uploads to the caller (legacy behavior).",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "item_id": {
+                "type": "string",
+                "examples": [
+                  "01NKDM7HMOJTVYMDOSXFDK2QJDXCDI3WUK"
+                ],
+                "description": "The unique identifier of the DriveItem (file) to update."
+              },
+              "site_id": {
+                "type": "string",
+                "examples": [
+                  "contoso.sharepoint.com,024d491a-4d09-4194-ae1f-7413535507dc,024d491a-4d09-4194-ae1f-7413535507dc"
+                ],
+                "description": "The unique identifier of the SharePoint site. If provided, uses /sites/{siteId}/drive. Mutually exclusive with drive_id, group_id, and user_id."
+              },
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "024d491a-4d09-4194-ae1f-7413535507dc"
+                ],
+                "description": "The unique identifier of the user. If provided, uses /users/{userId}/drive. Mutually exclusive with drive_id, site_id, and group_id."
+              },
+              "drive_id": {
+                "type": "string",
+                "examples": [
+                  "b!C3NkF4b2GU2msLpLqgZ4oYd_S4P0S6_FhG0bS-WpTkYwGVc_FmBYSZ7d0x_ZJpG-"
+                ],
+                "description": "The unique identifier of the drive. If not provided, uses /me/drive. Mutually exclusive with site_id, group_id, and user_id."
+              },
+              "group_id": {
+                "type": "string",
+                "examples": [
+                  "024d491a-4d09-4194-ae1f-7413535507dc"
+                ],
+                "description": "The unique identifier of the group. If provided, uses /groups/{groupId}/drive. Mutually exclusive with drive_id, site_id, and user_id."
+              },
+              "defer_commit": {
+                "type": "boolean",
+                "description": "If true, the final file creation is deferred until an explicit completion request is made. Useful for very large files when the caller drives the upload themselves. Ignored when `file` is provided \u2014 the chunked upload always commits the session at the end."
+              },
+              "media_source": {
+                "type": "object",
+                "properties": {
+                  "contentCategory": {
+                    "type": "string",
+                    "description": "Enumeration value that indicates the media content category."
+                  }
+                },
+                "description": "Media source information. Only on OneDrive for Business and SharePoint.",
+                "additionalProperties": false
+              },
+              "if_match_etag": {
+                "type": "string",
+                "examples": [
+                  "aQzlGRDlBMjdBRDQ5RUVCOTE3LjA"
+                ],
+                "description": "An ETag value to prevent lost updates. If provided, the update will only proceed if the current file's ETag matches this value. Returns 412 error if it doesn't match."
+              },
+              "file_system_info": {
+                "type": "object",
+                "properties": {
+                  "createdDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "examples": [
+                      "2023-01-15T10:30:00Z"
+                    ],
+                    "description": "The UTC date and time the file was created on a client. ISO 8601 format."
+                  },
+                  "lastAccessedDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "examples": [
+                      "2023-01-21T08:00:00Z"
+                    ],
+                    "description": "The UTC date and time the file was last accessed. ISO 8601 format."
+                  },
+                  "lastModifiedDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "examples": [
+                      "2023-01-20T15:45:00Z"
+                    ],
+                    "description": "The UTC date and time the file was last modified on a client. ISO 8601 format."
+                  }
+                },
+                "description": "File system information on client.",
+                "additionalProperties": false
+              },
+              "conflict_behavior": {
+                "enum": [
+                  "replace",
+                  "fail",
+                  "rename"
+                ],
+                "type": "string",
+                "default": "replace",
+                "description": "How to handle conflicts when updating the file. 'replace' overwrites the existing content (default), 'fail' returns an error if conflict occurs, 'rename' creates a new file with a different name."
+              },
+              "drive_item_source": {
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "description": "The external identifier for the drive item from the source."
+                  },
+                  "application": {
+                    "type": "string",
+                    "description": "Enumeration value that indicates the source application."
+                  }
+                },
+                "description": "Information about the drive item source. Only on OneDrive for Business and SharePoint.",
+                "additionalProperties": false
+              },
+              "if_none_match_etag": {
+                "type": "string",
+                "examples": [
+                  "aQzlGRDlBMjdBRDQ5RUVCOTE3LjA"
+                ],
+                "description": "An ETag value to prevent updates if the item already exists. If provided and the ETag matches, returns 412 error. Used to detect if the item has changed."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_GET_ITEM": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_GET_ITEM",
+          "description": "Retrieves the metadata of a DriveItem by its unique ID. Use this tool to get information about a specific file or folder in OneDrive when you have its ID. If a `drive_id` is not provided, it defaults to the user's main drive.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "item_id"
+            ],
+            "properties": {
+              "item_id": {
+                "type": "string",
+                "examples": [
+                  "01NKDM7HMOJTVYMDOSXFDK2QJDXCDI3WUK",
+                  "D4648F06C91D9D3D!54927"
+                ],
+                "description": "The unique identifier of the DriveItem (file or folder). DriveItem IDs vary by platform: OneDrive for Business/SharePoint uses '01...' prefix format (e.g., '01NKDM7HMOJTVYMDOSXFDK2QJDXCDI3WUK'), while OneDrive Personal uses 'HASH!NUMBER' format (e.g., 'D4648F06C91D9D3D!54927'). IDs are case-sensitive and must be used exactly as returned from Microsoft Graph API. Obtain IDs from ONE_DRIVE_LIST_FOLDER_CHILDREN, ONE_DRIVE_SEARCH_ITEMS, or similar operations. Do NOT use: web URLs, sharing links, SharePoint listItem IDs, or manually constructed identifiers. IDs become stale after move, rename, or delete; refresh via ONE_DRIVE_SEARCH_ITEMS or ONE_DRIVE_LIST_FOLDER_CHILDREN instead of retrying a stale ID."
+              },
+              "drive_id": {
+                "type": "string",
+                "examples": [
+                  "b!C1N9xkeL9Ea4Y0bdYcYWjXn7b0Un2adItX1s59n5N7Y"
+                ],
+                "description": "The unique identifier of the Drive where the item is located. If not provided, the action will target the user's personal OneDrive (me/drive). Always specify drive_id explicitly for group drives, SharePoint site drives, or shared libraries to avoid silently querying the wrong drive."
+              },
+              "select_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "name",
+                    "size",
+                    "file",
+                    "folder",
+                    "createdDateTime",
+                    "lastModifiedDateTime"
+                  ]
+                ],
+                "description": "A list of DriveItem properties to return. If not specified, a default set of properties is returned. Refer to the DriveItem resource documentation for available fields."
+              },
+              "expand_relations": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "activities",
+                    "analytics",
+                    "children",
+                    "createdByUser",
+                    "lastModifiedByUser",
+                    "listItem",
+                    "permissions",
+                    "retentionLabel",
+                    "subscriptions",
+                    "thumbnails",
+                    "versions",
+                    "workbook"
+                  ],
+                  "type": "string",
+                  "description": "Valid navigation properties that can be expanded for a driveItem."
+                },
+                "examples": [
+                  [
+                    "children"
+                  ],
+                  [
+                    "thumbnails"
+                  ],
+                  [
+                    "children",
+                    "thumbnails"
+                  ]
+                ],
+                "description": "Navigation properties to expand in the response. Valid values: 'children' (folder contents), 'thumbnails' (image previews), 'versions' (version history), 'permissions' (sharing permissions), 'listItem' (SharePoint list item data), 'activities' (recent activities), 'analytics' (usage analytics), 'createdByUser' (creator user details), 'lastModifiedByUser' (last modifier user details), 'retentionLabel' (retention policy), 'subscriptions' (webhooks), 'workbook' (Excel workbook data). Note: 'content' is NOT expandable - use ONE_DRIVE_DOWNLOAD_FILE to retrieve file content; 'listItem' requires SharePoint drives; some properties have regional/license restrictions. When expanding 'children': the array may be empty or absent; check for its presence and branch on 'file' vs 'folder' facets before processing. Expansion is non-recursive \u2014 call this tool separately for each child folder to traverse nested trees."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_DOWNLOAD_FILE": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_DOWNLOAD_FILE",
+          "description": "Downloads a file from a user's OneDrive using its item ID, which must refer to a file and not a folder. Response contains a content object with the downloaded file, MIME type, and name; raw file data is not returned directly. Parsing content from Excel, Word, PDF, or other formats requires additional tooling. The downloaded file can be passed to downstream tools such as OUTLOOK_SEND_EMAIL or OUTLOOK_CREATE_DRAFT.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "item_id",
+              "file_name"
+            ],
+            "properties": {
+              "format": {
+                "enum": [
+                  "pdf",
+                  "html"
+                ],
+                "type": "string",
+                "examples": [
+                  "pdf",
+                  "html"
+                ],
+                "description": "Optional format for file conversion during download. 'pdf' converts supported source files (doc, docx, dot, dotx, dotm, dsn, dwg, eml, epub, fluidframework, form, htm, html, loop, loot, markdown, md, msg, note, odp, ods, odt, page, pps, ppsx, ppt, pptx, pulse, rtf, task, tif, tiff, wbtx, whiteboard, xls, xlsm, xlsx) to PDF. 'html' converts Loop/Fluid files (loop, fluid, wbtx) to HTML. Leave empty to download the file in its original format without conversion. Do NOT use this parameter if the file is already in the target format (e.g., don't convert PDF to PDF or HTML to HTML), as this will result in an error."
+              },
+              "item_id": {
+                "type": "string",
+                "examples": [
+                  "1234567890ABC",
+                  "FF2C4217E73229F9!s950a8550dc04434bbedf945030020683"
+                ],
+                "description": "Raw item ID only (e.g., '1234567890ABC'). Do not include URL fragments or query parameters like '&cid=...' or '?param=...' from sharing links."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com",
+                  "specific_user_id"
+                ],
+                "description": "User's ID or User Principal Name (UPN), or 'me' for the authenticated user's OneDrive. Ignored when drive_id is provided."
+              },
+              "drive_id": {
+                "type": "string",
+                "examples": [
+                  "b!C378D127A8A967E6"
+                ],
+                "description": "The ID of the drive containing the file. Required for SharePoint or OneDrive for Business drives. When provided, user_id is ignored."
+              },
+              "file_name": {
+                "type": "string",
+                "examples": [
+                  "report.docx",
+                  "photo.png",
+                  "archive.zip"
+                ],
+                "description": "Desired filename (including extension) for the downloaded content."
+              },
+              "if_none_match": {
+                "type": "string",
+                "examples": [
+                  "aQzlGRDlBMjdBRDQ5RUVCOTE3LjA",
+                  "{C378D127-A8A9-67E6-1234-567890ABCDEF},1"
+                ],
+                "description": "Optional ETag or cTag value for conditional download. If the provided tag matches the current file's tag, the API returns HTTP 304 Not Modified without downloading the file, saving bandwidth. Useful for caching scenarios."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_GET_ITEM_VERSIONS": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_GET_ITEM_VERSIONS",
+          "description": "Tool to retrieve the version history of a DriveItem by its unique ID. Use when you need to access or...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_GET_ITEM_VERSIONS"
+              ]
+            }
+          }
+        },
+        "ONE_DRIVE_ONEDRIVE_UPLOAD_FILE": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_ONEDRIVE_UPLOAD_FILE",
+          "description": "Uploads a file to a specified OneDrive folder, automatically creating the destination folder if it d...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_ONEDRIVE_UPLOAD_FILE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:32:01.474Z",
+        "current_time_utc_epoch_seconds": 1786541521,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "next",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"next\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_8VejTXPsyLdq"
+  }
+}

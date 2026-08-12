@@ -1,0 +1,328 @@
+{
+  "use_case_id": 23,
+  "prompt": "Analyze and triage Zendesk support tickets at scale: search ticket queues, enrich tickets with requester/order context, add private AI triage notes and tags, verify queues are drained, and aggregate product-support trends over a large historical ticket set.",
+  "expected_tools": [
+    "ZENDESK_GET_USER",
+    "ZENDESK_UPDATE_ZENDESK_TICKET",
+    "ZENDESK_SEARCH_ZENDESK",
+    "ZENDESK_GET_ZENDESK_TICKET_BY_ID"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Analyze and triage Zendesk support tickets at scale: search ticket queues, enrich tickets with requester/order context, add private AI triage notes and tags, verify queues are drained, and aggregate product-support trends over a large historical ticket set.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Estimate result volume using ZENDESK_GET_SEARCH_COUNT (tight query for the target users/keywords) to decide whether to sample or paginate.",
+            "[Required] [Step]: Retrieve a small, recent-focused shortlist using ZENDESK_SEARCH_ZENDESK (sorted) and capture the ticket IDs and key fields for triage.",
+            "[Required] [Step]: Hydrate only shortlisted tickets using ZENDESK_GET_ZENDESK_TICKET_BY_ID (read description + latest updates) and summarize why each is still open vs resolved/closed.",
+            "[Optional (if you need an explicit rationale for status transitions)] [Next Step]: Inspect lifecycle events using ZENDESK_GET_TICKETS_AUDITS (identify reopen/solve/close changes and actors).",
+            "[Optional (if search volume or paging limits block review)] [Fallback]: Export IDs via cursor pagination using ZENDESK_GET_SEARCH_EXPORT, then sample and hydrate with ZENDESK_GET_ZENDESK_TICKET_BY_ID."
+          ],
+          "known_pitfalls": [
+            "[ZENDESK_SEARCH_ZENDESK] Broad queries can return very large payloads; keep queries tight and shortlist IDs before deeper inspection.",
+            "[ZENDESK_GET_ZENDESK_TICKET_BY_ID] Full ticket hydration (comments/attachments) can be large; avoid hydrating all matches and summarize key events after retrieval.",
+            "[ZENDESK_GET_SEARCH_EXPORT] Cursor exports can return far more IDs than practical to hydrate; prioritize recent/high-signal tickets and sample first.",
+            "[ZENDESK_GET_TICKETS_AUDITS] Audit histories can be long and noisy; focus on status-change events to avoid over-reading."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "ZENDESK_SEARCH_ZENDESK",
+            "ZENDESK_GET_SEARCH_COUNT",
+            "ZENDESK_GET_ZENDESK_TICKET_BY_ID"
+          ],
+          "related_tool_slugs": [
+            "ZENDESK_GET_TICKETS_AUDITS",
+            "ZENDESK_GET_SEARCH_EXPORT",
+            "ZENDESK_LIST_ZENDESK_TICKETS",
+            "ZENDESK_GET_TICKETS_METRICS"
+          ],
+          "toolkits": [
+            "zendesk"
+          ],
+          "plan_id": "61aea720bb6a4c47b21e3b87e591ad40"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "zendesk",
+          "has_active_connection": false,
+          "description": "Zendesk provides customer support software with ticketing, live chat, and knowledge base features, enabling efficient helpdesk operations and customer engagement",
+          "status_message": "No Active connection for toolkit=zendesk. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"zendesk\") to create a connection BEFORE executing any zendesk tools."
+        }
+      ],
+      "tool_schemas": {
+        "ZENDESK_SEARCH_ZENDESK": {
+          "toolkit": "ZENDESK",
+          "tool_slug": "ZENDESK_SEARCH_ZENDESK",
+          "description": "Tool to search for tickets, users, organizations, and groups in Zendesk using query syntax. Use when you need to find resources across Zendesk using flexible search criteria.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer",
+                "description": "Page number for offset pagination."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "type:ticket status:open",
+                  "type:user email:john@example.com",
+                  "type:organization name:Acme"
+                ],
+                "description": "The search query string. Supports Zendesk query syntax for filtering by type, status, priority, etc. Example: 'type:ticket status:open priority:urgent' or 'assignee:me status:pending'."
+              },
+              "include": {
+                "type": "string",
+                "examples": [
+                  "tickets(users,groups,organizations)",
+                  "tickets(users),users(organizations)",
+                  "users(organizations)"
+                ],
+                "description": "Sideloads to include in the response, returned as top-level arrays alongside `results`. Zendesk's search endpoint requires nested syntax: `<result_type>(<resource1>,<resource2>)`. Combine multiple result types with commas. Common sideloads: `users`, `groups`, `organizations`. A flat comma list (e.g. 'users,groups') is silently ignored by Zendesk."
+              },
+              "sort_by": {
+                "type": "string",
+                "examples": [
+                  "updated_at",
+                  "created_at",
+                  "priority"
+                ],
+                "description": "Field to sort results by. Options: 'updated_at', 'created_at', 'priority', 'status', 'ticket_type'. Defaults to sorting by relevance if not specified."
+              },
+              "per_page": {
+                "type": "integer",
+                "description": "Number of results per page. Default: 10, max: 100."
+              },
+              "sort_order": {
+                "type": "string",
+                "examples": [
+                  "desc",
+                  "asc"
+                ],
+                "description": "Sort order direction. Options: 'asc' (ascending) or 'desc' (descending). Defaults to 'desc' if not specified."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZENDESK_GET_SEARCH_COUNT": {
+          "toolkit": "ZENDESK",
+          "tool_slug": "ZENDESK_GET_SEARCH_COUNT",
+          "description": "Count the number of items matching a search query in Zendesk. Use when you need to know how many results a search would return without fetching all the actual results. This is useful for displaying result counts before executing a full search.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "type:ticket status:open",
+                  "type:user email:john@example.com",
+                  "type:organization name:Acme",
+                  "type:ticket status:closed"
+                ],
+                "description": "The search query string. Supports Zendesk query syntax for filtering by type, status, priority, etc. Example: 'type:ticket status:open priority:urgent' or 'assignee:me status:pending'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZENDESK_GET_ZENDESK_TICKET_BY_ID": {
+          "toolkit": "ZENDESK",
+          "tool_slug": "ZENDESK_GET_ZENDESK_TICKET_BY_ID",
+          "description": "Get ticket details from Zendesk. Returns the full ticket record (status, requester_id, assignee_id, organization_id, tags, custom_fields, created_at/updated_at, etc.) alongside its comments. Response wraps all data under a top-level `data` key; access `data['comments']` for comments and `data['comments'][i]['attachments']` for attachments (attachments unavailable from list endpoints). Each comment has both `html_body` and plain `body` fields \u2014 choose appropriately. Fields like `subject`, `organization_id`, `author_id`, and `body` may be null; handle defensively. First comment in `data.comments` is not necessarily from the requester \u2014 compare `author_id` against ticket `requester_id` to identify requester messages. For bulk calls, honor `Retry-After` headers on HTTP 429.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ticket_id"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Page number for paginating through ticket comments (starts at 1). Zendesk returns up to 100 comments per page by default."
+              },
+              "per_page": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "description": "Number of comments to return per page (max 100). Use with 'page' to control pagination of ticket comments."
+              },
+              "ticket_id": {
+                "type": "integer",
+                "description": "ID of the ticket to get details for."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZENDESK_GET_TICKETS_AUDITS": {
+          "toolkit": "ZENDESK",
+          "tool_slug": "ZENDESK_GET_TICKETS_AUDITS",
+          "description": "List all audits (change history) for a specific Zendesk ticket. Use when you need to track all changes made to a ticket including comments, status changes, assignments, and other modifications. Each audit contains one or more events representing individual changes. This action is read-only and supports both traditional offset pagination and cursor-based pagination for large datasets. Audits are returned in chronological order by default. Note: This action retrieves the complete audit trail which is useful for compliance, troubleshooting, and understanding ticket evolution.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ticket_id"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  1
+                ],
+                "description": "Pagination parameter. Supports both traditional offset and cursor-based pagination. Traditional: ?page=2 (integer page number). Cursor: ?page[size]=50&page[after]=cursor (deepObject with size, after, before). These are mutually exclusive - use one format or the other, not both."
+              },
+              "include": {
+                "type": "string",
+                "examples": [
+                  "users"
+                ],
+                "description": "A comma-separated list of sideloads to include in the response (e.g., 'users,groups')."
+              },
+              "sort_by": {
+                "type": "string",
+                "examples": [
+                  "created_at"
+                ],
+                "description": "Field to sort results by. Prefix with '-' for descending order. When used with cursor pagination, this determines the cursor ordering."
+              },
+              "page_size": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  50
+                ],
+                "description": "Number of audits per page for cursor pagination (max 100). Use with page[after] or page[before] for cursor-based pagination."
+              },
+              "ticket_id": {
+                "type": "integer",
+                "examples": [
+                  123456
+                ],
+                "description": "The ID of the ticket to retrieve audits for."
+              },
+              "page_after": {
+                "type": "string",
+                "examples": [
+                  "<cursor_token_from_previous_response>"
+                ],
+                "description": "Cursor value to retrieve the next page of results. Obtained from previous response's next_page link."
+              },
+              "sort_order": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "examples": [
+                  "desc"
+                ],
+                "description": "Sort order for the results. Defaults to 'asc' if not specified."
+              },
+              "page_before": {
+                "type": "string",
+                "examples": [
+                  "<cursor_token_from_previous_response>"
+                ],
+                "description": "Cursor value to retrieve the previous page of results. Obtained from previous response's previous_page link."
+              },
+              "filter_events": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "Comment",
+                    "Notification"
+                  ]
+                ],
+                "description": "Filter audit events by type. Use the format filter_events[]=Type1&filter_events[]=Type2 to include only specific event types."
+              },
+              "include_item_cursors": {
+                "type": "boolean",
+                "description": "When true, includes cursor values for each item in the cursor pagination response. Only valid with cursor pagination (page[size], page[after], page[before])."
+              },
+              "include_boundary_indicators": {
+                "type": "boolean",
+                "description": "When true, includes 'has_more' indicator in the cursor pagination response meta. Only valid with cursor pagination (page[size], page[after], page[before])."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZENDESK_GET_SEARCH_EXPORT": {
+          "toolkit": "ZENDESK",
+          "tool_slug": "ZENDESK_GET_SEARCH_EXPORT",
+          "description": "Export search results from Zendesk using cursor-based pagination. Use when you need to export large ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZENDESK_GET_SEARCH_EXPORT"
+              ]
+            }
+          }
+        },
+        "ZENDESK_LIST_ZENDESK_TICKETS": {
+          "toolkit": "ZENDESK",
+          "tool_slug": "ZENDESK_LIST_ZENDESK_TICKETS",
+          "description": "List Zendesk tickets with pagination and filtering. Only server-side filter available is external_id...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZENDESK_LIST_ZENDESK_TICKETS"
+              ]
+            }
+          }
+        },
+        "ZENDESK_GET_TICKETS_METRICS": {
+          "toolkit": "ZENDESK",
+          "tool_slug": "ZENDESK_GET_TICKETS_METRICS",
+          "description": "Get ticket metrics from Zendesk for a specific ticket. Returns performance metrics including resolut...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZENDESK_GET_TICKETS_METRICS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:33:15.502Z",
+        "current_time_utc_epoch_seconds": 1786541595,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "wood",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"wood\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log__2SsQRN-Zz0w"
+  }
+}

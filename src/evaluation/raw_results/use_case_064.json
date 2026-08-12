@@ -1,0 +1,758 @@
+{
+  "use_case_id": 64,
+  "prompt": "Prepare marketing and CRM automation work: gather marketing performance data, send a brief by email, analyze search query data, and scaffold a HubSpot customer follow-up campaign with custom properties, email drafts, and bulk contact updates.",
+  "expected_tools": [
+    "GOOGLEADS_SEARCH_STREAM_GAQL",
+    "HUBSPOT_UPDATE_CONTACTS",
+    "GOOGLE_ANALYTICS_RUN_REPORT",
+    "OUTLOOK_SEND_EMAIL",
+    "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY",
+    "HUBSPOT_CREATE_PROPERTY_FOR_SPECIFIED_OBJECT_TYPE",
+    "HUBSPOT_UPDATE_A_MARKETING_EMAIL",
+    "HUBSPOT_CLONE_MARKETING_EMAIL"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Prepare marketing and CRM automation work: gather marketing performance data, send a brief by email, analyze search query data, and scaffold a HubSpot customer follow-up campaign with custom properties, email drafts, and bulk contact updates.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if duplicate risk)] [Prerequisite]: Find existing company records using HUBSPOT_SEARCH_COMPANIES (match on a stable unique field) and build a create-vs-skip list.",
+            "[Optional (if association type identifiers unknown)] [Prerequisite]: Get valid contact\u2192company association types using HUBSPOT_LIST_ASSOCIATION_TYPES (capture the type/label needed for types[]).",
+            "[Required] [Step]: Bulk create companies using HUBSPOT_CREATE_COMPANIES and store created IDs for later linking (parse returned results IDs).",
+            "[Required] [Step]: Bulk create contacts using HUBSPOT_CREATE_CONTACTS and pass associations[] per contact (to.id=company ID, types[]=association type) so links are created during insert.",
+            "[Optional (if links missing after create)] [Fallback]: Create the association after the fact using HUBSPOT_CREATE_OBJECT_ASSOCIATION for each contact\u2194company pair.",
+            "[Optional (for verification)] [Next Step]: Read a sample contact using HUBSPOT_READ_CRM_OBJECT_BY_ID with associations included to confirm it is linked to the intended company."
+          ],
+          "known_pitfalls": [
+            "[HUBSPOT_CREATE_COMPANIES] Malformed website/domain-style fields may still create successfully and propagate bad values without an API error.",
+            "[HUBSPOT_CREATE_COMPANIES] Created object IDs must be extracted from the returned results structure (commonly under a results[] list).",
+            "[HUBSPOT_CREATE_CONTACTS] associations[] requires both to.id and types[]; if omitted/incorrect, contacts may be created but not linked.",
+            "[HUBSPOT_LIST_ASSOCIATION_TYPES] Association types are not safely guessable; using the wrong contact\u2192company type can prevent associations from being applied."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "HUBSPOT_CREATE_COMPANIES",
+            "HUBSPOT_CREATE_CONTACTS",
+            "HUBSPOT_CREATE_BATCH_OF_OBJECTS"
+          ],
+          "related_tool_slugs": [
+            "HUBSPOT_SEARCH_COMPANIES",
+            "HUBSPOT_LIST_ASSOCIATION_TYPES",
+            "HUBSPOT_CREATE_OBJECT_ASSOCIATION",
+            "HUBSPOT_READ_CRM_OBJECT_BY_ID"
+          ],
+          "toolkits": [
+            "hubspot"
+          ],
+          "plan_id": "7f875cf0200743cc9bf733b84e79fc4f"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "hubspot",
+          "has_active_connection": false,
+          "description": "HubSpot is an inbound marketing, sales, and customer service platform integrating CRM, email automation, and analytics to facilitate lead nurturing and seamless customer experiences",
+          "status_message": "No Active connection for toolkit=hubspot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"hubspot\") to create a connection BEFORE executing any hubspot tools."
+        }
+      ],
+      "tool_schemas": {
+        "HUBSPOT_CREATE_COMPANIES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_CREATE_COMPANIES",
+          "description": "Creates multiple new HubSpot companies in a single batch operation.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "inputs"
+            ],
+            "properties": {
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "properties"
+                  ],
+                  "properties": {
+                    "properties": {
+                      "type": "object",
+                      "examples": [
+                        {
+                          "name": "Example Company",
+                          "domain": "example.com",
+                          "industry": "COMPUTER_SOFTWARE"
+                        },
+                        {
+                          "city": "New York",
+                          "name": "Another Corp",
+                          "phone": "+1-555-123-4567",
+                          "industry": "FINANCIAL_SERVICES"
+                        }
+                      ],
+                      "description": "Company properties to set. Keys are HubSpot internal property names and values are the data to set. Common properties: 'name' (company name), 'domain' (website domain), 'phone', 'city', 'state', 'country', 'zip', 'address'. The 'industry' property must use HubSpot's predefined SCREAMING_SNAKE_CASE enum values (e.g., COMPUTER_SOFTWARE, FINANCIAL_SERVICES, HOSPITAL_HEALTH_CARE, RETAIL, BIOTECHNOLOGY). See HubSpot's company properties documentation for the full list of ~120 valid industry values.",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "description": "Request schema for creating individual companies within a batch operation."
+                },
+                "description": "A list of company objects to create. Each object represents one new company with its properties."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_CREATE_CONTACTS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_CREATE_CONTACTS",
+          "description": "Creates multiple new HubSpot contacts in a single batch operation.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "inputs"
+            ],
+            "properties": {
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "zip": {
+                      "type": "string",
+                      "examples": [
+                        "02139"
+                      ],
+                      "description": "The contact's postal code or ZIP code.",
+                      "is_property": true
+                    },
+                    "city": {
+                      "type": "string",
+                      "examples": [
+                        "Cambridge"
+                      ],
+                      "description": "The city where the contact resides.",
+                      "is_property": true
+                    },
+                    "email": {
+                      "type": "string",
+                      "examples": [
+                        "testing@hubspot.com"
+                      ],
+                      "description": "The primary email address of the contact. This is a unique identifier for contacts in HubSpot.",
+                      "is_property": true
+                    },
+                    "phone": {
+                      "type": "string",
+                      "examples": [
+                        "+1-555-123-4567"
+                      ],
+                      "description": "The contact's primary phone number.",
+                      "is_property": true
+                    },
+                    "state": {
+                      "type": "string",
+                      "examples": [
+                        "Massachusetts"
+                      ],
+                      "description": "The state or region where the contact resides.",
+                      "is_property": true
+                    },
+                    "address": {
+                      "type": "string",
+                      "examples": [
+                        "123 Main St, Apt 4B"
+                      ],
+                      "description": "The contact's street address, including apartment or unit number.",
+                      "is_property": true
+                    },
+                    "company": {
+                      "type": "string",
+                      "examples": [
+                        "HubSpot"
+                      ],
+                      "description": "The name of the company the contact works for.",
+                      "is_property": true
+                    },
+                    "country": {
+                      "type": "string",
+                      "examples": [
+                        "USA"
+                      ],
+                      "description": "The country where the contact resides.",
+                      "is_property": true
+                    },
+                    "website": {
+                      "type": "string",
+                      "examples": [
+                        "https://www.example.com"
+                      ],
+                      "description": "The URL of the contact's personal or company website.",
+                      "is_property": true
+                    },
+                    "jobtitle": {
+                      "type": "string",
+                      "examples": [
+                        "Marketing Manager"
+                      ],
+                      "description": "The contact's job title.",
+                      "is_property": true
+                    },
+                    "lastname": {
+                      "type": "string",
+                      "examples": [
+                        "Doe"
+                      ],
+                      "description": "The contact's last name.",
+                      "is_property": true
+                    },
+                    "firstname": {
+                      "type": "string",
+                      "examples": [
+                        "John"
+                      ],
+                      "description": "The contact's first name.",
+                      "is_property": true
+                    },
+                    "associations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "types",
+                          "to"
+                        ],
+                        "properties": {
+                          "to": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "The unique identifier of the CRM object (e.g., company ID, deal ID) to which the new contact will be associated."
+                              }
+                            },
+                            "description": "The target CRM object to associate with the new contact.",
+                            "additionalProperties": false
+                          },
+                          "types": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "associationCategory",
+                                "associationTypeId"
+                              ],
+                              "properties": {
+                                "associationTypeId": {
+                                  "type": "integer",
+                                  "description": "The unique ID of the association type, defining the nature of the link (e.g., contact to company)."
+                                },
+                                "associationCategory": {
+                                  "enum": [
+                                    "HUBSPOT_DEFINED",
+                                    "USER_DEFINED",
+                                    "INTEGRATOR_DEFINED"
+                                  ],
+                                  "type": "string",
+                                  "examples": [
+                                    "HUBSPOT_DEFINED",
+                                    "USER_DEFINED",
+                                    "INTEGRATOR_DEFINED"
+                                  ],
+                                  "description": "The category of the association. HubSpot-defined associations are default and cannot be deleted. User-defined associations are custom associations created by users. Integrator-defined associations are created by HubSpot integrations."
+                                }
+                              },
+                              "description": "Request schema for defining association types between CRM objects."
+                            },
+                            "description": "A list of association type definitions, specifying the category and type ID for each association."
+                          }
+                        },
+                        "description": "Request schema for defining associations between the new contact and existing CRM objects."
+                      },
+                      "description": "List of associations to create with other existing HubSpot objects (e.g., companies, deals)."
+                    },
+                    "annualrevenue": {
+                      "type": "string",
+                      "examples": [
+                        "5000000"
+                      ],
+                      "description": "The annual revenue of the company the contact works for.",
+                      "is_property": true
+                    },
+                    "lifecyclestage": {
+                      "type": "string",
+                      "examples": [
+                        "lead",
+                        "customer"
+                      ],
+                      "description": "The contact's current stage in your sales and marketing funnel.",
+                      "is_property": true
+                    },
+                    "custom_properties": {
+                      "type": "object",
+                      "description": "A dictionary of custom properties to set for the contact. Keys must be the internal names of existing custom contact properties in your HubSpot portal (not display names). The properties must be created in HubSpot BEFORE using them via this API - passing non-existent property names will cause the request to fail with a PROPERTY_DOESNT_EXIST error. To find internal property names, go to HubSpot Settings > Properties > Contacts and check the 'Internal name' field.",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "description": "Request schema for creating individual contacts within a batch operation."
+                },
+                "description": "A list of contact objects to create. Each object represents one new contact with its properties and optional associations."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_CREATE_BATCH_OF_OBJECTS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_CREATE_BATCH_OF_OBJECTS",
+          "description": "Creates multiple CRM objects of a specified `objectType` (e.g., contacts, companies, deals) in a single batch operation, where each object can have its own set of properties and associations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "objectType",
+              "inputs"
+            ],
+            "properties": {
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "properties"
+                  ],
+                  "properties": {
+                    "properties": {
+                      "type": "object",
+                      "examples": [
+                        "{\"email\": \"batch.contact@example.com\", \"firstname\": \"Batch\", \"lastname\": \"User\"}",
+                        "{\"dealname\": \"New Batch Deal\", \"amount\": \"75000\", \"dealstage\": \"presentationscheduled\"}"
+                      ],
+                      "description": "A dictionary of properties for the object; keys are internal property names, and values are their corresponding string values. Property names must be valid for the specified `objectType`.",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "associations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "types",
+                          "to"
+                        ],
+                        "properties": {
+                          "to": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "The unique identifier of the existing object to associate with the new object."
+                              }
+                            },
+                            "description": "The target object for the association.",
+                            "additionalProperties": false
+                          },
+                          "types": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "associationCategory",
+                                "associationTypeId"
+                              ],
+                              "properties": {
+                                "associationTypeId": {
+                                  "type": "integer",
+                                  "description": "The unique identifier for the type of association (e.g., contact to company, deal to contact)."
+                                },
+                                "associationCategory": {
+                                  "enum": [
+                                    "HUBSPOT_DEFINED",
+                                    "USER_DEFINED",
+                                    "INTEGRATOR_DEFINED"
+                                  ],
+                                  "type": "string",
+                                  "examples": [
+                                    "HUBSPOT_DEFINED",
+                                    "USER_DEFINED",
+                                    "INTEGRATOR_DEFINED"
+                                  ],
+                                  "description": "The category of the association, indicating how it was defined."
+                                }
+                              },
+                              "description": "Defines the type and category of an association."
+                            },
+                            "description": "A list defining the types of associations to create."
+                          }
+                        },
+                        "description": "Specifies an association to be created between the new object and an existing object."
+                      },
+                      "examples": [
+                        [],
+                        [
+                          {
+                            "types": [
+                              {
+                                "associationTypeId": 1,
+                                "associationCategory": "HUBSPOT_DEFINED"
+                              }
+                            ],
+                            "to__id": "123456"
+                          }
+                        ]
+                      ],
+                      "description": "Optional. List of associations to create for this object. If you do not want to associate this object with any others, omit this field or provide an empty list. Example with associations: [{...}]. Example with none: []."
+                    }
+                  },
+                  "description": "Represents a single object to be created in the batch, including its properties and associations."
+                },
+                "description": "A list of objects to be created in batch. Each item in the list defines the properties and associations for a new object."
+              },
+              "objectType": {
+                "type": "string",
+                "examples": [
+                  "contacts",
+                  "companies",
+                  "deals",
+                  "tickets",
+                  "products",
+                  "line_items",
+                  "YOUR_CUSTOM_OBJECT_TYPE_ID"
+                ],
+                "description": "The type of CRM object to create in batch (e.g., 'contacts', 'companies', 'deals', 'tickets', 'products', 'line_items', or a custom object ID). Must be a valid HubSpot CRM object type."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_SEARCH_COMPANIES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_COMPANIES",
+          "description": "Searches for HubSpot companies using flexible criteria and filters.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "examples": [
+                  "1234567890",
+                  "nextTokenMarker"
+                ],
+                "description": "Pagination cursor; use `paging.next.after` from a previous response to fetch the next page."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 5,
+                "maximum": 200,
+                "examples": [
+                  "10",
+                  "25",
+                  "100"
+                ],
+                "description": "Maximum number of company records to return."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Global Tech",
+                  "Innovations Inc"
+                ],
+                "description": "String to search across default text properties of company records."
+              },
+              "sorts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "propertyName",
+                    "direction"
+                  ],
+                  "properties": {
+                    "direction": {
+                      "enum": [
+                        "ASCENDING",
+                        "DESCENDING"
+                      ],
+                      "type": "string",
+                      "examples": [
+                        "ASCENDING",
+                        "DESCENDING"
+                      ],
+                      "description": "The direction of sorting."
+                    },
+                    "propertyName": {
+                      "type": "string",
+                      "examples": [
+                        "name",
+                        "annualrevenue",
+                        "createdate",
+                        "active_customer"
+                      ],
+                      "description": "The HubSpot company property internal name to sort the results by. Supports both standard and custom properties."
+                    }
+                  },
+                  "description": "Defines a sorting rule by specifying a property and direction."
+                },
+                "default": [],
+                "examples": [
+                  "[{\"propertyName\": \"name\", \"direction\": \"ASCENDING\"}]",
+                  "[{\"propertyName\": \"annualrevenue\", \"direction\": \"DESCENDING\"}]"
+                ],
+                "maxItems": 1,
+                "description": "List of sort objects to define the order of results. Maximum 1 sort allowed."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  "['name', 'domain', 'website']",
+                  "['industry', 'city', 'annualrevenue', 'active_customer']"
+                ],
+                "description": "HubSpot company property internal names to include in the response. Supports both standard properties and custom properties; a default set is returned if unspecified."
+              },
+              "filterGroups": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "filters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "propertyName",
+                          "operator"
+                        ],
+                        "properties": {
+                          "value": {
+                            "type": "string",
+                            "description": "The value to filter on."
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "List of values to match against for multi-value filters."
+                          },
+                          "operator": {
+                            "enum": [
+                              "EQ",
+                              "NEQ",
+                              "LT",
+                              "LTE",
+                              "GT",
+                              "GTE",
+                              "BETWEEN",
+                              "IN",
+                              "NOT_IN",
+                              "HAS_PROPERTY",
+                              "NOT_HAS_PROPERTY",
+                              "CONTAINS_TOKEN",
+                              "NOT_CONTAINS_TOKEN"
+                            ],
+                            "type": "string",
+                            "description": "The filter operator (e.g., EQ, GT, LT, CONTAINS)."
+                          },
+                          "highValue": {
+                            "type": "string",
+                            "description": "The upper bound value for range filters."
+                          },
+                          "propertyName": {
+                            "type": "string",
+                            "description": "The name of the property to filter on."
+                          }
+                        }
+                      },
+                      "default": [],
+                      "description": "List of filters within this filter group."
+                    }
+                  }
+                },
+                "default": [],
+                "description": "Groups of filters to apply to the ticket search."
+              },
+              "filter_groups": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "filters"
+                  ],
+                  "properties": {
+                    "filters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "propertyName",
+                          "operator"
+                        ],
+                        "properties": {
+                          "value": {
+                            "type": "string",
+                            "examples": [
+                              "Active",
+                              "100000",
+                              "example.com"
+                            ],
+                            "description": "Comparison value for `propertyName`; serves as the lower bound when `operator` is `BETWEEN`."
+                          },
+                          "values": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "default": [],
+                            "examples": [
+                              "['Prospect', 'Lead']",
+                              "['USA', 'Canada']"
+                            ],
+                            "description": "Values for `IN` or `NOT_IN` operators; required and used only when `operator` is `IN` or `NOT_IN`."
+                          },
+                          "operator": {
+                            "enum": [
+                              "EQ",
+                              "NEQ",
+                              "LT",
+                              "LTE",
+                              "GT",
+                              "GTE",
+                              "BETWEEN",
+                              "IN",
+                              "NOT_IN",
+                              "HAS_PROPERTY",
+                              "NOT_HAS_PROPERTY",
+                              "CONTAINS_TOKEN",
+                              "NOT_CONTAINS_TOKEN"
+                            ],
+                            "type": "string",
+                            "examples": [
+                              "EQ",
+                              "BETWEEN",
+                              "IN"
+                            ],
+                            "description": "Operator defining the filter's logic; determines which other fields (`value`, `values`, `highValue`) are required."
+                          },
+                          "highValue": {
+                            "type": "string",
+                            "examples": [
+                              "2000000",
+                              "ZZZ"
+                            ],
+                            "description": "Upper bound for a range filter; required and used only when `operator` is `BETWEEN`."
+                          },
+                          "propertyName": {
+                            "type": "string",
+                            "examples": [
+                              "annualrevenue",
+                              "name",
+                              "active_customer"
+                            ],
+                            "description": "The HubSpot company property internal name to filter on. Supports both standard properties (name, domain, annualrevenue, etc.) and custom properties."
+                          }
+                        },
+                        "description": "Defines a single filter criterion to apply when searching for company objects."
+                      },
+                      "description": "List of filter criteria; filters within this list are combined using an AND operator."
+                    }
+                  },
+                  "description": "Defines a group of filters. Filters within a group are ANDed together."
+                },
+                "default": [],
+                "description": "List of filter groups; filters within a group are ANDed, and multiple groups are ORed."
+              },
+              "custom_properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  "['custom_region', 'internal_score']",
+                  "['my_company_segment']"
+                ],
+                "description": "Custom company property internal names to include in the response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_LIST_ASSOCIATION_TYPES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_LIST_ASSOCIATION_TYPES",
+          "description": "Lists all valid association types between two specified HubSpot CRM object types.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_LIST_ASSOCIATION_TYPES"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_CREATE_OBJECT_ASSOCIATION": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_CREATE_OBJECT_ASSOCIATION",
+          "description": "Tool to create or label an association between two CRM records using HubSpot Associations v4 API. Us...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_CREATE_OBJECT_ASSOCIATION"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_READ_CRM_OBJECT_BY_ID": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_CRM_OBJECT_BY_ID",
+          "description": "Retrieves a specific CRM object (e.g., contact, company, deal, ticket) by its ID or a unique propert...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_READ_CRM_OBJECT_BY_ID"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:36:29.855Z",
+        "current_time_utc_epoch_seconds": 1786541789,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "knew",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"knew\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_hieEOZW63OlH"
+  }
+}

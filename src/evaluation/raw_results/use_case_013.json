@@ -1,0 +1,324 @@
+{
+  "use_case_id": 13,
+  "prompt": "Audit website search and traffic performance, prepare email marketing/contact lists, and send outreach emails for marketing and press engagement.",
+  "expected_tools": [
+    "GOOGLE_SEARCH_CONSOLE_LIST_SITEMAPS",
+    "GOOGLE_ANALYTICS_RUN_REPORT",
+    "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+    "GOOGLE_SEARCH_CONSOLE_GET_SITE",
+    "BREVO_LIST_EMAIL_CAMPAIGNS",
+    "GMAIL_SEND_EMAIL",
+    "GOOGLE_ANALYTICS_LIST_ACCOUNTS",
+    "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY",
+    "GOOGLE_SEARCH_CONSOLE_SUBMIT_SITEMAP",
+    "GOOGLE_ANALYTICS_LIST_PROPERTIES",
+    "GOOGLE_SEARCH_CONSOLE_INSPECT_URL",
+    "BREVO_GET_CONTACT_LISTS",
+    "BREVO_CREATE_CONTACT_LIST"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Audit website search and traffic performance, prepare email marketing/contact lists, and send outreach emails for marketing and press engagement.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Retrieve available audiences using MAILCHIMP_GET_LISTS_INFO (capture only minimal identifiers/labels; if many, page with count/offset until total reached).",
+            "[Optional (if you must confirm settings/stats before writing)] [Step]: Validate the selected audience using MAILCHIMP_GET_LIST_INFO (ensure it matches intended use).",
+            "[Optional (if diagnosing unexpected member changes)] [Step]: Review recent list actions using MAILCHIMP_LIST_RECENT_ACTIVITY (sanity check before/after writes).",
+            "[Required] [Step]: Bulk add/update members using MAILCHIMP_BATCH_SUBSCRIBE_OR_UNSUBSCRIBE (set desired status; enable updating existing; include merge fields/tags only when needed).",
+            "[Optional (if the batch runs asynchronously)] [Next Step]: Monitor completion using MAILCHIMP_GET_BATCH_OPERATION_STATUS (treat changes as applied only when finished).",
+            "[Optional (if the batch has row-level failures or volume is small)] [Fallback]: Upsert only failed/few members using MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER (compute subscriber_hash; satisfy required merge-field schema).",
+            "[Optional (for QA/spot checks)] [Next Step]: Verify a sample using MAILCHIMP_SEARCH_MEMBERS or MAILCHIMP_LIST_MEMBERS_INFO (confirm expected status and key fields)."
+          ],
+          "known_pitfalls": [
+            "[MAILCHIMP_GET_LISTS_INFO] Audience list data is nested (not a simple top-level array); parse the nested list collection correctly.",
+            "[MAILCHIMP_GET_LISTS_INFO] Responses can be verbose and may include sensitive contact/profile fields; use fields/exclude_fields and retain only what\u2019s needed.",
+            "[MAILCHIMP_BATCH_SUBSCRIBE_OR_UNSUBSCRIBE] Requests can succeed but still partially fail; check error_count and per-row errors before assuming all updates applied.",
+            "[MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER] subscriber_hash must be MD5 of a normalized (trimmed/lowercased) email; mismatches can cause failed/duplicate upserts.",
+            "[MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER] skip_merge_validation bypasses required merge-field checks; use only if invalid/incomplete profiles are acceptable."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract batch upsert failures from a saved batch response object",
+              "code": "```python\ndata=(res or {}).get('data') or {}\nfailed=[e for e in (data.get('errors') or []) if e]\nerror_count=data.get('error_count') or 0\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "MAILCHIMP_GET_LISTS_INFO",
+            "MAILCHIMP_BATCH_SUBSCRIBE_OR_UNSUBSCRIBE"
+          ],
+          "related_tool_slugs": [
+            "MAILCHIMP_GET_LIST_INFO",
+            "MAILCHIMP_LIST_MEMBERS_INFO",
+            "MAILCHIMP_SEARCH_MEMBERS",
+            "MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER",
+            "MAILCHIMP_GET_BATCH_OPERATION_STATUS",
+            "MAILCHIMP_LIST_RECENT_ACTIVITY"
+          ],
+          "toolkits": [
+            "mailchimp"
+          ],
+          "plan_id": "c165f783c54f4f20915884ebb66e1fe1"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "mailchimp",
+          "has_active_connection": false,
+          "description": "Mailchimp is an email marketing and automation platform providing campaign templates, audience segmentation, and performance analytics to drive engagement and conversions",
+          "status_message": "No Active connection for toolkit=mailchimp. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"mailchimp\") to create a connection BEFORE executing any mailchimp tools."
+        }
+      ],
+      "tool_schemas": {
+        "MAILCHIMP_GET_LISTS_INFO": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_GET_LISTS_INFO",
+          "description": "Get information about all lists in the account.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "default": 10,
+                "description": "The number of records to return. Default value is 10. Maximum value is 1000 "
+              },
+              "email": {
+                "type": "string",
+                "description": "Restrict results to lists that include a specific subscriber\"s email address. "
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A comma-separated list of fields to return. Reference parameters of sub-objects with dot notation. "
+              },
+              "offset": {
+                "type": "integer",
+                "default": 0,
+                "description": "Used for [pagination](https://mailchimp.com/developer/marketing/docs/methods-parameters/#pagination), this it the number of records from a collection to skip. Default value is 0. "
+              },
+              "sort_dir": {
+                "enum": [
+                  "ASC",
+                  "DESC"
+                ],
+                "type": "string",
+                "description": "Determines the order direction for sorted results."
+              },
+              "sort_field": {
+                "enum": [
+                  "date_created"
+                ],
+                "type": "string",
+                "description": "Returns files sorted by the specified field."
+              },
+              "exclude_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A comma-separated list of fields to exclude. Reference parameters of sub-objects with dot notation. "
+              },
+              "since_date_created": {
+                "type": "string",
+                "description": "Restrict results to lists created after the set date. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
+              },
+              "before_date_created": {
+                "type": "string",
+                "description": "Restrict response to lists created before the set date. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
+              },
+              "has_ecommerce_store": {
+                "type": "boolean",
+                "description": "Restrict results to lists that contain an active, connected, undeleted ecommerce store. "
+              },
+              "include_total_contacts": {
+                "type": "boolean",
+                "description": "Return the total_contacts field in the stats response, which contains an approximate count of all contacts in any state. "
+              },
+              "since_campaign_last_sent": {
+                "type": "string",
+                "description": "Restrict results to lists created after the last campaign send date. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
+              },
+              "before_campaign_last_sent": {
+                "type": "string",
+                "description": "Restrict results to lists created before the last campaign send date. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "MAILCHIMP_BATCH_SUBSCRIBE_OR_UNSUBSCRIBE": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_BATCH_SUBSCRIBE_OR_UNSUBSCRIBE",
+          "description": "Batch subscribe or unsubscribe list members.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "list_id",
+              "members"
+            ],
+            "properties": {
+              "list_id": {
+                "type": "string",
+                "description": "The unique ID for the list."
+              },
+              "members": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "An array of member objects. Each object must contain 'email_address' (string) and 'status' (one of: 'subscribed', 'unsubscribed', 'cleaned', 'pending', 'transactional'). Optional fields include: 'merge_fields' (dict with field tags like FNAME, LNAME), 'tags' (list of tag names), 'vip' (bool), 'language' (string), 'email_type' ('html' or 'text'), 'ip_signup' and 'ip_opt' (strings). Up to 500 members may be added or updated with each API call."
+              },
+              "sync_tags": {
+                "type": "boolean",
+                "description": "Whether this batch operation will replace all existing tags with tags in request. "
+              },
+              "update_existing": {
+                "type": "boolean",
+                "description": "Whether this batch operation will change existing members' subscription status and data. Set to true to update existing members, false to only add new members. Defaults to false."
+              },
+              "skip_duplicate_check": {
+                "type": "boolean",
+                "description": "If skip_duplicate_check is true, we will ignore duplicates sent in the request when using the batch sub/unsub on the lists endpoint. The status of the first appearance in the request will be saved. This defaults to false. "
+              },
+              "skip_merge_validation": {
+                "type": "boolean",
+                "description": "If skip_merge_validation is true, member data will be accepted without merge field values, even if the merge field is usually required. This defaults to false. "
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "MAILCHIMP_GET_LIST_INFO": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_GET_LIST_INFO",
+          "description": "Get information about a specific list in your Mailchimp account. Results include list members who have signed up but haven't confirmed their subscription yet and unsubscribed or cleaned.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "list_id"
+            ],
+            "properties": {
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A comma-separated list of fields to return. Reference parameters of sub-objects with dot notation. "
+              },
+              "list_id": {
+                "type": "string",
+                "description": "The unique ID for the list."
+              },
+              "exclude_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A comma-separated list of fields to exclude. Reference parameters of sub-objects with dot notation. "
+              },
+              "include_total_contacts": {
+                "type": "boolean",
+                "description": "Return the total_contacts field in the stats response, which contains an approximate count of all contacts in any state. "
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "MAILCHIMP_LIST_MEMBERS_INFO": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_LIST_MEMBERS_INFO",
+          "description": "Get information about members in a specific Mailchimp list.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MAILCHIMP_LIST_MEMBERS_INFO"
+              ]
+            }
+          }
+        },
+        "MAILCHIMP_SEARCH_MEMBERS": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_SEARCH_MEMBERS",
+          "description": "Search for list members. This search can be restricted to a specific list, or can be used to search ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MAILCHIMP_SEARCH_MEMBERS"
+              ]
+            }
+          }
+        },
+        "MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER",
+          "description": "Add or update a list member (subscriber) in a Mailchimp audience/list. This is an upsert operation: ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER"
+              ]
+            }
+          }
+        },
+        "MAILCHIMP_GET_BATCH_OPERATION_STATUS": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_GET_BATCH_OPERATION_STATUS",
+          "description": "Get the status of a batch operation. Retrieves details about a specific batch operation including it...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MAILCHIMP_GET_BATCH_OPERATION_STATUS"
+              ]
+            }
+          }
+        },
+        "MAILCHIMP_LIST_RECENT_ACTIVITY": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_LIST_RECENT_ACTIVITY",
+          "description": "Get up to the previous 180 days of daily detailed aggregated activity stats for a list, not includin...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MAILCHIMP_LIST_RECENT_ACTIVITY"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:32:38.550Z",
+        "current_time_utc_epoch_seconds": 1786541558,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "path",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"path\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_qxdwP_MftWr0"
+  }
+}

@@ -1,0 +1,343 @@
+{
+  "use_case_id": 68,
+  "prompt": "Modify a GitHub-hosted backend application, add protected console and lead-care functionality, configure deployment/runtime infrastructure, apply database migrations, and verify CI plus hosted deployment status.",
+  "expected_tools": [
+    "GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN",
+    "VERCEL_GET_DEPLOYMENT_LOGS2",
+    "GITHUB_GET_REPOSITORY_CONTENT",
+    "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY",
+    "GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN",
+    "GITHUB_COMMIT_MULTIPLE_FILES",
+    "GITHUB_LIST_CHECK_RUN_ANNOTATIONS",
+    "VERCEL_GET_DEPLOYMENTS",
+    "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+    "GITHUB_LIST_CHECK_RUNS_FOR_A_REF",
+    "SUPABASE_RUN_READ_ONLY_QUERY",
+    "SUPABASE_BETA_RUN_SQL_QUERY",
+    "SUPABASE_GETS_PROJECT_S_SERVICE_HEALTH_STATUS"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Modify a GitHub-hosted backend application, add protected console and lead-care functionality, configure deployment/runtime infrastructure, apply database migrations, and verify CI plus hosted deployment status.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "Required Prerequisite: Pull applied migration history using SUPABASE_LIST_MIGRATION_HISTORY (collect applied migration versions for later comparison).",
+            "Optional (if a specific version needs investigation) Step: Retrieve one migration\u2019s details using SUPABASE_GET_MIGRATION (inspect the recorded metadata for that version).",
+            "Required Step: Enumerate recent source-control changes related to migrations using GITHUB_LIST_COMMITS (filter to the migrations directory and correlate commits to applied versions).",
+            "Optional (if the migrations directory is unknown or the commit list is empty) Fallback: Discover the repository layout using GITHUB_GET_A_TREE (find the migrations path, then rerun GITHUB_LIST_COMMITS)."
+          ],
+          "known_pitfalls": [
+            "[SUPABASE_LIST_MIGRATION_HISTORY] Migration entries can have an empty/missing \"name\"; use \"version\" as the stable comparison key.",
+            "[GITHUB_LIST_COMMITS] Path filtering is sensitive to the exact directory path; mismatches can yield an empty list even when migrations exist.",
+            "[GITHUB_LIST_COMMITS] Commit objects may be large and list responses can be truncated/partial; use GITHUB_GET_A_COMMIT for full details on selected refs.",
+            "[GITHUB_GET_A_COMMIT] Fetching full details is per-commit; avoid expanding every commit when many results are returned (sample the relevant refs)."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "SUPABASE_LIST_MIGRATION_HISTORY",
+            "GITHUB_LIST_COMMITS",
+            "SUPABASE_GET_MIGRATION"
+          ],
+          "related_tool_slugs": [
+            "GITHUB_GET_A_COMMIT",
+            "GITHUB_GET_A_TREE",
+            "SUPABASE_RUN_READ_ONLY_QUERY",
+            "SUPABASE_GET_PROJECT"
+          ],
+          "toolkits": [
+            "github",
+            "supabase"
+          ],
+          "plan_id": "5bc52e49c79c49fa870a2ca6bcbc6e7e"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "github",
+          "has_active_connection": false,
+          "description": "GitHub is a code hosting platform for version control and collaboration, offering Git-based repository management, issue tracking, and continuous integration features",
+          "status_message": "No Active connection for toolkit=github. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"github\") to create a connection BEFORE executing any github tools."
+        },
+        {
+          "toolkit": "supabase",
+          "has_active_connection": false,
+          "description": "Supabase is an open-source backend-as-a-service providing a Postgres database, authentication, storage, and real-time subscription APIs for building modern applications",
+          "status_message": "No Active connection for toolkit=supabase. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"supabase\") to create a connection BEFORE executing any supabase tools."
+        }
+      ],
+      "tool_schemas": {
+        "SUPABASE_LIST_MIGRATION_HISTORY": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_LIST_MIGRATION_HISTORY",
+          "description": "Retrieves the list of applied database migration versions for a Supabase project. Use this to track which migrations have been applied to the project's database. This is a read-only operation that requires the project reference ID.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ref"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "examples": [
+                  "pamqaklsszmjzugtywow"
+                ],
+                "minLength": 1,
+                "description": "The unique reference ID (20 alphanumeric characters) of your Supabase project. You can find this in your project's dashboard URL or by calling the List All Projects action. The project must belong to the authenticated user."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_LIST_COMMITS": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_COMMITS",
+          "description": "Lists commits for a GitHub repository. Requires 'owner' (username/org) and 'repo' (repository name) parameters. Optionally filter by SHA/branch, path, author, committer, or date range.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo"
+            ],
+            "properties": {
+              "sha": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "develop",
+                  "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+                ],
+                "description": "SHA hash or branch name to start listing commits from. If not provided, the GitHub API uses the repository's default branch (usually `main` or `master`)."
+              },
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "examples": [
+                  "1",
+                  "2"
+                ],
+                "description": "Page number of the results to fetch when using pagination."
+              },
+              "path": {
+                "type": "string",
+                "examples": [
+                  "README.md",
+                  "src/utils/helpers.py"
+                ],
+                "description": "Only commits modifying this specific file path will be returned."
+              },
+              "repo": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9._-]+$",
+                "examples": [
+                  "Spoon-Knife",
+                  "my-project"
+                ],
+                "description": "The name of the repository without the `.git` extension (repository name only, not the full 'owner/repo' path). Must contain only alphanumeric characters, hyphens (-), underscores (_), and periods (.). Wildcards like '*' are not supported."
+              },
+              "owner": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$|^[a-zA-Z0-9]$",
+                "examples": [
+                  "octocat",
+                  "my-organization"
+                ],
+                "description": "The account owner of the repository (username or organization name only, not the full 'owner/repo' path). Must contain only alphanumeric characters and hyphens, cannot start/end with a hyphen, max 39 characters. Wildcards are not supported."
+              },
+              "since": {
+                "type": "string",
+                "examples": [
+                  "2023-01-01T00:00:00Z"
+                ],
+                "description": "Only commits created on or after this timestamp will be returned. This is a timestamp in ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`."
+              },
+              "until": {
+                "type": "string",
+                "examples": [
+                  "2023-12-31T23:59:59Z"
+                ],
+                "description": "Only commits created before this timestamp will be returned. This is a timestamp in ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`."
+              },
+              "author": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "mona@github.com"
+                ],
+                "description": "Filter commits by the commit author's GitHub login or email address."
+              },
+              "per_page": {
+                "type": "integer",
+                "default": 1,
+                "examples": [
+                  "30",
+                  "100"
+                ],
+                "description": "Number of results to return per page (max 100)."
+              },
+              "committer": {
+                "type": "string",
+                "examples": [
+                  "web-flow",
+                  "octocat@github.com"
+                ],
+                "description": "Filter commits by the commit committer's GitHub login or email address. The committer is the user who applied the patch and may differ from the original author."
+              }
+            },
+            "additionalProperties": false
+          },
+          "hasFullSchema": true
+        },
+        "SUPABASE_GET_MIGRATION": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_GET_MIGRATION",
+          "description": "Retrieves a specific database migration entry from the migration history using its version identifier. Use when you need to inspect migration details, SQL statements, or rollback commands for a specific migration version.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ref",
+              "version"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "pattern": "^[a-z0-9]{20}$",
+                "examples": [
+                  "pamqaklsszmjzugtywow",
+                  "hukthtzjnedrudwkbdqa"
+                ],
+                "maxLength": 20,
+                "minLength": 20,
+                "description": "The unique reference ID of the Supabase project. Must be exactly 20 lowercase alphanumeric characters (letters a-z and digits 0-9 only, no hyphens, underscores, or special characters). You can find this in your Supabase project URL (e.g., https://supabase.com/dashboard/project/<ref>) or by using the 'List all projects' API."
+              },
+              "version": {
+                "type": "string",
+                "examples": [
+                  "20260216042751",
+                  "20240101120000"
+                ],
+                "minLength": 1,
+                "description": "The version identifier of the migration to fetch. Typically a timestamp-based identifier (e.g., '20260216042751')."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_COMMIT": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_COMMIT",
+          "description": "Retrieves a specific commit from a repository by its owner, name, and a valid commit reference (SHA, branch, or tag), supporting pagination for large diffs.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "ref"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "heads/develop",
+                  "tags/v1.0.0",
+                  "007a47250555ae82606ac2cb00f8f731976059a5"
+                ],
+                "description": "The commit reference. Can be a commit SHA (e.g., '`sha`'), a branch name (e.g., 'heads/`BRANCH_NAME`' or simply '`BRANCH_NAME`'), or a tag name (e.g., 'tags/`TAG_NAME`'). For more information, see \"[Git References](https://git-scm.com/book/en/v2/Git-Internals-Git-References)\" in the Git documentation."
+              },
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "description": "Page number for paginating the commit's diff if it's too large. For more information, see \"[Using pagination in the REST API](https://docs.github.com/rest/using-the-rest-api/using-pagination-in-the-rest-api).\""
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Spoon-Knife",
+                  "linguist"
+                ],
+                "description": "The name of the repository, without the `.git` extension. This field is not case-sensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "github"
+                ],
+                "description": "The username or organization name that owns the repository. This field is not case-sensitive."
+              },
+              "per_page": {
+                "type": "integer",
+                "default": 30,
+                "description": "Number of results per page when paginating the commit's diff (max 100). For more information, see \"[Using pagination in the REST API](https://docs.github.com/rest/using-the-rest-api/using-pagination-in-the-rest-api).\""
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_TREE": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_TREE",
+          "description": "Browse and list all files/directories in a GitHub repository. Efficiently retrieves the complete rep...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_A_TREE"
+              ]
+            }
+          }
+        },
+        "SUPABASE_RUN_READ_ONLY_QUERY": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_RUN_READ_ONLY_QUERY",
+          "description": "[Beta] Run a SQL query as supabase_read_only_user. Use when you need to safely execute SELECT querie...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SUPABASE_RUN_READ_ONLY_QUERY"
+              ]
+            }
+          }
+        },
+        "SUPABASE_GET_PROJECT": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_GET_PROJECT",
+          "description": "Retrieves detailed information about a specific Supabase project by its unique reference ID. Use whe...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SUPABASE_GET_PROJECT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:36:46.096Z",
+        "current_time_utc_epoch_seconds": 1786541806,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "form",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"form\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_-vWu-qo4I1qW"
+  }
+}

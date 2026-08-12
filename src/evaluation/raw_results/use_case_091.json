@@ -1,0 +1,308 @@
+{
+  "use_case_id": 91,
+  "prompt": "Manage Meta ads reporting and campaign status, and handle Facebook Page inbox workflows including reading conversations and sending private replies or bulk follow-up messages.",
+  "expected_tools": [
+    "FACEBOOK_LIST_MANAGED_PAGES",
+    "FACEBOOK_SEND_MESSAGE",
+    "METAADS_GET_OBJECT",
+    "METAADS_GET_INSIGHTS",
+    "FACEBOOK_GET_PAGE_CONVERSATIONS",
+    "FACEBOOK_GET_PAGE_DETAILS",
+    "FACEBOOK_GET_CONVERSATION_MESSAGES"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Manage Meta ads reporting and campaign status, and handle Facebook Page inbox workflows including reading conversations and sending private replies or bulk follow-up messages.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Choose the Page to manage using FACEBOOK_LIST_MANAGED_PAGES (capture page_id; follow paging cursors/next if present).",
+            "[Required] [Step]: Review recent Page feed items using FACEBOOK_GET_PAGE_POSTS (capture post_id; paginate; an empty data list is a valid \u201cnothing new\u201d outcome).",
+            "[Optional (if you need thread context to moderate or reply)] [Next Step]: Load a post\u2019s discussion using FACEBOOK_GET_COMMENTS (capture comment_id; paginate large threads).",
+            "[Optional (if posting a public reply; confirm before publishing)] [Step]: Reply on the correct post/comment using FACEBOOK_CREATE_COMMENT (use post_id or parent comment_id).",
+            "[Required] [Step]: Triage inbox threads using FACEBOOK_GET_PAGE_CONVERSATIONS (capture conversation_id; paginate; empty data can be valid).",
+            "[Optional (if you need context before responding)] [Next Step]: Retrieve thread history using FACEBOOK_GET_CONVERSATION_MESSAGES (provide page_id + conversation_id; follow paging.next if present).",
+            "[Optional (if sending a private reply; confirm before sending)] [Step]: Respond in the thread using FACEBOOK_SEND_MESSAGE (keep concise and relevant).",
+            "[Optional (if publishing a new image post; confirm before publishing)] [Step]: Publish an image post using FACEBOOK_CREATE_PHOTO_POST (use a directly reachable image reference plus caption/text).",
+            "[Fallback (if FACEBOOK_CREATE_PHOTO_POST fails due to media/format issues; confirm before publishing)] [Fallback]: Publish a text/link post using FACEBOOK_CREATE_POST."
+          ],
+          "known_pitfalls": [
+            "[FACEBOOK_LIST_MANAGED_PAGES] Responses may include sensitive fields and paging cursor strings; treat tokens/cursors as secrets and opaque values.",
+            "[FACEBOOK_GET_PAGE_POSTS] Engagement totals may be nested under summary fields; don\u2019t assume flat counters when summarizing.",
+            "[FACEBOOK_GET_PAGE_CONVERSATIONS] Participant metadata can include end-user identifiers; avoid storing or returning raw participant fields.",
+            "[FACEBOOK_GET_CONVERSATION_MESSAGES] Validation can fail if page_id is omitted; always supply page_id with conversation_id and treat paging.next as opaque.",
+            "[FACEBOOK_CREATE_PHOTO_POST] Can fail if the media reference isn\u2019t a direct image response (e.g., redirects/HTML); requesting too many fields can cause oversized or truncated responses."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "FACEBOOK_LIST_MANAGED_PAGES",
+            "FACEBOOK_GET_PAGE_POSTS",
+            "FACEBOOK_GET_PAGE_CONVERSATIONS"
+          ],
+          "related_tool_slugs": [
+            "FACEBOOK_CREATE_POST",
+            "FACEBOOK_GET_CONVERSATION_MESSAGES",
+            "FACEBOOK_GET_COMMENTS",
+            "FACEBOOK_SEND_MESSAGE",
+            "FACEBOOK_CREATE_COMMENT",
+            "FACEBOOK_CREATE_PHOTO_POST"
+          ],
+          "toolkits": [
+            "facebook"
+          ],
+          "plan_id": "33e192b7a4744b8fa121ca8a424072e1"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "facebook",
+          "has_active_connection": false,
+          "description": "Facebook is a social media and advertising platform used by individuals and businesses to connect, share content, and promote products or services. Only supports Facebook Pages, not Facebook Personal accounts.",
+          "status_message": "No Active connection for toolkit=facebook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"facebook\") to create a connection BEFORE executing any facebook tools."
+        }
+      ],
+      "tool_schemas": {
+        "FACEBOOK_LIST_MANAGED_PAGES": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_LIST_MANAGED_PAGES",
+          "description": "Retrieves a list of Facebook Pages that the user manages (not personal profiles), including page details, access tokens, and tasks. Requires `pages_show_list` or `pages_read_engagement` OAuth scopes; missing scopes silently return empty results rather than an error. An empty `data` array means the user manages no Pages. Results are paginated via `paging.cursors`; follow `paging.next` until absent to retrieve all Pages when count exceeds `limit`. Graph API throttling (error codes 4, 17, 613) can occur during pagination \u2014 use exponential backoff.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "description": "Cursor string for forward pagination. Use the 'after' cursor from a previous response's paging.cursors.after field to retrieve the next page of results."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 25,
+                "description": "Maximum number of pages to retrieve per request."
+              },
+              "before": {
+                "type": "string",
+                "description": "Cursor string for backward pagination. Use the 'before' cursor from a previous response's paging.cursors.before field to retrieve the previous page of results."
+              },
+              "fields": {
+                "type": "string",
+                "default": "id,name,access_token,category,tasks,about,link,picture",
+                "description": "Comma-separated list of fields to return for each managed page."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "description": "The ID of the user whose managed pages to retrieve. Defaults to 'me' for current user."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FACEBOOK_GET_PAGE_POSTS": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_GET_PAGE_POSTS",
+          "description": "Retrieves posts from a Facebook Page. Endpoint choice: Uses /{page_id}/feed instead of /posts or /published_posts because: - /feed returns all content on page timeline (page's posts + visitor posts + tagged posts) - /posts returns only posts created by the page itself - /published_posts returns only published posts by the page (excludes scheduled/unpublished) The /feed endpoint provides the most comprehensive view of page activity. Pagination: follow paging.cursors.after or paging.next across multiple calls until no next cursor exists. Throttling: high-volume pagination can trigger Graph API errors 4 and 613; use backoff between requests. API Version: Uses v23.0 (released May 2025). v20.0 and earlier will be deprecated by Meta. See: https://developers.facebook.com/docs/graph-api/changelog",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 100,
+                "minimum": 1,
+                "description": "Number of posts to return (max 100)"
+              },
+              "since": {
+                "type": "string",
+                "description": "Filter posts updated after this time. Accepts: Unix timestamp (e.g., '1705320000'), strtotime values (e.g., 'yesterday', '7 days ago', 'last week'), or datetime strings (e.g., '2024-01-15', '2024-01-15T12:00:00'). Datetime strings are automatically converted to Unix timestamps."
+              },
+              "until": {
+                "type": "string",
+                "description": "Filter posts updated before this time. Accepts: Unix timestamp (e.g., '1705320000'), strtotime values (e.g., 'yesterday', '7 days ago', 'last week'), or datetime strings (e.g., '2024-01-15', '2024-01-15T12:00:00'). Datetime strings are automatically converted to Unix timestamps."
+              },
+              "fields": {
+                "type": "string",
+                "default": "id,message,created_time,updated_time,permalink_url,attachments",
+                "description": "Comma-separated list of fields to return for each post. Supported fields include: id, message, created_time, updated_time, permalink_url, attachments, story, from, status_type, full_picture, shares, reactions, comments, is_hidden, is_published. For summary counts, use '.summary(true)' syntax (e.g., 'reactions.summary(true)', 'comments.summary(true)', 'likes.summary(true)'). Note: 'type', 'link', 'source', 'picture', 'name', 'caption', 'description', and 'icon' are deprecated since Graph API v3.3 and will be automatically removed if requested. Response nests engagement data: extract reactions.summary.total_count, comments.summary.total_count, and shares.count; treat missing keys as zero."
+              },
+              "page_id": {
+                "type": "string",
+                "description": "The ID of the Facebook Page. Can be provided as a string or number. Must be a Facebook Page ID, not a personal profile or user ID \u2014 use FACEBOOK_GET_USER_PAGES to obtain a valid Page ID."
+              },
+              "removed_deprecated_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Internal field to track deprecated fields that were automatically removed."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FACEBOOK_GET_PAGE_CONVERSATIONS": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_GET_PAGE_CONVERSATIONS",
+          "description": "Retrieves a list of conversations between users and the Page.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 25,
+                "minimum": 1,
+                "description": "Number of conversations to return (max 25) Use `paging.cursors.after` or `paging.next` from the response to paginate beyond the first page."
+              },
+              "fields": {
+                "type": "string",
+                "default": "participants,updated_time,id",
+                "description": "Comma-separated list of fields to return for each conversation Avoid requesting heavy nested fields (e.g., embedded messages) to prevent large payloads."
+              },
+              "page_id": {
+                "type": "string",
+                "description": "The ID of the Facebook Page. Numeric IDs are accepted and will be converted to strings."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FACEBOOK_CREATE_POST": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_CREATE_POST",
+          "description": "Creates a new text or link post on a Facebook Page. Requires `pages_manage_posts` permission and manage-level Page role on the target Page. For image posts use FACEBOOK_CREATE_PHOTO_POST; for video posts use FACEBOOK_CREATE_VIDEO_POST \u2014 media fields are not supported here. Returns a composite post ID in `PageID_PostID` format, required for FACEBOOK_GET_POST retrieval.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id",
+              "message"
+            ],
+            "properties": {
+              "link": {
+                "type": "string",
+                "description": "URL to include in the post"
+              },
+              "message": {
+                "type": "string",
+                "description": "The text content of the post At least one of `message` or `link` must be non-empty; omitting both causes a validation error."
+              },
+              "page_id": {
+                "type": "string",
+                "description": "The numeric ID of the Facebook Page to post to. This is a numeric string (e.g., '123456789012345'). To obtain a valid page_id, use the 'Get User Pages' or 'List Managed Pages' action which returns page IDs for pages you have access to manage."
+              },
+              "published": {
+                "type": "boolean",
+                "default": true,
+                "description": "Set to true to publish immediately, false to save as draft or schedule"
+              },
+              "targeting": {
+                "type": "object",
+                "description": "Audience targeting specifications",
+                "additionalProperties": true
+              },
+              "scheduled_publish_time": {
+                "type": "integer",
+                "description": "Unix timestamp for when the post should be published. Must be at least 10 minutes in the future. When provided, published must be false (will be auto-set to false if true). Must be Unix UTC epoch (not local time); timezone mismatches cause validation failures."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FACEBOOK_GET_CONVERSATION_MESSAGES": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_GET_CONVERSATION_MESSAGES",
+          "description": "Retrieves messages from a specific conversation.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FACEBOOK_GET_CONVERSATION_MESSAGES"
+              ]
+            }
+          }
+        },
+        "FACEBOOK_GET_COMMENTS": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_GET_COMMENTS",
+          "description": "Retrieves comments from a Facebook post or comment (for replies). This endpoint requires appropriate...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FACEBOOK_GET_COMMENTS"
+              ]
+            }
+          }
+        },
+        "FACEBOOK_SEND_MESSAGE": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_SEND_MESSAGE",
+          "description": "Sends a text message from a Facebook Page (not personal profiles) to a user via Messenger. Requires ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FACEBOOK_SEND_MESSAGE"
+              ]
+            }
+          }
+        },
+        "FACEBOOK_CREATE_COMMENT": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_CREATE_COMMENT",
+          "description": "Creates a comment on a Facebook post or replies to an existing comment.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FACEBOOK_CREATE_COMMENT"
+              ]
+            }
+          }
+        },
+        "FACEBOOK_CREATE_PHOTO_POST": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_CREATE_PHOTO_POST",
+          "description": "Creates a photo post on a Facebook Page. Requires an image to be provided via either 'url' (publicly...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FACEBOOK_CREATE_PHOTO_POST"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:38:18.939Z",
+        "current_time_utc_epoch_seconds": 1786541898,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "leaf",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"leaf\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_xonFDWqZx9U2"
+  }
+}

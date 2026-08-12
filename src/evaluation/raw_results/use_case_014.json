@@ -1,0 +1,273 @@
+{
+  "use_case_id": 14,
+  "prompt": "Find software engineering job listings matching role, location, remote-work, and salary criteria, compile the results, and send or provide them to someone.",
+  "expected_tools": [
+    "BROWSER_TOOL_CREATE_TASK",
+    "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+    "COMPOSIO_SEARCH_WEB",
+    "GMAIL_SEND_EMAIL",
+    "COMPOSIO_SEARCH_EXA_ANSWER",
+    "BROWSER_TOOL_WATCH_TASK",
+    "COMPOSIO_SEARCH_NEWS",
+    "COMPOSIO_SEARCH_GROQ_CHAT",
+    "GMAIL_PROXY_EXECUTE"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Find software engineering job listings matching role, location, remote-work, and salary criteria, compile the results, and send or provide them to someone.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Draft targeted queries using COMPOSIO_SEARCH_WEB (role variants + location/remote + seniority + \u201crecent\u201d cues; optionally restrict to known job-board domains).",
+            "[Required] [Step]: Run COMPOSIO_SEARCH_WEB per query and harvest leads from response citations (not summaries), paginating via next tokens with a small cap; capture title/snippet, URL, and any location/recency hints.",
+            "[Required] [Next Step]: Canonicalize and de-duplicate URLs across queries/pages; filter out hubs, category/search pages, and near-duplicates; keep the best snippet per URL.",
+            "[Required] [Step]: Enrich the shortlist using COMPOSIO_SEARCH_FETCH_URL_CONTENT (increase max_characters as needed) and extract job-card fields (role, org-type hints, location/work style, requirements, posted/updated signal) plus the true apply link; fetch the apply destination when it\u2019s on a separate page.",
+            "[Optional (if compensation/rate is missing or unclear)] [Step]: Use COMPOSIO_SEARCH_WEB to find public benchmarks for comparable roles and reconcile against the posting.",
+            "[Optional (if COMPOSIO_SEARCH_FETCH_URL_CONTENT returns boilerplate, blocks, or dynamic/JS pages)] [Fallback]: Use BROWSER_TOOL_CREATE_TASK to load the page and extract the same fields; if it loops/stalls, abort with BROWSER_TOOL_STOP_TASK and retry with a narrower run.",
+            "[Optional (if a browser task was started)] [Next Step]: Track progress and collect extracted items using BROWSER_TOOL_WATCH_TASK; inspect live state with BROWSER_TOOL_GET_SESSION and download artifacts via BROWSER_TOOL_GET_OUTPUT_FILE."
+          ],
+          "known_pitfalls": [
+            "[COMPOSIO_SEARCH_WEB] HTTP 429 can occur with many similar searches; stagger queries and retry with backoff.",
+            "[COMPOSIO_SEARCH_WEB] Canonical links are in response.data.citations and the URL may appear in citation.url or citation.id; null-check both and handle nested response shapes.",
+            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] Output can truncate under max_characters; missing requirements/apply sections usually means the cap is too low.",
+            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] Failures like httpStatusCode 404 (CRAWL_NOT_FOUND) or 504 (CRAWL_LIVECRAWL_TIMEOUT) should be treated as low-confidence and rerouted to other sources or browser extraction.",
+            "[BROWSER_TOOL_WATCH_TASK] status may remain \u201cstarted\u201d with null output while results appear in step/action payloads; parse steps incrementally (e.g., via lastStepSeen) to avoid missing items."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract citations from COMPOSIO_SEARCH_WEB responses and canonicalize/dedupe URLs",
+              "code": "```python\nfrom urllib.parse import urlsplit,urlunsplit\n\ndef canon(u):\n    try:\n        p=urlsplit(u or '')\n        return urlunsplit((p.scheme,p.netloc,p.path,'',''))\n    except Exception:\n        return u\n\ndef extract_dedup(results):\n    out=[]\n    for r in results:\n        d=(r.get('response',{}) or {}).get('data') or (r.get('response',{}) or {}).get('data_preview') or {}\n        res=d.get('results',d) or {}\n        for c in (res.get('citations',[]) or []):\n            url=c.get('url') or c.get('id')\n            if url:\n                out.append({'title':c.get('title',''),'url':url,'snippet':c.get('snippet') or c.get('text','')})\n    seen=set(); dedup=[]\n    for x in out:\n        u=canon(x.get('url'))\n        if u and u not in seen:\n            seen.add(u); x['url']=u; dedup.append(x)\n    return dedup\n```"
+            },
+            {
+              "description": "Collect minimal citation fields from a single COMPOSIO_SEARCH_WEB result (url vs id)",
+              "code": "```python\ndef collect_citations(data):\n    res=(data or {}).get('results',data) or {}\n    items=[]\n    for c in (res.get('citations',[]) or []):\n        u=c.get('url') or c.get('id')\n        if u:\n            items.append({'title':c.get('title',''),'url':u,'snippet':c.get('snippet') or c.get('text','')})\n    return items\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "COMPOSIO_SEARCH_WEB",
+            "COMPOSIO_SEARCH_FETCH_URL_CONTENT"
+          ],
+          "related_tool_slugs": [
+            "BROWSER_TOOL_CREATE_TASK",
+            "BROWSER_TOOL_WATCH_TASK",
+            "BROWSER_TOOL_STOP_TASK",
+            "BROWSER_TOOL_GET_SESSION",
+            "BROWSER_TOOL_GET_OUTPUT_FILE"
+          ],
+          "toolkits": [
+            "browser_tool",
+            "composio_search"
+          ],
+          "plan_id": "0b944bbc2db4491aa749e173197ac573"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "browser_tool",
+          "has_active_connection": true,
+          "description": "Composio Browser Tool enables AI Agents and LLMs to automate web interactions, perform web scraping, and conduct automated testing. Use cases include data extraction, form automation, website monitoring, and intelligent web navigation.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        },
+        {
+          "toolkit": "composio_search",
+          "has_active_connection": true,
+          "description": "Composio Search provides comprehensive web search across travel (flights, hotels, events), e-commerce (Amazon, Walmart, shopping), financial markets, news, academic research, images, and location services.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        }
+      ],
+      "tool_schemas": {
+        "COMPOSIO_SEARCH_WEB": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_WEB",
+          "description": "Perform a web search using the Exa API. Returns a nested structure: narrative summary under results.answer, sources under results.citations (and optionally results.organic_results). Prioritize results.citations as primary evidence over results.answer, which can be vague. Only indexes publicly available content \u2014 no paywalled, login-gated, or private content. No date filters enforced; include recency terms in query and verify dates in snippets manually. Throttle to ~1\u20132 requests/second; bursty queries trigger HTTP 429. Large responses may be stored remotely \u2014 use structure_info to locate results.answer and results.citations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Coffee"
+                ],
+                "description": "The search query for the Composio Exa API. Must be non-empty; using any other parameter name (e.g., 'q') causes an invalid-request error. Include qualifiers (year, region, platform, intent) for better results \u2014 broad queries return generic content; excessive site: or quoted-term filters can return zero results. Add disambiguating terms (city, role, domain) when searching for people or organizations with common names."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_FETCH_URL_CONTENT": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+          "description": "Fetch and extract clean, readable page text (markdown) from public web pages (HTML content) using the Exa API. Use when you need to retrieve actual content from search results or documentation links to extract setup steps, requirements, or citations. Only works with web page URLs - does not support direct links to images, PDFs, or other binary files.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "urls"
+            ],
+            "properties": {
+              "text": {
+                "type": "boolean",
+                "default": true,
+                "description": "Include extracted markdown text content from the page. Defaults to true."
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "https://example.com/article",
+                    "https://docs.python.org/"
+                  ]
+                ],
+                "description": "List of public URLs to web pages (HTML content) to fetch content from. URLs must be valid and publicly accessible. Do not use direct links to images (.jpg, .png, .gif), PDFs, or other binary files - use web page URLs only. Also accepts a single URL string."
+              },
+              "extras": {
+                "type": "object",
+                "description": "Additional content options like imageLinks or links counts (e.g., {'imageLinks': 3, 'links': 5}).",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "summary": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Include AI-generated summary of the page content. Can be boolean or object with query/schema options."
+              },
+              "max_characters": {
+                "type": "integer",
+                "description": "Maximum number of characters to extract from each page. Maps to text.maxCharacters in Exa API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "BROWSER_TOOL_CREATE_TASK": {
+          "toolkit": "BROWSER_TOOL",
+          "tool_slug": "BROWSER_TOOL_CREATE_TASK",
+          "description": "Run an AI-powered browser automation task. The AI agent will control a cloud browser to complete your task. It can: - Navigate websites, click buttons, fill forms - Extract data and return results - Handle multi-step workflows (login -> navigate -> extract) - Solve CAPTCHAs and handle dynamic content If there is no running browser session in context, call CreateTask to start one. AFTER CREATING A TASK: 1. Use GetSession with browser_session_id to get the liveUrl - share with user to watch live 2. Use WatchTask with watch_task_id to check progress and get the final result 3. Use StopTask if you need to abort TIPS FOR GOOD TASKS: - Be specific: \"Click login, enter email 'test@test.com', click submit\" - Break complex workflows into smaller tasks",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "task"
+            ],
+            "properties": {
+              "task": {
+                "type": "string",
+                "minLength": 10,
+                "description": "Natural language instructions for the browser AI agent. Be specific and clear. Examples: 'Go to amazon.com, search for wireless headphones, and return the top 3 results with prices', 'Log into twitter.com and post a tweet saying Hello World'. For multi-step workflows, break them into clear sequential instructions."
+              },
+              "secrets": {
+                "type": "object",
+                "description": "Domain-specific credentials for automatic login. Map domain patterns to 'username:password'. Example: {'https://example.com': 'user@email.com:pass123', 'https://*.google.com': 'email@gmail.com:password'}. Wildcards (*) supported for subdomains.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "startUrl": {
+                "type": "string",
+                "description": "URL to navigate to before starting the task. If not provided, agent starts from blank page."
+              },
+              "sessionId": {
+                "type": "string",
+                "description": "Leave this empty for the first task, a new session will be auto-created. To continue in an existing browser: pass the browser_session_id from a previous CreateTask response. This preserves login state and cookies between tasks. Important: the previous task in this session must be finished or stopped (via StopTask or by waiting for WatchTask to show status='finished') before creating a new task."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "BROWSER_TOOL_WATCH_TASK": {
+          "toolkit": "BROWSER_TOOL",
+          "tool_slug": "BROWSER_TOOL_WATCH_TASK",
+          "description": "Poll a browser task to check progress and get results. Call this after CreateTask to monitor the tas...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BROWSER_TOOL_WATCH_TASK"
+              ]
+            }
+          }
+        },
+        "BROWSER_TOOL_STOP_TASK": {
+          "toolkit": "BROWSER_TOOL",
+          "tool_slug": "BROWSER_TOOL_STOP_TASK",
+          "description": "Kill a browser task and its session. Use this when the browser agent is in a bad state: - Task is st...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BROWSER_TOOL_STOP_TASK"
+              ]
+            }
+          }
+        },
+        "BROWSER_TOOL_GET_SESSION": {
+          "toolkit": "BROWSER_TOOL",
+          "tool_slug": "BROWSER_TOOL_GET_SESSION",
+          "description": "Get the live URL to watch a browser session in real-time. Call this right after CreateTask to get th...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BROWSER_TOOL_GET_SESSION"
+              ]
+            }
+          }
+        },
+        "BROWSER_TOOL_GET_OUTPUT_FILE": {
+          "toolkit": "BROWSER_TOOL",
+          "tool_slug": "BROWSER_TOOL_GET_OUTPUT_FILE",
+          "description": "Get a download URL for a file generated by a task. When a task downloads or creates files (PDFs, ima...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BROWSER_TOOL_GET_OUTPUT_FILE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:32:42.227Z",
+        "current_time_utc_epoch_seconds": 1786541562,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "that",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"that\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) Connections active, proceed to next step",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_B1C7l7AoV-KM"
+  }
+}

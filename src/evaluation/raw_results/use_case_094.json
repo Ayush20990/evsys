@@ -1,0 +1,996 @@
+{
+  "use_case_id": 94,
+  "prompt": "Audit and optimize a Meta Ads account: retrieve account, campaign, ad set, ad, creative, performance, targeting, and pixel data; then apply confirmed optimization changes including pausing objects, changing ad set targeting, reactivating a campaign, creating custom audiences, and adding exclusions.",
+  "expected_tools": [
+    "METAADS_LIST_AD_CREATIVES",
+    "METAADS_GET_OBJECT",
+    "METAADS_GET_AD_ACCOUNTS",
+    "METAADS_LIST_ADS",
+    "METAADS_GET_INSIGHTS",
+    "METAADS_PROXY_EXECUTE",
+    "METAADS_READ_ADSETS",
+    "METAADS_UPDATE_CAMPAIGN"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Audit and optimize a Meta Ads account: retrieve account, campaign, ad set, ad, creative, performance, targeting, and pixel data; then apply confirmed optimization changes including pausing objects, changing ad set targeting, reactivating a campaign, creating custom audiences, and adding exclusions.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Inventory existing ads using METAADS_LIST_ADS (include status/effective_status plus campaign/ad set and creative references; follow paging cursors if present to avoid partial results).",
+            "[Required] [Step]: Pull performance using METAADS_GET_INSIGHTS (choose campaign/ad level, use a bounded window, include delivery metrics + actions; if data is empty, broaden the window and retry).",
+            "[Optional (if METAADS_GET_INSIGHTS returns paging)] [Next Step]: Paginate METAADS_GET_INSIGHTS using cursors/next until exhausted; append and de-duplicate by entity identifier.",
+            "[Required] [Step]: Create a campaign using METAADS_CREATE_CAMPAIGN (set objective/status and initial budget model; get user confirmation before activating).",
+            "[Required] [Step]: Create an ad set using METAADS_CREATE_AD_SET (link to campaign; set targeting, budget, and schedule aligned to the campaign budgeting model; start non-delivering for review when appropriate).",
+            "[Required] [Step]: Create the ad creative using METAADS_CREATE_AD_CREATIVE (if an image is needed, first run METAADS_UPLOAD_AD_IMAGE and reference the returned asset hash; keep media in the creative and pass the resulting creative identifier downstream).",
+            "[Required] [Step]: Create the ad using METAADS_CREATE_AD (link the ad set and creative; start non-delivering for review when appropriate).",
+            "[Optional (if budget/flight/status needs change)] [Step]: Adjust campaign settings using METAADS_UPDATE_CAMPAIGN (confirm first), then re-check impact via METAADS_GET_INSIGHTS.",
+            "[Fallback] [Fallback]: If listing/insights fail or return no usable rows, re-run METAADS_LIST_ADS and METAADS_READ_ADSETS with reduced fields, then retry METAADS_GET_INSIGHTS with a broader window and fewer metrics to isolate schema/permission issues."
+          ],
+          "known_pitfalls": [
+            "[METAADS_GET_INSIGHTS] actions/conversions often return as arrays of objects and many metrics are strings; data=[] can occur for low delivery.",
+            "[METAADS_GET_INSIGHTS] invalid date_preset values trigger validation errors; use only supported presets for the connection/API version.",
+            "[METAADS_LIST_ADS] fields must be a single comma-separated string; other shapes can trigger request validation failures.",
+            "[METAADS_READ_ADSETS] fields must be an array/list and results can paginate; missing pagination can hide the needed ad set.",
+            "[METAADS_CREATE_AD_CREATIVE] HTTP 400 OAuthException (code 100) error_subcode 1885183 can block creative creation in restricted integration modes; [METAADS_CREATE_AD] may also fail, and HTTP 400 error_subcode 1443050 can occur if media is placed in the ad payload instead of referencing the created creative."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Join listed ads to ad set records by ad set identifier for analysis.",
+              "code": "```python\nads=res_ads.get('data',[])\nadsets=res_adsets.get('data',[])\nidx={x.get('id'):x for x in adsets}\njoined=[(a,idx.get(a.get('adset_id'))) for a in ads]\n```"
+            }
+          ],
+          "difficulty": "hard",
+          "primary_tool_slugs": [
+            "METAADS_CREATE_CAMPAIGN",
+            "METAADS_CREATE_AD_SET",
+            "METAADS_CREATE_AD_CREATIVE",
+            "METAADS_CREATE_AD"
+          ],
+          "related_tool_slugs": [
+            "METAADS_UPLOAD_AD_IMAGE",
+            "METAADS_LIST_ADS",
+            "METAADS_READ_ADSETS",
+            "METAADS_GET_INSIGHTS",
+            "METAADS_UPDATE_CAMPAIGN"
+          ],
+          "toolkits": [
+            "metaads"
+          ],
+          "plan_id": "aa77cc17115f47f9b97b99f2d88a3148"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "metaads",
+          "has_active_connection": false,
+          "description": "Create, edit and get insights from ads across Meta technologies, including Facebook, Instagram, Messenger, WhatsApp and more.",
+          "status_message": "No Active connection for toolkit=metaads. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"metaads\") to create a connection BEFORE executing any metaads tools."
+        }
+      ],
+      "tool_schemas": {
+        "METAADS_CREATE_CAMPAIGN": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_CREATE_CAMPAIGN",
+          "description": "Create a new advertising campaign using the Meta Marketing API. Supports various campaign objectives, budgets, and bidding strategies.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "account_id",
+              "name",
+              "objective"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "My Test Campaign"
+                ],
+                "description": "Name of the campaign"
+              },
+              "status": {
+                "enum": [
+                  "ACTIVE",
+                  "PAUSED",
+                  "DELETED",
+                  "ARCHIVED"
+                ],
+                "type": "string",
+                "default": "PAUSED",
+                "description": "Initial status of the campaign"
+              },
+              "objective": {
+                "enum": [
+                  "OUTCOME_LEADS",
+                  "OUTCOME_SALES",
+                  "OUTCOME_ENGAGEMENT",
+                  "OUTCOME_AWARENESS",
+                  "OUTCOME_TRAFFIC",
+                  "OUTCOME_APP_PROMOTION"
+                ],
+                "type": "string",
+                "description": "The objective of the campaign"
+              },
+              "account_id": {
+                "type": "string",
+                "examples": [
+                  "act_123456789"
+                ],
+                "description": "The ID of the ad account to create the campaign in"
+              },
+              "bid_strategy": {
+                "enum": [
+                  "LOWEST_COST_WITHOUT_CAP",
+                  "LOWEST_COST_WITH_BID_CAP",
+                  "COST_CAP"
+                ],
+                "type": "string",
+                "default": "LOWEST_COST_WITHOUT_CAP",
+                "description": "Bidding strategy for the campaign"
+              },
+              "daily_budget": {
+                "type": "number",
+                "examples": [
+                  100
+                ],
+                "description": "Daily budget limit in account currency. Mutually exclusive with lifetime_budget - provide one or the other, not both."
+              },
+              "lifetime_budget": {
+                "type": "number",
+                "examples": [
+                  1000
+                ],
+                "description": "Lifetime budget limit in account currency. Mutually exclusive with daily_budget - provide one or the other, not both."
+              },
+              "special_ad_categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "HOUSING",
+                    "CREDIT",
+                    "EMPLOYMENT",
+                    "ISSUES_ELECTIONS_POLITICS",
+                    "NONE"
+                  ]
+                ],
+                "description": "List of special ad categories that apply to this campaign"
+              },
+              "is_adset_budget_sharing_enabled": {
+                "type": "boolean",
+                "default": false,
+                "description": "Ad set budget sharing allows up to 20% of your budget to be shared with other ad sets in the same campaign for improved performance. In v24.0+, this field is required when NO campaign budget is set AND budgets will be set at ad set level. Set to true to enable budget sharing optimization between ad sets (only applicable when budgets are set at ad set level). Should be false when using campaign-level budget (daily_budget or lifetime_budget)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "METAADS_CREATE_AD_SET": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_CREATE_AD_SET",
+          "description": "Create a new ad set within a campaign using the Meta Marketing API. Supports detailed targeting options, budgets, and optimization goals.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "account_id",
+              "campaign_id",
+              "name",
+              "optimization_goal",
+              "billing_event",
+              "targeting"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "US Technology Enthusiasts"
+                ],
+                "description": "Name of the ad set"
+              },
+              "status": {
+                "enum": [
+                  "ACTIVE",
+                  "PAUSED",
+                  "DELETED",
+                  "ARCHIVED"
+                ],
+                "type": "string",
+                "default": "PAUSED",
+                "description": "Initial status of the ad set"
+              },
+              "end_time": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31T23:59:59+0000"
+                ],
+                "description": "End time in ISO 8601 format"
+              },
+              "targeting": {
+                "type": "object",
+                "required": [
+                  "locations"
+                ],
+                "properties": {
+                  "age_max": {
+                    "type": "integer",
+                    "default": 65,
+                    "maximum": 65,
+                    "minimum": 13,
+                    "description": "Maximum age for targeting. Must be 65 when targeting_automation.advantage_audience is 1 (Facebook API requirement verified via error 1870189)."
+                  },
+                  "age_min": {
+                    "type": "integer",
+                    "default": 18,
+                    "maximum": 65,
+                    "minimum": 13,
+                    "description": "Minimum age for targeting"
+                  },
+                  "genders": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "description": "Gender targeting. Omit (or leave unset) to target all genders. Use [1] for male-only, [2] for female-only. `0` is not a valid Meta value."
+                  },
+                  "behaviors": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "examples": [
+                      [
+                        {
+                          "id": "6002714895372",
+                          "name": "Frequent Travelers"
+                        }
+                      ]
+                    ],
+                    "description": "Behavior-based targeting"
+                  },
+                  "interests": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "examples": [
+                      [
+                        {
+                          "id": "6003139266461",
+                          "name": "Technology"
+                        }
+                      ]
+                    ],
+                    "description": "Interest-based targeting"
+                  },
+                  "locations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "examples": [
+                      [
+                        "US",
+                        "CA"
+                      ],
+                      [
+                        "4081"
+                      ],
+                      [
+                        "777934"
+                      ],
+                      [
+                        "94103"
+                      ]
+                    ],
+                    "description": "List of location identifiers based on location_type"
+                  },
+                  "location_type": {
+                    "enum": [
+                      "countries",
+                      "regions",
+                      "cities",
+                      "zip_codes"
+                    ],
+                    "type": "string",
+                    "default": "countries",
+                    "description": "Type of location targeting to use"
+                  },
+                  "location_radius": {
+                    "type": "integer",
+                    "examples": [
+                      10
+                    ],
+                    "description": "Radius in miles (required when location_type is 'cities' or 'zip_codes')"
+                  },
+                  "custom_audiences": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "examples": [
+                      [
+                        {
+                          "id": "23848238482348",
+                          "name": "Website Visitors"
+                        }
+                      ]
+                    ],
+                    "description": "Custom audience targeting"
+                  },
+                  "targeting_automation": {
+                    "type": "object",
+                    "examples": [
+                      {
+                        "advantage_audience": 0
+                      },
+                      {
+                        "advantage_audience": 1
+                      }
+                    ],
+                    "required": [
+                      "advantage_audience"
+                    ],
+                    "properties": {
+                      "advantage_audience": {
+                        "enum": [
+                          0,
+                          1
+                        ],
+                        "type": "integer",
+                        "description": "Set to 0 to disable Advantage+ audience expansion, or 1 to enable it (allows Facebook to show ads beyond your targeting to improve performance). When set to 1, age_max must be 65 (Facebook API requirement)."
+                      }
+                    },
+                    "description": "Targeting automation settings for Advantage+ audience expansion.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Targeting specifications for the ad set",
+                "additionalProperties": false
+              },
+              "account_id": {
+                "type": "string",
+                "examples": [
+                  "act_123456789"
+                ],
+                "description": "ID of the ad account to create the ad set in"
+              },
+              "bid_amount": {
+                "type": "integer",
+                "examples": [
+                  50
+                ],
+                "description": "Bid amount in cents. Required for LOWEST_COST_WITH_BID_CAP and COST_CAP. Do not use with LOWEST_COST_WITH_MIN_ROAS."
+              },
+              "start_time": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01T00:00:00+0000"
+                ],
+                "description": "Start time in ISO 8601 format"
+              },
+              "campaign_id": {
+                "type": "string",
+                "examples": [
+                  "23848238482348"
+                ],
+                "description": "ID of the campaign to create the ad set in"
+              },
+              "bid_strategy": {
+                "enum": [
+                  "LOWEST_COST_WITHOUT_CAP",
+                  "LOWEST_COST_WITH_BID_CAP",
+                  "COST_CAP",
+                  "LOWEST_COST_WITH_MIN_ROAS"
+                ],
+                "type": "string",
+                "description": "Bid strategy for the ad set. LOWEST_COST_WITH_BID_CAP and COST_CAP require bid_amount. LOWEST_COST_WITH_MIN_ROAS requires optimization_goal VALUE and bid_constraints.roas_average_floor."
+              },
+              "daily_budget": {
+                "type": "number",
+                "examples": [
+                  100
+                ],
+                "description": "Daily budget limit for this ad set in account currency. Use for ad set-level budgets."
+              },
+              "billing_event": {
+                "enum": [
+                  "IMPRESSIONS",
+                  "LINK_CLICKS",
+                  "APP_INSTALLS",
+                  "POST_ENGAGEMENT",
+                  "THRUPLAY"
+                ],
+                "type": "string",
+                "description": "The billing event for the ad set"
+              },
+              "bid_constraints": {
+                "type": "object",
+                "properties": {
+                  "roas_average_floor": {
+                    "type": "integer",
+                    "maximum": 10000000,
+                    "minimum": 100,
+                    "examples": [
+                      15000
+                    ],
+                    "description": "Minimum ROAS floor for LOWEST_COST_WITH_MIN_ROAS, scaled by 10000."
+                  }
+                },
+                "description": "Bid constraint values for bid strategies that require them.",
+                "additionalProperties": false
+              },
+              "lifetime_budget": {
+                "type": "number",
+                "examples": [
+                  1000
+                ],
+                "description": "Lifetime budget limit for this ad set in account currency. Use for ad set-level budgets."
+              },
+              "promoted_object": {
+                "type": "object",
+                "properties": {
+                  "page_id": {
+                    "type": "string",
+                    "description": "Facebook Page ID."
+                  },
+                  "pixel_id": {
+                    "type": "string",
+                    "description": "Facebook conversion pixel ID. When used, include custom_event_type."
+                  },
+                  "pixel_rule": {
+                    "type": "string",
+                    "description": "JSON rule for matching pixel actions."
+                  },
+                  "application_id": {
+                    "type": "string",
+                    "description": "Facebook application ID."
+                  },
+                  "custom_event_str": {
+                    "type": "string",
+                    "description": "Custom app event name when custom_event_type is OTHER."
+                  },
+                  "object_store_url": {
+                    "type": "string",
+                    "description": "Mobile or digital store URL for an application."
+                  },
+                  "custom_event_type": {
+                    "enum": [
+                      "AD_IMPRESSION",
+                      "RATE",
+                      "TUTORIAL_COMPLETION",
+                      "CONTACT",
+                      "CUSTOMIZE_PRODUCT",
+                      "DONATE",
+                      "FIND_LOCATION",
+                      "SCHEDULE",
+                      "START_TRIAL",
+                      "SUBMIT_APPLICATION",
+                      "SUBSCRIBE",
+                      "ADD_TO_CART",
+                      "ADD_TO_WISHLIST",
+                      "INITIATED_CHECKOUT",
+                      "ADD_PAYMENT_INFO",
+                      "PURCHASE",
+                      "LEAD",
+                      "COMPLETE_REGISTRATION",
+                      "CONTENT_VIEW",
+                      "SEARCH",
+                      "SERVICE_BOOKING_REQUEST",
+                      "MESSAGING_CONVERSATION_STARTED_7D",
+                      "LEVEL_ACHIEVED",
+                      "ACHIEVEMENT_UNLOCKED",
+                      "SPENT_CREDITS",
+                      "LISTING_INTERACTION",
+                      "D2_RETENTION",
+                      "D7_RETENTION",
+                      "OTHER"
+                    ],
+                    "type": "string",
+                    "description": "Standard conversion event type for the promoted object."
+                  },
+                  "custom_conversion_id": {
+                    "type": "string",
+                    "description": "Custom conversion ID."
+                  }
+                },
+                "description": "Object promoted by the ad set.",
+                "additionalProperties": false
+              },
+              "optimization_goal": {
+                "enum": [
+                  "APP_INSTALLS",
+                  "CONVERSATIONS",
+                  "LINK_CLICKS",
+                  "OFFSITE_CONVERSIONS",
+                  "PAGE_LIKES",
+                  "POST_ENGAGEMENT",
+                  "REACH",
+                  "THRUPLAY",
+                  "VALUE"
+                ],
+                "type": "string",
+                "description": "The optimization goal for the ad set"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "METAADS_CREATE_AD_CREATIVE": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_CREATE_AD_CREATIVE",
+          "description": "Create a new ad creative using the Meta Marketing API. Ad creatives are reusable visual and interactive elements that define how your ad looks and behaves: - Can be used in multiple ads - Support various formats (image, video, carousel) - Include text, media, and call-to-action buttons - Must follow Meta's ad policies",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "account_id",
+              "name",
+              "creative"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Summer Sale - Image v1",
+                  "Product Launch - Video Main",
+                  "Holiday Carousel - Multi-Product"
+                ],
+                "description": "\n        Name of your ad creative. Best practices:\n        - Include the creative type (e.g., \"Summer Sale - Image\")\n        - Add version if iterating (e.g., \"v1\")\n        - Include target audience if specific\n        - Keep it searchable and organized\n        "
+              },
+              "creative": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "page_id",
+                  "message",
+                  "website_url"
+                ],
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "IMAGE",
+                      "VIDEO",
+                      "CAROUSEL",
+                      "COLLECTION"
+                    ],
+                    "type": "string",
+                    "description": "\n        Type of ad creative to create:\n        - IMAGE: Single image ad (requires image_url)\n        - VIDEO: Single video ad (requires video_id and either image_url or image_hash)\n        - CAROUSEL: Multiple cards (requires carousel_cards)\n        - COLLECTION: Mobile shopping experience\n        "
+                  },
+                  "message": {
+                    "type": "string",
+                    "examples": [
+                      "\ud83d\udd25 Flash Sale: 20% off all products today only!",
+                      "New collection just dropped. Shop now and get free shipping!",
+                      "Learn how our software can boost your productivity by 50%"
+                    ],
+                    "description": "\n        The primary text that appears in your ad.\n        Best practices:\n        - Keep it clear and concise\n        - Include a value proposition\n        - Add a call to action\n        - Use relevant keywords\n        - Stay within text limits\n        "
+                  },
+                  "page_id": {
+                    "type": "string",
+                    "examples": [
+                      "123456789"
+                    ],
+                    "description": "\n        ID of the Facebook Page this ad will be associated with.\n        This page must:\n        - Be accessible to your ad account\n        - Have the proper permissions set up\n        - Match your business category\n        "
+                  },
+                  "video_id": {
+                    "type": "string",
+                    "examples": [
+                      "123456789",
+                      "987654321"
+                    ],
+                    "description": "\n        Required for VIDEO type ads. ID of your video.\n        To get this:\n        1. Upload video to your Meta account\n        2. Get the video ID from the response\n        3. Use that ID here\n        Video must follow Meta's policies.\n        "
+                  },
+                  "image_url": {
+                    "type": "string",
+                    "examples": [
+                      "https://example.com/images/product.jpg",
+                      "https://cdn.example.com/ads/banner.png"
+                    ],
+                    "description": "\n        Required for IMAGE and COLLECTION type ads. For VIDEO type ads, this can be used as the thumbnail image URL.\n        Requirements:\n        - Must be publicly accessible\n        - Recommended size: 1200x628 pixels\n        - Max file size: 30MB\n        - Supported formats: JPG, PNG\n        - Must follow Meta's ad policies\n        "
+                  },
+                  "image_hash": {
+                    "type": "string",
+                    "examples": [
+                      "abc123def456"
+                    ],
+                    "description": "\n        Image hash from your Meta image library. For VIDEO type ads, this can be used as the thumbnail image when image_url is not provided.\n        "
+                  },
+                  "website_url": {
+                    "type": "string",
+                    "examples": [
+                      "https://example.com/products",
+                      "https://shop.example.com/sale",
+                      "https://example.com/landing-page"
+                    ],
+                    "description": "\n        The URL where people will go when they click your ad.\n        Requirements:\n        - Must be a valid URL\n        - Domain must be verified in Meta\n        - Should match your business\n        - Avoid URL parameters if possible\n        "
+                  },
+                  "call_to_action": {
+                    "enum": [
+                      "NO_BUTTON",
+                      "BOOK_NOW",
+                      "CONTACT_US",
+                      "DONATE_NOW",
+                      "DOWNLOAD",
+                      "GET_OFFER",
+                      "LEARN_MORE",
+                      "SIGN_UP",
+                      "SHOP_NOW",
+                      "SUBSCRIBE",
+                      "WATCH_MORE"
+                    ],
+                    "type": "string",
+                    "default": "LEARN_MORE",
+                    "description": "\n        The button text and behavior for your ad.\n        Choose based on your objective:\n        - Want sales? Use SHOP_NOW\n        - Want leads? Use SIGN_UP\n        - Want installs? Use DOWNLOAD\n        - Not sure? Use LEARN_MORE (default)\n        See CallToActionType enum for all options.\n        "
+                  },
+                  "carousel_cards": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "examples": [
+                      [
+                        {
+                          "link": "https://example.com/product1",
+                          "headline": "Premium Widget",
+                          "image_url": "https://example.com/product1.jpg",
+                          "description": "Best seller"
+                        },
+                        {
+                          "link": "https://example.com/product2",
+                          "headline": "Super Widget",
+                          "image_url": "https://example.com/product2.jpg",
+                          "description": "New arrival"
+                        }
+                      ]
+                    ],
+                    "description": "\n        Required for CAROUSEL type ads. List of cards to show.\n        Each card needs:\n        - image_url: Image for the card\n        - headline: Card title (max 40 chars)\n        - description: Card text (max 20 chars)\n        - link: URL for the card\n        Maximum 10 cards per carousel.\n        All cards should maintain consistent theme/style.\n        "
+                  }
+                },
+                "description": "\n        The creative specifications for your ad.\n        This defines:\n        - What type of ad (image, video, carousel)\n        - What it looks like (images, text)\n        - How it behaves (links, buttons)\n        See AdCreative model for details.\n         Meta enforces strict asset specifications at creation time \u2014 image dimensions, aspect ratios, and text length must comply or the request will be rejected.",
+                "additionalProperties": false
+              },
+              "account_id": {
+                "type": "string",
+                "examples": [
+                  "act_123456789"
+                ],
+                "description": "\n        The ad account ID where you want to create the creative.\n        Format: act_1234567890\n        Get this from your Meta Ads account settings.\n        Must have proper permissions set up.\n        "
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "METAADS_CREATE_AD": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_CREATE_AD",
+          "description": "Create a new ad within an ad set using the Meta Marketing API. Supports various ad formats including image, video, carousel, and collection ads.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ad_account_id",
+              "ad_set_id",
+              "name",
+              "creative"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Summer Sale - Image Ad 1"
+                ],
+                "description": "Name of the ad"
+              },
+              "status": {
+                "enum": [
+                  "ACTIVE",
+                  "PAUSED",
+                  "DELETED",
+                  "ARCHIVED"
+                ],
+                "type": "string",
+                "default": "PAUSED",
+                "description": "Initial status of the ad"
+              },
+              "creative": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "page_id",
+                  "message",
+                  "website_url"
+                ],
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "IMAGE",
+                      "VIDEO",
+                      "CAROUSEL",
+                      "COLLECTION"
+                    ],
+                    "type": "string",
+                    "description": "Type of ad creative. VIDEO requires video_id and either image_url or image_hash."
+                  },
+                  "message": {
+                    "type": "string",
+                    "examples": [
+                      "Check out our latest products with 20% off!"
+                    ],
+                    "description": "The primary text/message that appears in the ad"
+                  },
+                  "page_id": {
+                    "type": "string",
+                    "examples": [
+                      "123456789"
+                    ],
+                    "description": "ID of the Facebook Page this ad will be associated with"
+                  },
+                  "video_id": {
+                    "type": "string",
+                    "examples": [
+                      "123456789"
+                    ],
+                    "description": "ID of the video to use (required for VIDEO type ads)"
+                  },
+                  "image_url": {
+                    "type": "string",
+                    "examples": [
+                      "https://example.com/image.jpg"
+                    ],
+                    "description": "URL of the image to use. Required for IMAGE type ads; for VIDEO type ads, this can be used as the thumbnail image URL."
+                  },
+                  "image_hash": {
+                    "type": "string",
+                    "examples": [
+                      "abc123def456"
+                    ],
+                    "description": "Image hash from your Meta image library. For VIDEO type ads, this can be used as the thumbnail image when image_url is not provided."
+                  },
+                  "website_url": {
+                    "type": "string",
+                    "examples": [
+                      "https://example.com/products"
+                    ],
+                    "description": "The URL where people will go when they click the ad"
+                  },
+                  "call_to_action": {
+                    "enum": [
+                      "NO_BUTTON",
+                      "BOOK_NOW",
+                      "CONTACT_US",
+                      "DONATE_NOW",
+                      "DOWNLOAD",
+                      "GET_OFFER",
+                      "LEARN_MORE",
+                      "SIGN_UP",
+                      "SHOP_NOW",
+                      "SUBSCRIBE",
+                      "WATCH_MORE"
+                    ],
+                    "type": "string",
+                    "default": "LEARN_MORE",
+                    "description": "Type of call-to-action button to show"
+                  },
+                  "carousel_cards": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "examples": [
+                      [
+                        {
+                          "link": "https://example.com/product1",
+                          "headline": "Product 1",
+                          "image_url": "https://example.com/product1.jpg",
+                          "description": "Amazing product 1"
+                        },
+                        {
+                          "link": "https://example.com/product2",
+                          "headline": "Product 2",
+                          "image_url": "https://example.com/product2.jpg",
+                          "description": "Amazing product 2"
+                        }
+                      ]
+                    ],
+                    "description": "Cards for carousel ads (required for CAROUSEL type ads)"
+                  }
+                },
+                "description": "Creative specifications for the ad",
+                "additionalProperties": false
+              },
+              "ad_set_id": {
+                "type": "string",
+                "examples": [
+                  "23848238482348"
+                ],
+                "description": "ID of the ad set to create the ad in. The referenced ad set and its parent campaign must already exist."
+              },
+              "bid_amount": {
+                "type": "integer",
+                "examples": [
+                  50
+                ],
+                "description": "Bid amount in cents (overrides ad set bid)"
+              },
+              "ad_account_id": {
+                "type": "string",
+                "examples": [
+                  "act_123456789"
+                ],
+                "description": "ID of the ad account (e.g. 'act_123456789'). Must start with 'act_'."
+              },
+              "tracking_specs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  [
+                    {
+                      "fb_pixel": [
+                        "123456789"
+                      ],
+                      "action.type": [
+                        "link_click"
+                      ]
+                    }
+                  ]
+                ],
+                "description": "Tracking specifications for the ad"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "METAADS_UPLOAD_AD_IMAGE": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_UPLOAD_AD_IMAGE",
+          "description": "Upload an image for use in Meta ad creatives using the Marketing API. The image can later be referenced by its hash when creating ad creatives.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ad_account_id",
+              "image"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 100,
+                "description": "Optional name for the image (max 100 characters)"
+              },
+              "image": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "Image file to upload. Supported formats: JPG, PNG, GIF, BMP, TIFF. Maximum file size: 30MB. Dimensions and aspect ratio are also enforced; invalid combinations are rejected at upload time.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "ad_account_id": {
+                "type": "string",
+                "examples": [
+                  "act_123456789"
+                ],
+                "description": "ID of the ad account to upload the image to"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "METAADS_LIST_ADS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_LIST_ADS",
+          "description": "Tool to list all ads under an ad account using the Meta Marketing API. Use when you need to retrieve...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_LIST_ADS"
+              ]
+            }
+          }
+        },
+        "METAADS_READ_ADSETS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_READ_ADSETS",
+          "description": "Retrieve ad sets from a Meta ad account using the Marketing API. Returns information about the ad se...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_READ_ADSETS"
+              ]
+            }
+          }
+        },
+        "METAADS_GET_INSIGHTS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_GET_INSIGHTS",
+          "description": "Get insights data for a Meta Ads object (ad account, campaign, ad set, or ad) using the Meta Marketi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_GET_INSIGHTS"
+              ]
+            }
+          }
+        },
+        "METAADS_UPDATE_CAMPAIGN": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_UPDATE_CAMPAIGN",
+          "description": "Update an existing advertising campaign using the Meta Marketing API. Allows modification of campaig...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_UPDATE_CAMPAIGN"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:38:28.697Z",
+        "current_time_utc_epoch_seconds": 1786541908,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "bush",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"bush\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_FIzmsEiqtq26"
+  }
+}

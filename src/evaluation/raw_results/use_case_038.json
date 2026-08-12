@@ -1,0 +1,759 @@
+{
+  "use_case_id": 38,
+  "prompt": "Analyze Salesforce opportunity and pipeline data, read and update a Google Sheets tracking spreadsheet, search a Salesforce account, and attempt to send a Slack direct message with CRM-derived context.",
+  "expected_tools": [
+    "SLACK_FIND_USER_BY_EMAIL_ADDRESS",
+    "GOOGLESHEETS_GET_SHEET_NAMES",
+    "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+    "GOOGLESHEETS_BATCH_GET",
+    "SALESFORCE_SEARCH_ACCOUNTS",
+    "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+    "SALESFORCE_RUN_SOQL_QUERY",
+    "SALESFORCE_QUERY"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Analyze Salesforce opportunity and pipeline data, read and update a Google Sheets tracking spreadsheet, search a Salesforce account, and attempt to send a Slack direct message with CRM-derived context.",
+          "execution_guidance": "Found 11 tools for this query. Look at the schemas to know how to use them.",
+          "primary_tool_slugs": [
+            "SALESFORCE_LIST_OPPORTUNITIES",
+            "SALESFORCE_UPDATE_OPPORTUNITY",
+            "SALESFORCE_SEARCH_OPPORTUNITIES",
+            "SALESFORCE_CREATE_OPPORTUNITY",
+            "GOOGLESHEETS_UPSERT_ROWS"
+          ],
+          "related_tool_slugs": [
+            "SALESFORCE_GET_OPPORTUNITY",
+            "SALESFORCE_ADD_OPPORTUNITY_LINE_ITEM",
+            "SALESFORCE_CREATE_TASK",
+            "SALESFORCE_SEARCH_ACCOUNTS",
+            "GMAIL_FETCH_EMAILS",
+            "GMAIL_SEARCH_PEOPLE"
+          ],
+          "toolkits": [
+            "salesforce",
+            "googlesheets",
+            "gmail"
+          ]
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "salesforce",
+          "has_active_connection": false,
+          "description": "Salesforce is a leading CRM platform integrating sales, service, marketing, and analytics to build customer relationships and drive business growth",
+          "status_message": "No Active connection for toolkit=salesforce. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"salesforce\") to create a connection BEFORE executing any salesforce tools."
+        },
+        {
+          "toolkit": "googlesheets",
+          "has_active_connection": false,
+          "description": "Google Sheets is a cloud-based spreadsheet tool enabling real-time collaboration, data analysis, and integration with other Google Workspace apps. STRICT RATE LIMITS apply - max 60 reads/minute and 60 writes/minute. Exceeding this causes errors.",
+          "status_message": "No Active connection for toolkit=googlesheets. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesheets\") to create a connection BEFORE executing any googlesheets tools."
+        },
+        {
+          "toolkit": "gmail",
+          "has_active_connection": false,
+          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
+          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+        }
+      ],
+      "tool_schemas": {
+        "SALESFORCE_LIST_OPPORTUNITIES": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_LIST_OPPORTUNITIES",
+          "description": "Lists opportunities from Salesforce using SOQL query, allowing flexible filtering, sorting, and field selection. Results are paginated up to ~2000 rows per batch; check `done`, `totalSize`, and `nextRecordsUrl` fields to detect and retrieve additional pages, or use a SOQL `LIMIT` clause to cap results. For complex queries rejected by this tool, use `SALESFORCE_RUN_SOQL_QUERY` instead.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "default": "SELECT Id, Name, StageName, CloseDate, Amount, Probability, Type, LeadSource, AccountId FROM Opportunity",
+                "examples": [
+                  "SELECT Id, Name, Amount FROM Opportunity WHERE StageName = 'Closed Won'",
+                  "SELECT Id, Name, CloseDate FROM Opportunity ORDER BY CloseDate DESC LIMIT 10",
+                  "SELECT Id, Name, Amount FROM Opportunity WHERE Amount > 50000 AND CloseDate = THIS_QUARTER",
+                  "SELECT Id, Name, Owner.Name, Owner.Email FROM Opportunity"
+                ],
+                "description": "SOQL query to fetch opportunities. Use standard SOQL syntax to filter, sort, and limit results.  Omitting a `WHERE` clause returns all opportunities including historical ones. Results have no default sort order; include `ORDER BY CloseDate DESC` to retrieve recent opportunities first.IMPORTANT: Only use standard Salesforce fields unless you have confirmed that custom fields exist in the target org. Custom fields (ending with '__c') are org-specific and may not exist in all Salesforce instances. For relationship queries (e.g., Owner.Name), only use standard fields on the related object. To discover available fields, use the SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT action first."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_UPDATE_OPPORTUNITY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_UPDATE_OPPORTUNITY",
+          "description": "Updates an existing opportunity in Salesforce with the specified changes. Only provided fields will be updated. Returns HTTP 204 with empty body on success; call SALESFORCE_GET_OPPORTUNITY afterward to read updated values. Updates may fail with FIELD_CUSTOM_VALIDATION_EXCEPTION or REQUIRED_FIELD_MISSING \u2014 inspect the error message to identify the offending field.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "opportunity_id"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "Updated Deal Name",
+                  "Q1 Enterprise Contract"
+                ],
+                "description": "Updated opportunity name. Leave empty to keep unchanged."
+              },
+              "type": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "Existing Customer - Upgrade",
+                  "New Customer"
+                ],
+                "description": "Updated opportunity type. Leave empty to keep unchanged."
+              },
+              "amount": {
+                "type": "number",
+                "examples": [
+                  75000,
+                  150000,
+                  500000
+                ],
+                "description": "Updated amount. Leave unset to keep unchanged. Negative values are passed through to Salesforce as-is."
+              },
+              "next_step": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "Finalize contract",
+                  "Executive approval",
+                  "Technical review"
+                ],
+                "description": "Updated next step. Leave empty to keep unchanged."
+              },
+              "account_id": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "001XXXXXXXXXXXXXXX"
+                ],
+                "description": "Updated Account ID. Leave empty to keep unchanged."
+              },
+              "close_date": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "2024-12-31",
+                  "2025-03-15"
+                ],
+                "description": "Updated close date in YYYY-MM-DD format. Leave empty to keep unchanged."
+              },
+              "stage_name": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "Qualification",
+                  "Negotiation/Review",
+                  "Closed Won"
+                ],
+                "description": "Updated stage. Leave empty to keep unchanged. Must exactly match a stage defined in the org's current sales process; use SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT with object_name='Opportunity' to discover valid values."
+              },
+              "description": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "Deal expanded to include additional services",
+                  "Budget approved by CFO"
+                ],
+                "description": "Updated description. Leave empty to keep unchanged."
+              },
+              "lead_source": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "Web",
+                  "Partner Referral",
+                  "Trade Show"
+                ],
+                "description": "Updated lead source. Leave empty to keep unchanged."
+              },
+              "probability": {
+                "type": "number",
+                "examples": [
+                  20,
+                  50,
+                  80,
+                  95
+                ],
+                "description": "Updated probability percentage (0-100). Leave unset to keep unchanged."
+              },
+              "custom_fields": {
+                "type": "object",
+                "examples": [
+                  {
+                    "DeliveryInstallationStatus__c": "In progress"
+                  },
+                  {
+                    "OrderNumber__c": "ORD-001",
+                    "TrackingNumber__c": "12345"
+                  },
+                  {
+                    "Primary_Contact__c": "003XXXXXXXXXXXXXXX"
+                  }
+                ],
+                "description": "Dictionary of custom field API names and their values to update. Use the exact API name ending with '__c'. IMPORTANT for lookup/reference fields: Fields that reference other records (e.g., Contact__c, User__c, Account__c) require a valid 18-character Salesforce record ID (e.g., '003XXXXXXXXXXXXXXX' for Contact, '005XXXXXXXXXXXXXXX' for User), NOT descriptive names or text. Passing names like 'John Smith' instead of IDs will fail with MALFORMED_ID error. IMPORTANT for picklist fields: Restricted picklists only accept predefined values from the Salesforce org. Use SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT with object_name='Opportunity' to discover field types and valid values.",
+                "additionalProperties": true
+              },
+              "opportunity_id": {
+                "type": "string",
+                "examples": [
+                  "006Wd000005FG3CIAW",
+                  "006XXXXXXXXXXXXXXX"
+                ],
+                "description": "The Salesforce ID of the opportunity to update. Multiple opportunities may share the same name \u2014 apply additional filters (stage, owner, account) or confirm with the user before updating to avoid modifying the wrong record. Use IDs from fresh search results; stale or manually constructed IDs may be invalid."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_SEARCH_OPPORTUNITIES": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_SEARCH_OPPORTUNITIES",
+          "description": "Search for Salesforce opportunities using multiple criteria like name, account, stage, amount, close date, or status. Apply at least one filter to avoid broad result sets. Partial-match searches may return multiple similar records; verify the correct record by Id before downstream use.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Q4 Deal",
+                  "Enterprise Sale",
+                  "Renewal"
+                ],
+                "description": "Search by opportunity name. Supports partial matches."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 50,
+                "maximum": 2000,
+                "minimum": 1,
+                "description": "Maximum number of opportunities to return. Maximum value is 2000. When totalSize in the response exceeds limit, use nextRecordsUrl to paginate through the full dataset."
+              },
+              "fields": {
+                "type": "string",
+                "default": "Id,Name,AccountId,Account.Name,StageName,Amount,CloseDate,IsClosed,IsWon,Probability,LeadSource,CreatedDate",
+                "examples": [
+                  "Id,Name,AccountId,Account.Name,StageName,Amount,CloseDate",
+                  "Id,Name,AccountId,Account.Name,StageName,Amount,CloseDate,IsClosed,IsWon,Probability"
+                ],
+                "description": "Comma-separated list of Opportunity fields to retrieve. Supports direct Opportunity fields (e.g., Id, Name, Amount) and parent relationship fields (e.g., Account.Name, Owner.Name). Note: Contact.* fields (Contact.Name, Contact.Email, etc.) are NOT valid because Opportunity does not have a direct parent relationship to Contact; use OpportunityContactRole queries to get contact information. Parent relationship fields like Account.Name may be null on returned records; guard against missing nested values when post-processing."
+              },
+              "is_won": {
+                "type": "boolean",
+                "description": "Filter by won status. True for won opportunities, False for lost (only applies to closed opportunities)."
+              },
+              "is_closed": {
+                "type": "boolean",
+                "description": "Filter by closed status. True for closed opportunities, False for open."
+              },
+              "amount_max": {
+                "type": "number",
+                "examples": [
+                  100000,
+                  1000000
+                ],
+                "description": "Maximum opportunity amount."
+              },
+              "amount_min": {
+                "type": "number",
+                "examples": [
+                  1000,
+                  50000
+                ],
+                "description": "Minimum opportunity amount."
+              },
+              "stage_name": {
+                "type": "string",
+                "examples": [
+                  "Prospecting",
+                  "Qualification",
+                  "Proposal/Price Quote",
+                  "Closed Won"
+                ],
+                "description": "Search by opportunity stage."
+              },
+              "lead_source": {
+                "type": "string",
+                "examples": [
+                  "Web",
+                  "Phone Inquiry",
+                  "Partner Referral"
+                ],
+                "description": "Search by lead source."
+              },
+              "account_name": {
+                "type": "string",
+                "examples": [
+                  "Acme Corp",
+                  "Tech Solutions"
+                ],
+                "description": "Search by associated account name. Supports partial matches."
+              },
+              "close_date_to": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31",
+                  "2025-06-30",
+                  "2025-09-30"
+                ],
+                "description": "Search opportunities with close date before this date (YYYY-MM-DD)."
+              },
+              "close_date_from": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01",
+                  "2024-06-15",
+                  "2025-03-31"
+                ],
+                "description": "Search opportunities with close date from this date (YYYY-MM-DD). When computing relative ranges (e.g., 'this week'), derive dates using the user's local timezone to avoid off-by-one-day errors."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_CREATE_OPPORTUNITY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_CREATE_OPPORTUNITY",
+          "description": "Creates a new opportunity in Salesforce with the specified information.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "name",
+              "close_date",
+              "stage_name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "New Enterprise Deal",
+                  "Q4 Expansion",
+                  "Product Upgrade 2024"
+                ],
+                "description": "Opportunity name (required field in Salesforce)."
+              },
+              "type": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "Existing Customer - Upgrade",
+                  "Existing Customer - Replacement",
+                  "Existing Customer - Downgrade",
+                  "New Customer"
+                ],
+                "description": "Type of opportunity."
+              },
+              "amount": {
+                "type": "number",
+                "default": 0,
+                "examples": [
+                  50000,
+                  100000,
+                  250000
+                ],
+                "description": "Estimated total sale amount."
+              },
+              "next_step": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "Send proposal",
+                  "Schedule demo",
+                  "Await decision",
+                  "Contract negotiation"
+                ],
+                "description": "Description of next step in sales process."
+              },
+              "account_id": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "001XXXXXXXXXXXXXXX"
+                ],
+                "description": "ID of the Account this opportunity is associated with. Omitting leaves the opportunity orphaned and excluded from account-based reports."
+              },
+              "close_date": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31",
+                  "2024-06-30",
+                  "2025-03-15"
+                ],
+                "description": "Expected close date in YYYY-MM-DD format (required field in Salesforce)."
+              },
+              "contact_id": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "003XXXXXXXXXXXXXXX"
+                ],
+                "description": "Deprecated: Salesforce Opportunity does not have a writable ContactId field. Contact-to-Opportunity associations must be managed through OpportunityContactRole. This parameter is accepted but ignored."
+              },
+              "stage_name": {
+                "type": "string",
+                "examples": [
+                  "Prospecting",
+                  "Qualification",
+                  "Needs Analysis",
+                  "Value Proposition",
+                  "Id. Decision Makers",
+                  "Perception Analysis",
+                  "Proposal/Price Quote",
+                  "Negotiation/Review",
+                  "Closed Won",
+                  "Closed Lost"
+                ],
+                "description": "Current stage of the opportunity (required field in Salesforce)."
+              },
+              "description": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "Large enterprise deal for cloud migration",
+                  "Expanding existing contract to include new products"
+                ],
+                "description": "Text description of the opportunity."
+              },
+              "lead_source": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "Web",
+                  "Phone Inquiry",
+                  "Partner Referral",
+                  "Purchased List",
+                  "Trade Show",
+                  "Other"
+                ],
+                "description": "Source of the opportunity."
+              },
+              "probability": {
+                "type": "number",
+                "default": 0,
+                "examples": [
+                  10,
+                  25,
+                  50,
+                  75,
+                  90
+                ],
+                "description": "Percentage probability of closing (0-100)."
+              },
+              "custom_fields": {
+                "type": "object",
+                "examples": [
+                  {
+                    "Level__c": "Primary",
+                    "Custom_Score__c": 85
+                  }
+                ],
+                "description": "Dictionary of custom field API names and their values. Custom field names typically end with '__c' (e.g., 'Custom_Field__c'). Values are subject to org-level validation rules; invalid values raise FIELD_CUSTOM_VALIDATION_EXCEPTION.",
+                "additionalProperties": true
+              },
+              "pricebook2_id": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "01sXXXXXXXXXXXXXXX"
+                ],
+                "description": "ID of the price book for this opportunity."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_UPSERT_ROWS": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_UPSERT_ROWS",
+          "description": "Upsert rows - update existing rows by key, append new ones. Automatically handles column mapping and partial updates. Use for: CRM syncs (match Lead ID), transaction imports (match Transaction ID), inventory updates (match SKU), calendar syncs (match Event ID). Features: - Auto-adds missing columns to sheet - Partial column updates (only update Phone + Status, preserve other columns) - Column order doesn't matter (auto-maps by header name) - Prevents duplicates by matching key column Example inputs: - Contact update: keyColumn='Email', headers=['Email','Phone','Status'], data=[['john@ex.com','555-0101','Active']] - Inventory sync: keyColumn='SKU', headers=['SKU','Stock','Price'], data=[['WIDGET-001',50,9.99],['GADGET-002',30,19.99]] - CRM lead update: keyColumn='Lead ID', headers=['Lead ID','Score','Status'], data=[['L-12345',85,'Hot']] - Partial update: keyColumn='Email', headers=['Email','Phone'] (only updates Phone, preserves Name/Address/etc)",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheetId",
+              "sheetName",
+              "rows"
+            ],
+            "properties": {
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "examples": [
+                  [
+                    [
+                      "john@example.com",
+                      "555-0101",
+                      "Active"
+                    ],
+                    [
+                      "jane@example.com",
+                      "555-0102",
+                      "Pending"
+                    ]
+                  ],
+                  [
+                    [
+                      "WIDGET-001",
+                      50,
+                      9.99
+                    ],
+                    [
+                      "GADGET-002",
+                      30,
+                      19.99
+                    ]
+                  ],
+                  [
+                    [
+                      "L-12345",
+                      "John Doe",
+                      85
+                    ]
+                  ]
+                ],
+                "minItems": 1,
+                "description": "2D array of data rows to upsert. IMPORTANT: If 'headers' is NOT provided, the FIRST row is treated as column headers and remaining rows as data - so you need at least 2 rows (1 header + 1 data). If 'headers' IS provided separately, then ALL rows in this array are treated as data rows. Each row should have the same number of values as headers. If a row has MORE values than headers: with strict_mode=true (default), an error is returned showing which rows are affected; with strict_mode=false, extra values are silently truncated. If a row has FEWER values than headers, an error is returned during execution. Cell values can be strings, numbers, booleans, or null. Example with headers provided: headers=['Email','Status'], rows=[['john@ex.com','Active']] (1 data row). Example without headers: rows=[['Email','Status'],['john@ex.com','Active']] (row 1 = headers, row 2 = data)."
+              },
+              "headers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "Email",
+                    "Phone",
+                    "Status"
+                  ],
+                  [
+                    "Lead ID",
+                    "Name",
+                    "Score"
+                  ],
+                  [
+                    "SKU",
+                    "Stock",
+                    "Price"
+                  ]
+                ],
+                "description": "List of column names for the data. These will be matched against sheet headers. If a column doesn't exist in the sheet, it will be added automatically. Order doesn't need to match sheet order. Can be auto-derived from the first row in 'rows' if not provided. Example inputs: ['Email', 'Phone', 'Status'] for contact updates, ['Lead ID', 'Name', 'Score'] for CRM, ['SKU', 'Stock', 'Price'] for inventory."
+              },
+              "keyColumn": {
+                "type": "string",
+                "examples": [
+                  "Email",
+                  "ID",
+                  "SKU",
+                  "Lead ID",
+                  "Transaction Number"
+                ],
+                "description": "The column NAME (header text) to use as unique identifier for matching rows. Must be an actual header name from the sheet (e.g., 'Email', 'Lead ID', 'SKU'), NOT a column letter (e.g., 'A', 'B', 'C'). If you provide a column letter like 'A', it will be automatically converted to the header name at that column position. If neither 'key_column' nor 'key_column_index' is provided, defaults to the first column (index 0)."
+              },
+              "sheetName": {
+                "type": "string",
+                "examples": [
+                  "Leads",
+                  "Transactions",
+                  "Inventory",
+                  "Sheet1",
+                  "\u5de5\u4f5c\u88681"
+                ],
+                "description": "The name of the sheet/tab within the spreadsheet. Note: Google Sheets creates default sheets with localized names based on account language (e.g., 'Sheet1' for English, '\u5de5\u4f5c\u88681' for Chinese, 'Hoja1' for Spanish, 'Feuille1' for French, 'Planilha1' for Portuguese, '\u041b\u0438\u0441\u04421' for Russian). If you specify a common default name and the sheet is not found, the action will automatically use the first sheet if only one exists."
+              },
+              "strictMode": {
+                "type": "boolean",
+                "default": true,
+                "description": "Controls how rows with mismatched column counts are handled. When True (default), an error is returned if any row has more values than headers - the error message shows exactly which rows are affected and what values would need to be removed. When False, extra values are silently truncated to match the header count. Set to False only if you explicitly want automatic truncation of extra values."
+              },
+              "tableStart": {
+                "type": "string",
+                "default": "A1",
+                "examples": [
+                  "A1",
+                  "C5",
+                  "D10"
+                ],
+                "description": "Cell where the table starts (where headers are located). Defaults to 'A1'. Use this if your table is offset (e.g., 'C5', 'D10')."
+              },
+              "spreadsheetId": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "description": "The ID of the spreadsheet. Must be a non-empty string, typically a 44-character alphanumeric string found in the spreadsheet URL."
+              },
+              "key_column_index": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "examples": [
+                  0,
+                  1,
+                  2
+                ],
+                "description": "The 0-based column index to use as unique identifier for matching rows. Alternative to 'key_column' - will be converted to column name using headers. If neither 'key_column' nor 'key_column_index' is provided, defaults to 0 (first column). Example: 0 for first column, 1 for second column."
+              },
+              "normalization_message": {
+                "type": "string",
+                "description": "Internal field to track input normalization (e.g., row truncation). Not part of API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_GET_OPPORTUNITY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_OPPORTUNITY",
+          "description": "Retrieves a specific opportunity by ID from Salesforce, returning all available fields.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "opportunity_id"
+            ],
+            "properties": {
+              "fields": {
+                "type": "string",
+                "examples": [
+                  "Name,Amount,StageName,CloseDate",
+                  "Description,Type,LeadSource,NextStep"
+                ],
+                "description": "Comma-delimited string of Opportunity field API names to retrieve. If omitted, all fields are returned. Custom objects may use non-standard API names for common fields (e.g., primary contact); verify exact field API names and handle null values."
+              },
+              "opportunity_id": {
+                "type": "string",
+                "examples": [
+                  "006Wd000005FG3CIAW",
+                  "006XXXXXXXXXXXXXXX"
+                ],
+                "description": "The Salesforce ID of the opportunity to retrieve. Must be a valid 15 or 18 character alphanumeric Salesforce ID (e.g., '006Wd000005FG3CIAW'). When multiple similarly named opportunities exist in search results, confirm the correct record by `Id` or other key attributes before passing the ID here."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_ADD_OPPORTUNITY_LINE_ITEM": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_ADD_OPPORTUNITY_LINE_ITEM",
+          "description": "Adds a product (line item) to an opportunity. The product must exist in a pricebook entry that's ass...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_ADD_OPPORTUNITY_LINE_ITEM"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_CREATE_TASK": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_CREATE_TASK",
+          "description": "Creates a new task in Salesforce to track activities, to-dos, and follow-ups related to contacts, le...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_CREATE_TASK"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_SEARCH_ACCOUNTS": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_SEARCH_ACCOUNTS",
+          "description": "Search for Salesforce accounts using criteria like name, industry, type, location, or contact inform...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_SEARCH_ACCOUNTS"
+              ]
+            }
+          }
+        },
+        "GMAIL_FETCH_EMAILS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_FETCH_EMAILS",
+          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optiona...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_FETCH_EMAILS"
+              ]
+            }
+          }
+        },
+        "GMAIL_SEARCH_PEOPLE": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_SEARCH_PEOPLE",
+          "description": "Searches contacts by matching the query against names, nicknames, emails, phone numbers, and organiz...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_SEARCH_PEOPLE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:34:28.045Z",
+        "current_time_utc_epoch_seconds": 1786541668,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "fact",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"fact\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "Follow these steps carefully to begin the task:",
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_eYvhzlYcKmMA"
+  }
+}

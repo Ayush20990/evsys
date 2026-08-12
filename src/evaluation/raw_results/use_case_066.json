@@ -1,0 +1,765 @@
+{
+  "use_case_id": 66,
+  "prompt": "Create customized application emails with resume and cover letter PDFs, stage them as Outlook drafts, update attachments and body text, then send the finalized drafts after confirmation.",
+  "expected_tools": [
+    "OUTLOOK_UPDATE_EMAIL",
+    "OUTLOOK_DOWNLOAD_OUTLOOK_ATTACHMENT",
+    "OUTLOOK_DELETE_MESSAGE_ATTACHMENT",
+    "OUTLOOK_ADD_MAIL_ATTACHMENT",
+    "OUTLOOK_LIST_MESSAGES",
+    "OUTLOOK_LIST_OUTLOOK_ATTACHMENTS",
+    "OUTLOOK_SEND_DRAFT",
+    "OUTLOOK_CREATE_DRAFT",
+    "OUTLOOK_DELETE_MESSAGE"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Create customized application emails with resume and cover letter PDFs, stage them as Outlook drafts, update attachments and body text, then send the finalized drafts after confirmation.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Search mailbox-wide using OUTLOOK_SEARCH_MESSAGES (use recipient_email and subject_hint; include recipient-focused KQL like to:) to find prior application emails/drafts.",
+            "[Optional (if folder names are unknown)] [Prerequisite]: Discover Drafts/Sent folder IDs using OUTLOOK_LIST_MAIL_FOLDERS (to scope queries).",
+            "[Fallback (if OUTLOOK_SEARCH_MESSAGES returns 400/unsupported)] [Step]: Enumerate candidates using OUTLOOK_QUERY_EMAILS on Drafts/Sent and follow '@odata.nextLink' until exhausted (then client-side match by toRecipients/subject).",
+            "[Required] [Step]: Confirm the right prior thread and extract reusable details using OUTLOOK_GET_MESSAGE (pull only body/recipients/webLink as needed).",
+            "[Optional (if you must reuse/confirm prior files)] [Step]: Check existing attachments using OUTLOOK_LIST_OUTLOOK_ATTACHMENTS (identify the correct CV/supporting doc to attach).",
+            "[Required] [Step]: Create the new job application draft using OUTLOOK_CREATE_DRAFT (to=recipient_email, subject/body based on prior details).",
+            "[Required] [Next Step]: Attach the CV/supporting file using OUTLOOK_ADD_MAIL_ATTACHMENT (ensure the intended file is included).",
+            "[Required] [Next Step]: Verify final draft and attachment presence using OUTLOOK_GET_MESSAGE and OUTLOOK_LIST_OUTLOOK_ATTACHMENTS (confirm recipients, body, and files).",
+            "[Required (for irreversible send)] [Step]: Send only after explicit user confirmation using OUTLOOK_SEND_DRAFT (or OUTLOOK_SEND_EMAIL if sending without a draft is required)."
+          ],
+          "known_pitfalls": [
+            "[OUTLOOK_SEARCH_MESSAGES] Can return 400 indicating search is unsupported for some account types; switch to OUTLOOK_QUERY_EMAILS folder-scoped enumeration instead.",
+            "[OUTLOOK_QUERY_EMAILS] Pagination may rely on '@odata.nextLink'; skipping it can silently miss older matches.",
+            "[OUTLOOK_QUERY_EMAILS] Draft listings can include unrelated items (often only isDraft can be server-filtered); expect a second pass matching toRecipients/subject.",
+            "[OUTLOOK_GET_MESSAGE] Full HTML bodies can be large; request only needed fields (e.g., body, recipients, webLink) to keep responses manageable.",
+            "[OUTLOOK_SEND_DRAFT] Successful sends may return an empty data object; rely on the tool success status rather than expecting a sent-message payload."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "OUTLOOK_SEARCH_MESSAGES",
+            "OUTLOOK_QUERY_EMAILS",
+            "OUTLOOK_CREATE_DRAFT",
+            "OUTLOOK_ADD_MAIL_ATTACHMENT",
+            "OUTLOOK_SEND_DRAFT"
+          ],
+          "related_tool_slugs": [
+            "OUTLOOK_LIST_MAIL_FOLDERS",
+            "OUTLOOK_LIST_OUTLOOK_ATTACHMENTS",
+            "OUTLOOK_SEND_EMAIL",
+            "OUTLOOK_GET_MESSAGE"
+          ],
+          "toolkits": [
+            "outlook"
+          ],
+          "plan_id": "0b82372d5f884d7cbf2d16a77a278ac6"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "outlook",
+          "has_active_connection": false,
+          "description": "Outlook is Microsoft's email and calendaring platform integrating contacts and scheduling, enabling users to manage communications and events in a unified workspace",
+          "status_message": "No Active connection for toolkit=outlook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"outlook\") to create a connection BEFORE executing any outlook tools."
+        }
+      ],
+      "tool_schemas": {
+        "OUTLOOK_SEARCH_MESSAGES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEARCH_MESSAGES",
+          "description": "Search Outlook messages using powerful KQL syntax. Supports sender (from:), recipient (to:, cc:), subject, date filters (received:, sent:), attachments, and boolean logic. Only works with Microsoft 365/Enterprise accounts (no @hotmail.com/@outlook.com). Examples: 'from:user@example.com AND received>=2025-10-01', 'to:info@jcdn.nl AND subject:invoice', 'received>today-30 AND hasattachment:yes'",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "size": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 25,
+                "minimum": 1,
+                "description": "Number of search results to return per page (1-25). Note: For message entity, max size is 25. Also, from_index + size cannot exceed 1000 (API pagination window limit)."
+              },
+              "query": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "project report",
+                  "from:manager@example.com AND subject:budget",
+                  "to:info@jcdn.nl AND (subject:toegangscontrole OR subject:beveiligingspoorten)",
+                  "received>=2025-10-01 AND received<=2025-10-31",
+                  "received>today-30 AND hasattachment:yes",
+                  "from:example.com AND subject:invoice AND received:2025-10",
+                  "to:team@example.com AND received>=2025-10-01",
+                  "cc:manager@example.com OR to:manager@example.com"
+                ],
+                "description": "KQL (Keyword Query Language) search query string. Supports advanced syntax for precise searches.\n\n**Basic Syntax:**\n- Simple keywords: 'budget report'\n- Exact phrases: '\"quarterly review\"'\n- Boolean operators: 'urgent AND deadline' or 'invoice OR receipt'\n\n**Property Filters (prefix:value):**\n- from: Sender email - 'from:user@example.com' or 'from:example.com'\n- to: Recipient email - 'to:info@jcdn.nl'\n- cc: CC recipient - 'cc:manager@example.com'\n- subject: Subject line - 'subject:invoice'\n- received: Date received - 'received:2025-10-01' or 'received>=2025-10-01'\n- sent: Date sent - 'sent:2025-10-01' or 'sent>=2025-10-01'\n- hasattachment: Has files - 'hasattachment:yes' or 'hasattachment:no'\n\n**REQUIRED**: At least one search criterion must be provided - either this query parameter OR one of the legacy filters (fromEmail, subject, hasAttachments). Empty searches are not supported."
+              },
+              "region": {
+                "type": "string",
+                "examples": [
+                  "US",
+                  "EU",
+                  "GB"
+                ],
+                "description": "Geographic region for the search query. ONLY required when using application permissions (S2S authentication). DO NOT use with delegated permissions (user authentication) - the API will reject the request. Common values: 'US', 'EU', 'GB', 'JP', 'CN', 'IN', 'CA', 'AU', 'BR', 'RU'. Leave unset (None) for delegated permissions."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Project Update",
+                  "Budget Proposal Q4",
+                  "Action Required: Review Document"
+                ],
+                "description": "Text to search for within the message subject line. Legacy parameter - prefer using 'subject:text' in the query parameter for more control. When combined with query, this filter is joined using AND. If query contains OR operators, the query is wrapped in parentheses to preserve precedence. Example: Instead of subject='invoice', use query='subject:invoice AND received>=2025-10-01'"
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com",
+                  "support@example.com"
+                ],
+                "description": "Target mailbox: 'me' for the signed-in user, or an email/UPN for a shared/other mailbox (e.g., 'support@example.com'). Shared-mailbox access requires Mail.Read.Shared (delegated) or Mail.Read (application) on the target; 403 means insufficient permissions. Behavior differs by value: 'me' uses the Microsoft Search API; a specific mailbox uses the Messages API with $search (response is normalized back into the same hitsContainers/hits shape, so callers don't need to branch). `region` and `enable_top_results` apply only when `user_id` is 'me'. LIMITATION: shared-mailbox search supports only the first page (`from_index=0`); Graph rejects $skip with $search. For deep pagination over a shared mailbox, use OUTLOOK_QUERY_EMAILS with $filter."
+              },
+              "fromEmail": {
+                "type": "string",
+                "examples": [
+                  "manager@example.com",
+                  "example.com",
+                  "contact@partner.com"
+                ],
+                "description": "Filter messages by sender email address or domain. Supports exact email ('user@example.com') or domain matching ('example.com'). Legacy parameter - prefer using 'from:email@example.com' in the query parameter for more flexibility. When combined with query, this filter is joined using AND. If query contains OR operators, the query is wrapped in parentheses to preserve precedence. Note: Only Microsoft 365/Enterprise accounts are supported (no @hotmail.com or @outlook.com)."
+              },
+              "from_index": {
+                "type": "integer",
+                "default": 0,
+                "maximum": 999,
+                "minimum": 0,
+                "description": "The 0-based starting index for pagination (max 999). Note: from_index + size cannot exceed 1000 (API pagination window limit). To paginate: check response['value'][0]['hitsContainers'][0]['moreResultsAvailable']. If true, call again with from_index += size (e.g., 0 \u2192 25 \u2192 50). Message ID is in hits[]['hitId'], not hits[]['resource']['id']."
+              },
+              "hasAttachments": {
+                "type": "boolean",
+                "description": "Filters messages based on the presence of attachments. Legacy parameter - prefer using 'hasattachment:yes' or 'hasattachment:no' in the query parameter. When combined with query, this filter is joined using AND. If query contains OR operators, the query is wrapped in parentheses to preserve precedence."
+              },
+              "enable_top_results": {
+                "type": "boolean",
+                "default": false,
+                "description": "If `true`, sorts results by relevance; otherwise, sorts by date in descending order (newest first)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_QUERY_EMAILS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_QUERY_EMAILS",
+          "description": "Query Outlook emails within a SINGLE folder using OData filters. Build precise server-side filters for dates, read status, importance, subjects, attachments, and conversations. Best for structured queries on message metadata within a specific folder. Returns up to 100 messages per request with pagination support. \u2022 Searches SINGLE folder only (inbox, sentitems, etc.) - NOT across all folders \u2022 For cross-folder/mailbox-wide search: Use OUTLOOK_SEARCH_MESSAGES \u2022 Server-side filters: dates, importance, isRead, hasAttachments, subjects, conversationId \u2022 Pagination: use the returned next_page_token (pass it back as page_token) until it is absent \u2022 Limitations: Recipient/body filtering requires OUTLOOK_SEARCH_MESSAGES",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "default": 100,
+                "maximum": 1000,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50,
+                  100,
+                  500
+                ],
+                "description": "Maximum number of messages to return per request (1-1000). Default is 100. IMPORTANT: For large mailboxes, paginate using `next_page_token`. Pagination example: 1) Call with top=100, 2) Read `next_page_token` from the response, 3) If present, call again passing it back as `page_token`, 4) Repeat until `next_page_token` is absent."
+              },
+              "skip": {
+                "type": "integer",
+                "default": 0,
+                "minimum": 0,
+                "examples": [
+                  0,
+                  100,
+                  200
+                ],
+                "description": "Number of messages to skip for pagination. NOTE: For large result sets, prefer the returned `next_page_token` (pass it back as `page_token`) over manual skip."
+              },
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "isRead eq false",
+                  "importance eq 'high'",
+                  "hasAttachments eq true",
+                  "receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "receivedDateTime ge 2025-10-01T00:00:00Z and receivedDateTime lt 2025-10-08T00:00:00Z",
+                  "isRead eq false and receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "importance eq 'high' and hasAttachments eq true",
+                  "startswith(subject, '[Task Update]')",
+                  "startswith(subject, 'Re:') and hasAttachments eq true",
+                  "subject eq 'Weekly Report'",
+                  "conversationId eq 'AQQkADAwATY3ZmYAZS1hYQAzNC1lODkwLTAwAi0wMAoAEADJzjh8m93SQbP6BUCZcIuc'",
+                  "sentDateTime gt 2025-10-01T14:30:00Z and sentDateTime lt 2025-10-01T18:00:00Z",
+                  "isDraft eq false and isRead eq false and importance eq 'high'",
+                  "(isRead eq false or importance eq 'high') and receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "(isRead eq false or importance eq 'high') and hasAttachments eq true",
+                  "from/emailAddress/address eq 'user@example.com'",
+                  "startswith(from/emailAddress/address, 'support@')",
+                  "from/emailAddress/address eq 'boss@company.com' and isRead eq false",
+                  "categories/any(a:a eq 'Priority')",
+                  "categories/any(a:a eq 'Priority') or categories/any(b:b eq 'Urgent')",
+                  "categories/any(a:a eq 'Priority') and isRead eq false"
+                ],
+                "description": "OData $filter query string to filter email messages. Syntax: 'field operator value' combined with 'and', 'or', 'not'.\n\n        **Operators:** eq, ne, lt, le, gt, ge, startswith(), contains(), any()\n\n        **String Functions:**\n        - subject: contains(), startswith()\n        - from/sender: startswith() and eq only. contains() is NOT supported on sender/from fields\n        - endswith() is NOT reliably supported by Microsoft Graph API for message filtering\n\n        **Filterable Fields:**\n        - `isRead` - Boolean: true/false\n        - `importance` - String: 'low', 'normal', 'high'\n        - `subject` - String (exact match or startswith)\n        - `hasAttachments` - Boolean: true/false\n        - `receivedDateTime`, `sentDateTime` - DateTime (ISO 8601: 2025-10-01T00:00:00Z, NOT enclosed in quotes)\n        - `conversationId` - String (exact match)\n        - `categories` - Array (use any() operator: `categories/any(a:a eq 'CategoryName')`)\n        - `isDraft`, `flag/flagStatus` - Boolean/String flags\n        - `from/emailAddress/address`, `sender/emailAddress/address` - Sender email (ONLY 'address' is filterable, NOT 'name')\n\n        **NOT filterable:** toRecipients, ccRecipients, bccRecipients, body/content, id \u2014 use OUTLOOK_SEARCH_MESSAGES for these.\n\n        **Categories Filtering:**\n        - Single: `categories/any(a:a eq 'CategoryName')`\n        - Multiple (OR): Use SEPARATE any() calls: `categories/any(a:a eq 'Cat1') or categories/any(b:b eq 'Cat2')`\n        - For category names containing single quotes, escape them by doubling: `categories/any(a:a eq 'Owner''s Category')`\n\n        **Date Filtering:**\n        - ISO 8601 format: 2025-10-01T00:00:00Z (no quotes around datetime values)\n        - Operators: ge, gt, le, lt\n"
+              },
+              "folder": {
+                "type": "string",
+                "default": "inbox",
+                "examples": [
+                  "inbox",
+                  "sentitems",
+                  "drafts",
+                  "AAMkAGI0ZjExAAA="
+                ],
+                "description": "SINGLE mail folder to search within (cannot search across all folders). Well-known names (case-insensitive): 'inbox', 'sentitems', 'drafts', 'deleteditems', 'outbox', 'junkemail', 'archive', 'clutter', 'recoverableitemsdeletions'. For custom folders (e.g., 'Billing', 'Projects'), you MUST provide the folder ID (a long base64-like string like 'AAMkAGU0NTRiNDA4...'). Use OUTLOOK_LIST_MAIL_FOLDERS to get folder IDs for custom folders. Do NOT pass folder URLs or display names. IMPORTANT: To search across ALL folders, use OUTLOOK_SEARCH_MESSAGES instead (searches entire mailbox without folder restriction). NOTE: This parameter also accepts 'folder_id' as an alias for backwards compatibility."
+              },
+              "select": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "receivedDateTime"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "receivedDateTime",
+                    "webLink"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "toRecipients",
+                    "receivedDateTime",
+                    "hasAttachments",
+                    "webLink"
+                  ],
+                  [
+                    "subject",
+                    "from",
+                    "bodyPreview",
+                    "receivedDateTime",
+                    "internetMessageHeaders"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "body",
+                    "receivedDateTime"
+                  ]
+                ],
+                "description": "List of message properties to include in the response (accepts comma-separated string or list). Field names are automatically normalized to correct camelCase (e.g., 'bodypreview' -> 'bodyPreview', 'hasattachments' -> 'hasAttachments'). Valid fields: id, subject, from, sender, toRecipients, ccRecipients, bccRecipients, replyTo, receivedDateTime, sentDateTime, createdDateTime, lastModifiedDateTime, hasAttachments, importance, isRead, isDraft, body, bodyPreview, uniqueBody, categories, conversationId, conversationIndex, parentFolderId, changeKey, internetMessageId, internetMessageHeaders, webLink, flag, attachments, inferenceClassification, isReadReceiptRequested, isDeliveryReceiptRequested. NOTE: 'inReplyTo' is NOT a valid property for email messages in Microsoft Graph v1.0. When not specified, returns metadata without body. Include 'body' for full content. Pass [] for all fields."
+              },
+              "orderby": {
+                "type": "string",
+                "default": "receivedDateTime desc",
+                "examples": [
+                  "receivedDateTime desc",
+                  "sentDateTime desc",
+                  "subject asc",
+                  "importance desc,receivedDateTime desc",
+                  "receivedDateTime asc"
+                ],
+                "description": "Sort order as comma-separated string or list (accepts 'field asc/desc' format or JSON-serialized arrays). Input is automatically normalized to correct format. Common fields: receivedDateTime, sentDateTime, subject, importance, from. NOTE: Ordering may be automatically disabled by Microsoft Graph API when using certain filters (e.g., subject exact match, conversationId) to avoid 'InefficientFilter' errors. In those cases, results will be unsorted."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "Target user's email or 'me' for authenticated user. IMPORTANT: 'me' uses the currently connected account. For shared or delegated mailbox access, ensure the connected user has mailbox access and the app has Mail.Read.Shared. 403 errors indicate insufficient delegated/application permissions."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend any required identifier fields from the first call (the token supersedes their values). Optional filter, sort and timezone params need not be repeated; the token carries them."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_CREATE_DRAFT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_CREATE_DRAFT",
+          "description": "Creates a new Outlook email draft with subject, body, recipients, and an optional attachment. This action creates a standalone draft for new conversations. To create a draft reply to an existing conversation/message, use the OUTLOOK_CREATE_DRAFT_REPLY action instead.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "subject",
+              "body"
+            ],
+            "properties": {
+              "body": {
+                "type": "string",
+                "examples": [
+                  "Let's meet to discuss the project."
+                ],
+                "description": "Content of the email draft; use `is_html` to specify if HTML or plain text."
+              },
+              "is_html": {
+                "type": "boolean",
+                "default": false,
+                "description": "Specifies if the `body` is HTML. If `False`, `body` is plain text. Set to `True` when `body` contains HTML markup; otherwise markup renders as literal text."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Team Meeting"
+                ],
+                "maxLength": 255,
+                "minLength": 1,
+                "description": "Subject line for the email draft."
+              },
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "43f0c14d-bca8-421f-b762-c3d8dd75be1f",
+                  "user@example.com"
+                ],
+                "description": "User ID (GUID) or user principal name (email) for S2S (app-only) authentication. Required when using application permissions. If not provided, defaults to '/me' endpoint for delegated authentication."
+              },
+              "attachment": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "title": "FileUploadable",
+                    "required": [
+                      "name",
+                      "mimetype",
+                      "s3key"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "examples": [
+                          "document.pdf",
+                          "image.jpg",
+                          "report.docx"
+                        ],
+                        "description": "The filename that will be used when uploading the file to the destination service"
+                      },
+                      "s3key": {
+                        "type": "string",
+                        "title": "S3Key",
+                        "examples": [
+                          "47563/gmail/GET_ATTACHMENT/response/12345"
+                        ],
+                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                      },
+                      "mimetype": {
+                        "type": "string",
+                        "title": "Mimetype",
+                        "examples": [
+                          "application/pdf",
+                          "image/jpeg",
+                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        ],
+                        "description": "The MIME type of the file"
+                      }
+                    },
+                    "file_uploadable": true
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "title": "FileUploadable",
+                      "required": [
+                        "name",
+                        "mimetype",
+                        "s3key"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "title": "Name",
+                          "examples": [
+                            "document.pdf",
+                            "image.jpg",
+                            "report.docx"
+                          ],
+                          "description": "The filename that will be used when uploading the file to the destination service"
+                        },
+                        "s3key": {
+                          "type": "string",
+                          "title": "S3Key",
+                          "examples": [
+                            "47563/gmail/GET_ATTACHMENT/response/12345"
+                          ],
+                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                        },
+                        "mimetype": {
+                          "type": "string",
+                          "title": "Mimetype",
+                          "examples": [
+                            "application/pdf",
+                            "image/jpeg",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ],
+                          "description": "The MIME type of the file"
+                        }
+                      },
+                      "file_uploadable": true
+                    }
+                  }
+                ],
+                "description": "Optional file(s) to attach. Accepts a single file or a list of files."
+              },
+              "cc_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "manager@example.com"
+                  ]
+                ],
+                "description": "Optional list of CC (carbon copy) recipient email addresses. Must be provided as an array of strings, e.g., [\"cc@example.com\"]."
+              },
+              "to_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "johndoe@example.com",
+                    "janedoe@example.com"
+                  ]
+                ],
+                "description": "Optional list of primary 'To' recipient email addresses. Must be provided as an array of strings, e.g., [\"user@example.com\"] for a single recipient or [\"user1@example.com\", \"user2@example.com\"] for multiple recipients. Do not pass as a JSON-encoded string. Can be omitted when creating a draft to be completed later. To send the draft, at least one valid address must be present across `to_recipients`, `cc_recipients`, or `bcc_recipients`."
+              },
+              "bcc_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "stakeholder@example.com"
+                  ]
+                ],
+                "description": "Optional list of BCC (blind carbon copy) recipient email addresses. Must be provided as an array of strings, e.g., [\"bcc@example.com\"]."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_ADD_MAIL_ATTACHMENT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_ADD_MAIL_ATTACHMENT",
+          "description": "Tool to add an attachment to an email message. Use when you have a message ID and need to attach a small (<3 MB) file or reference.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_id"
+            ],
+            "properties": {
+              "item": {
+                "type": "object",
+                "description": "Embedded item (e.g., message, event) for itemAttachment; must include its own '@odata.type'.",
+                "additionalProperties": true
+              },
+              "name": {
+                "type": "string",
+                "examples": [
+                  "report.pdf"
+                ],
+                "description": "Display name of the attachment (e.g., file name). Required when using content_bytes. When using the attachment field, the name is automatically inferred."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The user's principal name or 'me' for the authenticated user."
+              },
+              "isInline": {
+                "type": "boolean",
+                "description": "Set to true if the attachment should appear inline in the message body."
+              },
+              "contentId": {
+                "type": "string",
+                "description": "Content ID for inline attachments, used in HTML body references."
+              },
+              "attachment": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "File to attach to the email. Either provide this field OR use 'content_bytes'. Cannot be used together with 'content_bytes'.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "AAMkAGI2TAAA="
+                ],
+                "description": "Unique Microsoft Graph message ID (opaque string like 'AAMkAGI2TAAA='). NOT an email address - this is an internal identifier returned by Microsoft Graph API operations."
+              },
+              "odata_type": {
+                "type": "string",
+                "default": "#microsoft.graph.fileAttachment",
+                "examples": [
+                  "#microsoft.graph.fileAttachment",
+                  "#microsoft.graph.itemAttachment"
+                ],
+                "description": "The OData type of the attachment. Required by Microsoft Graph API. Use '#microsoft.graph.fileAttachment' for file attachments, '#microsoft.graph.itemAttachment' for embedded items (messages, events, contacts)."
+              },
+              "contentType": {
+                "type": "string",
+                "examples": [
+                  "application/pdf"
+                ],
+                "description": "MIME type of the attachment (e.g., 'application/pdf'). Required when using content_bytes. When using the attachment field, the mimetype is automatically inferred."
+              },
+              "contentBytes": {
+                "type": "string",
+                "examples": [
+                  "SGVsbG8gd29ybGQh"
+                ],
+                "description": "Base64-encoded content of the file attachment (max size 3 MB). Either provide this field OR use the 'attachment' field (recommended). Cannot be used together with 'attachment'."
+              },
+              "contentLocation": {
+                "type": "string",
+                "description": "URL location or path for reference attachments."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_SEND_DRAFT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEND_DRAFT",
+          "description": "Tool to send an existing draft message. Use after creating a draft when you want to deliver it to recipients immediately. Example: Send a draft message with ID 'AAMkAG\u2026'.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_id"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The user's email address or 'me' to represent the authenticated user."
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "AAMkAGVi..."
+                ],
+                "description": "The unique identifier of the draft message to send."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_LIST_MAIL_FOLDERS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_MAIL_FOLDERS",
+          "description": "Tool to list a user's top-level mail folders. Use when you need folders like Inbox, Drafts, Sent Items; set include_hidden_folders=True to include hidden folders.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50,
+                  100
+                ],
+                "description": "Maximum number of items to return per page."
+              },
+              "skip": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0,
+                  10,
+                  20
+                ],
+                "description": "Number of items to skip before returning results."
+              },
+              "count": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include total count of matching items in the response."
+              },
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "displayName eq 'Inbox'",
+                  "isHidden eq false",
+                  "totalItemCount gt 0"
+                ],
+                "description": "OData filter expression to filter mail folders. String values must be enclosed in single quotes (e.g., displayName eq 'Inbox'). WARNING: Microsoft Graph API does not officially document which mailFolder properties support filtering. Known unsupported properties: parentFolderId (causes ErrorInvalidProperty error). To filter by parent folder, use the child folders endpoint instead: GET /me/mailFolders/{parentFolderId}/childFolders. Properties like isHidden may work but are not guaranteed."
+              },
+              "select": {
+                "type": "string",
+                "examples": [
+                  "id,displayName",
+                  "id,displayName,totalItemCount,isHidden"
+                ],
+                "description": "Comma-separated list of mailFolder properties to include in the response. Valid properties: id, displayName, parentFolderId, childFolderCount, unreadItemCount, totalItemCount, isHidden. Note: 'user_id' is NOT a valid mailFolder property and will be automatically removed if included."
+              },
+              "orderby": {
+                "type": "string",
+                "examples": [
+                  "displayName",
+                  "displayName desc",
+                  "totalItemCount desc"
+                ],
+                "description": "Property to sort by, optionally followed by 'asc' or 'desc'."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "User's id, userPrincipalName, or 'me' for the signed-in user."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend any required identifier fields from the first call (the token supersedes their values). Optional filter, sort and timezone params need not be repeated; the token carries them."
+              },
+              "include_hidden_folders": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include hidden mail folders (isHidden=true) when set to true."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_LIST_OUTLOOK_ATTACHMENTS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_OUTLOOK_ATTACHMENTS",
+          "description": "Lists metadata (name, size, contentType, isInline \u2014 but not `contentBytes`) for all attachments of a...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_LIST_OUTLOOK_ATTACHMENTS"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_SEND_EMAIL": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEND_EMAIL",
+          "description": "Sends an email with subject, body, recipients, and optional attachments via Microsoft Graph API. Sup...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_SEND_EMAIL"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_GET_MESSAGE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_GET_MESSAGE",
+          "description": "Retrieves a specific email message by its ID from the specified user's Outlook mailbox. Use the 'sel...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_GET_MESSAGE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:36:37.370Z",
+        "current_time_utc_epoch_seconds": 1786541797,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "roll",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"roll\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_F0pR08E8HYYe"
+  }
+}

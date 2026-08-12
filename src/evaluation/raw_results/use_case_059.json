@@ -1,0 +1,452 @@
+{
+  "use_case_id": 59,
+  "prompt": "Manage an Outlook mailbox by fetching recent inbox messages, classifying and moving messages or whole threads into routing folders, marking VIP emails high importance, creating staged reply drafts, and producing a structured list of items needing replies.",
+  "expected_tools": [
+    "OUTLOOK_UPDATE_EMAIL",
+    "OUTLOOK_LIST_MAIL_FOLDER_MESSAGES",
+    "OUTLOOK_BATCH_MOVE_MESSAGES",
+    "OUTLOOK_LIST_MAIL_FOLDERS",
+    "OUTLOOK_BATCH_UPDATE_MESSAGES",
+    "OUTLOOK_GET_MESSAGE",
+    "OUTLOOK_QUERY_EMAILS",
+    "OUTLOOK_GET_MAIL_FOLDER",
+    "OUTLOOK_CREATE_DRAFT_REPLY",
+    "OUTLOOK_CREATE_REPLY_ALL_DRAFT",
+    "OUTLOOK_MOVE_MESSAGE"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Manage an Outlook mailbox by fetching recent inbox messages, classifying and moving messages or whole threads into routing folders, marking VIP emails high importance, creating staged reply drafts, and producing a structured list of items needing replies.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Ensure correct mailbox scope, then enumerate folders using OUTLOOK_LIST_MAIL_FOLDERS (read response.data.value; follow response.data['@odata.nextLink'] if present).",
+            "[Required] [Prerequisite]: Resolve and persist source/destination folder IDs using OUTLOOK_LIST_MAIL_FOLDERS; if nested, traverse using OUTLOOK_LIST_CHILD_MAIL_FOLDERS (use IDs, not display names).",
+            "[Required] [Step]: Retrieve triage candidates using OUTLOOK_QUERY_EMAILS per folder with minimal select/filter; handle empty response.data.value and follow response.data['@odata.nextLink'] to collect message IDs + lightweight metadata.",
+            "[Optional (if OUTLOOK_QUERY_EMAILS output is truncated/offloaded)] [Prerequisite]: Use COMPOSIO_REMOTE_WORKBENCH to extract/dedupe message IDs across paginated payloads and keep a checkpoint of processed IDs.",
+            "[Required (for write operations only)] [Prerequisite]: Present a small preview (counts + a few examples) and get explicit confirmation of the exact message ID set, destinations, and any field updates to apply.",
+            "[Required] [Step]: Move selected messages using OUTLOOK_BATCH_MOVE_MESSAGES (max 20 message_ids/call), run batches sequentially, record per-item outcomes, and retry stragglers with OUTLOOK_MOVE_MESSAGE.",
+            "[Required] [Next Step]: Apply read/unread and other triage fields (for example categories/flags) using OUTLOOK_BATCH_UPDATE_MESSAGES (apply to the final IDs you will continue referencing, typically moved IDs).",
+            "[Optional (if drafting replies is needed)] [Next Step]: Create draft replies for selected messages using OUTLOOK_CREATE_DRAFT_REPLY (store returned draft IDs; avoid fetching full bodies unless required).",
+            "[Required] [Fallback]: If OUTLOOK_QUERY_EMAILS fails/returns insufficient results or filters are unsupported, use OUTLOOK_SEARCH_MESSAGES for discovery (if supported) then re-run OUTLOOK_QUERY_EMAILS in the resolved folder to fetch current IDs before moving/updating."
+          ],
+          "known_pitfalls": [
+            "[OUTLOOK_LIST_MAIL_FOLDERS] Folder arrays are under response.data.value; cross-mailbox scope issues can surface as 404 ErrorInvalidUser or 403 ErrorAccessDenied.",
+            "[OUTLOOK_QUERY_EMAILS] Invalid fields in select can trigger \"Invalid field(s) in select parameter\"; keep select minimal.",
+            "[OUTLOOK_SEARCH_MESSAGES] Can fail with 400 indicating search is unsupported for some account types.",
+            "[OUTLOOK_BATCH_MOVE_MESSAGES] Hard cap of 20 message_ids per call; with response_detail='minimal' moved_message_id may be null even when success=true.",
+            "[OUTLOOK_BATCH_UPDATE_MESSAGES] Requires an 'updates' object; with response_detail='minimal' successful updates may return 204 without echoing updated fields."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Chunk message IDs into batches that fit OUTLOOK_BATCH_MOVE_MESSAGES limits.",
+              "code": "```python\nbatches=[ids[i:i+20] for i in range(0,len(ids),20)]\n```"
+            },
+            {
+              "description": "Extract per-item outcomes from OUTLOOK_BATCH_MOVE_MESSAGES for retry/mapping logic.",
+              "code": "```python\nresults=(resp or {}).get('data',{}).get('results',[])\nmapping={r.get('original_message_id'):r.get('moved_message_id') for r in results if r.get('success')}\nfailed=[r.get('original_message_id') for r in results if not r.get('success')]\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "OUTLOOK_QUERY_EMAILS",
+            "OUTLOOK_BATCH_MOVE_MESSAGES"
+          ],
+          "related_tool_slugs": [
+            "OUTLOOK_LIST_MAIL_FOLDERS",
+            "OUTLOOK_MOVE_MESSAGE",
+            "OUTLOOK_BATCH_UPDATE_MESSAGES",
+            "OUTLOOK_SEARCH_MESSAGES",
+            "OUTLOOK_LIST_CHILD_MAIL_FOLDERS",
+            "OUTLOOK_CREATE_DRAFT_REPLY"
+          ],
+          "toolkits": [
+            "outlook"
+          ],
+          "plan_id": "50d00eac3d8643ba93dcb1cdce020ee6"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "outlook",
+          "has_active_connection": false,
+          "description": "Outlook is Microsoft's email and calendaring platform integrating contacts and scheduling, enabling users to manage communications and events in a unified workspace",
+          "status_message": "No Active connection for toolkit=outlook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"outlook\") to create a connection BEFORE executing any outlook tools."
+        }
+      ],
+      "tool_schemas": {
+        "OUTLOOK_QUERY_EMAILS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_QUERY_EMAILS",
+          "description": "Query Outlook emails within a SINGLE folder using OData filters. Build precise server-side filters for dates, read status, importance, subjects, attachments, and conversations. Best for structured queries on message metadata within a specific folder. Returns up to 100 messages per request with pagination support. \u2022 Searches SINGLE folder only (inbox, sentitems, etc.) - NOT across all folders \u2022 For cross-folder/mailbox-wide search: Use OUTLOOK_SEARCH_MESSAGES \u2022 Server-side filters: dates, importance, isRead, hasAttachments, subjects, conversationId \u2022 Pagination: use the returned next_page_token (pass it back as page_token) until it is absent \u2022 Limitations: Recipient/body filtering requires OUTLOOK_SEARCH_MESSAGES",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "default": 100,
+                "maximum": 1000,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50,
+                  100,
+                  500
+                ],
+                "description": "Maximum number of messages to return per request (1-1000). Default is 100. IMPORTANT: For large mailboxes, paginate using `next_page_token`. Pagination example: 1) Call with top=100, 2) Read `next_page_token` from the response, 3) If present, call again passing it back as `page_token`, 4) Repeat until `next_page_token` is absent."
+              },
+              "skip": {
+                "type": "integer",
+                "default": 0,
+                "minimum": 0,
+                "examples": [
+                  0,
+                  100,
+                  200
+                ],
+                "description": "Number of messages to skip for pagination. NOTE: For large result sets, prefer the returned `next_page_token` (pass it back as `page_token`) over manual skip."
+              },
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "isRead eq false",
+                  "importance eq 'high'",
+                  "hasAttachments eq true",
+                  "receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "receivedDateTime ge 2025-10-01T00:00:00Z and receivedDateTime lt 2025-10-08T00:00:00Z",
+                  "isRead eq false and receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "importance eq 'high' and hasAttachments eq true",
+                  "startswith(subject, '[Task Update]')",
+                  "startswith(subject, 'Re:') and hasAttachments eq true",
+                  "subject eq 'Weekly Report'",
+                  "conversationId eq 'AQQkADAwATY3ZmYAZS1hYQAzNC1lODkwLTAwAi0wMAoAEADJzjh8m93SQbP6BUCZcIuc'",
+                  "sentDateTime gt 2025-10-01T14:30:00Z and sentDateTime lt 2025-10-01T18:00:00Z",
+                  "isDraft eq false and isRead eq false and importance eq 'high'",
+                  "(isRead eq false or importance eq 'high') and receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "(isRead eq false or importance eq 'high') and hasAttachments eq true",
+                  "from/emailAddress/address eq 'user@example.com'",
+                  "startswith(from/emailAddress/address, 'support@')",
+                  "from/emailAddress/address eq 'boss@company.com' and isRead eq false",
+                  "categories/any(a:a eq 'Priority')",
+                  "categories/any(a:a eq 'Priority') or categories/any(b:b eq 'Urgent')",
+                  "categories/any(a:a eq 'Priority') and isRead eq false"
+                ],
+                "description": "OData $filter query string to filter email messages. Syntax: 'field operator value' combined with 'and', 'or', 'not'.\n\n        **Operators:** eq, ne, lt, le, gt, ge, startswith(), contains(), any()\n\n        **String Functions:**\n        - subject: contains(), startswith()\n        - from/sender: startswith() and eq only. contains() is NOT supported on sender/from fields\n        - endswith() is NOT reliably supported by Microsoft Graph API for message filtering\n\n        **Filterable Fields:**\n        - `isRead` - Boolean: true/false\n        - `importance` - String: 'low', 'normal', 'high'\n        - `subject` - String (exact match or startswith)\n        - `hasAttachments` - Boolean: true/false\n        - `receivedDateTime`, `sentDateTime` - DateTime (ISO 8601: 2025-10-01T00:00:00Z, NOT enclosed in quotes)\n        - `conversationId` - String (exact match)\n        - `categories` - Array (use any() operator: `categories/any(a:a eq 'CategoryName')`)\n        - `isDraft`, `flag/flagStatus` - Boolean/String flags\n        - `from/emailAddress/address`, `sender/emailAddress/address` - Sender email (ONLY 'address' is filterable, NOT 'name')\n\n        **NOT filterable:** toRecipients, ccRecipients, bccRecipients, body/content, id \u2014 use OUTLOOK_SEARCH_MESSAGES for these.\n\n        **Categories Filtering:**\n        - Single: `categories/any(a:a eq 'CategoryName')`\n        - Multiple (OR): Use SEPARATE any() calls: `categories/any(a:a eq 'Cat1') or categories/any(b:b eq 'Cat2')`\n        - For category names containing single quotes, escape them by doubling: `categories/any(a:a eq 'Owner''s Category')`\n\n        **Date Filtering:**\n        - ISO 8601 format: 2025-10-01T00:00:00Z (no quotes around datetime values)\n        - Operators: ge, gt, le, lt\n"
+              },
+              "folder": {
+                "type": "string",
+                "default": "inbox",
+                "examples": [
+                  "inbox",
+                  "sentitems",
+                  "drafts",
+                  "AAMkAGI0ZjExAAA="
+                ],
+                "description": "SINGLE mail folder to search within (cannot search across all folders). Well-known names (case-insensitive): 'inbox', 'sentitems', 'drafts', 'deleteditems', 'outbox', 'junkemail', 'archive', 'clutter', 'recoverableitemsdeletions'. For custom folders (e.g., 'Billing', 'Projects'), you MUST provide the folder ID (a long base64-like string like 'AAMkAGU0NTRiNDA4...'). Use OUTLOOK_LIST_MAIL_FOLDERS to get folder IDs for custom folders. Do NOT pass folder URLs or display names. IMPORTANT: To search across ALL folders, use OUTLOOK_SEARCH_MESSAGES instead (searches entire mailbox without folder restriction). NOTE: This parameter also accepts 'folder_id' as an alias for backwards compatibility."
+              },
+              "select": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "receivedDateTime"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "receivedDateTime",
+                    "webLink"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "toRecipients",
+                    "receivedDateTime",
+                    "hasAttachments",
+                    "webLink"
+                  ],
+                  [
+                    "subject",
+                    "from",
+                    "bodyPreview",
+                    "receivedDateTime",
+                    "internetMessageHeaders"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "body",
+                    "receivedDateTime"
+                  ]
+                ],
+                "description": "List of message properties to include in the response (accepts comma-separated string or list). Field names are automatically normalized to correct camelCase (e.g., 'bodypreview' -> 'bodyPreview', 'hasattachments' -> 'hasAttachments'). Valid fields: id, subject, from, sender, toRecipients, ccRecipients, bccRecipients, replyTo, receivedDateTime, sentDateTime, createdDateTime, lastModifiedDateTime, hasAttachments, importance, isRead, isDraft, body, bodyPreview, uniqueBody, categories, conversationId, conversationIndex, parentFolderId, changeKey, internetMessageId, internetMessageHeaders, webLink, flag, attachments, inferenceClassification, isReadReceiptRequested, isDeliveryReceiptRequested. NOTE: 'inReplyTo' is NOT a valid property for email messages in Microsoft Graph v1.0. When not specified, returns metadata without body. Include 'body' for full content. Pass [] for all fields."
+              },
+              "orderby": {
+                "type": "string",
+                "default": "receivedDateTime desc",
+                "examples": [
+                  "receivedDateTime desc",
+                  "sentDateTime desc",
+                  "subject asc",
+                  "importance desc,receivedDateTime desc",
+                  "receivedDateTime asc"
+                ],
+                "description": "Sort order as comma-separated string or list (accepts 'field asc/desc' format or JSON-serialized arrays). Input is automatically normalized to correct format. Common fields: receivedDateTime, sentDateTime, subject, importance, from. NOTE: Ordering may be automatically disabled by Microsoft Graph API when using certain filters (e.g., subject exact match, conversationId) to avoid 'InefficientFilter' errors. In those cases, results will be unsorted."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "Target user's email or 'me' for authenticated user. IMPORTANT: 'me' uses the currently connected account. For shared or delegated mailbox access, ensure the connected user has mailbox access and the app has Mail.Read.Shared. 403 errors indicate insufficient delegated/application permissions."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend any required identifier fields from the first call (the token supersedes their values). Optional filter, sort and timezone params need not be repeated; the token carries them."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_BATCH_MOVE_MESSAGES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_BATCH_MOVE_MESSAGES",
+          "description": "Batch-move up to 20 Outlook messages to a destination folder in a single Microsoft Graph $batch call. Use when moving multiple messages to avoid per-message move API calls.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_ids",
+              "destination_id"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The UPN (User Principal Name) of the user whose messages to move, or 'me' for the currently authenticated user."
+              },
+              "message_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "minItems": 1,
+                "description": "Array of message IDs to move. Maximum 20 items per batch (Microsoft Graph API limit). Each ID must be complete and untruncated."
+              },
+              "destination_id": {
+                "type": "string",
+                "examples": [
+                  "deleteditems",
+                  "inbox",
+                  "AAMkADhAAAAAAEKAAA="
+                ],
+                "description": "The destination folder ID, or a well-known folder name (e.g., 'inbox', 'deleteditems', 'drafts', 'sentitems'). If using a folder ID, it must be complete and untruncated."
+              },
+              "response_detail": {
+                "enum": [
+                  "minimal",
+                  "full"
+                ],
+                "type": "string",
+                "default": "minimal",
+                "description": "Controls how much each move sub-request returns from Microsoft Graph. 'minimal' (default) sets `Prefer: return=minimal` on each sub-request, so Graph returns 204 No Content per move \u2014 the response stays small even for the maximum 20 HTML messages. In this mode `moved_message_id` in each result is null even on success. 'full' omits the Prefer header so Graph returns the full moved-message body per sub-request and `moved_message_id` is populated. Use 'full' if you need to chain follow-up calls on the new message ID; otherwise stick with 'minimal' to avoid multi-MB batch responses."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_LIST_MAIL_FOLDERS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_MAIL_FOLDERS",
+          "description": "Tool to list a user's top-level mail folders. Use when you need folders like Inbox, Drafts, Sent Items; set include_hidden_folders=True to include hidden folders.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50,
+                  100
+                ],
+                "description": "Maximum number of items to return per page."
+              },
+              "skip": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0,
+                  10,
+                  20
+                ],
+                "description": "Number of items to skip before returning results."
+              },
+              "count": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include total count of matching items in the response."
+              },
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "displayName eq 'Inbox'",
+                  "isHidden eq false",
+                  "totalItemCount gt 0"
+                ],
+                "description": "OData filter expression to filter mail folders. String values must be enclosed in single quotes (e.g., displayName eq 'Inbox'). WARNING: Microsoft Graph API does not officially document which mailFolder properties support filtering. Known unsupported properties: parentFolderId (causes ErrorInvalidProperty error). To filter by parent folder, use the child folders endpoint instead: GET /me/mailFolders/{parentFolderId}/childFolders. Properties like isHidden may work but are not guaranteed."
+              },
+              "select": {
+                "type": "string",
+                "examples": [
+                  "id,displayName",
+                  "id,displayName,totalItemCount,isHidden"
+                ],
+                "description": "Comma-separated list of mailFolder properties to include in the response. Valid properties: id, displayName, parentFolderId, childFolderCount, unreadItemCount, totalItemCount, isHidden. Note: 'user_id' is NOT a valid mailFolder property and will be automatically removed if included."
+              },
+              "orderby": {
+                "type": "string",
+                "examples": [
+                  "displayName",
+                  "displayName desc",
+                  "totalItemCount desc"
+                ],
+                "description": "Property to sort by, optionally followed by 'asc' or 'desc'."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "User's id, userPrincipalName, or 'me' for the signed-in user."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend any required identifier fields from the first call (the token supersedes their values). Optional filter, sort and timezone params need not be repeated; the token carries them."
+              },
+              "include_hidden_folders": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include hidden mail folders (isHidden=true) when set to true."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_MOVE_MESSAGE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_MOVE_MESSAGE",
+          "description": "Move a message to another folder within the specified user's mailbox. Creates a new copy in the dest...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_MOVE_MESSAGE"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_BATCH_UPDATE_MESSAGES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_BATCH_UPDATE_MESSAGES",
+          "description": "Batch-update up to 20 Outlook messages per call using Microsoft Graph JSON batching. Use when markin...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_BATCH_UPDATE_MESSAGES"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_SEARCH_MESSAGES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEARCH_MESSAGES",
+          "description": "Search Outlook messages using powerful KQL syntax. Supports sender (from:), recipient (to:, cc:), su...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_SEARCH_MESSAGES"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_LIST_CHILD_MAIL_FOLDERS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_CHILD_MAIL_FOLDERS",
+          "description": "Tool to list subfolders (childFolders) under a specified Outlook mail folder. Use when navigating ne...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_LIST_CHILD_MAIL_FOLDERS"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_CREATE_DRAFT_REPLY": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_CREATE_DRAFT_REPLY",
+          "description": "Creates a draft reply in the specified user's Outlook mailbox to an existing message (identified by ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_CREATE_DRAFT_REPLY"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:36:12.877Z",
+        "current_time_utc_epoch_seconds": 1786541772,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "paid",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"paid\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_6I5VrdlSg8w7"
+  }
+}

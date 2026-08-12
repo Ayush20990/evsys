@@ -1,0 +1,435 @@
+{
+  "use_case_id": 65,
+  "prompt": "Read and update Google Sheets-based SEO planning templates, enrich them with Search Console performance data, and verify that spreadsheet formulas and cleanup steps produced the expected results.",
+  "expected_tools": [
+    "GOOGLESHEETS_CLEAR_VALUES",
+    "GOOGLESHEETS_GET_SHEET_NAMES",
+    "GOOGLESHEETS_VALUES_GET",
+    "GOOGLESHEETS_BATCH_UPDATE",
+    "GOOGLESHEETS_BATCH_GET",
+    "GOOGLESHEETS_VALUES_UPDATE",
+    "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Read and update Google Sheets-based SEO planning templates, enrich them with Search Console performance data, and verify that spreadsheet formulas and cleanup steps produced the expected results.",
+          "execution_guidance": "Found 9 tools for this query. Look at the schemas to know how to use them.",
+          "primary_tool_slugs": [
+            "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+            "GOOGLESHEETS_VALUES_UPDATE"
+          ],
+          "related_tool_slugs": [
+            "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+            "GOOGLESHEETS_UPDATE_SPREADSHEET_PROPERTIES",
+            "GOOGLESHEETS_GET_SHEET_NAMES",
+            "GOOGLESHEETS_VALUES_GET",
+            "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+            "GMAIL_FETCH_EMAILS",
+            "GMAIL_SEARCH_PEOPLE"
+          ],
+          "toolkits": [
+            "googlesheets",
+            "gmail"
+          ]
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googlesheets",
+          "has_active_connection": false,
+          "description": "Google Sheets is a cloud-based spreadsheet tool enabling real-time collaboration, data analysis, and integration with other Google Workspace apps. STRICT RATE LIMITS apply - max 60 reads/minute and 60 writes/minute. Exceeding this causes errors.",
+          "status_message": "No Active connection for toolkit=googlesheets. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesheets\") to create a connection BEFORE executing any googlesheets tools."
+        },
+        {
+          "toolkit": "gmail",
+          "has_active_connection": false,
+          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
+          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLESHEETS_GET_SPREADSHEET_INFO": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+          "description": "Retrieves metadata for a Google Spreadsheet using its ID. By default, returns essential information (ID, title, sheet properties) to avoid payload size issues. Use the fields parameter for comprehensive metadata or specific fields.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "type": "string",
+                "examples": [
+                  "sheets.properties(sheetId,title)",
+                  "properties.title,sheets.properties",
+                  "spreadsheetId,properties.title,sheets.properties(sheetId,title,index)"
+                ],
+                "description": "Optional. Field mask specifying which fields to return. Uses Google's field mask syntax (comma-separated, dot-notation for nested fields). If not specified, a default mask returning common fields (spreadsheet ID, title, sheet properties) is applied to avoid payload size issues. For full metadata, use '*' (not recommended for large spreadsheets). When set, includeGridData is ignored. Examples: 'sheets.properties(sheetId,title)', 'properties.title,sheets.properties.sheetId'."
+              },
+              "ranges": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "Sheet1!A1:D5"
+                  ],
+                  [
+                    "Sheet1!A1:B10",
+                    "Sheet2!C1:E20"
+                  ]
+                ],
+                "description": "Optional. The ranges to retrieve from the spreadsheet, specified using A1 notation (e.g., 'Sheet1!A1:D5', 'Sheet2!A1:C4'). Multiple ranges can be requested simultaneously. If not specified, metadata for the entire spreadsheet is returned without grid data."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                  "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
+                ],
+                "minLength": 1,
+                "description": "Required. The Google Sheets spreadsheet ID or full URL. Accepts either the ID alone (e.g., '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms') or a full Google Sheets URL (e.g., 'https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit'). The ID will be automatically extracted from URLs. Note: Published/embedded URLs (containing '/d/e/2PACX-...') are not supported."
+              },
+              "include_grid_data": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Optional. If true, grid data will be returned. This parameter is ignored if a field mask was set in the request. When false or not specified, only metadata is returned without cell values."
+              },
+              "exclude_tables_in_banded_ranges": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Optional. If true, tables within banded ranges will be omitted from the response. Default is false when not specified."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_VALUES_UPDATE": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_VALUES_UPDATE",
+          "description": "Tool to set values in a range of a Google Spreadsheet. Use when you need to update or overwrite existing cell values in a specific range.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id",
+              "range",
+              "value_input_option",
+              "values"
+            ],
+            "properties": {
+              "range": {
+                "type": "string",
+                "examples": [
+                  "Sheet1!A1:C2",
+                  "Sheet2!B3:F10",
+                  "A1:Z100"
+                ],
+                "description": "The A1 notation of the range to update values in (e.g., 'Sheet1!A1:C2', 'MySheet!C:C', or 'A1:D5'). Must be actual cell references, not placeholder values. If the sheet name is omitted (e.g., 'A1:B2'), the operation applies to the first visible sheet. IMPORTANT: The range must not exceed the sheet's grid dimensions. By default, new sheets have 1000 rows and 26 columns (A-Z). If you need to write to columns beyond Z (e.g., AA, AB), first expand the sheet using GOOGLESHEETS_APPEND_DIMENSION or check the current dimensions using GOOGLESHEETS_GET_SPREADSHEET_INFO."
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  }
+                },
+                "examples": [
+                  [
+                    [
+                      "Name",
+                      "Age",
+                      "City"
+                    ],
+                    [
+                      "Test User",
+                      "25",
+                      "San Francisco"
+                    ]
+                  ]
+                ],
+                "description": "The data to write. This is an array of arrays, the outer array representing all the data and each inner array representing a major dimension. Each item in the inner array corresponds with one cell."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "description": "The unique identifier of the Google Spreadsheet to update. This ID can be found in the URL of the spreadsheet (e.g., https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit). Must be a non-empty string."
+              },
+              "major_dimension": {
+                "enum": [
+                  "ROWS",
+                  "COLUMNS"
+                ],
+                "type": "string",
+                "examples": [
+                  "ROWS"
+                ],
+                "description": "The major dimension of the values. ROWS (default) means each inner array is a row of values. COLUMNS means each inner array is a column of values. Defaults to ROWS if unspecified."
+              },
+              "auto_expand_sheet": {
+                "type": "boolean",
+                "default": true,
+                "examples": [
+                  true
+                ],
+                "description": "If True (default), automatically expands the sheet's dimensions (adds columns/rows) when the target range exceeds the current grid limits. If False, the operation will fail with an error if the range exceeds grid limits."
+              },
+              "value_input_option": {
+                "enum": [
+                  "RAW",
+                  "USER_ENTERED"
+                ],
+                "type": "string",
+                "examples": [
+                  "USER_ENTERED",
+                  "RAW"
+                ],
+                "description": "How the input data should be interpreted. RAW: Values are stored exactly as entered, without parsing (dates, formulas, etc. remain as strings). USER_ENTERED: Values are parsed as if typed by a user (numbers stay numbers, strings prefixed with '=' become formulas, etc.)."
+              },
+              "include_values_in_response": {
+                "type": "boolean",
+                "examples": [
+                  false
+                ],
+                "description": "Determines if the update response should include the values of the cells that were updated. By default, responses do not include the updated values."
+              },
+              "response_value_render_option": {
+                "enum": [
+                  "FORMATTED_VALUE",
+                  "UNFORMATTED_VALUE",
+                  "FORMULA"
+                ],
+                "type": "string",
+                "examples": [
+                  "FORMATTED_VALUE"
+                ],
+                "description": "Determines how values in the response should be rendered. Only used if includeValuesInResponse is true. FORMATTED_VALUE (default): Values are formatted as displayed in the UI. UNFORMATTED_VALUE: Values are unformatted (numbers, booleans, formulas). FORMULA: Formulas are not evaluated and remain as text."
+              },
+              "response_datetime_render_option": {
+                "enum": [
+                  "SERIAL_NUMBER",
+                  "FORMATTED_STRING"
+                ],
+                "type": "string",
+                "examples": [
+                  "SERIAL_NUMBER"
+                ],
+                "description": "Determines how dates, times, and durations in the response should be rendered. Only used if includeValuesInResponse is true. SERIAL_NUMBER (default): Dates are returned as numbers. FORMATTED_STRING: Dates are returned as strings formatted per the cell's locale."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_SEARCH_SPREADSHEETS": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+          "description": "Search for Google Spreadsheets using various filters including name, content, date ranges, and more.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Budget Report",
+                  "quarterly sales",
+                  "name contains 'Budget'",
+                  "fullText contains 'sales data'",
+                  "sharedWithMe = true"
+                ],
+                "description": "Search query to filter spreadsheets. Behavior depends on the 'search_type' parameter. For advanced searches, use Google Drive query syntax with fields like 'name contains', 'fullText contains', or boolean filters like 'sharedWithMe = true'. DO NOT use spreadsheet IDs as search terms. Leave empty to get all spreadsheets."
+              },
+              "order_by": {
+                "type": "string",
+                "default": "modifiedTime desc",
+                "description": "Sort order (comma-separated list for multi-field sorting). Valid fields: createdTime, folder, modifiedByMeTime, modifiedTime, name, name_natural, quotaBytesUsed, recency, sharedWithMeTime, starred, viewedByMeTime. Append ' desc' for descending order (default is ascending). Examples: 'modifiedTime desc', 'folder,name', 'starred,modifiedTime desc'."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Token for retrieving the next page of results. Use the 'next_page_token' value from a previous response to get subsequent pages. Leave empty to get the first page."
+              },
+              "max_results": {
+                "type": "integer",
+                "default": 10,
+                "maximum": 1000,
+                "minimum": 1,
+                "description": "Maximum number of spreadsheets to return (1-1000). Defaults to 10."
+              },
+              "search_type": {
+                "enum": [
+                  "name",
+                  "content",
+                  "both"
+                ],
+                "type": "string",
+                "default": "name",
+                "description": "How to search: 'name' searches filenames only (prefix matching from the START of filenames), 'content' uses fullText search which searches file content, name, description, and metadata (Google Drive API limitation: cannot search content exclusively without also matching filenames), 'both' explicitly searches both name OR content with an OR condition. Note: 'name' search only matches from the START of filenames (e.g., 'Budget' finds 'Budget 2024' but NOT 'Q1 Budget')."
+              },
+              "starred_only": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to return only starred spreadsheets. Defaults to False."
+              },
+              "created_after": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01T00:00:00Z",
+                  "2024-12-01T12:00:00-08:00"
+                ],
+                "description": "Return spreadsheets created after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
+              },
+              "modified_after": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01T00:00:00Z",
+                  "2024-12-01T12:00:00-08:00"
+                ],
+                "description": "Return spreadsheets modified after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
+              },
+              "shared_with_me": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to return only spreadsheets shared with the current user. Defaults to False."
+              },
+              "include_trashed": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include spreadsheets in trash. Defaults to False."
+              },
+              "include_shared_drives": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include spreadsheets from shared drives you have access to. Defaults to True."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_UPDATE_SPREADSHEET_PROPERTIES": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_UPDATE_SPREADSHEET_PROPERTIES",
+          "description": "Tool to update SPREADSHEET-LEVEL properties such as the spreadsheet's title, locale, time zone, or a...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_UPDATE_SPREADSHEET_PROPERTIES"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_GET_SHEET_NAMES": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_GET_SHEET_NAMES",
+          "description": "Lists all worksheet names from a specified Google Spreadsheet (which must exist), useful for discove...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_GET_SHEET_NAMES"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_VALUES_GET": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_VALUES_GET",
+          "description": "Returns a range of values from a spreadsheet. Use when you need to read data from specific cells or ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_VALUES_GET"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_UPDATE_VALUES_BATCH": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+          "description": "Tool to set values in one or more ranges of a spreadsheet. Use when you need to update multiple rang...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_UPDATE_VALUES_BATCH"
+              ]
+            }
+          }
+        },
+        "GMAIL_FETCH_EMAILS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_FETCH_EMAILS",
+          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optiona...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_FETCH_EMAILS"
+              ]
+            }
+          }
+        },
+        "GMAIL_SEARCH_PEOPLE": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_SEARCH_PEOPLE",
+          "description": "Searches contacts by matching the query against names, nicknames, emails, phone numbers, and organiz...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_SEARCH_PEOPLE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:36:33.993Z",
+        "current_time_utc_epoch_seconds": 1786541793,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "rope",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"rope\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "Follow these steps carefully to begin the task:",
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_6EiZ8UIB6Xlo"
+  }
+}

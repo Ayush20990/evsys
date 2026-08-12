@@ -1,0 +1,593 @@
+{
+  "use_case_id": 85,
+  "prompt": "Investigate and patch a codebase hosted on GitHub, commit changes to a target branch, document the change, and merge that branch into the destination branch after approval.",
+  "expected_tools": [
+    "GITHUB_MERGE_A_BRANCH",
+    "GITHUB_UPDATE_A_REFERENCE",
+    "GITHUB_CREATE_A_COMMIT",
+    "GITHUB_GET_REPOSITORY_CONTENT",
+    "GITHUB_GET_A_REFERENCE",
+    "_1PASSWORD_LIST_VAULTS",
+    "GITHUB_SEARCH_CODE",
+    "GITHUB_GET_A_COMMIT",
+    "GITHUB_CREATE_A_TREE"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Investigate and patch a codebase hosted on GitHub, commit changes to a target branch, document the change, and merge that branch into the destination branch after approval.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Read the base branch tip using GITHUB_GET_A_REFERENCE (capture base commit SHA to anchor work).",
+            "[Required] [Prerequisite]: Verify target paths and inspect needed files using GITHUB_GET_REPOSITORY_CONTENT (if a path 404s, list the parent directory to confirm exact casing/type).",
+            "[Required] [Step]: Ensure the working branch ref is available using GITHUB_GET_A_REFERENCE (if missing, create it on first write via GITHUB_COMMIT_MULTIPLE_FILES using base_branch/base SHA as the starting point).",
+            "[Required] [Step]: Apply all updates as one atomic change using GITHUB_COMMIT_MULTIPLE_FILES (upsert/delete all intended files on the working branch).",
+            "[Required] [Step]: Open the change request using GITHUB_CREATE_A_PULL_REQUEST (capture the change request number and head SHA).",
+            "[Required] [Next Step]: Monitor automation using GITHUB_LIST_CHECK_RUNS_FOR_A_REF (poll the head SHA until required checks are completed/successful; ignore runs for older SHAs).",
+            "[Optional (if mergeability or head SHA may have changed)] [Next Step]: Re-fetch current state using GITHUB_GET_A_PULL_REQUEST (confirm open state and obtain the latest head SHA before merging).",
+            "[Required] [Next Step]: Request explicit confirmation, then merge using GITHUB_MERGE_A_PULL_REQUEST (pass the expected head SHA to prevent merging unexpected commits).",
+            "[Required] [Fallback]: If merge fails with 409/out-of-date, update using GITHUB_UPDATE_A_PULL_REQUEST_BRANCH, then re-poll via GITHUB_LIST_CHECK_RUNS_FOR_A_REF for the new head SHA and retry GITHUB_MERGE_A_PULL_REQUEST; after success, remove the working branch using GITHUB_DELETE_A_REFERENCE (cleanup)."
+          ],
+          "known_pitfalls": [
+            "[GITHUB_GET_REPOSITORY_CONTENT] File responses are Base64-encoded and large content may be truncated; don\u2019t rely on previews for exact validation.",
+            "[GITHUB_GET_REPOSITORY_CONTENT] Directory vs file payloads differ (list of entries vs single object with content/encoding), which can break naive parsing.",
+            "[GITHUB_LIST_CHECK_RUNS_FOR_A_REF] Responses can include many/stale check_runs; evaluate only runs whose head_sha matches the current change request head SHA and de-dupe by check name.",
+            "[GITHUB_MERGE_A_PULL_REQUEST] May return 409 when behind/protected; keep the expected sha gate enabled and refresh head SHA before retrying.",
+            "[GITHUB_DELETE_A_REFERENCE] Requires correct ref format (heads namespace); may return HTTP 422 \u201cReference does not exist\u201d if already deleted\u2014treat as non-fatal cleanup."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Select the latest check run per check name for the current head SHA when GITHUB_LIST_CHECK_RUNS_FOR_A_REF returns many entries.",
+              "code": "```python\nhead_sha=pr['head']['sha']\nchecks=resp['check_runs']\ncurrent=[c for c in checks if c.get('head_sha')==head_sha]\nby_name={}\nfor c in current:\n    n=c.get('name')\n    if n and (n not in by_name or (c.get('started_at') or '')>(by_name[n].get('started_at') or '')):\n        by_name[n]=c\nlatest=sorted(by_name.values(),key=lambda x:x.get('name') or '')\n```"
+            },
+            {
+              "description": "Decode Base64 file content returned by GITHUB_GET_REPOSITORY_CONTENT (handles embedded newlines).",
+              "code": "```python\nimport base64\ntext=base64.b64decode(file_obj['content'].replace('\\n','')).decode('utf-8','replace')\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "GITHUB_COMMIT_MULTIPLE_FILES",
+            "GITHUB_CREATE_A_PULL_REQUEST",
+            "GITHUB_MERGE_A_PULL_REQUEST"
+          ],
+          "related_tool_slugs": [
+            "GITHUB_GET_REPOSITORY_CONTENT",
+            "GITHUB_GET_A_PULL_REQUEST",
+            "GITHUB_UPDATE_A_PULL_REQUEST_BRANCH",
+            "GITHUB_GET_A_REFERENCE",
+            "GITHUB_LIST_CHECK_RUNS_FOR_A_REF",
+            "GITHUB_DELETE_A_REFERENCE"
+          ],
+          "toolkits": [
+            "github"
+          ],
+          "plan_id": "0714ba056d91413685eb8045f2e892df"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "github",
+          "has_active_connection": false,
+          "description": "GitHub is a code hosting platform for version control and collaboration, offering Git-based repository management, issue tracking, and continuous integration features",
+          "status_message": "No Active connection for toolkit=github. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"github\") to create a connection BEFORE executing any github tools."
+        }
+      ],
+      "tool_schemas": {
+        "GITHUB_COMMIT_MULTIPLE_FILES": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_COMMIT_MULTIPLE_FILES",
+          "description": "Tool to atomically create, update, or delete multiple files in a GitHub repository as a single commit. Uses Git Data APIs to avoid SHA mismatch conflicts that occur with the Contents API when multiple files are modified in parallel. Use when you need to make multi-file changes reliably. BRANCH CREATION: When committing to a new branch (e.g., 'fix/my-fix' or 'feature/new-feature'), you MUST provide 'base_branch' (typically 'main' or 'master') to create the branch from. If the branch already exists, base_branch is not needed. This action handles race conditions automatically: if the branch is updated by another commit between fetching the HEAD and updating the reference (resulting in a 422 'not a fast forward' error), the action will retry by refetching the HEAD and rebasing changes. Use max_retries to control this behavior.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "branch",
+              "message"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "hello-world",
+                  "my-project"
+                ],
+                "description": "Repository name (without .git extension)"
+              },
+              "force": {
+                "type": "boolean",
+                "default": false,
+                "description": "Force update the branch reference. WARNING: Use with caution as this can overwrite commits. Only use this when you intentionally want to overwrite the branch history."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "my-organization"
+                ],
+                "description": "Repository owner (username or organization name)"
+              },
+              "author": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "email"
+                ],
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "examples": [
+                      "2024-01-15T10:30:00Z"
+                    ],
+                    "description": "ISO 8601 timestamp for the commit (optional, defaults to current time)"
+                  },
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "John Doe",
+                      "Jane Smith"
+                    ],
+                    "description": "Name of the author or committer"
+                  },
+                  "email": {
+                    "type": "string",
+                    "examples": [
+                      "john@example.com",
+                      "jane@example.com"
+                    ],
+                    "description": "Email address of the author or committer"
+                  }
+                },
+                "description": "Git author or committer information.",
+                "additionalProperties": false
+              },
+              "branch": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "develop",
+                  "feature/new-feature"
+                ],
+                "description": "Target branch name to commit to. If this branch doesn't exist, you MUST provide 'base_branch' to create it. For new feature branches (e.g., 'fix/my-fix', 'feature/new-feature'), always set base_branch='main' (or your default branch)."
+              },
+              "deletes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "old-file.txt",
+                    "deprecated/module.py"
+                  ]
+                ],
+                "description": "List of file paths to delete from the repository. Files must exist in the repository; attempting to delete non-existent files will result in an error. Ensure paths are exact with no leading/trailing whitespace."
+              },
+              "message": {
+                "type": "string",
+                "examples": [
+                  "Add new features",
+                  "Update documentation",
+                  "Fix bugs in authentication"
+                ],
+                "description": "Commit message describing the changes"
+              },
+              "upserts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "content"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "examples": [
+                        "src/main.py",
+                        "README.md",
+                        "docs/guide.md"
+                      ],
+                      "description": "File path in the repository (e.g., 'src/main.py' or 'docs/readme.md')"
+                    },
+                    "content": {
+                      "type": "string",
+                      "examples": [
+                        "print('Hello, World!')",
+                        "# My Project\n\nWelcome!"
+                      ],
+                      "description": "File content as a string"
+                    },
+                    "encoding": {
+                      "enum": [
+                        "utf-8",
+                        "base64"
+                      ],
+                      "type": "string",
+                      "default": "utf-8",
+                      "examples": [
+                        "utf-8",
+                        "base64"
+                      ],
+                      "description": "Content encoding: 'utf-8' for text files or 'base64' for binary files"
+                    }
+                  },
+                  "description": "Represents a file to create or update."
+                },
+                "examples": [
+                  [
+                    {
+                      "path": "README.md",
+                      "content": "# Hello",
+                      "encoding": "utf-8"
+                    }
+                  ]
+                ],
+                "description": "List of files to create or update. Each entry requires path, content, and optional encoding (utf-8 or base64)"
+              },
+              "committer": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "email"
+                ],
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "examples": [
+                      "2024-01-15T10:30:00Z"
+                    ],
+                    "description": "ISO 8601 timestamp for the commit (optional, defaults to current time)"
+                  },
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "John Doe",
+                      "Jane Smith"
+                    ],
+                    "description": "Name of the author or committer"
+                  },
+                  "email": {
+                    "type": "string",
+                    "examples": [
+                      "john@example.com",
+                      "jane@example.com"
+                    ],
+                    "description": "Email address of the author or committer"
+                  }
+                },
+                "description": "Git author or committer information.",
+                "additionalProperties": false
+              },
+              "base_branch": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "master",
+                  "develop"
+                ],
+                "description": "REQUIRED when committing to a new branch that doesn't exist yet. Specifies the existing branch to create the new branch from (e.g., 'main' or 'master'). Not needed if 'branch' already exists in the repository."
+              },
+              "max_retries": {
+                "type": "integer",
+                "default": 3,
+                "maximum": 10,
+                "minimum": 0,
+                "description": "Maximum number of retries when encountering race conditions (422 'not a fast forward' errors). The action will refetch the HEAD and rebase changes on each retry. Set to 0 to disable retries."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_CREATE_A_PULL_REQUEST": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_CREATE_A_PULL_REQUEST",
+          "description": "Creates a pull request in a GitHub repository, requiring existing `base` and `head` branches; `title` or `issue` must be provided.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "head",
+              "base"
+            ],
+            "properties": {
+              "base": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "develop"
+                ],
+                "description": "The name of the branch you want the changes pulled into. This must be an existing branch on the current (target) repository. You cannot submit a pull request to one repository that requests a merge to a base branch of another repository. "
+              },
+              "body": {
+                "type": "string",
+                "examples": [
+                  "This PR introduces a new feature that does X, Y, and Z.",
+                  "Fixes #42 by addressing the off-by-one error."
+                ],
+                "description": "The detailed description or contents of the pull request."
+              },
+              "head": {
+                "type": "string",
+                "examples": [
+                  "feature-branch",
+                  "octocat:my-feature-branch"
+                ],
+                "description": "The name of the branch where your changes are implemented. IMPORTANT: This branch must already exist in the repository (or fork) before calling this action. You must first create the branch and push commits to it (using git or the 'Create a reference' action), then create the PR. For cross-repository pull requests, namespace `head` with the source owner and branch, like `username:branch`."
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Spoon-Knife"
+                ],
+                "description": "The name of the repository, without the `.git` extension. This name is not case-sensitive."
+              },
+              "draft": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Indicates whether the pull request should be created as a draft. Draft pull requests cannot be merged until marked as ready for review."
+              },
+              "issue": {
+                "type": "integer",
+                "examples": [
+                  "123",
+                  "456"
+                ],
+                "description": "The number of an existing issue in the repository to convert into a pull request. If provided, the issue's title and body may be used for the pull request. Required if `title` is not specified."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat"
+                ],
+                "description": "The account owner of the repository. This name is not case-sensitive."
+              },
+              "title": {
+                "type": "string",
+                "examples": [
+                  "Amazing new feature",
+                  "Fix for critical bug #123"
+                ],
+                "description": "The title of the new pull request. Required unless `issue` is specified."
+              },
+              "head_repo": {
+                "type": "string",
+                "format": "repo.nwo",
+                "examples": [
+                  "octocat/my-forked-repo"
+                ],
+                "description": "The name of the repository (e.g., 'octocat/Hello-World') where the changes in the pull request were made. This field is required for cross-repository pull requests if both the source and target repositories are owned by the same organization but are different repositories."
+              },
+              "maintainer_can_modify": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Indicates whether maintainers of the upstream repository can modify the pull request. This is primarily relevant for pull requests originating from forks."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_MERGE_A_PULL_REQUEST": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_MERGE_A_PULL_REQUEST",
+          "description": "Merges an open and mergeable pull request in a repository. A 405 error can occur for multiple reasons: (1) The PR is still in draft mode - convert it to ready-for-review first using GITHUB_UPDATE_A_PULL_REQUEST. (2) Branch protection rules are not satisfied - check for required approving reviews, status checks, or other repository rules that must be met before merging. (3) The base branch has been modified since the PR was last synced - update the PR branch first using GITHUB_UPDATE_A_PULL_REQUEST_BRANCH.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "pull_number"
+            ],
+            "properties": {
+              "sha": {
+                "type": "string",
+                "examples": [
+                  "c5b97d5ae6c19d5c5df71a34c7fbeeda2479ccbc"
+                ],
+                "description": "SHA of the pull request's head commit. Must match for merge to succeed, ensuring PR hasn't changed since review."
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Hello-World"
+                ],
+                "description": "Repository name, without the `.git` extension. Not case-sensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat"
+                ],
+                "description": "Repository owner's username. Not case-sensitive."
+              },
+              "pull_number": {
+                "type": "integer",
+                "examples": [
+                  1347
+                ],
+                "description": "The unique number identifying the pull request. The PR must be mergeable: not a draft, and all branch protection rules (required reviews, status checks, etc.) must be satisfied."
+              },
+              "commit_title": {
+                "type": "string",
+                "examples": [
+                  "Fixing a typo in the README file"
+                ],
+                "description": "Title for the merge commit message."
+              },
+              "merge_method": {
+                "enum": [
+                  "merge",
+                  "squash",
+                  "rebase"
+                ],
+                "type": "string",
+                "examples": [
+                  "squash"
+                ],
+                "description": "Merge strategy: 'merge', 'squash', or 'rebase'. Defaults to repository's setting if unspecified."
+              },
+              "commit_message": {
+                "type": "string",
+                "examples": [
+                  "This change updates the project description to be more accurate."
+                ],
+                "description": "Additional details for the merge commit message."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_REPOSITORY_CONTENT": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_REPOSITORY_CONTENT",
+          "description": "Retrieves a file's Base64 encoded content or lists a directory's contents from a GitHub repository.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "path"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "feat/godlocal-dev",
+                  "develop",
+                  "v1.2.0",
+                  "c8bca7c6a66f490c70b29cf3ac3d64070049ea73"
+                ],
+                "description": "The name of the commit, branch, or tag to read from. Use this parameter to specify which branch (e.g., 'feat/godlocal-dev', 'main', 'develop'), tag (e.g., 'v1.2.0'), or commit SHA you want to access. If not provided, the repository's default branch will be used. Note: Branch names should be passed here, NOT in the path parameter."
+              },
+              "path": {
+                "type": "string",
+                "examples": [
+                  "README.md",
+                  "src/main.js",
+                  "docs",
+                  ""
+                ],
+                "description": "Required. Path to file or directory in the repository. Empty string ('') retrieves root directory contents. Leading slashes auto-stripped. CRITICAL: Do NOT pass branch names here (e.g., 'feat/godlocal-dev', 'main'). Branch names belong in the `ref` parameter. Path should be file/directory path only (e.g., 'src/main.js', 'README.md'), NOT prefixed with branch name (use 'src/main.js' not 'main/src/main.js'). File paths must include extension (e.g., 'README.md', not 'README'). For common files (README, LICENSE, CHANGELOG) without extensions, action auto-tries common extensions (.md, .txt, .rst). Paths are case-sensitive. On 404 errors, list parent directory to verify exact path/casing."
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Spoon-Knife"
+                ],
+                "description": "Required. The name of the repository, without the `.git` extension. This name is not case sensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "octocat/Hello-World"
+                ],
+                "description": "Required. The account owner of the repository. This name is not case sensitive. Can also accept full repository path in format 'owner/repo' - the repo part will be extracted automatically."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_PULL_REQUEST": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_PULL_REQUEST",
+          "description": "Retrieves a specific pull request from a GitHub repository using its owner, repository name, and pul...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_A_PULL_REQUEST"
+              ]
+            }
+          }
+        },
+        "GITHUB_UPDATE_A_PULL_REQUEST_BRANCH": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_UPDATE_A_PULL_REQUEST_BRANCH",
+          "description": "Updates an open pull request's head branch by merging the latest changes from its base branch, if me...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_UPDATE_A_PULL_REQUEST_BRANCH"
+              ]
+            }
+          }
+        },
+        "GITHUB_GET_A_REFERENCE": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_REFERENCE",
+          "description": "Retrieves a specific Git reference (e.g., a branch, tag, or fully qualified like 'heads/main') from ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_A_REFERENCE"
+              ]
+            }
+          }
+        },
+        "GITHUB_LIST_CHECK_RUNS_FOR_A_REF": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_CHECK_RUNS_FOR_A_REF",
+          "description": "List GitHub check runs for a commit SHA, branch, or tag to assess CI status and conclusions. Use whe...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_LIST_CHECK_RUNS_FOR_A_REF"
+              ]
+            }
+          }
+        },
+        "GITHUB_DELETE_A_REFERENCE": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_DELETE_A_REFERENCE",
+          "description": "Deletes a Git reference from a repository; 'ref' must be fully qualified (e.g., 'refs/heads/branch' ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_DELETE_A_REFERENCE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:37:52.006Z",
+        "current_time_utc_epoch_seconds": 1786541872,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "zulu",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"zulu\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_wi7SUiwnny9a"
+  }
+}

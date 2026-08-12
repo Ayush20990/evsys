@@ -1,0 +1,359 @@
+{
+  "use_case_id": 60,
+  "prompt": "Manage lead data in Google Sheets: read existing tabs, append and correct lead rows, enrich contacts, detect duplicate email addresses, highlight duplicate rows, and attempt to prepare leads for import into an Instantly campaign.",
+  "expected_tools": [
+    "HUNTER_DOMAIN_SEARCH",
+    "GOOGLESHEETS_GET_SHEET_NAMES",
+    "GOOGLESHEETS_FORMAT_CELL",
+    "GOOGLESHEETS_VALUES_GET",
+    "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+    "GOOGLESHEETS_BATCH_GET",
+    "GOOGLESHEETS_VALUES_UPDATE",
+    "HUNTER_EMAIL_FINDER",
+    "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+    "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Manage lead data in Google Sheets: read existing tabs, append and correct lead rows, enrich contacts, detect duplicate email addresses, highlight duplicate rows, and attempt to prepare leads for import into an Instantly campaign.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "Optional (if list_id unknown) [Prerequisite]: Find the target list using INSTANTLY_LIST_LEAD_LISTS (resolve list_id by name/metadata).",
+            "Optional (if list ambiguity or high impact) [Prerequisite]: Confirm list details using INSTANTLY_GET_LEAD_LIST (avoid enriching the wrong list).",
+            "Required [Step]: Create the destination lead list using INSTANTLY_CREATE_LEAD_LIST (container for enriched leads).",
+            "Optional (if you want filter/volume sanity-check) [Prerequisite]: Estimate matches using INSTANTLY_COUNT_LEADS_FROM_SUPERSEARCH (validate expected result size).",
+            "Required [Step]: Create the SuperSearch enrichment job using INSTANTLY_CREATE_SUPERSEARCH_ENRICHMENT (bind filters + target list).",
+            "Optional (if verification/enrichment options need adjustment) [Next Step]: Update configuration using INSTANTLY_PATCH_SUPERSEARCH_ENRICHMENT_SETTINGS (ensure \u201cverified email\u201d intent before running).",
+            "Required [Step]: Start processing using INSTANTLY_SUPERSEARCH_ENRICHMENT_RUN_POST (execute the enrichment run).",
+            "Optional (to confirm completion or debug failed starts) [Next Step]: Check job status/results using INSTANTLY_GET_SUPERSEARCH_ENRICHMENT (verify completion and output)."
+          ],
+          "known_pitfalls": [
+            "[INSTANTLY_CREATE_SUPERSEARCH_ENRICHMENT] Requires a valid target list_id; binding the wrong list enriches the wrong destination.",
+            "[INSTANTLY_SUPERSEARCH_ENRICHMENT_RUN_POST] Run requests can fail if the job is not in a runnable/configured state\u2014inspect with INSTANTLY_GET_SUPERSEARCH_ENRICHMENT when runs don\u2019t start.",
+            "[INSTANTLY_PATCH_SUPERSEARCH_ENRICHMENT_SETTINGS] Only supported settings are patchable; changes to non-patchable fields may be ignored\u2014recreate via INSTANTLY_CREATE_SUPERSEARCH_ENRICHMENT if needed.",
+            "[INSTANTLY_LIST_LEAD_LISTS] Similar list names can be hard to disambiguate from list output alone\u2014confirm via INSTANTLY_GET_LEAD_LIST before binding enrichment."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "INSTANTLY_CREATE_SUPERSEARCH_ENRICHMENT",
+            "INSTANTLY_SUPERSEARCH_ENRICHMENT_RUN_POST"
+          ],
+          "related_tool_slugs": [
+            "INSTANTLY_CREATE_LEAD_LIST",
+            "INSTANTLY_LIST_LEAD_LISTS",
+            "INSTANTLY_GET_LEAD_LIST",
+            "INSTANTLY_COUNT_LEADS_FROM_SUPERSEARCH",
+            "INSTANTLY_PATCH_SUPERSEARCH_ENRICHMENT_SETTINGS",
+            "INSTANTLY_GET_SUPERSEARCH_ENRICHMENT"
+          ],
+          "toolkits": [
+            "instantly"
+          ],
+          "plan_id": "be5e6de5a8f84095a07de43658ce12be"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "instantly",
+          "has_active_connection": false,
+          "description": "Instantly is a platform designed to streamline cold email outreach by automating campaigns, managing leads, and enhancing email deliverability.",
+          "status_message": "No Active connection for toolkit=instantly. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"instantly\") to create a connection BEFORE executing any instantly tools."
+        }
+      ],
+      "tool_schemas": {
+        "INSTANTLY_CREATE_SUPERSEARCH_ENRICHMENT": {
+          "toolkit": "INSTANTLY",
+          "tool_slug": "INSTANTLY_CREATE_SUPERSEARCH_ENRICHMENT",
+          "description": "Tool to create a supersearch enrichment job for a list or campaign. Use when you need to enrich leads with data such as email verification, work email, profile information, job listings, technologies, news, or funding details.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "resource_id",
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "work_email_enrichment",
+                  "fully_enriched_profile",
+                  "email_verification",
+                  "joblisting",
+                  "technologies",
+                  "news",
+                  "funding",
+                  "ai_enrichment"
+                ],
+                "type": "string",
+                "examples": [
+                  "email_verification",
+                  "technologies",
+                  "news",
+                  "funding"
+                ],
+                "description": "Type of enrichment to create"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  100
+                ],
+                "description": "Maximum number of leads to enrich"
+              },
+              "lead_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "lead-id-1",
+                    "lead-id-2"
+                  ]
+                ],
+                "description": "List of specific lead IDs to enrich (1-10000 items)"
+              },
+              "auto_update": {
+                "type": "boolean",
+                "description": "When true, automatically enriches new leads added to the campaign/list"
+              },
+              "resource_id": {
+                "type": "string",
+                "examples": [
+                  "01234567-89ab-cdef-0123-456789abcdef"
+                ],
+                "description": "UUID of the resource (list or campaign) to run enrichments for"
+              },
+              "input_columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of column names to use as input data for AI enrichment from your leads"
+              },
+              "model_version": {
+                "type": "string",
+                "description": "Version of the AI model to use for enrichment"
+              },
+              "enrichment_payload": {
+                "type": "object",
+                "properties": {
+                  "news": {
+                    "type": "boolean",
+                    "description": "Enable news data enrichment for recent company news"
+                  },
+                  "funding": {
+                    "type": "boolean",
+                    "description": "Enable funding information enrichment to gather investment data"
+                  },
+                  "joblisting": {
+                    "type": "boolean",
+                    "description": "Enable job listing enrichment to gather employment data"
+                  },
+                  "technologies": {
+                    "type": "boolean",
+                    "description": "Enable technology data enrichment to discover tech stack information"
+                  },
+                  "ai_enrichment": {
+                    "type": "object",
+                    "properties": {
+                      "prompt": {
+                        "type": "string",
+                        "description": "Custom prompt to use for AI enrichment"
+                      },
+                      "input_columns": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "List of column names to use as input data for AI enrichment"
+                      },
+                      "output_column": {
+                        "type": "string",
+                        "description": "Column name to store the AI enrichment result"
+                      }
+                    },
+                    "description": "Configuration for AI-powered enrichment.",
+                    "additionalProperties": false
+                  },
+                  "email_verification": {
+                    "type": "boolean",
+                    "description": "Enable email verification to validate email addresses"
+                  },
+                  "work_email_enrichment": {
+                    "type": "boolean",
+                    "description": "Enable work email enrichment to find professional email addresses"
+                  },
+                  "fully_enriched_profile": {
+                    "type": "boolean",
+                    "description": "Enable full profile enrichment for comprehensive contact information"
+                  }
+                },
+                "description": "Configuration options for enrichment types.",
+                "additionalProperties": false
+              },
+              "overwrite_existing": {
+                "type": "boolean",
+                "description": "When true, overwrites existing values; when false, only enriches empty fields"
+              },
+              "use_instantly_credits": {
+                "type": "boolean",
+                "description": "When true, uses Instantly's account for API calls; when false, uses your own API keys"
+              },
+              "skip_leads_without_email": {
+                "type": "boolean",
+                "description": "When true, leads without an email will be skipped"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTANTLY_SUPERSEARCH_ENRICHMENT_RUN_POST": {
+          "toolkit": "INSTANTLY",
+          "tool_slug": "INSTANTLY_SUPERSEARCH_ENRICHMENT_RUN_POST",
+          "description": "Tool to run all enrichments for resource leads or unenriched leads. Use when you need to trigger enrichment processes for a list or campaign.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "resource_id"
+            ],
+            "properties": {
+              "resource_id": {
+                "type": "string",
+                "examples": [
+                  "9a13157c-c43c-4f60-85fa-cae1226beacc"
+                ],
+                "description": "The unique identifier (UUID) of the list or campaign to run enrichment for"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTANTLY_CREATE_LEAD_LIST": {
+          "toolkit": "INSTANTLY",
+          "tool_slug": "INSTANTLY_CREATE_LEAD_LIST",
+          "description": "Tool to create a new lead list. Use when you need to organize leads into a dedicated list before importing them into campaigns.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "My Lead List"
+                ],
+                "description": "Name of the lead list"
+              },
+              "owned_by": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F0-9\\-]{36}$",
+                "examples": [
+                  "123e4567-e89b-12d3-a456-426614174000"
+                ],
+                "description": "Owner user ID (UUID); defaults to creator if not provided"
+              },
+              "has_enrichment_task": {
+                "type": "boolean",
+                "description": "Whether to run enrichment on added leads"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTANTLY_LIST_LEAD_LISTS": {
+          "toolkit": "INSTANTLY",
+          "tool_slug": "INSTANTLY_LIST_LEAD_LISTS",
+          "description": "Tool to list all lead lists. Use when you need to fetch the lead lists with optional filters and pag...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTANTLY_LIST_LEAD_LISTS"
+              ]
+            }
+          }
+        },
+        "INSTANTLY_GET_LEAD_LIST": {
+          "toolkit": "INSTANTLY",
+          "tool_slug": "INSTANTLY_GET_LEAD_LIST",
+          "description": "Tool to retrieve details of a specific lead list by its ID. Use when you have the lead list UUID and...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTANTLY_GET_LEAD_LIST"
+              ]
+            }
+          }
+        },
+        "INSTANTLY_COUNT_LEADS_FROM_SUPERSEARCH": {
+          "toolkit": "INSTANTLY",
+          "tool_slug": "INSTANTLY_COUNT_LEADS_FROM_SUPERSEARCH",
+          "description": "Tool to count leads matching supersearch filter criteria. Use when you need to preview how many lead...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTANTLY_COUNT_LEADS_FROM_SUPERSEARCH"
+              ]
+            }
+          }
+        },
+        "INSTANTLY_PATCH_SUPERSEARCH_ENRICHMENT_SETTINGS": {
+          "toolkit": "INSTANTLY",
+          "tool_slug": "INSTANTLY_PATCH_SUPERSEARCH_ENRICHMENT_SETTINGS",
+          "description": "Tool to update auto-update and skip settings for SuperSearch enrichment. Use when you need to config...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTANTLY_PATCH_SUPERSEARCH_ENRICHMENT_SETTINGS"
+              ]
+            }
+          }
+        },
+        "INSTANTLY_GET_SUPERSEARCH_ENRICHMENT": {
+          "toolkit": "INSTANTLY",
+          "tool_slug": "INSTANTLY_GET_SUPERSEARCH_ENRICHMENT",
+          "description": "Tool to retrieve supersearch enrichment configuration and status for a list or campaign. Use this to...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTANTLY_GET_SUPERSEARCH_ENRICHMENT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:36:15.724Z",
+        "current_time_utc_epoch_seconds": 1786541775,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "rise",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"rise\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_ODZZYY_AKpgi"
+  }
+}

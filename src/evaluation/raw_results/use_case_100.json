@@ -1,0 +1,311 @@
+{
+  "use_case_id": 100,
+  "prompt": "Extract CRM list-entry records from Attio, join them with Attio company domains, and prepare a domain-to-owner mapping for downstream processing.",
+  "expected_tools": [
+    "ATTIO_QUERY_RECORDS",
+    "ATTIO_POST_V2_LISTS_LIST_ENTRIES_QUERY"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Extract CRM list-entry records from Attio, join them with Attio company domains, and prepare a domain-to-owner mapping for downstream processing.",
+          "execution_guidance": "Found 4 tools for this query. Look at the schemas to know how to use them.",
+          "primary_tool_slugs": [
+            "ATTIO_LIST_COMPANIES"
+          ],
+          "related_tool_slugs": [
+            "ATTIO_FIND_RECORD",
+            "ATTIO_QUERY_RECORDS",
+            "ATTIO_POST_V2_OBJECTS_OBJECT_RECORDS_QUERY"
+          ],
+          "toolkits": [
+            "attio"
+          ]
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "attio",
+          "has_active_connection": false,
+          "description": "Attio is a fully customizable workspace for your team's relationships and workflows.",
+          "status_message": "No Active connection for toolkit=attio. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"attio\") to create a connection BEFORE executing any attio tools."
+        }
+      ],
+      "tool_schemas": {
+        "ATTIO_LIST_COMPANIES": {
+          "toolkit": "ATTIO",
+          "tool_slug": "ATTIO_LIST_COMPANIES",
+          "description": "Tool to list company records in Attio with optional filtering and sorting. Use when you need to retrieve company records based on criteria like domain, name, or description.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 500,
+                "minimum": 1,
+                "description": "Maximum number of records to return. Defaults to 25."
+              },
+              "sorts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "direction",
+                    "attribute"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "For sorting by related record attributes, specify the path to traverse"
+                    },
+                    "field": {
+                      "type": "string",
+                      "examples": [
+                        "domain",
+                        "root_domain"
+                      ],
+                      "description": "For multi-property attributes, specify which field to sort by"
+                    },
+                    "attribute": {
+                      "type": "string",
+                      "examples": [
+                        "name",
+                        "created_at",
+                        "domains"
+                      ],
+                      "description": "Attribute slug or ID to sort by"
+                    },
+                    "direction": {
+                      "type": "string",
+                      "examples": [
+                        "asc",
+                        "desc"
+                      ],
+                      "description": "Sort direction: 'asc' for ascending or 'desc' for descending"
+                    }
+                  }
+                },
+                "description": "Array of sort specifications to order results. Each sort object specifies direction ('asc'/'desc'), attribute, and optionally field or path."
+              },
+              "filter": {
+                "type": "object",
+                "description": "Attio filter object for server-side filtering. Supports both shorthand and verbose syntax with operators. Filter by attribute slugs (e.g., 'name', 'domains', 'description'). Multi-field attributes must be accessed via nested syntax: {'domains': {'domain': {'$eq': 'attio.com'}}}. Available operators: $eq (equality), $not_empty (presence check), $in (set membership), $contains (substring), $starts_with (prefix), $ends_with (suffix), $lt/$lte/$gt/$gte (numeric/date comparison), $and/$or/$not (logical). Examples: {'name': 'Acme'} for shorthand, {'domains': {'domain': {'$eq': 'example.com'}}} for exact domain match, {'$and': [{'name': {'$contains': 'Inc'}}, {'description': {'value': {'$not_empty': True}}}]} for complex queries.",
+                "additionalProperties": true
+              },
+              "offset": {
+                "type": "integer",
+                "default": 0,
+                "minimum": 0,
+                "description": "Number of records to skip for pagination"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ATTIO_FIND_RECORD": {
+          "toolkit": "ATTIO",
+          "tool_slug": "ATTIO_FIND_RECORD",
+          "description": "This tool allows users to find a record in Attio by either its unique ID or by searching using unique attributes. It provides two methods: one for directly retrieving a record by its ID with the GET /v2/objects/{object}/records/{record_id} endpoint, and another for searching by attributes using the POST /v2/objects/{object}/records/query endpoint.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "object_id"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 500,
+                "maximum": 500,
+                "minimum": 1,
+                "description": "Maximum number of records to return when searching."
+              },
+              "offset": {
+                "type": "integer",
+                "default": 0,
+                "minimum": 0,
+                "description": "Number of records to skip for pagination"
+              },
+              "object_id": {
+                "type": "string",
+                "examples": [
+                  "people",
+                  "companies",
+                  "deals",
+                  "users",
+                  "workspaces"
+                ],
+                "description": "The UUID or slug identifying the object type to search in. Standard object type slugs include 'people', 'companies', 'deals', 'users', 'workspaces'. Note: 'lists' is NOT a valid object type - use list-specific actions (e.g., ATTIO_LIST_LISTS, ATTIO_LIST_LIST_ENTRIES) to work with lists. Can also use 'object_type' as an alias for this field."
+              },
+              "record_id": {
+                "type": "string",
+                "examples": [
+                  "f3b2962b-febb-4e01-8431-f7ffb4d87e5e"
+                ],
+                "description": "The unique ID of the record to retrieve directly"
+              },
+              "attributes": {
+                "type": "object",
+                "examples": [
+                  {
+                    "email_addresses": "john@example.com"
+                  },
+                  {
+                    "name": "John Doe"
+                  },
+                  {
+                    "primary_location": {
+                      "locality": {
+                        "$contains": "San Francisco"
+                      }
+                    }
+                  },
+                  {
+                    "domains": [
+                      "example.com",
+                      "test.com"
+                    ]
+                  },
+                  {
+                    "team": {
+                      "target_object": "people",
+                      "target_record_id": "00d355cc-7bb2-4fc4-b648-b9516ae45540"
+                    }
+                  }
+                ],
+                "description": "Dictionary of attributes to search by using attribute slugs. CRITICAL: Validate slugs via ATTIO_LIST_ATTRIBUTES (target='objects', identifier=<object_id>) before filtering. System attributes (e.g., 'email_addresses', 'name') are consistent across workspaces; custom attributes vary and invalid slugs cause 'unknown_filter_attribute_slug' errors.\n\nFiltering syntax:\n- Simple values use shorthand ($eq implied)\n- Single-element lists unwrap to shorthand\n- Multi-element lists convert to $or conditions\n- Dict values with operators ({'$eq': v}, {'$contains': v}, {'$not_empty': true}) pass through unchanged\n- Select/multi-select: use Attio option slugs or IDs (not plain text)\n- Record-reference (e.g., 'team', 'company'): to filter by referenced record attributes, use path filtering: {'path': [['object', 'attribute'], ['target_object', 'target_attribute']], 'constraints': {...}}. Nested field syntax like {'team': {'name': {...}}} is NOT supported. To filter by record_id directly: {'attribute_slug': {'target_object': 'type', 'target_record_id': 'uuid'}}.\n- Interaction attributes (e.g., 'last_email_interaction'): filter on sub-properties: owner_actor (nested type/id), interacted_at ($eq/$gte/$gt/$lte/$lt, ISO 8601), interaction_type ($eq/$not_empty)",
+                "additionalProperties": true
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ATTIO_QUERY_RECORDS": {
+          "toolkit": "ATTIO",
+          "tool_slug": "ATTIO_QUERY_RECORDS",
+          "description": "Tool to query records for a specific Attio object using server-side filtering operators and sorting. Use when you need to retrieve records based on complex filter criteria (e.g., 'get all agreements where product=X and status in Y') rather than simple listing or ID-based lookup. This avoids downloading large pages and filtering locally, which is slow and costly.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "object"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 500,
+                "maximum": 500,
+                "minimum": 1,
+                "description": "Maximum number of records to return. Common values up to 500."
+              },
+              "sorts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "direction",
+                    "attribute"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "For sorting by related record attributes, specify the path to traverse"
+                    },
+                    "field": {
+                      "type": "string",
+                      "examples": [
+                        "last_name",
+                        "first_name",
+                        "interacted_at",
+                        "interaction_type",
+                        "email_address"
+                      ],
+                      "description": "Required for multi-property attributes to specify which field to sort by. PERSONAL-NAME attributes (e.g., 'name'): Use 'first_name', 'last_name', or 'full_name'. INTERACTION attributes (e.g., 'last_calendar_interaction', 'last_email_interaction', 'first_email_interaction'): Use 'interaction_type', 'interacted_at', or 'owner_actor'. EMAIL-ADDRESS attributes: Use 'email_address', 'email_domain', etc. PHONE-NUMBER attributes: Use 'original_phone_number', 'normalized_phone_number', etc. LOCATION attributes: Use 'locality', 'region', 'country_code', etc. DOMAIN attributes: Use 'domain', 'root_domain'. Simple single-value attributes (text, number, checkbox, date, timestamp, rating, currency, select, status) do not require this field."
+                    },
+                    "attribute": {
+                      "type": "string",
+                      "examples": [
+                        "name",
+                        "created_at"
+                      ],
+                      "description": "Attribute slug or ID to sort by"
+                    },
+                    "direction": {
+                      "type": "string",
+                      "examples": [
+                        "asc",
+                        "desc"
+                      ],
+                      "description": "Sort direction: 'asc' for ascending or 'desc' for descending"
+                    }
+                  }
+                },
+                "description": "Array of sort specifications to order results. Each sort object specifies direction ('asc'/'desc'), attribute, and optionally field or path."
+              },
+              "filter": {
+                "type": "object",
+                "description": "Attio filter object for server-side filtering. IMPORTANT: Always filter by attribute slugs (e.g., 'name', 'email_addresses'), NEVER by sub-properties directly at the top level. TIMESTAMP FILTERS: All timestamp comparisons MUST use ISO8601 string format (e.g., '2024-01-01T00:00:00.000Z'). Example: {'created_at': {'$gte': '2024-01-01T00:00:00.000Z'}}. PERSONAL-NAME: 'name' sub-properties (first_name, last_name, full_name) MUST be nested under 'name'. Correct: {'name': {'first_name': {'$contains': 'John'}, 'last_name': {'$contains': 'Smith'}}}. WRONG: {'first_name': {...}} - fails with 'unknown_filter_attribute_slug'. Shorthand: {'name': 'John Smith'}. EMAIL: email_addresses supports $eq, $contains, $starts_with, $ends_with (NOT $not_empty). INTERACTION (e.g., 'last_email_interaction'): Properties: owner_member_id ($eq/$not_empty), interacted_at ($eq/$gte/$gt/$lte/$lt with ISO8601), interaction_type ($eq/$not_empty). RECORD-REFERENCE: {'company': {'target_object': 'companies', 'target_record_id': '<uuid>'}}. Multiple: {'company': {'target_object': 'companies', 'target_record_id': {'$in': ['<uuid1>', '<uuid2>']}}}. Path-based: {'path': [['companies', 'team'], ['people', 'name']], 'constraints': {'first_name': {'$eq': 'John'}}}. OPERATORS: $eq, $not_empty (varies by type), $in, $contains, $starts_with, $ends_with, $lt/$lte/$gt/$gte, $and/$or/$not.",
+                "additionalProperties": true
+              },
+              "object": {
+                "type": "string",
+                "examples": [
+                  "people",
+                  "companies",
+                  "deals"
+                ],
+                "description": "The object slug or UUID to query records from (e.g., 'people', 'companies', or custom object UUID). Standard object types include 'people', 'companies', 'deals', 'users', 'workspaces'."
+              },
+              "offset": {
+                "type": "integer",
+                "default": 0,
+                "minimum": 0,
+                "description": "Number of records to skip for pagination"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ATTIO_POST_V2_OBJECTS_OBJECT_RECORDS_QUERY": {
+          "toolkit": "ATTIO",
+          "tool_slug": "ATTIO_POST_V2_OBJECTS_OBJECT_RECORDS_QUERY",
+          "description": "Tool to list people, company or other records in Attio with the option to filter and sort results. U...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ATTIO_POST_V2_OBJECTS_OBJECT_RECORDS_QUERY"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:38:58.377Z",
+        "current_time_utc_epoch_seconds": 1786541938,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "both",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"both\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "Follow these steps carefully to begin the task:",
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_j_Kemj1pS619"
+  }
+}

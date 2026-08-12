@@ -1,0 +1,369 @@
+{
+  "use_case_id": 17,
+  "prompt": "Create AI avatar promo videos using a HeyGen avatar and voice, prepare supporting media, attempt social publishing, send a support email for infrastructure issues, and read/update a booking schedule.",
+  "expected_tools": [
+    "HEYGEN_V2_VIDEO_GENERATE",
+    "INSTAGRAM_GET_IG_USER_MEDIA",
+    "GMAIL_DELETE_DRAFT",
+    "GMAIL_SEND_EMAIL",
+    "GMAIL_CREATE_EMAIL_DRAFT",
+    "HEYGEN_V2_VOICES",
+    "INSTAGRAM_SEND_TEXT_MESSAGE",
+    "HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS",
+    "INSTAGRAM_POST_IG_USER_MEDIA",
+    "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL",
+    "GOOGLESHEETS_BATCH_GET",
+    "HEYGEN_V2_USER_REMAINING_QUOTA",
+    "HEYGEN_V1_AVATAR_LIST",
+    "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
+    "INSTAGRAM_GET_IG_MEDIA",
+    "INSTAGRAM_LIST_ALL_MESSAGES",
+    "HEYGEN_RETRIEVE_AVATAR_DETAILS",
+    "GMAIL_SEND_DRAFT",
+    "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH",
+    "HEYGEN_UPLOAD_ASSET"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Create AI avatar promo videos using a HeyGen avatar and voice, prepare supporting media, attempt social publishing, send a support email for infrastructure issues, and read/update a booking schedule.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if avatar_id unknown)] [Prerequisite]: List candidates using HEYGEN_V1_AVATAR_LIST (find a usable avatar_id).",
+            "[Optional (if voice_id unknown)] [Prerequisite]: List candidates using HEYGEN_V2_VOICES (choose by voice_id, not display name).",
+            "[Optional (to confirm access/identifier usability)] [Prerequisite]: Validate the chosen avatar using HEYGEN_RETRIEVE_AVATAR_DETAILS (ensure it can be used for generation).",
+            "[Optional (to avoid credit surprises)] [Prerequisite]: Check quota using HEYGEN_V2_USER_REMAINING_QUOTA (confirm enough for intended length/volume).",
+            "[Optional (if using custom image/audio inputs)] [Prerequisite]: Upload media using HEYGEN_UPLOAD_ASSET (retain returned asset reference(s) for generation payload).",
+            "[Required] [Step]: Start the render job using HEYGEN_V2_VIDEO_GENERATE (script + avatar/voice/media) and capture video_id from the nested response payload.",
+            "[Required] [Next Step]: Poll completion using HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS (bounded checks/backoff) until terminal status; on success return video_url; on failure surface returned error and stop.",
+            "[Optional (if a no-login link is needed)] [Next Step]: Create/refresh a share URL using HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL (call after completion).",
+            "[Optional (if generation fails due to validation/credit/text limits)] [Fallback]: Shorten/split text, re-check via HEYGEN_V2_USER_REMAINING_QUOTA, optionally switch voice via HEYGEN_V2_VOICES, then retry HEYGEN_V2_VIDEO_GENERATE."
+          ],
+          "known_pitfalls": [
+            "[HEYGEN_V1_AVATAR_LIST] Avatar catalogs can be extremely large and deeply nested; plan for programmatic/local filtering to find a usable avatar_id.",
+            "[HEYGEN_V2_VOICES] Voice catalogs can be very large with near-duplicate names and nesting (often under data.data.*); select by voice_id.",
+            "[HEYGEN_V2_VIDEO_GENERATE] video_id is commonly wrapped (often response.data.data.video_id); 400 invalid_parameter and text-length limits (around 5000 chars) can block submission.",
+            "[HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS] video_url can remain null while status is processing; polling may intermittently return 503; terminal failures can include MOVIO_PAYMENT_INSUFFICIENT_CREDIT even after a video_id is issued.",
+            "[HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL] Share link may be returned as a plain string inside the response data payload (not a structured object)."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Poll HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS with bounded checks and stop on terminal state.",
+              "code": "```python\nimport time\nvideo_id=\"...\"\nfor _ in range(60):\n    r,e=run_composio_tool(\"HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS\",{\"video_id\":video_id})\n    d=((r or {}).get(\"data\") or {}).get(\"data\") or {}\n    s=d.get(\"status\")\n    if s in (\"completed\",\"failed\",\"error\"):\n        break\n    time.sleep(3)\n```"
+            },
+            {
+              "description": "Extract wrapped video_id from a HEYGEN_V2_VIDEO_GENERATE response.",
+              "code": "```python\nvideo_id=(((resp or {}).get(\"data\") or {}).get(\"data\") or {}).get(\"video_id\")\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "HEYGEN_V2_VIDEO_GENERATE",
+            "HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS"
+          ],
+          "related_tool_slugs": [
+            "HEYGEN_V1_AVATAR_LIST",
+            "HEYGEN_V2_VOICES",
+            "HEYGEN_V2_USER_REMAINING_QUOTA",
+            "HEYGEN_UPLOAD_ASSET",
+            "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL",
+            "HEYGEN_RETRIEVE_AVATAR_DETAILS"
+          ],
+          "toolkits": [
+            "heygen"
+          ],
+          "plan_id": "093dd618aa904368abb01aaed46e33e5"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "heygen",
+          "has_active_connection": false,
+          "description": "HeyGen is an innovative video platform that harnesses the power of generative AI to streamline your video creation process",
+          "status_message": "No Active connection for toolkit=heygen. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"heygen\") to create a connection BEFORE executing any heygen tools."
+        }
+      ],
+      "tool_schemas": {
+        "HEYGEN_V2_VIDEO_GENERATE": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_V2_VIDEO_GENERATE",
+          "description": "Generates a customized video using Heygen's AI-driven platform. This endpoint allows you to create videos featuring digital avatars with specified voices, enabling dynamic content creation. It's ideal for producing personalized video content, such as explainer videos, product demonstrations, or interactive presentations. The endpoint supports multiple input configurations, allowing for complex video scenarios with different characters and voices. Use this when you need to programmatically create AI-generated videos with specific avatar and voice combinations. Note that while the endpoint offers extensive customization, real-time video generation is not supported, and processing times may vary based on complexity and system load.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "video_inputs"
+            ],
+            "properties": {
+              "test": {
+                "type": "boolean",
+                "description": "Test mode flag"
+              },
+              "title": {
+                "type": "string",
+                "description": "The title of the video"
+              },
+              "callback_id": {
+                "type": "string",
+                "description": "Optional callback ID"
+              },
+              "aspect_ratio": {
+                "type": "string",
+                "description": "Video aspect ratio"
+              },
+              "video_inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "character",
+                    "voice"
+                  ],
+                  "properties": {
+                    "voice": {
+                      "type": "object",
+                      "required": [
+                        "voice_id"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "default": "text",
+                          "description": "Type of voice input (text or audio)"
+                        },
+                        "speed": {
+                          "type": "number",
+                          "description": "Speech speed multiplier"
+                        },
+                        "voice_id": {
+                          "type": "string",
+                          "description": "ID of the voice"
+                        },
+                        "input_text": {
+                          "type": "string",
+                          "description": "Text to be spoken"
+                        }
+                      },
+                      "description": "Voice configuration",
+                      "additionalProperties": false
+                    },
+                    "character": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "default": "avatar",
+                          "description": "Type of character (avatar or talking_photo)"
+                        },
+                        "avatar_id": {
+                          "type": "string",
+                          "description": "ID of the avatar"
+                        },
+                        "avatar_style": {
+                          "type": "string",
+                          "description": "Style of the avatar (e.g., normal)"
+                        },
+                        "talking_photo_id": {
+                          "type": "string",
+                          "description": "ID of the talking photo (for talking_photo type)"
+                        }
+                      },
+                      "description": "Character configuration",
+                      "additionalProperties": false
+                    },
+                    "background": {
+                      "type": "object",
+                      "required": [
+                        "type"
+                      ],
+                      "properties": {
+                        "fit": {
+                          "enum": [
+                            "crop",
+                            "cover",
+                            "contain",
+                            "none"
+                          ],
+                          "type": "string",
+                          "description": "Background video fit enumeration"
+                        },
+                        "url": {
+                          "type": "string",
+                          "description": "URL of the uploaded image/video resource. For image/video types, provide either 'url' or the corresponding asset_id (exactly one)."
+                        },
+                        "type": {
+                          "enum": [
+                            "color",
+                            "image",
+                            "video"
+                          ],
+                          "type": "string",
+                          "description": "Specifies the background type: 'color', 'image', or 'video'"
+                        },
+                        "value": {
+                          "type": "string",
+                          "description": "Hex color code for the background (e.g., '#FFFFFF'). Required when type is 'color'."
+                        },
+                        "play_style": {
+                          "enum": [
+                            "freeze",
+                            "loop",
+                            "fit_to_scene",
+                            "once"
+                          ],
+                          "type": "string",
+                          "description": "Background video play style enumeration"
+                        },
+                        "image_asset_id": {
+                          "type": "string",
+                          "description": "Unique identifier of the uploaded image. For image type, provide either 'url' or 'image_asset_id' (exactly one)."
+                        },
+                        "video_asset_id": {
+                          "type": "string",
+                          "description": "Unique identifier of the uploaded video. For video type, provide either 'url' or 'video_asset_id' (exactly one)."
+                        }
+                      },
+                      "description": "Background configuration for video input. Supports color, image, or video backgrounds.\n\nFor color: Provide 'type' as 'color' and 'value' as hex color code (e.g., '#FFFFFF').\nFor image: Provide 'type' as 'image' and either 'url' or 'image_asset_id' (exactly one required).\nFor video: Provide 'type' as 'video' and either 'url' or 'video_asset_id' (exactly one required).",
+                      "additionalProperties": false
+                    }
+                  },
+                  "description": "Request schema for `V2VideoGeneratevideoInputs`"
+                },
+                "description": "Array of video input configurations"
+              },
+              "dimension__width": {
+                "type": "integer",
+                "description": "Video width in pixels"
+              },
+              "dimension__height": {
+                "type": "integer",
+                "description": "Video height in pixels"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS",
+          "description": "Tool to retrieve the current processing status and metadata for a specific video by ID. Use when you need to check video processing progress, get time-limited URLs for video downloads, or monitor video generation completion. Video rendering is asynchronous and typically takes 30\u2013180+ seconds; poll at moderate intervals rather than tight loops. Verify returned URLs are accessible before surfacing to users. Note that returned URLs expire after 7 days but can be regenerated by calling this endpoint again.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "video_id"
+            ],
+            "properties": {
+              "video_id": {
+                "type": "string",
+                "examples": [
+                  "6402dcae5b4a44e9b7d0586cb7d2144f"
+                ],
+                "description": "The unique identifier of the video to retrieve status for. This ID is returned when a video is created via the video generation API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HEYGEN_V1_AVATAR_LIST": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_V1_AVATAR_LIST",
+          "description": "Retrieves a list of available avatars from the Heygen platform. This endpoint allows users to fetch both public and private avatars, depending on their access rights and the specified parameters. It's particularly useful for applications that need to display available avatars to users for selection or customization. The endpoint supports pagination to handle large numbers of avatars efficiently. Use this when you need to present avatar options to users, manage avatar inventories, or sync local avatar data with the Heygen platform. Note that the response will likely include basic information about each avatar, such as ID, name, and type, but may not include full avatar details or assets.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "HEYGEN_V2_VOICES": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_V2_VOICES",
+          "description": "Retrieves a list of available voice models and options that can be used with HeyGen's AI-driven vide...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HEYGEN_V2_VOICES"
+              ]
+            }
+          }
+        },
+        "HEYGEN_V2_USER_REMAINING_QUOTA": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_V2_USER_REMAINING_QUOTA",
+          "description": "Retrieves the current remaining quota for the authenticated user on the HeyGen platform. This endpoi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HEYGEN_V2_USER_REMAINING_QUOTA"
+              ]
+            }
+          }
+        },
+        "HEYGEN_UPLOAD_ASSET": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_UPLOAD_ASSET",
+          "description": "Tool to upload a file asset (image, video, or audio) to HeyGen platform. Use when you need to upload...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HEYGEN_UPLOAD_ASSET"
+              ]
+            }
+          }
+        },
+        "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL",
+          "description": "Tool to generate a public, shareable URL for a specific video by ID. Use when you need to create a p...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL"
+              ]
+            }
+          }
+        },
+        "HEYGEN_RETRIEVE_AVATAR_DETAILS": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_RETRIEVE_AVATAR_DETAILS",
+          "description": "Tool to retrieve detailed information about a specific avatar by its ID. Use when you need to get co...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HEYGEN_RETRIEVE_AVATAR_DETAILS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:32:52.422Z",
+        "current_time_utc_epoch_seconds": 1786541572,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "luck",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"luck\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_gwG9RZnmF94N"
+  }
+}

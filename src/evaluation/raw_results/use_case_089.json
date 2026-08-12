@@ -1,0 +1,419 @@
+{
+  "use_case_id": 89,
+  "prompt": "Audit inbound email and HubSpot marketing/automation assets to understand an external funnel, compare it with existing marketing emails and workflows, and inspect meeting-booking setup.",
+  "expected_tools": [
+    "HUBSPOT_GET_WORKFLOWS",
+    "HUBSPOT_GET_ALL_WORKFLOWS",
+    "HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT",
+    "HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL",
+    "GOOGLESUPER_FETCH_EMAILS"
+  ],
+  "composio_response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Audit inbound email and HubSpot marketing/automation assets to understand an external funnel, compare it with existing marketing emails and workflows, and inspect meeting-booking setup.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Verify required permissions using HUBSPOT_LIST_GRANTED_SCOPES (confirm marketing email read plus any analytics scopes needed).",
+            "[Required] [Prerequisite]: Confirm you need marketing email assets (not other email objects) before listing using HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT.",
+            "[Required] [Step]: Retrieve a page of emails using HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT (set includeStats only if per-email metrics are required; use includedProperties to keep payload small if needed).",
+            "[Required] [Next Step]: If paging.next.after is present, repeat HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT with after until paging.next is absent (cursor pagination).",
+            "[Optional (if you need full content/metadata or content analysis)] [Next Step]: Hydrate selected items using HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL (prefer any plain-text field; if reconstructing HTML, order widgets by their order value; if change history matters, inspect via HUBSPOT_GET_MARKETING_EMAIL_REVISIONS).",
+            "[Optional (if rollup/trend/campaign reporting is needed)] [Next Step]: Compute performance aggregates using HUBSPOT_GET_AGGREGATED_STATISTICS (optionally bucket via HUBSPOT_GET_AGGREGATED_STATISTIC_INTERVALS; for campaign-scoped reporting, map via HUBSPOT_GET_CAMPAIGNS + HUBSPOT_LIST_ASSETS then filter email IDs).",
+            "[Fallback (if you must filter by created/updated windows)] [Fallback]: Use HUBSPOT_GET_MARKETING_EMAILS with created/updated filters (normalize to UTC), then continue pagination/selection and optional hydration or aggregate steps."
+          ],
+          "known_pitfalls": [
+            "[HUBSPOT_LIST_GRANTED_SCOPES] Missing required scopes commonly surfaces later as 403/MISSING_SCOPES on marketing endpoints; confirm scopes up front.",
+            "[HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT] Some responses are wrapped (for example under data.data); parse results and paging from the inner object.",
+            "[HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT] Per-email metrics live under results[].stats.counters and results[].stats.ratios; ratios may already be expressed in percent units (don\u2019t rescale).",
+            "[HUBSPOT_GET_AGGREGATED_STATISTICS] Aggregate metrics are nested under aggregate.counters and aggregate.ratios (not top-level).",
+            "[HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL] includeStats may still return empty stats.counters or device breakdowns for some emails; tolerate missing/empty metrics."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract results and paging cursor from a wrapped HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT response",
+              "code": "```python\ndef payload(r):\n  d=(r or {}).get('data',{})\n  return d.get('data',d) if isinstance(d,dict) else {}\n\np=payload(res)\nemails=p.get('results',[])\nafter=p.get('paging',{}).get('next',{}).get('after')\n```"
+            },
+            {
+              "description": "Order widget-derived HTML sections when reconstructing content",
+              "code": "```python\nwidgets=data.get('content',{}).get('widgets',{})\nordered=sorted(widgets.values(), key=lambda w: w.get('order',0))\nhtml=[w.get('body',{}).get('html','') for w in ordered if w.get('body',{}).get('html')]\njoined=''.join(html)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT",
+            "HUBSPOT_GET_AGGREGATED_STATISTICS",
+            "HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL"
+          ],
+          "related_tool_slugs": [
+            "HUBSPOT_LIST_GRANTED_SCOPES",
+            "HUBSPOT_GET_AGGREGATED_STATISTIC_INTERVALS",
+            "HUBSPOT_GET_MARKETING_EMAILS",
+            "HUBSPOT_GET_CAMPAIGNS",
+            "HUBSPOT_LIST_ASSETS",
+            "HUBSPOT_GET_MARKETING_EMAIL_REVISIONS"
+          ],
+          "toolkits": [
+            "hubspot"
+          ],
+          "plan_id": "f184e558f85d4fb6b1e0a2f3a6cad360"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "hubspot",
+          "has_active_connection": false,
+          "description": "HubSpot is an inbound marketing, sales, and customer service platform integrating CRM, email automation, and analytics to facilitate lead nurturing and seamless customer experiences",
+          "status_message": "No Active connection for toolkit=hubspot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"hubspot\") to create a connection BEFORE executing any hubspot tools."
+        }
+      ],
+      "tool_schemas": {
+        "HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT",
+          "description": "Fetches a list of marketing emails from a HubSpot account, with options for filtering, sorting, pagination, and including performance statistics.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "sort": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "name"
+                  ],
+                  [
+                    "-createdAt",
+                    "updatedBy"
+                  ]
+                ],
+                "description": "A list of fields to sort the results by. Valid fields are `name`, `createdAt`, `updatedAt`, `createdBy`, `updatedBy`. Prefix with '-' for descending order (e.g., '-createdAt'). `createdAt` is the default sort order if unspecified."
+              },
+              "type": {
+                "enum": [
+                  "AB_EMAIL",
+                  "BATCH_EMAIL",
+                  "LOCALTIME_EMAIL",
+                  "AUTOMATED_AB_EMAIL",
+                  "BLOG_EMAIL",
+                  "BLOG_EMAIL_CHILD",
+                  "RSS_EMAIL",
+                  "RSS_EMAIL_CHILD",
+                  "RESUBSCRIBE_EMAIL",
+                  "OPTIN_EMAIL",
+                  "OPTIN_FOLLOWUP_EMAIL",
+                  "AUTOMATED_EMAIL",
+                  "FEEDBACK_CES_EMAIL",
+                  "FEEDBACK_CUSTOM_EMAIL",
+                  "FEEDBACK_CUSTOM_SURVEY_EMAIL",
+                  "FEEDBACK_NPS_EMAIL",
+                  "FOLLOWUP_EMAIL",
+                  "LEADFLOW_EMAIL",
+                  "SINGLE_SEND_API",
+                  "MARKETING_SINGLE_SEND_API",
+                  "SMTP_TOKEN",
+                  "TICKET_EMAIL",
+                  "MEMBERSHIP_REGISTRATION_EMAIL",
+                  "MEMBERSHIP_PASSWORD_SAVED_EMAIL",
+                  "MEMBERSHIP_PASSWORD_RESET_EMAIL",
+                  "MEMBERSHIP_EMAIL_VERIFICATION_EMAIL",
+                  "MEMBERSHIP_OTP_LOGIN_EMAIL"
+                ],
+                "type": "string",
+                "examples": [
+                  "BATCH_EMAIL",
+                  "AUTOMATED_EMAIL"
+                ],
+                "description": "Filter emails by type. Multiple types can be specified. If omitted, emails of all types are returned. See TypeEnm for allowed values."
+              },
+              "after": {
+                "type": "string",
+                "examples": [
+                  " \u0434\u0435\u0441\u044f\u0442\u044c \u043c\u0438\u043b\u043b\u0438\u0430\u0440\u0434\u043e\u0432 \u0441\u0442\u043e \u043e\u0434\u0438\u043d\u043d\u0430\u0434\u0446\u0430\u0442\u044c"
+                ],
+                "description": "The cursor token to retrieve the next page of results. This value is obtained from the `paging.next.after` property of a previous paged response."
+              },
+              "limit": {
+                "type": "integer",
+                "examples": [
+                  "50"
+                ],
+                "description": "The maximum number of emails to return per page. Default is 100, max is 100."
+              },
+              "archived": {
+                "type": "boolean",
+                "examples": [
+                  "false"
+                ],
+                "description": "Specifies whether to include archived emails in the results. Defaults to `false` (archived emails are not returned). Set to `true` to retrieve archived emails."
+              },
+              "createdAt": {
+                "type": "string",
+                "examples": [
+                  "2023-10-26T10:30:00Z"
+                ],
+                "description": "Filter emails created at this exact ISO 8601 date-time (e.g., '2023-10-26T10:30:00Z')."
+              },
+              "updatedAt": {
+                "type": "string",
+                "examples": [
+                  "2023-10-26T12:45:00Z"
+                ],
+                "description": "Filter emails last updated at this exact ISO 8601 date-time (e.g., '2023-10-26T12:45:00Z')."
+              },
+              "isPublished": {
+                "type": "boolean",
+                "examples": [
+                  "true"
+                ],
+                "description": "Filter emails based on their publication status: `true` for published emails, `false` for draft emails. If omitted, both published and draft emails are returned."
+              },
+              "createdAfter": {
+                "type": "string",
+                "examples": [
+                  "2023-10-26T00:00:00Z"
+                ],
+                "description": "Filter emails created after this ISO 8601 date-time (e.g., '2023-10-26T00:00:00Z')."
+              },
+              "includeStats": {
+                "type": "boolean",
+                "examples": [
+                  "true"
+                ],
+                "description": "If `true`, includes statistics (e.g., open rates, click rates) with each email. Defaults to `false`."
+              },
+              "updatedAfter": {
+                "type": "string",
+                "examples": [
+                  "2023-10-26T00:00:00Z"
+                ],
+                "description": "Filter emails last updated after this ISO 8601 date-time (e.g., '2023-10-26T00:00:00Z')."
+              },
+              "createdBefore": {
+                "type": "string",
+                "examples": [
+                  "2023-10-27T00:00:00Z"
+                ],
+                "description": "Filter emails created before this ISO 8601 date-time (e.g., '2023-10-27T00:00:00Z')."
+              },
+              "updatedBefore": {
+                "type": "string",
+                "examples": [
+                  "2023-10-27T00:00:00Z"
+                ],
+                "description": "Filter emails last updated before this ISO 8601 date-time (e.g., '2023-10-27T00:00:00Z')."
+              },
+              "includedProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "name",
+                    "subject",
+                    "from_name"
+                  ]
+                ],
+                "description": "A list of specific property names to include in the response for each email object. If omitted, a default set of properties is returned. Consult the HubSpot API documentation for available email properties."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_GET_AGGREGATED_STATISTICS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_GET_AGGREGATED_STATISTICS",
+          "description": "Retrieves aggregated statistics for marketing emails, optionally within an ISO8601 formatted time range, by email IDs, or specific email properties.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "emailIds": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "examples": [
+                  [
+                    12345,
+                    67890
+                  ]
+                ],
+                "description": "Filter statistics by specific email IDs."
+              },
+              "property": {
+                "type": "string",
+                "examples": [
+                  "subject",
+                  "campaignGuid"
+                ],
+                "description": "Specific email property to include (e.g., 'subject', 'campaignGuid'); if omitted, all available properties are returned. See HubSpot docs for available properties."
+              },
+              "endTimestamp": {
+                "type": "string",
+                "examples": [
+                  "2019-10-07T13:47:30Z",
+                  "2023-11-25T10:00:00-05:00"
+                ],
+                "description": "End of the time range (ISO8601 format); statistics are aggregated for emails sent on or before this time. Required by the API; if not provided, defaults to current time."
+              },
+              "startTimestamp": {
+                "type": "string",
+                "examples": [
+                  "2019-09-07T13:47:30Z",
+                  "2023-10-25T10:00:00-05:00"
+                ],
+                "description": "Start of the time range (ISO8601 format); statistics are aggregated for emails sent on or after this time. Required by the API; if not provided, defaults to 30 days ago."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL",
+          "description": "Retrieves detailed information for a specific marketing email in HubSpot using its unique email ID, optionally including performance statistics and specific properties.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "emailId"
+            ],
+            "properties": {
+              "emailId": {
+                "type": "string",
+                "examples": [
+                  "1234567890"
+                ],
+                "description": "The unique identifier of the marketing email to retrieve."
+              },
+              "archived": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Filter by archived status: `true` for archived, `false` for not archived. Omit to retrieve regardless of archived status."
+              },
+              "includeStats": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Whether to include performance statistics (e.g., open rates, click-through rates) with the email details."
+              },
+              "includedProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "name",
+                  "subject",
+                  "publish_date",
+                  "widgets"
+                ],
+                "description": "Specific marketing email property names to include in the response (e.g., \"name\", \"subject\", \"createdById\"). If omitted, a default set of properties is returned."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_LIST_GRANTED_SCOPES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_LIST_GRANTED_SCOPES",
+          "description": "Tool to introspect the current OAuth access token and return its granted scopes and metadata. Use when you need to check which permissions are available before calling an endpoint (e.g., workflows, automation) to proactively detect missing scopes and provide clear remediation guidance.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "include_token": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include the full access token in the response. Default is false to avoid exposing sensitive token values in logs."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_GET_AGGREGATED_STATISTIC_INTERVALS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_GET_AGGREGATED_STATISTIC_INTERVALS",
+          "description": "Retrieves aggregated statistics for marketing emails (e.g., send counts), grouped by specified time ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_GET_AGGREGATED_STATISTIC_INTERVALS"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_GET_CAMPAIGNS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_GET_CAMPAIGNS",
+          "description": "Retrieves multiple HubSpot campaigns.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_GET_CAMPAIGNS"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_LIST_ASSETS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_LIST_ASSETS",
+          "description": "Lists assets of a specific `assetType` for a given HubSpot marketing `campaignGuid`, optionally incl...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_LIST_ASSETS"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_GET_MARKETING_EMAIL_REVISIONS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_GET_MARKETING_EMAIL_REVISIONS",
+          "description": "Retrieves a paginated list of all historical versions (including full state like content, settings, ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_GET_MARKETING_EMAIL_REVISIONS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T13:38:11.646Z",
+        "current_time_utc_epoch_seconds": 1786541891,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "desk",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"desk\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_eWY7nrrZtyau"
+  }
+}
