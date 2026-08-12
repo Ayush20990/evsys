@@ -3,12 +3,20 @@
     "query_id": "workflow-023-q1",
     "workflow_id": 23,
     "workflow_task": "Analyze and triage Zendesk support tickets at scale: search ticket queues, enrich tickets with requester/order context, add private AI triage notes and tags, verify queues are drained, and aggregate product-support trends over a large historical ticket set.",
-    "query": "search unassigned Zendesk support tickets in the queue",
-    "required_tools": [
-      "ZENDESK_SEARCH_ZENDESK"
+    "query": "search support ticket queues and retrieve ticket details",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "ZENDESK_SEARCH_ZENDESK",
+          "ZENDESK_GET_ZENDESK_TICKET_BY_ID"
+        ],
+        "purpose": "find and retrieve Zendesk tickets"
+      }
     ],
-    "supporting_tools": [],
-    "rationale": "An agent needs to query the ticketing system to find and triage tickets currently in the queue.",
+    "supporting_tools": [
+      "ZENDESK_GET_USER"
+    ],
+    "rationale": "Searching queues and fetching specific tickets are core retrieval operations needed to triage and analyze support tickets at scale.",
     "candidate_tools": [
       "ZENDESK_GET_USER",
       "ZENDESK_GET_ZENDESK_TICKET_BY_ID",
@@ -17,65 +25,84 @@
     ]
   },
   "request": {
-    "query": "search unassigned Zendesk support tickets in the queue"
+    "query": "search support ticket queues and retrieve ticket details"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "search unassigned Zendesk support tickets in the queue",
+          "use_case": "search support ticket queues and retrieve ticket details",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "Optional (if credentials uncertain) [Prerequisite]: Validate access using ZENDESK_GET_ABOUT_ME (confirm the account context before querying).",
-            "Required [Step]: Retrieve tickets lacking an assignee using ZENDESK_SEARCH_ZENDESK (query for ticket records with empty/unset assignee).",
-            "Required (if more pages indicated) [Step]: Paginate with ZENDESK_SEARCH_ZENDESK until no next page remains, accumulating results for review.",
-            "Optional (if you need more fields before action) [Step]: Fetch full ticket details using ZENDESK_GET_ZENDESK_TICKET_BY_ID (inspect status/priority/subject).",
-            "Optional (if assigning is required and assignee unknown) [Prerequisite]: Find the intended agent using ZENDESK_SEARCH_ZENDESK_USERS (select the correct user record and capture its numeric id).",
-            "Optional (if assignment is approved) [Next Step]: Assign the ticket using ZENDESK_UPDATE_ZENDESK_TICKET (set assignee_id; re-fetch if validation needed).",
-            "Required (if ZENDESK_SEARCH_ZENDESK is too broad or insufficient) [Fallback]: List via ZENDESK_LIST_ZENDESK_TICKETS and filter client-side where assignee_id is null."
+            "=== FRESHDESK WORKFLOW ===",
+            "[Optional (if scoping to a specific organization)] [Prerequisite]: Resolve the target organization context using FRESHDESK_GET_COMPANIES (to narrow ticket retrieval).",
+            "[Optional (if building advanced filters)] [Prerequisite]: Inspect available/searchable ticket fields using FRESHDESK_LIST_TICKET_FIELDS (to form valid search queries).",
+            "[Required] [Step]: Find matching tickets using FRESHDESK_GET_SEARCH (return key fields like subject/status/created time); iterate all pages to avoid partial results.",
+            "[Required] [Next Step]: For each ticket of interest, fetch full details plus response-time metrics using FRESHDESK_VIEW_TICKET (include stats to get first-response timing).",
+            "[Optional (if FRESHDESK_GET_SEARCH is unavailable or returns unusable results)] [Fallback]: Pull a broader ticket list using FRESHDESK_GET_TICKETS, filter client-side, then call FRESHDESK_VIEW_TICKET per ticket to obtain stats.",
+            "=== INTERCOM WORKFLOW ===",
+            "[Optional (if ticket_type_id unknown)] [Prerequisite]: Discover candidate ticket types using INTERCOM_LIST_TICKET_TYPES (map name/category to id).",
+            "[Optional (if filtering by ticket state)] [Prerequisite]: Discover valid states using INTERCOM_LIST_TICKET_STATES (ensure the state value you plan to filter is supported).",
+            "[Optional (if multiple similar types or unclear schema)] [Next Step]: Validate the chosen type using INTERCOM_GET_TICKET_TYPE (confirm attributes/states before searching).",
+            "[Required] [Step]: Search tickets using INTERCOM_SEARCH_TICKETS (filter by ticket_type_id and the intended time field, e.g., created_at/updated_at, in epoch seconds).",
+            "[Required] [Step]: Paginate results using INTERCOM_SEARCH_TICKETS (loop with data.pages.next.starting_after until data.pages.next is null; aggregate and dedupe by ticket id).",
+            "[Optional (if search payload lacks needed fields)] [Next Step]: Enrich specific results using INTERCOM_GET_TICKET (fetch full ticket details by id).",
+            "[Fallback (if INTERCOM_SEARCH_TICKETS returns total_count=0 unexpectedly)] [Fallback]: Re-check ticket_type_id/states via INTERCOM_GET_TICKET_TYPE or INTERCOM_LIST_TICKET_STATES, widen the window/confirm epoch seconds, then retry INTERCOM_SEARCH_TICKETS."
           ],
           "known_pitfalls": [
-            "[ZENDESK_SEARCH_ZENDESK] Very large result sets may not be practical to inspect inline; be prepared to process the returned payload structure to extract ticket fields.",
-            "[ZENDESK_SEARCH_ZENDESK_USERS] User search can return multiple close matches; choosing the wrong record can assign tickets to an unintended person.",
-            "[ZENDESK_UPDATE_ZENDESK_TICKET] Requires valid numeric ticket and assignee identifiers; using a non-numeric or incorrect id can cause the update to fail."
+            "=== FRESHDESK PITFALLS ===",
+            "[FRESHDESK_VIEW_TICKET] Response-time/first-response metrics live under a nested stats object; list-style endpoints may omit them unless you expand per ticket.",
+            "[FRESHDESK_GET_SEARCH] Payload shape returns matches under response.data.results rather than a top-level tickets array, so parsing must follow that structure.",
+            "[FRESHDESK_LIST_TICKET_FIELDS] Search filters rely on internal field keys (not display labels); using the wrong key can yield empty/incorrect search results.",
+            "[FRESHDESK_GET_TICKETS] Listing tickets may not include the timing metrics needed for SLA/first-response reporting, so plan on FRESHDESK_VIEW_TICKET for final numbers.",
+            "=== INTERCOM PITFALLS ===",
+            "[INTERCOM_LIST_TICKET_TYPES] Large workspaces can return very large lists; filter programmatically rather than manually scanning.",
+            "[INTERCOM_SEARCH_TICKETS] Time filters are epoch seconds; passing milliseconds can silently shift the effective date range.",
+            "[INTERCOM_SEARCH_TICKETS] Pagination is cursor-based via data.pages.next.starting_after (not page numbers); stopping early misses results.",
+            "[INTERCOM_SEARCH_TICKETS] Valid queries can return tickets=[] and total_count=0; confirm you used the intended timestamp field (created_at vs updated_at) before concluding there are no matches.",
+            "[INTERCOM_SEARCH_TICKETS] Re-running overlapping ranges without deduping by ticket id can inflate totals and produce duplicates."
           ],
-          "reference_workbench_snippets": [
-            {
-              "description": "Extract a compact review table from a large search payload already loaded into memory",
-              "code": "```python\nimport json\npayload=payload\nresults=payload.get(\"results\") or payload.get(\"data\",{}).get(\"results\",[])\nrows=[{\"id\":t.get(\"id\"),\"status\":t.get(\"status\"),\"priority\":t.get(\"priority\"),\"subject\":t.get(\"subject\")} for t in (results or [])[:20]]\nprint(rows)\n```"
-            }
-          ],
-          "difficulty": "easy",
           "primary_tool_slugs": [
-            "ZENDESK_SEARCH_ZENDESK"
+            "FRESHDESK_GET_SEARCH",
+            "FRESHDESK_VIEW_TICKET",
+            "INTERCOM_SEARCH_TICKETS"
           ],
           "related_tool_slugs": [
-            "ZENDESK_GET_ABOUT_ME",
-            "ZENDESK_LIST_ZENDESK_TICKETS",
-            "ZENDESK_UPDATE_ZENDESK_TICKET",
-            "ZENDESK_SEARCH_ZENDESK_USERS",
-            "ZENDESK_GET_ZENDESK_TICKET_BY_ID"
+            "FRESHDESK_GET_TICKETS",
+            "FRESHDESK_LIST_TICKET_FIELDS",
+            "FRESHDESK_GET_COMPANIES",
+            "INTERCOM_LIST_TICKET_TYPES",
+            "INTERCOM_GET_TICKET",
+            "INTERCOM_GET_TICKET_TYPE",
+            "INTERCOM_LIST_TICKET_STATES"
           ],
           "toolkits": [
-            "zendesk"
+            "freshdesk",
+            "intercom"
           ],
-          "plan_id": "45f70a5405ee407c8b5017ed1fb124bd"
+          "plan_id": "99664b5114394e0b8ff0ca7b62f7a029,2aa56861ffa74d45bab25562952c3143"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "zendesk",
+          "toolkit": "freshdesk",
           "has_active_connection": false,
-          "description": "Zendesk provides customer support software with ticketing, live chat, and knowledge base features, enabling efficient helpdesk operations and customer engagement",
-          "status_message": "No Active connection for toolkit=zendesk. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"zendesk\") to create a connection BEFORE executing any zendesk tools."
+          "description": "Freshdesk provides customer support software with ticketing, knowledge base, and automation features for efficient helpdesk operations and better customer experiences",
+          "status_message": "No Active connection for toolkit=freshdesk. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"freshdesk\") to create a connection BEFORE executing any freshdesk tools."
+        },
+        {
+          "toolkit": "intercom",
+          "has_active_connection": false,
+          "description": "Intercom provides live chat, messaging, and customer engagement tools, enabling businesses to drive conversions, handle support, and personalize communication at scale",
+          "status_message": "No Active connection for toolkit=intercom. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"intercom\") to create a connection BEFORE executing any intercom tools."
         }
       ],
       "tool_schemas": {
-        "ZENDESK_SEARCH_ZENDESK": {
-          "toolkit": "ZENDESK",
-          "tool_slug": "ZENDESK_SEARCH_ZENDESK",
-          "description": "Tool to search for tickets, users, organizations, and groups in Zendesk using query syntax. Use when you need to find resources across Zendesk using flexible search criteria.",
+        "FRESHDESK_GET_SEARCH": {
+          "toolkit": "FRESHDESK",
+          "tool_slug": "FRESHDESK_GET_SEARCH",
+          "description": "Tool to search and filter tickets in Freshdesk using flexible query syntax. Use when you need to find tickets based on status, priority, tags, custom fields, dates, or other ticket attributes with complex filtering logic.",
           "input_schema": {
             "type": "object",
             "required": [
@@ -84,190 +111,349 @@
             "properties": {
               "page": {
                 "type": "integer",
-                "description": "Page number for offset pagination."
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Page number for pagination. Starts at 1 and cannot exceed 10. Default: 1. Each page returns up to 30 results. Maximum 300 tickets can be retrieved across all pages."
               },
               "query": {
                 "type": "string",
                 "examples": [
-                  "type:ticket status:open",
-                  "type:user email:john@example.com",
-                  "type:organization name:Acme"
+                  "(status:2)",
+                  "(status:2 AND priority:3)",
+                  "(created_at:>'2023-01-01' AND status:2)",
+                  "(tag:'urgent')",
+                  "(agent_id:null)"
                 ],
-                "description": "The search query string. Supports Zendesk query syntax for filtering by type, status, priority, etc. Example: 'type:ticket status:open priority:urgent' or 'assignee:me status:pending'."
-              },
-              "include": {
-                "type": "string",
-                "examples": [
-                  "tickets(users,groups,organizations)",
-                  "tickets(users),users(organizations)",
-                  "users(organizations)"
-                ],
-                "description": "Sideloads to include in the response, returned as top-level arrays alongside `results`. Zendesk's search endpoint requires nested syntax: `<result_type>(<resource1>,<resource2>)`. Combine multiple result types with commas. Common sideloads: `users`, `groups`, `organizations`. A flat comma list (e.g. 'users,groups') is silently ignored by Zendesk."
-              },
-              "sort_by": {
-                "type": "string",
-                "examples": [
-                  "updated_at",
-                  "created_at",
-                  "priority"
-                ],
-                "description": "Field to sort results by. Options: 'updated_at', 'created_at', 'priority', 'status', 'ticket_type'. Defaults to sorting by relevance if not specified."
-              },
-              "per_page": {
-                "type": "integer",
-                "description": "Number of results per page. Default: 10, max: 100."
-              },
-              "sort_order": {
-                "type": "string",
-                "examples": [
-                  "desc",
-                  "asc"
-                ],
-                "description": "Sort order direction. Options: 'asc' (ascending) or 'desc' (descending). Defaults to 'desc' if not specified."
+                "description": "Query string to filter tickets using field:value syntax. Wrap conditions in parentheses for grouping. Use AND, OR for logic. Use :> (\u2265) and :< (\u2264) for numeric/date comparisons. Use null for empty fields. String values need single quotes. Do NOT include outer double quotes - they are added automatically. Max 512 characters. Common searchable fields: status (2=Open, 3=Pending, 4=Resolved, 5=Closed), priority (1=Low, 2=Medium, 3=High, 4=Urgent), agent_id, group_id, tag, created_at, updated_at, due_by. Custom fields use cf_ prefix. Note: Not all fields are searchable (e.g., requester_id may not work); use FRESHDESK_LIST_TICKET_FIELDS to discover available searchable fields. Dates in UTC (YYYY-MM-DD)."
               }
             }
           },
           "hasFullSchema": true
         },
-        "ZENDESK_GET_ABOUT_ME": {
-          "toolkit": "ZENDESK",
-          "tool_slug": "ZENDESK_GET_ABOUT_ME",
-          "description": "Get information about the currently authenticated user in Zendesk. Returns only the caller's own account; to look up other users, use ZENDESK_SEARCH_ZENDESK_USERS. Response nests the user object under data.owner_info.user. Useful for verifying the acting user's identity and permissions before performing bulk operations.",
+        "FRESHDESK_VIEW_TICKET": {
+          "toolkit": "FRESHDESK",
+          "tool_slug": "FRESHDESK_VIEW_TICKET",
+          "description": "Views an existing ticket in Freshdesk. Ticket details are returned nested under `response_data` in the tool response.",
           "input_schema": {
             "type": "object",
-            "properties": {}
+            "required": [
+              "ticket_id"
+            ],
+            "properties": {
+              "include": {
+                "type": "string",
+                "examples": [
+                  "stats",
+                  "requester",
+                  "company",
+                  "stats,requester,company"
+                ],
+                "description": "Comma-separated list of additional information to include in the response. Valid values: 'stats' (ticket timing statistics like first response time), 'requester' (full requester details), 'company' (company information). Example: 'stats,requester,company' to include all expansion fields."
+              },
+              "ticket_id": {
+                "type": "integer",
+                "description": "ID of the ticket to be viewed"
+              }
+            }
           },
           "hasFullSchema": true
         },
-        "ZENDESK_LIST_ZENDESK_TICKETS": {
-          "toolkit": "ZENDESK",
-          "tool_slug": "ZENDESK_LIST_ZENDESK_TICKETS",
-          "description": "List Zendesk tickets with pagination and filtering. Only server-side filter available is external_id; status, priority, tags, assignee_id, and date-range filters must be applied client-side. Timestamps (created_at, updated_at) are ISO 8601 UTC. ticket.subject may be null \u2014 coerce to string before filtering. Attachments are not included; retrieve via ZENDESK_GET_ZENDESK_TICKET_BY_ID. HTTP 429 rate limit responses include Retry-After header; apply exponential backoff. Paginate by following next_page until null to avoid missing tickets.",
+        "INTERCOM_SEARCH_TICKETS": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_SEARCH_TICKETS",
+          "description": "Tool to search tickets in Intercom by filtering attribute values. Use when you need to find tickets matching specific criteria like state, creation date, assignment, or custom attributes.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "object",
+                "required": [
+                  "value"
+                ],
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "examples": [
+                      "created_at",
+                      "open"
+                    ],
+                    "description": "The searchable attribute for simple queries (e.g., created_at, ticket_state_id, open)"
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "integer"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "description": "For simple queries: single value or array. For complex queries: array of filter objects with field/operator/value"
+                  },
+                  "operator": {
+                    "type": "string",
+                    "examples": [
+                      "AND",
+                      "OR"
+                    ],
+                    "description": "Logical operator for combining multiple filters: AND or OR. Required when using multiple filters in value array"
+                  }
+                },
+                "description": "Query object containing filters to search tickets. Can be simple (single field/value) or complex (AND/OR with multiple filters)",
+                "additionalProperties": false
+              },
+              "pagination": {
+                "type": "object",
+                "properties": {
+                  "per_page": {
+                    "type": "integer",
+                    "maximum": 150,
+                    "minimum": 1,
+                    "examples": [
+                      5,
+                      20,
+                      50
+                    ],
+                    "description": "Number of results per page (default: 20, max: 150)"
+                  },
+                  "starting_after": {
+                    "type": "string",
+                    "examples": [
+                      "WzE2OTY5NDE4NzMwMDAsIjQxM2JjM2U4LTBhZGUtNGFkZC1hZWNlLTViYzMyYTgyOTZkNSIsMl0="
+                    ],
+                    "description": "Cursor for pagination - use to fetch the next page of results"
+                  }
+                },
+                "description": "Pagination settings for search results",
+                "additionalProperties": false
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FRESHDESK_GET_TICKETS": {
+          "toolkit": "FRESHDESK",
+          "tool_slug": "FRESHDESK_GET_TICKETS",
+          "description": "Retrieves a list of tickets from Freshdesk. Tickets are returned under `response_data` in the response object.",
           "input_schema": {
             "type": "object",
             "properties": {
               "page": {
                 "type": "integer",
-                "maximum": 100,
-                "minimum": 1,
-                "examples": [
-                  1
+                "default": 1,
+                "description": "Page number to retrieve"
+              },
+              "filter": {
+                "type": "string",
+                "description": "Predefined filter to apply. Possible values include 'new_and_my_open', 'watching', 'spam', 'deleted', etc."
+              },
+              "status": {
+                "enum": [
+                  "open",
+                  "pending",
+                  "resolved",
+                  "closed",
+                  "waiting_on_customer",
+                  "waiting_on_third_party"
                 ],
-                "description": "Page number for offset pagination (1-100). Limited to first 100 pages or 10,000 records total. For larger datasets, use cursor pagination (page_size) instead."
+                "type": "string",
+                "description": "Enum for ticket status values."
               },
               "sort_by": {
                 "type": "string",
-                "examples": [
-                  "updated_at"
-                ],
-                "description": "Field to sort by: 'assignee', 'assignee.name', 'created_at', 'group', 'id', 'requester', 'requester.name', 'status', 'subject', 'updated_at' Omitting sort_by provides no guaranteed ordering; set explicitly when ticket order matters."
+                "description": "Field to sort tickets by, e.g., 'created_at'"
+              },
+              "agent_id": {
+                "type": "integer",
+                "description": "Filter tickets by agent ID"
+              },
+              "group_id": {
+                "type": "integer",
+                "description": "Filter tickets by group ID"
               },
               "per_page": {
                 "type": "integer",
-                "maximum": 100,
-                "minimum": 1,
-                "examples": [
-                  25
-                ],
-                "description": "Number of tickets per page for offset pagination (max 100). Note: page * per_page cannot exceed 10,000. Set to 100 for large accounts to minimize requests before client-side filtering."
+                "default": 30,
+                "description": "Number of tickets per page"
               },
-              "page_size": {
-                "type": "integer",
-                "maximum": 100,
-                "minimum": 1,
-                "examples": [
-                  100
+              "priority": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "urgent"
                 ],
-                "description": "Number of tickets per page for cursor pagination (max 100). Use this for large datasets instead of page/per_page."
-              },
-              "page_after": {
                 "type": "string",
-                "examples": [
-                  "<cursor_token_from_previous_response>"
-                ],
-                "description": "Cursor value to retrieve the next page of results. Obtained from previous response's 'after_cursor' or 'next' link."
+                "description": "Enum for ticket priority values."
               },
               "sort_order": {
-                "enum": [
-                  "asc",
-                  "desc"
-                ],
                 "type": "string",
-                "examples": [
-                  "desc"
-                ],
-                "description": "Sort order: 'asc' or 'desc'"
+                "description": "Order of sorting: 'asc' or 'desc'"
               },
-              "external_id": {
-                "type": "string",
-                "examples": [
-                  "ext-123"
-                ],
-                "description": "Filter tickets by external ID"
+              "requester_id": {
+                "type": "integer",
+                "description": "Filter tickets by requester ID"
               },
-              "page_before": {
+              "created_since": {
                 "type": "string",
-                "examples": [
-                  "<cursor_token_from_previous_response>"
-                ],
-                "description": "Cursor value to retrieve the previous page of results. Obtained from previous response's 'before_cursor' or 'prev' link."
+                "format": "date-time",
+                "description": "Retrieve tickets created since this timestamp. Format: YYYY-MM-DDTHH:MM:SSZ"
               }
             }
           },
           "hasFullSchema": true
         },
-        "ZENDESK_UPDATE_ZENDESK_TICKET": {
-          "toolkit": "ZENDESK",
-          "tool_slug": "ZENDESK_UPDATE_ZENDESK_TICKET",
-          "description": "Tool to update a ticket in Zendesk. Use when you need to modify ticket fields like status, priority,...",
+        "FRESHDESK_LIST_TICKET_FIELDS": {
+          "toolkit": "FRESHDESK",
+          "tool_slug": "FRESHDESK_LIST_TICKET_FIELDS",
+          "description": "Tool to list all ticket fields configured in Freshdesk. Use when you need to retrieve metadata about...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "ZENDESK_UPDATE_ZENDESK_TICKET"
+                "FRESHDESK_LIST_TICKET_FIELDS"
               ]
             }
           }
         },
-        "ZENDESK_SEARCH_ZENDESK_USERS": {
-          "toolkit": "ZENDESK",
-          "tool_slug": "ZENDESK_SEARCH_ZENDESK_USERS",
-          "description": "Search for Zendesk users by query or external ID. Use when you need to find users using flexible sea...",
+        "FRESHDESK_GET_COMPANIES": {
+          "toolkit": "FRESHDESK",
+          "tool_slug": "FRESHDESK_GET_COMPANIES",
+          "description": "Tool to retrieve all companies from a Freshdesk account with pagination support. Use when you need t...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "ZENDESK_SEARCH_ZENDESK_USERS"
+                "FRESHDESK_GET_COMPANIES"
               ]
             }
           }
         },
-        "ZENDESK_GET_ZENDESK_TICKET_BY_ID": {
-          "toolkit": "ZENDESK",
-          "tool_slug": "ZENDESK_GET_ZENDESK_TICKET_BY_ID",
-          "description": "Get ticket details from Zendesk. Returns the full ticket record (status, requester_id, assignee_id, ...",
+        "INTERCOM_LIST_TICKET_TYPES": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_LIST_TICKET_TYPES",
+          "description": "Tool to retrieve all ticket types for the workspace. Use when you need to get all available ticket t...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "ZENDESK_GET_ZENDESK_TICKET_BY_ID"
+                "INTERCOM_LIST_TICKET_TYPES"
+              ]
+            }
+          }
+        },
+        "INTERCOM_GET_TICKET": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_GET_TICKET",
+          "description": "Tool to retrieve a ticket from Intercom. Use when you need to fetch comprehensive details about a sp...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INTERCOM_GET_TICKET"
+              ]
+            }
+          }
+        },
+        "INTERCOM_GET_TICKET_TYPE": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_GET_TICKET_TYPE",
+          "description": "Tool to retrieve details for a specific ticket type by its ID. Use when you need to get complete inf...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INTERCOM_GET_TICKET_TYPE"
+              ]
+            }
+          }
+        },
+        "INTERCOM_LIST_TICKET_STATES": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_LIST_TICKET_STATES",
+          "description": "Tool to fetch all ticket states for the workspace. Use when you need to retrieve all configured tick...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INTERCOM_LIST_TICKET_STATES"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:39:16.579Z",
-        "current_time_utc_epoch_seconds": 1786563556,
+        "current_time_utc": "2026-08-12T20:55:06.885Z",
+        "current_time_utc_epoch_seconds": 1786568106,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "word",
+        "id": "kind",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"word\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"kind\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -277,6 +463,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_gdUlDfJG5A2K"
+    "log_id": "log_QeRrEp_mn8Jv"
   }
 }

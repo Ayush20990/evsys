@@ -3,15 +3,19 @@
     "query_id": "workflow-016-q1",
     "workflow_id": 16,
     "workflow_task": "Audit analytics and search performance for a website, inspect and modify its source repository, create pull requests with SEO, tracking, caching, routing, and accessibility fixes, and investigate hosting/deployment state.",
-    "query": "fetch website traffic and search performance analytics",
-    "required_tools": [
-      "GOOGLE_ANALYTICS_RUN_REPORT",
-      "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY"
+    "query": "get google analytics traffic report data",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLE_ANALYTICS_RUN_REPORT"
+        ],
+        "purpose": "run an analytics report"
+      }
     ],
     "supporting_tools": [
       "GOOGLE_ANALYTICS_LIST_DATA_STREAMS"
     ],
-    "rationale": "To audit analytics and search performance, the agent needs to query Google Analytics and Google Search Console data.",
+    "rationale": "Searches for performance and analytics data using Google Analytics.",
     "candidate_tools": [
       "CLOUDFLARE_LIST_ACCOUNTS",
       "CLOUDFLARE_LIST_DNS_RECORDS",
@@ -41,653 +45,370 @@
     ]
   },
   "request": {
-    "query": "fetch website traffic and search performance analytics"
+    "query": "get google analytics traffic report data"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "fetch website traffic and search performance analytics",
-          "execution_guidance": "Found 8 tools for this query. Look at the schemas to know how to use them.",
+          "use_case": "get google analytics traffic report data",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Discover accessible analytics accounts using GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA (pick an account for scoping).",
+            "[Required] [Prerequisite]: List properties for the chosen account using GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED (select a property; note its reporting time zone for day-boundaries; ensure the filter uses the supported parent/ancestor style).",
+            "[Optional (if dimension/metric apiNames are uncertain)] [Prerequisite]: Inspect available fields using GOOGLE_ANALYTICS_GET_METADATA (choose valid apiNames before building the request).",
+            "[Optional (if request validation fails or many fields/filters are mixed)] [Prerequisite]: Validate dimension/metric combinations using GOOGLE_ANALYTICS_CHECK_COMPATIBILITY (revise fields/filters before retrying).",
+            "[Required] [Step]: Retrieve traffic metrics for the requested window using GOOGLE_ANALYTICS_RUN_REPORT (run totals-only first, then key breakdowns; paginate with limit/offset until all rows are retrieved; split calls if metric/field limits are hit and map any dateRange labels back to requested ranges).",
+            "[Optional (if multiple report shapes are needed)] [Next Step]: Fetch multiple report variants in one call using GOOGLE_ANALYTICS_BATCH_RUN_REPORTS (keep report ordering stable when reading data.reports[]).",
+            "[Optional (if standard reporting is delayed or shows no recent rows)] [Fallback]: Use GOOGLE_ANALYTICS_RUN_REALTIME_REPORT for directional near-live confirmation."
+          ],
+          "known_pitfalls": [
+            "[GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED] 400 INVALID_ARGUMENT if the filter is missing/malformed; it must be a single string expression scoped to the parent account.",
+            "[GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA] Call can succeed but return zero usable accounts; treat as access/scope and re-check permissions.",
+            "[GOOGLE_ANALYTICS_RUN_REPORT] dimensionValues[].value and metricValues[].value are strings and may be empty/non-numeric; cast defensively and tolerate unexpected tokens.",
+            "[GOOGLE_ANALYTICS_RUN_REPORT] totals[] may be absent (including totals-only queries); also handle missing headers when no dimensions are requested.",
+            "[GOOGLE_ANALYTICS_RUN_REPORT] With multiple dateRanges, rows can be keyed by dateRange label strings; map labels back to the requested ranges before comparison."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse a GOOGLE_ANALYTICS_RUN_REPORT response into typed row dictionaries (dimensions/metrics arrive as strings)",
+              "code": "```python\ndef parse_ga(payload):\n  dims=[h.get('name') for h in (payload.get('dimensionHeaders') or [])]\n  mets=[h.get('name') for h in (payload.get('metricHeaders') or [])]\n  out=[]\n  for row in (payload.get('rows') or []):\n    rec={}\n    dv=row.get('dimensionValues') or []\n    mv=row.get('metricValues') or []\n    for i,k in enumerate(dims): rec[k]=dv[i].get('value') if i<len(dv) else None\n    for i,k in enumerate(mets):\n      v=mv[i].get('value') if i<len(mv) else None\n      try: rec[k]=None if v in (None,'') else (float(v) if '.' in str(v) else int(v))\n      except Exception: rec[k]=v\n    out.append(rec)\n  return out\n```"
+            }
+          ],
+          "difficulty": "easy",
           "primary_tool_slugs": [
-            "AHREFS_RETRIEVE_TOP_PAGES_FROM_SITE_EXPLORER",
-            "SIMPLE_ANALYTICS_GET_AGGREGATED_STATS",
-            "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY"
+            "GOOGLE_ANALYTICS_RUN_REPORT"
           ],
           "related_tool_slugs": [
-            "SIMPLE_ANALYTICS_ADMIN_API_LIST_WEBSITES",
-            "SIMPLE_ANALYTICS_EXPORT_API_GET_RAW_DATA",
-            "GOOGLE_SEARCH_CONSOLE_LIST_SITES",
-            "GOOGLE_SEARCH_CONSOLE_INSPECT_URL",
-            "AHREFS_RETRIEVE_ORGANIC_KEYWORDS"
+            "GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED",
+            "GOOGLE_ANALYTICS_GET_METADATA",
+            "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY",
+            "GOOGLE_ANALYTICS_RUN_REALTIME_REPORT",
+            "GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA",
+            "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS"
           ],
           "toolkits": [
-            "ahrefs",
-            "simple_analytics",
-            "google_search_console"
-          ]
+            "google_analytics"
+          ],
+          "plan_id": "d3f5ed6cabaf4f56a6117fa038253042"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "ahrefs",
+          "toolkit": "google_analytics",
           "has_active_connection": false,
-          "description": "Ahrefs is an SEO and marketing platform offering site audits, keyword research, content analysis, and competitive insights to improve search rankings and drive organic traffic",
-          "status_message": "No Active connection for toolkit=ahrefs. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"ahrefs\") to create a connection BEFORE executing any ahrefs tools."
-        },
-        {
-          "toolkit": "simple_analytics",
-          "has_active_connection": false,
-          "description": "Simple Analytics is a privacy-friendly and simple alternative to Google Analytics, offering straightforward analytics without cookies or trackers.",
-          "status_message": "No Active connection for toolkit=simple_analytics. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"simple_analytics\") to create a connection BEFORE executing any simple_analytics tools."
-        },
-        {
-          "toolkit": "google_search_console",
-          "has_active_connection": false,
-          "description": "Google Search Console provides tools to monitor, maintain, and troubleshoot your site's presence in Google Search results.",
-          "status_message": "No Active connection for toolkit=google_search_console. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"google_search_console\") to create a connection BEFORE executing any google_search_console tools."
+          "description": "Google Analytics tracks and reports website traffic, user behavior, and conversion data, enabling marketers to optimize online performance and customer journeys",
+          "status_message": "No Active connection for toolkit=google_analytics. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"google_analytics\") to create a connection BEFORE executing any google_analytics tools."
         }
       ],
       "tool_schemas": {
-        "AHREFS_RETRIEVE_TOP_PAGES_FROM_SITE_EXPLORER": {
-          "toolkit": "AHREFS",
-          "tool_slug": "AHREFS_RETRIEVE_TOP_PAGES_FROM_SITE_EXPLORER",
-          "description": "Retrieves data about the top-performing pages of a specified website using Ahrefs' Site Explorer tool. This endpoint provides valuable insights into a site's most successful content based on various SEO metrics. It's particularly useful for content analysis, competitive research, and identifying opportunities for optimization. The data returned includes details such as page URLs, organic traffic estimates, ranking keywords, and other relevant SEO metrics for each top page. Use this endpoint when you need to analyze the best-performing content of a website or compare top pages across different domains. Note that the results are based on Ahrefs' data and estimates, which may not always reflect real-time traffic or exact Google rankings.",
+        "GOOGLE_ANALYTICS_RUN_REPORT": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_RUN_REPORT",
+          "description": "Tool to run a customized GA4 data report. Use when you need event data after specifying dimensions, metrics, and date ranges. IMPORTANT - DIMENSION/METRIC COMPATIBILITY: The Google Analytics Data API has strict compatibility rules between dimensions and metrics. Not all combinations are valid. If you receive a 400 error with a message about incompatible dimensions/metrics, use the GOOGLE_ANALYTICS_CHECK_COMPATIBILITY action first to validate your dimension/metric combinations before running reports. Common incompatibilities include: - Demographic dimensions (userAgeBracket, userGender) with session-scoped dimensions/filters (sessionCampaignName, sessionSource) - Certain user-scoped dimensions with event-scoped metrics For complex queries, consider starting with simpler dimension/metric combinations or use CHECK_COMPATIBILITY to pre-validate your request.",
           "input_schema": {
             "type": "object",
             "required": [
-              "select",
-              "target",
-              "date"
+              "property"
             ],
             "properties": {
-              "date": {
-                "type": "string",
-                "description": "A date to report metrics on in YYYY-MM-DD format."
-              },
-              "mode": {
-                "enum": [
-                  "exact",
-                  "prefix",
-                  "domain",
-                  "subdomains"
-                ],
-                "type": "string",
-                "default": "subdomains",
-                "description": "The scope of the search based on the target you entered."
-              },
               "limit": {
                 "type": "integer",
-                "default": 1000,
-                "description": "The number of results to return."
-              },
-              "where": {
-                "type": "string",
-                "description": "The filter expression. The following column identifiers are recognized (this differs from the identifiers recognized by the `select` parameter). **cpc**   type: integer nullable **cpc_prev**: The CPC metric on the comparison date.   type: integer nullable **has_thumbnail**: The position has a thumbnail.   type: boolean **has_thumbnail_prev**: The position has a thumbnail on the comparison date.   type: boolean **has_video**: The position has a video.   type: boolean **has_video_prev**: The position has a video on the comparison date.   type: boolean **keyword**: The keyword your target ranks for.   type: string **keyword_difficulty** (10 units): An estimation of how hard it is to rank in the top 10 organic search results for a keyword on a 100-point scale.   type: integer nullable **keyword_difficulty_prev** (10 units): The keyword difficulty on the comparison date.   type: integer nullable **keyword_prev**: The keyword your target ranks for on the comparison date.   type: string **keywords**: The total number of keywords that your target ranks for in the top 100 organic search results.   type: integer **keywords_diff**: The change in keywords between your selected dates.   type: integer **keywords_diff_percent**: The change in keywords between your selected dates, in percents.   type: integer **keywords_merged**: The total number of keywords optimized for sorting.   type: integer **keywords_prev**: The keyword your target ranks for on the comparison date.   type: integer **position**: The position your target ranks for in the organic search results for a keyword.   type: integer **position_kind**: The kind of a position: organic, paid or a SERP feature. This applies to all positions for a given keyword and URL before picking the top position.   type: string   enum: `\"paid_top\"` `\"paid_bottom\"` `\"paid_right\"` `\"paid_sitelink\"` `\"organic\"` `\"sitelink\"` `\"snippet\"` `\"image\"` `\"article\"` `\"knowledge_card\"` `\"knowledge_panel\"` `\"local_pack\"` `\"local_teaser\"` `\"news\"` `\"question\"` `\"review\"` `\"shopping\"` `\"tweet\"` `\"spelling\"` `\"video\"` `\"discussion\"` `\"ai_overview\"` `\"ai_overview_sitelink\"` `\"organic_shopping\"` **position_kind_prev**: The kind of a position on the comparison date.   type: string   enum: `\"paid_top\"` `\"paid_bottom\"` `\"paid_right\"` `\"paid_sitelink\"` `\"organic\"` `\"sitelink\"` `\"snippet\"` `\"image\"` `\"article\"` `\"knowledge_card\"` `\"knowledge_panel\"` `\"local_pack\"` `\"local_teaser\"` `\"news\"` `\"question\"` `\"review\"` `\"shopping\"` `\"tweet\"` `\"spelling\"` `\"video\"` `\"discussion\"` `\"ai_overview\"` `\"ai_overview_sitelink\"` `\"organic_shopping\"` **position_prev**: The position of your target for a given keyword on the comparison date.   type: integer **raw_url**: The ranking page URL in encoded format.   type: string **raw_url_prev**: The ranking page URL on the comparison date in encoded format.   type: string **serp_features**   type: array(string)   enum: `\"paid_top\"` `\"paid_bottom\"` `\"paid_right\"` `\"paid_sitelink\"` `\"organic\"` `\"sitelink\"` `\"snippet\"` `\"image\"` `\"article\"` `\"knowledge_card\"` `\"knowledge_panel\"` `\"local_pack\"` `\"local_teaser\"` `\"news\"` `\"question\"` `\"review\"` `\"shopping\"` `\"tweet\"` `\"spelling\"` `\"video\"` `\"discussion\"` `\"ai_overview\"` `\"ai_overview_sitelink\"` `\"organic_shopping\"` `\"image_th\"` `\"video_th\"` `\"ai_overview_found\"` **serp_features_prev**: The SERP features on the comparison date.   type: array(string)   enum: `\"paid_top\"` `\"paid_bottom\"` `\"paid_right\"` `\"paid_sitelink\"` `\"organic\"` `\"sitelink\"` `\"snippet\"` `\"image\"` `\"article\"` `\"knowledge_card\"` `\"knowledge_panel\"` `\"local_pack\"` `\"local_teaser\"` `\"news\"` `\"question\"` `\"review\"` `\"shopping\"` `\"tweet\"` `\"spelling\"` `\"video\"` `\"discussion\"` `\"ai_overview\"` `\"ai_overview_sitelink\"` `\"organic_shopping\"` `\"image_th\"` `\"video_th\"` `\"ai_overview_found\"` **status**: The status of a page: the new page that just started to rank (\"left\"), the lost page that disappeared from search results (\"right\"), or no change (\"both\").   type: string   enum: `\"left\"` `\"right\"` `\"both\"` **sum_traffic** (10 units): An estimation of the monthly organic search traffic that a page gets from all the keywords that it ranks for.   type: integer nullable **sum_traffic_merged** (10 units): The traffic field optimized for sorting.   type: integer **sum_traffic_prev** (10 units): The traffic on the comparison date.   type: integer nullable **top_keyword**: The keyword that brings the most organic traffic to a page.   type: string nullable **top_keyword_best_position**: The ranking position that a page holds for its top keyword.   type: integer nullable **top_keyword_best_position_diff**: The change in the top position between your selected dates.   type: integer nullable **top_keyword_best_position_kind**: The kind of the top position: organic, paid or a SERP feature.   type: string nullable   enum: `\"paid_top\"` `\"paid_bottom\"` `\"paid_right\"` `\"paid_sitelink\"` `\"organic\"` `\"sitelink\"` `\"snippet\"` `\"image\"` `\"article\"` `\"knowledge_card\"` `\"knowledge_panel\"` `\"local_pack\"` `\"local_teaser\"` `\"news\"` `\"question\"` `\"review\"` `\"shopping\"` `\"tweet\"` `\"spelling\"` `\"video\"` `\"discussion\"` `\"ai_overview\"` `\"ai_overview_sitelink\"` `\"organic_shopping\"` **top_keyword_best_position_kind_prev**: The kind of the top position on the comparison date.   type: string nullable   enum: `\"paid_top\"` `\"paid_bottom\"` `\"paid_right\"` `\"paid_sitelink\"` `\"organic\"` `\"sitelink\"` `\"snippet\"` `\"image\"` `\"article\"` `\"knowledge_card\"` `\"knowledge_panel\"` `\"local_pack\"` `\"local_teaser\"` `\"news\"` `\"question\"` `\"review\"` `\"shopping\"` `\"tweet\"` `\"spelling\"` `\"video\"` `\"discussion\"` `\"ai_overview\"` `\"ai_overview_sitelink\"` `\"organic_shopping\"` **top_keyword_best_position_prev**: The top position on the comparison date.   type: integer nullable **top_keyword_best_position_title**: The title displayed for the page in its top keyword\"s SERP.   type: string nullable **top_keyword_best_position_title_prev**: The title displayed for the page in its top keyword\"s SERP on the comparison date.   type: string nullable **top_keyword_country**: The country in which a page ranks for its top keyword.   type: string nullable   enum: `\"AD\"` `\"AE\"` `\"AF\"` `\"AG\"` `\"AI\"` `\"AL\"` `\"AM\"` `\"AO\"` `\"AQ\"` `\"AR\"` `\"AS\"` `\"AT\"` `\"AU\"` `\"AW\"` `\"AX\"` `\"AZ\"` `\"BA\"` `\"BB\"` `\"BD\"` `\"BE\"` `\"BF\"` `\"BG\"` `\"BH\"` `\"BI\"` `\"BJ\"` `\"BL\"` `\"BM\"` `\"BN\"` `\"BO\"` `\"BQ\"` `\"BR\"` `\"BS\"` `\"BT\"` `\"BV\"` `\"BW\"` `\"BY\"` `\"BZ\"` `\"CA\"` `\"CC\"` `\"CD\"` `\"CF\"` `\"CG\"` `\"CH\"` `\"CI\"` `\"CK\"` `\"CL\"` `\"CM\"` `\"CN\"` `\"CO\"` `\"CR\"` `\"CU\"` `\"CV\"` `\"CW\"` `\"CX\"` `\"CY\"` `\"CZ\"` `\"DE\"` `\"DJ\"` `\"DK\"` `\"DM\"` `\"DO\"` `\"DZ\"` `\"EC\"` `\"EE\"` `\"EG\"` `\"EH\"` `\"ER\"` `\"ES\"` `\"ET\"` `\"FI\"` `\"FJ\"` `\"FK\"` `\"FM\"` `\"FO\"` `\"FR\"` `\"GA\"` `\"GB\"` `\"GD\"` `\"GE\"` `\"GF\"` `\"GG\"` `\"GH\"` `\"GI\"` `\"GL\"` `\"GM\"` `\"GN\"` `\"GP\"` `\"GQ\"` `\"GR\"` `\"GS\"` `\"GT\"` `\"GU\"` `\"GW\"` `\"GY\"` `\"HK\"` `\"HM\"` `\"HN\"` `\"HR\"` `\"HT\"` `\"HU\"` `\"ID\"` `\"IE\"` `\"IL\"` `\"IM\"` `\"IN\"` `\"IO\"` `\"IQ\"` `\"IR\"` `\"IS\"` `\"IT\"` `\"JE\"` `\"JM\"` `\"JO\"` `\"JP\"` `\"KE\"` `\"KG\"` `\"KH\"` `\"KI\"` `\"KM\"` `\"KN\"` `\"KP\"` `\"KR\"` `\"KW\"` `\"KY\"` `\"KZ\"` `\"LA\"` `\"LB\"` `\"LC\"` `\"LI\"` `\"LK\"` `\"LR\"` `\"LS\"` `\"LT\"` `\"LU\"` `\"LV\"` `\"LY\"` `\"MA\"` `\"MC\"` `\"MD\"` `\"ME\"` `\"MF\"` `\"MG\"` `\"MH\"` `\"MK\"` `\"ML\"` `\"MM\"` `\"MN\"` `\"MO\"` `\"MP\"` `\"MQ\"` `\"MR\"` `\"MS\"` `\"MT\"` `\"MU\"` `\"MV\"` `\"MW\"` `\"MX\"` `\"MY\"` `\"MZ\"` `\"NA\"` `\"NC\"` `\"NE\"` `\"NF\"` `\"NG\"` `\"NI\"` `\"NL\"` `\"NO\"` `\"NP\"` `\"NR\"` `\"NU\"` `\"NZ\"` `\"OM\"` `\"OTHER\"` `\"PA\"` `\"PE\"` `\"PF\"` `\"PG\"` `\"PH\"` `\"PK\"` `\"PL\"` `\"PM\"` `\"PN\"` `\"PR\"` `\"PS\"` `\"PT\"` `\"PW\"` `\"PY\"` `\"QA\"` `\"RE\"` `\"RO\"` `\"RS\"` `\"RU\"` `\"RW\"` `\"SA\"` `\"SB\"` `\"SC\"` `\"SD\"` `\"SE\"` `\"SG\"` `\"SH\"` `\"SI\"` `\"SJ\"` `\"SK\"` `\"SL\"` `\"SM\"` `\"SN\"` `\"SO\"` `\"SR\"` `\"SS\"` `\"ST\"` `\"SV\"` `\"SX\"` `\"SY\"` `\"SZ\"` `\"TC\"` `\"TD\"` `\"TF\"` `\"TG\"` `\"TH\"` `\"TJ\"` `\"TK\"` `\"TL\"` `\"TM\"` `\"TN\"` `\"TO\"` `\"TR\"` `\"TT\"` `\"TV\"` `\"TW\"` `\"TZ\"` `\"UA\"` `\"UG\"` `\"UM\"` `\"US\"` `\"UY\"` `\"UZ\"` `\"VA\"` `\"VC\"` `\"VE\"` `\"VG\"` `\"VI\"` `\"VN\"` `\"VU\"` `\"WF\"` `\"WS\"` `\"YE\"` `\"YT\"` `\"ZA\"` `\"ZM\"` `\"ZW\"` **top_keyword_country_prev**: The country in which a page ranks for its top keyword on the comparison date.   type: string nullable   enum: `\"AD\"` `\"AE\"` `\"AF\"` `\"AG\"` `\"AI\"` `\"AL\"` `\"AM\"` `\"AO\"` `\"AQ\"` `\"AR\"` `\"AS\"` `\"AT\"` `\"AU\"` `\"AW\"` `\"AX\"` `\"AZ\"` `\"BA\"` `\"BB\"` `\"BD\"` `\"BE\"` `\"BF\"` `\"BG\"` `\"BH\"` `\"BI\"` `\"BJ\"` `\"BL\"` `\"BM\"` `\"BN\"` `\"BO\"` `\"BQ\"` `\"BR\"` `\"BS\"` `\"BT\"` `\"BV\"` `\"BW\"` `\"BY\"` `\"BZ\"` `\"CA\"` `\"CC\"` `\"CD\"` `\"CF\"` `\"CG\"` `\"CH\"` `\"CI\"` `\"CK\"` `\"CL\"` `\"CM\"` `\"CN\"` `\"CO\"` `\"CR\"` `\"CU\"` `\"CV\"` `\"CW\"` `\"CX\"` `\"CY\"` `\"CZ\"` `\"DE\"` `\"DJ\"` `\"DK\"` `\"DM\"` `\"DO\"` `\"DZ\"` `\"EC\"` `\"EE\"` `\"EG\"` `\"EH\"` `\"ER\"` `\"ES\"` `\"ET\"` `\"FI\"` `\"FJ\"` `\"FK\"` `\"FM\"` `\"FO\"` `\"FR\"` `\"GA\"` `\"GB\"` `\"GD\"` `\"GE\"` `\"GF\"` `\"GG\"` `\"GH\"` `\"GI\"` `\"GL\"` `\"GM\"` `\"GN\"` `\"GP\"` `\"GQ\"` `\"GR\"` `\"GS\"` `\"GT\"` `\"GU\"` `\"GW\"` `\"GY\"` `\"HK\"` `\"HM\"` `\"HN\"` `\"HR\"` `\"HT\"` `\"HU\"` `\"ID\"` `\"IE\"` `\"IL\"` `\"IM\"` `\"IN\"` `\"IO\"` `\"IQ\"` `\"IR\"` `\"IS\"` `\"IT\"` `\"JE\"` `\"JM\"` `\"JO\"` `\"JP\"` `\"KE\"` `\"KG\"` `\"KH\"` `\"KI\"` `\"KM\"` `\"KN\"` `\"KP\"` `\"KR\"` `\"KW\"` `\"KY\"` `\"KZ\"` `\"LA\"` `\"LB\"` `\"LC\"` `\"LI\"` `\"LK\"` `\"LR\"` `\"LS\"` `\"LT\"` `\"LU\"` `\"LV\"` `\"LY\"` `\"MA\"` `\"MC\"` `\"MD\"` `\"ME\"` `\"MF\"` `\"MG\"` `\"MH\"` `\"MK\"` `\"ML\"` `\"MM\"` `\"MN\"` `\"MO\"` `\"MP\"` `\"MQ\"` `\"MR\"` `\"MS\"` `\"MT\"` `\"MU\"` `\"MV\"` `\"MW\"` `\"MX\"` `\"MY\"` `\"MZ\"` `\"NA\"` `\"NC\"` `\"NE\"` `\"NF\"` `\"NG\"` `\"NI\"` `\"NL\"` `\"NO\"` `\"NP\"` `\"NR\"` `\"NU\"` `\"NZ\"` `\"OM\"` `\"OTHER\"` `\"PA\"` `\"PE\"` `\"PF\"` `\"PG\"` `\"PH\"` `\"PK\"` `\"PL\"` `\"PM\"` `\"PN\"` `\"PR\"` `\"PS\"` `\"PT\"` `\"PW\"` `\"PY\"` `\"QA\"` `\"RE\"` `\"RO\"` `\"RS\"` `\"RU\"` `\"RW\"` `\"SA\"` `\"SB\"` `\"SC\"` `\"SD\"` `\"SE\"` `\"SG\"` `\"SH\"` `\"SI\"` `\"SJ\"` `\"SK\"` `\"SL\"` `\"SM\"` `\"SN\"` `\"SO\"` `\"SR\"` `\"SS\"` `\"ST\"` `\"SV\"` `\"SX\"` `\"SY\"` `\"SZ\"` `\"TC\"` `\"TD\"` `\"TF\"` `\"TG\"` `\"TH\"` `\"TJ\"` `\"TK\"` `\"TL\"` `\"TM\"` `\"TN\"` `\"TO\"` `\"TR\"` `\"TT\"` `\"TV\"` `\"TW\"` `\"TZ\"` `\"UA\"` `\"UG\"` `\"UM\"` `\"US\"` `\"UY\"` `\"UZ\"` `\"VA\"` `\"VC\"` `\"VE\"` `\"VG\"` `\"VI\"` `\"VN\"` `\"VU\"` `\"WF\"` `\"WS\"` `\"YE\"` `\"YT\"` `\"ZA\"` `\"ZM\"` `\"ZW\"` **top_keyword_prev**: The keyword that brings the most organic traffic to a page on the comparison date.   type: string nullable **top_keyword_volume** (10 units): An estimation of the average monthly number of searches for the top keyword over the latest month or over the latest known 12 months of data depending on the \"volume_mode\" parameter.   type: integer nullable **top_keyword_volume_prev** (10 units): The search volume on the comparison date.   type: integer nullable **traffic** (10 units): An estimation of the number of monthly visitors that your target gets from organic search for a keyword.   type: integer **traffic_diff**: The change in traffic between your selected dates.   type: integer **traffic_diff_percent**: The change in traffic between your selected dates, in percents.   type: integer **traffic_prev** (10 units): The traffic from a keyword on the comparison date.   type: integer **url**: The ranking page URL.   type: url nullable **url_prev**: The ranking page URL on the comparison date.   type: url nullable **value** (10 units): The estimated value of a page\"s monthly organic search traffic, in USD cents.   type: integer nullable **value_diff**: The change in traffic value between your selected dates.   type: integer **value_diff_percent**: The change in traffic value between your selected dates, in percents.   type: integer **value_merged** (10 units): The traffic value field optimized for sorting.   type: integer nullable **value_prev** (10 units): The traffic value on the comparison date.   type: integer nullable **volume** (10 units): An estimation of the number of searches for a keyword over the latest month.   type: integer nullable **volume_prev** (10 units): The search volume on the comparison date.   type: integer nullable **words**: The number of words in a keyword.   type: integer **words_prev**: The number of words in a keyword on the comparison date.   type: integer "
+                "minimum": 1,
+                "examples": [
+                  1000
+                ],
+                "description": "Optional. Number of rows to return. Must be between 1 and 250000."
               },
               "offset": {
                 "type": "integer",
-                "default": 0,
-                "description": "[Deprecated on 31 May 2024]."
-              },
-              "output": {
-                "enum": [
-                  "json",
-                  "csv",
-                  "xml",
-                  "php"
-                ],
-                "type": "string",
-                "description": "The output format."
-              },
-              "select": {
-                "type": "string",
-                "description": "A comma-separated list of columns to return. See response schema for valid column identifiers. "
-              },
-              "target": {
-                "type": "string",
-                "description": "The target of the search: a domain or a URL."
-              },
-              "country": {
-                "enum": [
-                  "ad",
-                  "ae",
-                  "af",
-                  "ag",
-                  "ai",
-                  "al",
-                  "am",
-                  "ao",
-                  "ar",
-                  "as",
-                  "at",
-                  "au",
-                  "aw",
-                  "az",
-                  "ba",
-                  "bb",
-                  "bd",
-                  "be",
-                  "bf",
-                  "bg",
-                  "bh",
-                  "bi",
-                  "bj",
-                  "bn",
-                  "bo",
-                  "br",
-                  "bs",
-                  "bt",
-                  "bw",
-                  "by",
-                  "bz",
-                  "ca",
-                  "cd",
-                  "cf",
-                  "cg",
-                  "ch",
-                  "ci",
-                  "ck",
-                  "cl",
-                  "cm",
-                  "cn",
-                  "co",
-                  "cr",
-                  "cu",
-                  "cv",
-                  "cy",
-                  "cz",
-                  "de",
-                  "dj",
-                  "dk",
-                  "dm",
-                  "do",
-                  "dz",
-                  "ec",
-                  "ee",
-                  "eg",
-                  "es",
-                  "et",
-                  "fi",
-                  "fj",
-                  "fm",
-                  "fo",
-                  "fr",
-                  "ga",
-                  "gb",
-                  "gd",
-                  "ge",
-                  "gf",
-                  "gg",
-                  "gh",
-                  "gi",
-                  "gl",
-                  "gm",
-                  "gn",
-                  "gp",
-                  "gq",
-                  "gr",
-                  "gt",
-                  "gu",
-                  "gy",
-                  "hk",
-                  "hn",
-                  "hr",
-                  "ht",
-                  "hu",
-                  "id",
-                  "ie",
-                  "il",
-                  "im",
-                  "in",
-                  "iq",
-                  "is",
-                  "it",
-                  "je",
-                  "jm",
-                  "jo",
-                  "jp",
-                  "ke",
-                  "kg",
-                  "kh",
-                  "ki",
-                  "kn",
-                  "kr",
-                  "kw",
-                  "ky",
-                  "kz",
-                  "la",
-                  "lb",
-                  "lc",
-                  "li",
-                  "lk",
-                  "ls",
-                  "lt",
-                  "lu",
-                  "lv",
-                  "ly",
-                  "ma",
-                  "mc",
-                  "md",
-                  "me",
-                  "mg",
-                  "mk",
-                  "ml",
-                  "mm",
-                  "mn",
-                  "mq",
-                  "mr",
-                  "ms",
-                  "mt",
-                  "mu",
-                  "mv",
-                  "mw",
-                  "mx",
-                  "my",
-                  "mz",
-                  "na",
-                  "nc",
-                  "ne",
-                  "ng",
-                  "ni",
-                  "nl",
-                  "no",
-                  "np",
-                  "nr",
-                  "nu",
-                  "nz",
-                  "om",
-                  "pa",
-                  "pe",
-                  "pf",
-                  "pg",
-                  "ph",
-                  "pk",
-                  "pl",
-                  "pn",
-                  "pr",
-                  "ps",
-                  "pt",
-                  "py",
-                  "qa",
-                  "re",
-                  "ro",
-                  "rs",
-                  "ru",
-                  "rw",
-                  "sa",
-                  "sb",
-                  "sc",
-                  "se",
-                  "sg",
-                  "sh",
-                  "si",
-                  "sk",
-                  "sl",
-                  "sm",
-                  "sn",
-                  "so",
-                  "sr",
-                  "st",
-                  "sv",
-                  "td",
-                  "tg",
-                  "th",
-                  "tj",
-                  "tk",
-                  "tl",
-                  "tm",
-                  "tn",
-                  "to",
-                  "tr",
-                  "tt",
-                  "tw",
-                  "tz",
-                  "ua",
-                  "ug",
-                  "us",
-                  "uy",
-                  "uz",
-                  "vc",
-                  "ve",
-                  "vg",
-                  "vi",
-                  "vn",
-                  "vu",
-                  "ws",
-                  "ye",
-                  "yt",
-                  "za",
-                  "zm",
-                  "zw"
-                ],
-                "type": "string",
-                "description": "A two-letter country code (ISO 3166-1 alpha-2)."
-              },
-              "timeout": {
-                "type": "integer",
-                "description": "A manual timeout duration in seconds."
-              },
-              "order_by": {
-                "type": "string",
-                "description": "A column to order results by. See response schema for valid column identifiers. "
-              },
-              "protocol": {
-                "enum": [
-                  "both",
-                  "http",
-                  "https"
-                ],
-                "type": "string",
-                "default": "both",
-                "description": "The protocol of your target."
-              },
-              "volume_mode": {
-                "enum": [
-                  "monthly",
-                  "average"
-                ],
-                "type": "string",
-                "default": "monthly",
-                "description": "The search volume calculation mode: monthly or average. It affects volume, traffic, and traffic value. "
-              },
-              "date_compared": {
-                "type": "string",
-                "description": "A date to compare metrics with in YYYY-MM-DD format."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "SIMPLE_ANALYTICS_GET_AGGREGATED_STATS": {
-          "toolkit": "SIMPLE_ANALYTICS",
-          "tool_slug": "SIMPLE_ANALYTICS_GET_AGGREGATED_STATS",
-          "description": "Tool to retrieve aggregated statistics for a specified website. Use when you need an overview of key metrics like visitors, pageviews, bounce rate, and more.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "website"
-            ],
-            "properties": {
-              "end": {
-                "type": "string",
-                "examples": [
-                  "2022-02-01"
-                ],
-                "description": "End date in YYYY-MM-DD format."
-              },
-              "page": {
-                "type": "string",
-                "examples": [
-                  "/pricing"
-                ],
-                "description": "Filter stats by specific page path."
-              },
-              "start": {
-                "type": "string",
-                "examples": [
-                  "2022-01-01"
-                ],
-                "description": "Start date in YYYY-MM-DD format."
-              },
-              "source": {
-                "type": "string",
-                "examples": [
-                  "direct"
-                ],
-                "description": "Filter stats by traffic source."
-              },
-              "compare": {
-                "type": "string",
-                "examples": [
-                  "2022-01-01"
-                ],
-                "description": "Comparison range start date in YYYY-MM-DD format."
-              },
-              "website": {
-                "type": "string",
-                "examples": [
-                  "simpleanalytics.com"
-                ],
-                "description": "Website identifier (domain or custom code)."
-              },
-              "referrer": {
-                "type": "string",
-                "examples": [
-                  "google.com"
-                ],
-                "description": "Filter stats by specific referrer host."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY": {
-          "toolkit": "GOOGLE_SEARCH_CONSOLE",
-          "tool_slug": "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY",
-          "description": "Queries Google Search Console for search analytics data including clicks, impressions, CTR, and position metrics. Only returns URLs with at least one impression; missing rows do not confirm non-indexing. Position is an impression-weighted average rank.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "site_url",
-              "start_date",
-              "end_date"
-            ],
-            "properties": {
-              "end_date": {
-                "type": "string",
-                "examples": [
-                  "2023-12-31"
-                ],
-                "description": "The end date of the date range for the query, in YYYY-MM-DD format."
-              },
-              "site_url": {
-                "type": "string",
-                "examples": [
-                  "https://www.example.com/",
-                  "sc-domain:example.com"
-                ],
-                "description": "The site's URL, including protocol (e.g., https://www.example.com/) or a domain property (e.g., sc-domain:example.com). URL-prefix properties specify exact protocol and path, while domain properties aggregate data across all subdomains and protocols."
-              },
-              "row_limit": {
-                "type": "integer",
-                "default": 1000,
-                "maximum": 25000,
-                "minimum": 1,
-                "description": "The maximum number of rows to return. Must be between 1 and 25,000. Note: The API returns top results sorted by clicks (or date when grouping by date). Must be between 1 and 5000. Use start_row to paginate; stop when response rows < row_limit."
-              },
-              "start_row": {
-                "type": "integer",
-                "default": 0,
                 "minimum": 0,
-                "description": "The first row to return from the result set. Used for pagination."
-              },
-              "data_state": {
-                "enum": [
-                  "final",
-                  "all",
-                  "hourly_all"
-                ],
-                "type": "string",
-                "default": "final",
                 "examples": [
-                  "final",
-                  "all",
-                  "hourly_all"
+                  0
                 ],
-                "description": "The data state to return."
+                "description": "Optional. 0-based start row for pagination. Must be >= 0."
               },
-              "dimensions": {
-                "type": "array",
-                "items": {
-                  "enum": [
-                    "query",
-                    "page",
-                    "country",
-                    "device",
-                    "date",
-                    "searchAppearance",
-                    "hour"
-                  ],
-                  "type": "string"
-                },
-                "default": [
-                  "query"
-                ],
-                "examples": [
-                  [
-                    "query",
-                    "page"
-                  ],
-                  [
-                    "country",
-                    "device"
-                  ],
-                  [
-                    "date"
-                  ]
-                ],
-                "description": "The dimensions to group the data by. Results are sorted by clicks descending, except when grouping by date (sorted by date ascending)."
-              },
-              "start_date": {
-                "type": "string",
-                "examples": [
-                  "2023-01-01"
-                ],
-                "description": "The start date of the date range for the query, in YYYY-MM-DD format. Data lags 2\u20133 days (UTC); most recent 1\u20132 days may be incomplete. Data retention is ~16 months; older ranges return zero rows."
-              },
-              "search_type": {
-                "enum": [
-                  "web",
-                  "image",
-                  "video",
-                  "news",
-                  "discover",
-                  "googleNews"
-                ],
-                "type": "string",
-                "default": "web",
-                "examples": [
-                  "web",
-                  "image",
-                  "video"
-                ],
-                "description": "The search type to filter results by."
-              },
-              "aggregation_type": {
-                "enum": [
-                  "auto",
-                  "byPage",
-                  "byProperty",
-                  "byNewsShowcasePanel"
-                ],
-                "type": "string",
-                "default": "auto",
-                "examples": [
-                  "auto",
-                  "byProperty",
-                  "byPage"
-                ],
-                "description": "How data is aggregated."
-              },
-              "dimension_filter_groups": {
+              "metrics": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "additionalProperties": true
                 },
-                "description": "Optional filters to apply to dimensions. Each filter group contains an array of filters with structure: [{'filters': [{'dimension': 'country', 'operator': 'equals', 'expression': 'USA'}]}]. Operators: equals, notEquals, contains, notContains, includingRegex, excludingRegex. Invalid dimension names, unsupported operators, or mismatched expressions return zero rows without an error \u2014 verify each filter before trusting empty results."
+                "examples": [
+                  {
+                    "name": "activeUsers"
+                  },
+                  {
+                    "name": "sessions"
+                  },
+                  {
+                    "name": "screenPageViews"
+                  }
+                ],
+                "description": "Optional. The metrics to request and display. Maximum 10 metrics per request. Each metric MUST be an object with a required non-empty 'name' field. Common valid metric names: activeUsers, totalUsers, newUsers, sessions, engagedSessions, screenPageViews, eventCount, conversions, userEngagementDuration, engagementRate, bounceRate, averageSessionDuration, sessionsPerUser, screenPageViewsPerSession, purchaseRevenue, totalRevenue, transactions, ecommercePurchases, publisherAdClicks, publisherAdImpressions, totalAdRevenue. Custom metrics use format 'customEvent:parameter_name'. CRITICAL: 'averageEngagementTime' is NOT a valid metric - use 'userEngagementDuration' or 'averageSessionDuration' instead. 'exits' is NOT a valid metric in GA4."
+              },
+              "orderBys": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "desc": true,
+                    "metric": {
+                      "metricName": "activeUsers"
+                    }
+                  },
+                  {
+                    "desc": false,
+                    "dimension": {
+                      "orderType": "ALPHANUMERIC",
+                      "dimensionName": "country"
+                    }
+                  }
+                ],
+                "description": "Optional. Specify how rows are ordered. Each OrderBy object must have 'desc' (boolean) at the top level and exactly one of: 'metric' (with 'metricName' string), 'dimension' (with 'dimensionName' or 'name' string and optional 'orderType': 'ALPHANUMERIC', 'CASE_INSENSITIVE_ALPHANUMERIC', or 'NUMERIC'), or 'pivot'. Note: For dimension ordering, you can use either 'dimensionName' or 'name' field - both are accepted and normalized. Example for metric ordering: {'desc': true, 'metric': {'metricName': 'activeUsers'}}. Example for dimension ordering: {'desc': false, 'dimension': {'dimensionName': 'country', 'orderType': 'ALPHANUMERIC'}}."
+              },
+              "property": {
+                "type": "string",
+                "examples": [
+                  "properties/123456789"
+                ],
+                "description": "Required. The property resource on which to run the report. Format: properties/{property_id} where property_id must be a numeric ID (e.g., 'properties/123456789')."
+              },
+              "cohortSpec": {
+                "type": "object",
+                "description": "Optional. Cohort specification. Requires requesting the cohort dimension.",
+                "additionalProperties": true
+              },
+              "dateRanges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "endDate": "2023-01-31",
+                    "startDate": "2023-01-01"
+                  }
+                ],
+                "minItems": 1,
+                "description": "The date ranges to read. Required for standard reports. Each range MUST be an object with required 'startDate' and 'endDate' fields (both must be non-empty). Dates can be in YYYY-MM-DD format or special values like 'today', 'yesterday', '7daysAgo', '30daysAgo'. IMPORTANT: For cohort requests (when cohortSpec is provided), dateRanges must be omitted."
+              },
+              "dimensions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "name": "city"
+                  },
+                  {
+                    "name": "date"
+                  },
+                  {
+                    "name": "deviceCategory"
+                  }
+                ],
+                "description": "Optional. The dimensions to request and display. Maximum 9 dimensions per request. Each dimension MUST be an object with a required non-empty 'name' field. Common valid dimension names: date, dateHour, dateHourMinute, year, month, week, day, dayOfWeek, hour, city, cityId, country, countryId, continent, continentId, region, subContinent, deviceCategory, browser, operatingSystem, platform, platformDeviceCategory, screenResolution, sessionSource, sessionMedium, sessionSourceMedium, sessionCampaignName, sessionDefaultChannelGroup, firstUserSource, firstUserMedium, firstUserCampaignName, firstUserDefaultChannelGroup, pagePath, pagePathPlusQueryString, pageTitle, landingPage, hostname, eventName, streamName, userAgeBracket, userGender, language, newVsReturning. Custom dimensions: 'customEvent:parameter_name' or 'customUser:parameter_name'. 'dateRange' is NOT a valid dimension \u2014 use date dimensions (date, dateHour, year, month, etc.) instead. 'exits' is NOT a valid dimension in GA4. COMPATIBILITY: Not all dimensions can be combined with each other or with certain metrics/filters. If you receive a compatibility error, use GOOGLE_ANALYTICS_CHECK_COMPATIBILITY to validate combinations, or see https://developers.google.com/analytics/devguides/reporting/data/v1/compatibility"
+              },
+              "comparisons": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Optional. The comparison configuration. Adds a comparison column to the response."
+              },
+              "currencyCode": {
+                "type": "string",
+                "examples": [
+                  "USD"
+                ],
+                "description": "Optional. The currency code to apply, in ISO 4217 format. Defaults to property currency."
+              },
+              "metricFilter": {
+                "type": "object",
+                "description": "Optional. Filter expression to restrict rows by metric values. Applied after aggregation. IMPORTANT: Only use metric field names here (e.g., 'activeUsers', 'sessions', 'ecommercePurchases', 'purchaseRevenue'). Do NOT use dimension names in metricFilter - if you need to filter by a dimension (e.g., 'country', 'city', 'pagePath'), use dimensionFilter instead. The action validates that only metric names are used in metricFilter and will reject dimension names with a clear error. Structure: {'filter': {'fieldName': '<metric_name>', 'numericFilter': {'operation': 'GREATER_THAN', 'value': {'int64Value': '0'}}}} or use 'andGroup'/'orGroup' for multiple conditions.",
+                "additionalProperties": true
+              },
+              "keepEmptyRows": {
+                "type": "boolean",
+                "description": "Optional. If true, rows with all zero metrics will be returned; otherwise omitted."
+              },
+              "dimensionFilter": {
+                "type": "object",
+                "description": "Optional. Filter expression to restrict rows by dimension values. IMPORTANT: Only use dimension field names here (e.g., 'country', 'city', 'date', 'deviceCategory', 'pagePath'). Do NOT use metric names in dimensionFilter - if you need to filter by a metric (e.g., 'activeUsers', 'sessions', 'ecommercePurchases'), use metricFilter instead. Structure: {'filter': {'fieldName': '<dimension_name>', 'stringFilter': {...}}} or use 'andGroup'/'orGroup' for multiple conditions. COMPATIBILITY WARNING: Dimension filters must be compatible with the dimensions in your request. For example, filtering on 'sessionCampaignName' while using demographic dimensions (userAgeBracket, userGender) will fail. The filter field creates an implicit dimension that must be compatible with all other dimensions and metrics. Use GOOGLE_ANALYTICS_CHECK_COMPATIBILITY to verify your filter dimensions work with your requested dimensions/metrics.",
+                "additionalProperties": true
+              },
+              "metricAggregations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "TOTAL"
+                ],
+                "description": "Optional. Aggregation types to include over metrics, e.g., 'TOTAL', 'MINIMUM', 'MAXIMUM'."
+              },
+              "returnPropertyQuota": {
+                "type": "boolean",
+                "description": "Optional. If true, include the property's current quota state in the response."
+              },
+              "removed_dimensions_internal": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Internal field to store filtered dimension names for execution message. Not sent to API."
               }
             }
           },
           "hasFullSchema": true
         },
-        "SIMPLE_ANALYTICS_ADMIN_API_LIST_WEBSITES": {
-          "toolkit": "SIMPLE_ANALYTICS",
-          "tool_slug": "SIMPLE_ANALYTICS_ADMIN_API_LIST_WEBSITES",
-          "description": "Tool to list all websites associated with the authenticated user. Use after authenticating an admin account to retrieve website list.",
+        "GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED",
+          "description": "Tool to list GA4 properties based on filter criteria. Use when you need to find properties under a specific parent account or with specific firebase projects. Supports pagination and including soft-deleted properties.",
           "input_schema": {
             "type": "object",
-            "properties": {}
+            "required": [
+              "filter"
+            ],
+            "properties": {
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "parent:accounts/123456789",
+                  "ancestor:accounts/123456789"
+                ],
+                "description": "Required. Expression for filtering the results. Fields eligible for filtering: `parent:` (resource name of parent account/property), `ancestor:` (resource name of parent account), or `firebase_project:` (id or number of linked firebase project). Examples: 'parent:accounts/123' (account with id 123), 'parent:properties/123' (property with id 123), 'ancestor:accounts/123' (account with id 123), 'firebase_project:project-id' (firebase project with id project-id), 'firebase_project:123' (firebase project with number 123)."
+              },
+              "pageSize": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "examples": [
+                  50
+                ],
+                "description": "Optional. Maximum number of properties to return (1-200). Default is 50."
+              },
+              "pageToken": {
+                "type": "string",
+                "examples": [
+                  "token123"
+                ],
+                "description": "Optional. Token from previous ListProperties call to retrieve the next page."
+              },
+              "showDeleted": {
+                "type": "boolean",
+                "description": "Optional. Whether to include soft-deleted (trashed) properties. Default is false."
+              }
+            }
           },
           "hasFullSchema": true
         },
-        "SIMPLE_ANALYTICS_EXPORT_API_GET_RAW_DATA": {
-          "toolkit": "SIMPLE_ANALYTICS",
-          "tool_slug": "SIMPLE_ANALYTICS_EXPORT_API_GET_RAW_DATA",
-          "description": "Tool to export raw data points (page views and events) for a specific website. Use when you need to ...",
+        "GOOGLE_ANALYTICS_GET_METADATA": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_GET_METADATA",
+          "description": "Tool to get metadata for dimensions, metrics, and comparisons for a GA4 property. Use to discover available fields before building a report \u2014 always derive dimension/metric apiNames from this output rather than hardcoding from GA4 UI labels, which differ. Available fields vary per property; skip validation and downstream report tools like GOOGLE_ANALYTICS_RUN_REPORT return 400 INVALID_ARGUMENT on incompatible or invalid field combinations. Response can contain hundreds of fields; filter to relevant subset before passing to downstream logic.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "properties/123456789/metadata"
+                ],
+                "description": "Resource name of the metadata to retrieve. Format: properties/{property_id}/metadata. Use property_id=0 to return only universal (non-custom) metadata."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY",
+          "description": "Tool to list dimensions and metrics compatible with a GA4 report request. Use when you need to valid...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "SIMPLE_ANALYTICS_EXPORT_API_GET_RAW_DATA"
+                "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY"
               ]
             }
           }
         },
-        "GOOGLE_SEARCH_CONSOLE_LIST_SITES": {
-          "toolkit": "GOOGLE_SEARCH_CONSOLE",
-          "tool_slug": "GOOGLE_SEARCH_CONSOLE_LIST_SITES",
-          "description": "Lists all verified sites (properties) owned by the authenticated user in Google Search Console. Resp...",
+        "GOOGLE_ANALYTICS_RUN_REALTIME_REPORT": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_RUN_REALTIME_REPORT",
+          "description": "Tool to run a customized realtime report of Google Analytics event data. Use when you need realtime ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GOOGLE_SEARCH_CONSOLE_LIST_SITES"
+                "GOOGLE_ANALYTICS_RUN_REALTIME_REPORT"
               ]
             }
           }
         },
-        "GOOGLE_SEARCH_CONSOLE_INSPECT_URL": {
-          "toolkit": "GOOGLE_SEARCH_CONSOLE",
-          "tool_slug": "GOOGLE_SEARCH_CONSOLE_INSPECT_URL",
-          "description": "Inspects a URL for indexing issues and status in Google Search Console. Results may reflect cached d...",
+        "GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA",
+          "description": "Tool to list all Google Analytics accounts accessible by the caller using v1beta API. Use when you n...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GOOGLE_SEARCH_CONSOLE_INSPECT_URL"
+                "GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA"
               ]
             }
           }
         },
-        "AHREFS_RETRIEVE_ORGANIC_KEYWORDS": {
-          "toolkit": "AHREFS",
-          "tool_slug": "AHREFS_RETRIEVE_ORGANIC_KEYWORDS",
-          "description": "Retrieves organic keywords data for a specified website using Ahrefs' Site Explorer tool. This endpo...",
+        "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS",
+          "description": "Tool to return multiple analytics data reports in a batch. Use when you need to fetch multiple repor...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "AHREFS_RETRIEVE_ORGANIC_KEYWORDS"
+                "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:37:56.926Z",
-        "current_time_utc_epoch_seconds": 1786563476,
+        "current_time_utc": "2026-08-12T20:53:26.284Z",
+        "current_time_utc_epoch_seconds": 1786568006,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "fuel",
+        "id": "bell",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"fuel\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"bell\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
-        "Follow these steps carefully to begin the task:",
-        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
       ],
       "success": true,
       "error": null
     },
     "error": null,
-    "log_id": "log_KSm1kUFe_7cj"
+    "log_id": "log_L43sEyfQVwP7"
   }
 }

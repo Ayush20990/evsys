@@ -3,15 +3,20 @@
     "query_id": "workflow-005-q2",
     "workflow_id": 5,
     "workflow_task": "Manage a partner-operations pipeline across Gmail, ClickUp, and Notion: create outreach drafts and task handoffs, inspect and update existing handoffs, scan recent email threads against CRM records, and write evidence-supported CRM status updates.",
-    "query": "fetch recent email threads from partner",
-    "required_tools": [
-      "GMAIL_LIST_THREADS",
-      "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"
+    "query": "create clickup task handoff",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "CLICKUP_CREATE_TASK"
+        ],
+        "purpose": "create task handoff in ClickUp"
+      }
     ],
     "supporting_tools": [
-      "GMAIL_FETCH_EMAILS"
+      "CLICKUP_GET_TASK",
+      "CLICKUP_UPDATE_TASK"
     ],
-    "rationale": "To scan recent email threads against CRM records, the agent must list threads and then fetch the specific messages within those threads.",
+    "rationale": "Finds the tool needed to create task handoffs within the ClickUp platform.",
     "candidate_tools": [
       "CLICKUP_CREATE_TASK",
       "CLICKUP_GET_TASK",
@@ -33,298 +38,322 @@
     ]
   },
   "request": {
-    "query": "fetch recent email threads from partner"
+    "query": "create clickup task handoff"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "fetch recent email threads from partner",
+          "use_case": "create clickup task handoff",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Optional (if only message_id is known)] [Prerequisite]: Resolve the authoritative thread linkage using GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID (verify access; capture threadId plus minimal headers/ids).",
-            "[Required (if thread_id unknown)] [Prerequisite]: Discover candidate conversations using GMAIL_FETCH_EMAILS (metadata-first; retain messageId+threadId; paginate via nextPageToken/page_token; de-dupe by threadId; treat messages=[] as valid no-results).",
-            "[Optional (if thread-first discovery is preferred)] [Prerequisite]: Shortlist candidate thread IDs using GMAIL_LIST_THREADS (verbose=false; paginate via nextPageToken/page_token) before hydrating messages.",
-            "[Required (once thread_id is known)] [Step]: Hydrate the conversation using GMAIL_FETCH_MESSAGE_BY_THREAD_ID (locate data.messages[] defensively; messages may be unordered so sort client-side by a timestamp/internal date field; keep only needed fields if response is offloaded/large).",
-            "[Fallback (if thread hydration fails, is partial/too large, or returns notFound due to mailbox mismatch)] [Fallback]: Re-resolve linkage with GMAIL_FETCH_EMAILS and/or GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID in the same mailbox, then fetch only required items via GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID (handle multipart payload; prefer text/plain when present).",
-            "[Optional (if attachments are needed)] [Next Step]: Download referenced files using GMAIL_GET_ATTACHMENT (requires attachmentId plus the owning message_id).",
-            "[Optional (if continuing the conversation)] [Next Step]: Reply in-thread using GMAIL_REPLY_TO_THREAD (confirm recipients/content; keep subject stable to preserve threading)."
+            "[Optional (if workspace context unknown or scope errors)] [Prerequisite]: Discover accessible workspaces using CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES (select a valid team_id for downstream calls).",
+            "[Optional (if space_id unknown)] [Prerequisite]: List spaces using CLICKUP_GET_SPACES (select target space_id for list discovery).",
+            "[Required (if list_id unknown, stale, or may be unwritable)] [Prerequisite]: Discover a writable destination list using CLICKUP_GET_FOLDERS (scan nested folders\u2192lists; handle offloaded/truncated results[0].response.data shapes; capture list_id exactly).",
+            "[Optional (if no suitable list found under folders)] [Fallback]: Find a writable list using CLICKUP_GET_FOLDERLESS_LISTS (choose one that allows task creation).",
+            "[Optional (if setting status or unsure allowed values)] [Prerequisite]: Validate list configuration using CLICKUP_GET_LIST (use an allowed status label verbatim or omit status).",
+            "[Required] [Step]: Create the task/subtask using CLICKUP_CREATE_TASK (send intended fields; use UTC epoch-ms for schedule fields with *_date_time flags; set parent only for subtasks; capture created task identifier).",
+            "[Optional (for verification or if create response is verbose/truncated)] [Next Step]: Retrieve the created task using CLICKUP_GET_TASK (verify status, assignees, custom fields, and date normalization)."
           ],
           "known_pitfalls": [
-            "[GMAIL_FETCH_EMAILS] nextPageToken can be an empty string when pagination is exhausted; data.messages can also be an empty list as a valid no-results outcome.",
-            "[GMAIL_FETCH_MESSAGE_BY_THREAD_ID] 404 NOT_FOUND can occur if a thread_id is hydrated against the wrong mailbox connection; ensure discovery and hydration use the same mailbox context.",
-            "[GMAIL_FETCH_MESSAGE_BY_THREAD_ID] Returned messages can be nested or missing in unexpected shapes and the response may not echo threadId; locate messages[] defensively.",
-            "[GMAIL_FETCH_MESSAGE_BY_THREAD_ID] Large threads can be truncated/offloaded or fail with HTTP 413; reduce scope and fall back to GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID for specific messages.",
-            "[GMAIL_FETCH_EMAILS] HTTP 429 can occur during broad discovery; respect server wait guidance and reduce request bursts."
+            "[CLICKUP_GET_SPACES] 401 ECODE OAUTH_176/OAUTH_192 can indicate wrong team_id or missing scopes\u2014reselect via CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES.",
+            "[CLICKUP_GET_FOLDERS] Large nested payloads may be truncated/offloaded; lists can appear only under results[0].response.data and folders may look empty even when lists exist.",
+            "[CLICKUP_GET_FOLDERLESS_LISTS] Can legitimately return an empty lists array even when foldered lists exist\u2014treat as fallback only.",
+            "[CLICKUP_GET_LIST] 400 ECODE CRTSK_001 if status is invalid/localized; avoid guessing status labels.",
+            "[CLICKUP_CREATE_TASK] 404 ECODE SHARD_006 with invalid/stale destination identifiers; 400 ECODE FIELD_158 when label-type custom fields need option IDs; some destinations reject multiple assignees (e.g., ITEM_417)."
           ],
           "reference_workbench_snippets": [
             {
-              "description": "Pagination pattern for GMAIL_FETCH_EMAILS that stops on empty-string nextPageToken",
-              "code": "```python\nall_msgs=[]\npage_token=None\nwhile True:\n  args={\"user_id\":\"me\",\"query\":q,\"max_results\":500,\"include_payload\":False,\"include_spam_trash\":False,\"verbose\":False}\n  if page_token: args[\"page_token\"]=page_token\n  res,err=run_composio_tool(\"GMAIL_FETCH_EMAILS\",args)\n  data=(res or {}).get(\"data\") or {}\n  all_msgs+=data.get(\"messages\") or []\n  page_token=data.get(\"nextPageToken\") or \"\"\n  if not page_token: break\n```"
+              "description": "Convert a calendar date to Unix ms UTC for CLICKUP_CREATE_TASK scheduling fields",
+              "code": "```python\nfrom datetime import datetime,timezone\n\ndef to_unix_ms(y,m,d):\n    return int(datetime(y,m,d,tzinfo=timezone.utc).timestamp()*1000)\n```"
             },
             {
-              "description": "Defensively locate a nested messages[] array from a GMAIL_FETCH_MESSAGE_BY_THREAD_ID response",
-              "code": "```python\ndef extract_messages(node):\n  if isinstance(node,dict):\n    m=node.get(\"messages\")\n    if isinstance(m,list) and (not m or isinstance(m[0],dict)): return m\n    for v in node.values():\n      out=extract_messages(v)\n      if out: return out\n  if isinstance(node,list):\n    for v in node:\n      out=extract_messages(v)\n      if out: return out\n  return []\n```"
+              "description": "Handle offloaded multi-result payloads by locating folders under results[0].response.data.folders",
+              "code": "```python\nfolders=payload.get('results',[{}])[0].get('response',{}).get('data',{}).get('folders',[])\nlist_id=(folders[0].get('lists') or [{}])[0].get('id') if folders else None\nprint(list_id)\n```"
             }
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "GMAIL_FETCH_EMAILS",
-            "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"
+            "CLICKUP_CREATE_TASK"
           ],
           "related_tool_slugs": [
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
-            "GMAIL_LIST_THREADS",
-            "GMAIL_REPLY_TO_THREAD",
-            "GMAIL_GET_ATTACHMENT"
+            "CLICKUP_GET_LIST",
+            "CLICKUP_GET_FOLDERS",
+            "CLICKUP_GET_FOLDERLESS_LISTS",
+            "CLICKUP_GET_SPACES",
+            "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES",
+            "CLICKUP_GET_TASK"
           ],
           "toolkits": [
-            "gmail"
+            "clickup"
           ],
-          "plan_id": "49c8f5cb2b534456913438c04f62e238"
+          "plan_id": "65bbb9fdc014444bb1056c150226db09"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "gmail",
+          "toolkit": "clickup",
           "has_active_connection": false,
-          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
-          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+          "description": "ClickUp unifies tasks, docs, goals, and chat in a single platform, allowing teams to plan, organize, and collaborate across projects with customizable workflows",
+          "status_message": "No Active connection for toolkit=clickup. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"clickup\") to create a connection BEFORE executing any clickup tools."
         }
       ],
       "tool_schemas": {
-        "GMAIL_FETCH_EMAILS": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_FETCH_EMAILS",
-          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optional full content retrieval. Results are NOT sorted by recency; sort by internalDate client-side. The messages field may be absent or empty (valid no-results state); always null-check before accessing messageId or threadId. Null-check subject and header fields before string operations. For large result sets, prefer ids_only=true or metadata-only listing, then hydrate via GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID.",
+        "CLICKUP_CREATE_TASK": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_CREATE_TASK",
+          "description": "Creates a new ClickUp task in a specific list, optionally as a subtask if a `parent` task ID (which cannot be a subtask itself and must be in the same list) is provided.",
           "input_schema": {
             "type": "object",
+            "required": [
+              "list_id",
+              "name"
+            ],
             "properties": {
-              "query": {
+              "name": {
                 "type": "string",
                 "examples": [
-                  "from:john@example.com is:unread",
-                  "subject:meeting has:attachment",
-                  "after:2024/01/01 before:2024/02/01",
-                  "is:snoozed",
-                  "is:important OR is:starred",
-                  "label:work -label:spam"
+                  "Implement user authentication module"
                 ],
-                "description": "Gmail advanced search query (e.g., 'from:user subject:meeting'). Supported operators: 'from:', 'to:', 'subject:', 'label:', 'has:', 'is:', 'in:', 'category:', 'after:YYYY/MM/DD', 'before:YYYY/MM/DD', AND/OR/NOT. IMPORTANT - 'is:' vs 'label:' usage: Use 'is:' for special mail states: is:snoozed, is:unread, is:read, is:starred, is:important. Use 'label:' ONLY for user-created labels (e.g., 'label:work', 'label:projects'). Note: 'muted' may work with both 'is:muted' and 'label:muted' based on community reports. Common mistake: 'label:snoozed' is WRONG - use 'is:snoozed' instead. Use quotes for exact phrases. Omit for no query filter. after:/before: evaluate whole calendar days in UTC; before: is exclusive \u2014 adjust for local timezone to avoid off-by-one-day gaps."
+                "description": "The name of the new task."
               },
-              "user_id": {
-                "type": "string",
-                "default": "me",
-                "examples": [
-                  "me",
-                  "user@example.com"
-                ],
-                "description": "User's email address or 'me' for the authenticated user. Non-'me' addresses require domain-level delegation; without it, authentication or not-found errors result."
-              },
-              "verbose": {
-                "type": "boolean",
-                "default": true,
-                "examples": [
-                  true,
-                  false
-                ],
-                "description": "If false, uses optimized concurrent metadata fetching for faster performance (~75% improvement). If true, uses standard detailed message fetching. When false, only essential fields (subject, sender, recipient, time, labels) are guaranteed. Body content and attachment details require verbose=true even when include_payload=true."
-              },
-              "ids_only": {
-                "type": "boolean",
-                "default": false,
-                "examples": [
-                  true,
-                  false
-                ],
-                "description": "If true, only returns message IDs from the list API without fetching individual message details. Fastest option for getting just message IDs and thread IDs."
-              },
-              "label_ids": {
+              "tags": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 },
                 "examples": [
-                  "INBOX",
-                  "UNREAD",
-                  "Label_123456"
+                  "important",
+                  "backend_dev"
                 ],
-                "description": "Filter by label IDs; only messages with all specified labels are returned (AND logic). Optional - omit or use empty list to fetch all messages without label filtering. System label IDs: 'INBOX', 'SPAM', 'TRASH', 'UNREAD', 'STARRED', 'IMPORTANT', 'CATEGORY_PRIMARY' (alias 'CATEGORY_PERSONAL'), 'CATEGORY_SOCIAL', 'CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS'. For custom/user-created labels, you MUST use the label ID (e.g., 'Label_123456'), NOT the display name. Use the 'listLabels' action to find label IDs for custom labels. Combining label_ids with label: in query applies AND logic across both, which can silently over-restrict results; use one strategy consistently."
+                "description": "Tag names to apply."
               },
-              "page_token": {
+              "parent": {
                 "type": "string",
-                "description": "Token for retrieving a specific page, obtained from a previous response's `nextPageToken`. Must be a valid opaque token string from a previous API response. Do not pass arbitrary values. Omit for the first page. Loop calls using nextPageToken until it is absent to avoid silently missing messages. resultSizeEstimate is approximate \u2014 do not use as a stopping condition."
+                "description": "ID of an existing task to be the parent (creating a subtask). Parent must not be a subtask and must be in the same list."
               },
-              "max_results": {
+              "status": {
+                "type": "string",
+                "description": "Status name for the task. IMPORTANT: Each ClickUp list has its own unique status configuration. Common names like 'todo', 'done', or 'in progress' often do NOT exist - you must use the exact status names (case-sensitive) configured in the target list. To get valid statuses, call GET /list/{list_id} and check the 'statuses' array in the response for available status names. If omitted, uses the list's default status (recommended when valid statuses are unknown)."
+              },
+              "list_id": {
+                "type": "string",
+                "examples": [
+                  "901234567890"
+                ],
+                "description": "The ID of the list where the task will be created."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "123456789"
+                ],
+                "description": "Team ID, required only if `custom_task_ids` is `true`."
+              },
+              "due_date": {
                 "type": "integer",
-                "default": 1,
-                "maximum": 500,
-                "minimum": 1,
                 "examples": [
-                  "10",
-                  "100",
-                  "500"
+                  "1700000000000"
                 ],
-                "description": "Maximum number of messages to retrieve per page. Default of 1 retrieves only a single message; set higher for practical use. Hard cap is 500 per page."
+                "description": "Due date as a Unix timestamp in milliseconds."
               },
-              "include_payload": {
-                "type": "boolean",
-                "default": true,
-                "examples": [
-                  true,
-                  false
-                ],
-                "description": "Set to true to include full message payload (headers, body, attachments); false for metadata only. payload may still be null even when true; use GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID for guaranteed complete content. When payload is present, bodies are base64url-encoded in payload.parts; replace '-'\u2192'+' and '_'\u2192'/' and fix padding before decoding, and check both text/plain and text/html parts."
+              "links_to": {
+                "type": "string",
+                "description": "ID of an existing task to link as a dependency."
               },
-              "include_spam_trash": {
-                "type": "boolean",
-                "default": false,
+              "priority": {
+                "type": "integer",
                 "examples": [
-                  true,
-                  false
+                  "1",
+                  "2",
+                  "3",
+                  "4"
                 ],
-                "description": "Set to true to include messages from 'SPAM' and 'TRASH'."
+                "description": "Priority level: 1 (Urgent), 2 (High), 3 (Normal), 4 (Low)."
+              },
+              "assignees": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "examples": [
+                  "183",
+                  "281"
+                ],
+                "description": "User IDs to assign to the task."
+              },
+              "notify_all": {
+                "type": "boolean",
+                "description": "`True` to send notifications to all task watchers, including the creator."
+              },
+              "start_date": {
+                "type": "integer",
+                "examples": [
+                  "1690000000000"
+                ],
+                "description": "Start date as a Unix timestamp in milliseconds."
+              },
+              "description": {
+                "type": "string",
+                "description": "Task's detailed description."
+              },
+              "custom_fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Custom fields to apply. See ClickUp API for structure."
+              },
+              "due_date_time": {
+                "type": "boolean",
+                "description": "`True` if `due_date` includes a specific time, `false` if it's an all-day task."
+              },
+              "time_estimate": {
+                "type": "integer",
+                "examples": [
+                  "3600000"
+                ],
+                "description": "Estimated time to complete, in milliseconds."
+              },
+              "custom_item_id": {
+                "type": "integer",
+                "description": "Custom task type ID. Omit or use `null` for standard tasks (recommended). Custom task types including Milestones (ID `1`) are subject to workspace plan quotas. Only specify a custom_item_id if you have confirmed the workspace has available quota for that task type. Use GET /team/{team_id}/custom_item to check available custom task types and their quotas."
+              },
+              "custom_task_ids": {
+                "type": "boolean",
+                "description": "Enables referencing tasks by custom task ID; requires `team_id` if `true`."
+              },
+              "start_date_time": {
+                "type": "boolean",
+                "description": "`True` if `start_date` includes a specific time, `false` if it's an all-day task."
+              },
+              "check_required_custom_fields": {
+                "type": "boolean",
+                "description": "`True` to enforce filling all required Custom Fields upon creation."
               }
             }
           },
           "hasFullSchema": true
         },
-        "GMAIL_FETCH_MESSAGE_BY_THREAD_ID": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
-          "description": "Retrieves messages from a Gmail thread using its `thread_id`, where the thread must be accessible by the specified `user_id`. Returns a `messages` array; `thread_id` is not echoed in the response. Message order is not guaranteed \u2014 sort by `internalDate` to find oldest/newest. Check `labelIds` per message to filter drafts. Concurrent bulk calls may trigger 403 `userRateLimitExceeded` or 429; cap concurrency ~10 and use exponential backoff.",
+        "CLICKUP_GET_LIST": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_LIST",
+          "description": "Retrieves detailed information for an existing List in ClickUp, identified by its unique `list_id`.",
           "input_schema": {
             "type": "object",
             "required": [
-              "thread_id"
+              "list_id"
             ],
             "properties": {
-              "user_id": {
-                "type": "string",
-                "default": "me",
-                "examples": [
-                  "me",
-                  "user@example.com"
-                ],
-                "description": "The email address of the user."
-              },
-              "thread_id": {
+              "list_id": {
                 "type": "string",
                 "examples": [
-                  "19bf77729bcb3a44",
-                  "msg-f:19bf77729bcb3a44"
+                  "12345678"
                 ],
-                "description": "Hexadecimal thread ID from Gmail API (e.g., '19bf77729bcb3a44'). Obtain from GMAIL_LIST_THREADS or GMAIL_FETCH_EMAILS. Prefixes like 'msg-f:' or 'thread-f:' are auto-stripped. Legacy Gmail web UI IDs (e.g., 'FMfcgzQfBZdVqKZcSVBhqwWLKWCtDdWQ') are NOT supported - use the API thread ID instead. Deduplicate thread_ids before calling when multiple listed messages share the same threadId to avoid redundant calls."
-              },
-              "page_token": {
-                "type": "string",
-                "default": "",
-                "examples": [
-                  "CiAKGhIKJdealEffectivelyPageToken"
-                ],
-                "description": "Opaque page token for fetching a specific page of messages if results are paginated. Iterate calls by passing the returned `nextPageToken` until it is absent; stopping early will miss messages in long threads."
+                "description": "The unique identifier for the List to retrieve. This ID can be found by right-clicking a List in the ClickUp sidebar, selecting 'Copy link', and the ID is the last part of the URL after '/l/' or '/li/'."
               }
             }
           },
           "hasFullSchema": true
         },
-        "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
-          "description": "Fetches a specific email message by its ID, provided the `message_id` exists and is accessible to the authenticated `user_id`. Spam/trash messages are excluded unless upstream list/search calls used `include_spam_trash=true`. Use `internalDate` (milliseconds since epoch) rather than header `Date` for recency checks.",
+        "CLICKUP_GET_FOLDERS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_FOLDERS",
+          "description": "Retrieves Folders within a specified ClickUp Space, ensuring `space_id` is valid, with an option to filter by archived status.",
           "input_schema": {
             "type": "object",
             "required": [
-              "message_id"
+              "space_id"
             ],
             "properties": {
-              "format": {
-                "type": "string",
-                "default": "full",
+              "archived": {
+                "type": "boolean",
                 "examples": [
-                  "metadata",
-                  "minimal",
-                  "full",
-                  "raw"
+                  "true",
+                  "false"
                 ],
-                "description": "Format for message content. 'minimal': lightest (ID, thread ID, labels only). 'metadata': headers and message metadata without body content - ideal for summarization, analysis, or when you only need subject/sender/timestamp (recommended for most use cases). 'full': complete MIME structure with 50+ headers, nested parts, and base64url-encoded body data - heavy payload, only use when you need the complete raw MIME structure for parsing attachments or body content. 'raw': entire RFC 2822 formatted message as base64url string."
+                "description": "Filter Folders by archived status. `True` for archived, `False` for unarchived. Omit to return both."
               },
-              "user_id": {
-                "type": "string",
-                "default": "me",
-                "examples": [
-                  "user@example.com",
-                  "me"
-                ],
-                "description": "User's email address or 'me' for the authenticated user."
-              },
-              "message_id": {
+              "space_id": {
                 "type": "string",
                 "examples": [
-                  "19b11732c1b578fd",
-                  "18c5e5b5f5d5e5b5",
-                  "1736ccf5d7b4d452"
+                  "1234567",
+                  "9876543"
                 ],
-                "minLength": 1,
-                "description": "The Gmail API message ID (hexadecimal string, typically 15-16 characters like '19b11732c1b578fd'). Must be obtained from Gmail API responses (e.g., List Messages, Search Messages). Do NOT use email subjects, dates, sender names, or custom identifiers. Do NOT use `threadId` (use GMAIL_FETCH_MESSAGE_BY_THREAD_ID for threads), the Message-ID email header, or any fabricated value \u2014 only IDs from Gmail API list/search responses."
+                "description": "The unique numeric identifier of the Space from which to retrieve Folders."
               }
             }
           },
           "hasFullSchema": true
         },
-        "GMAIL_LIST_THREADS": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_LIST_THREADS",
-          "description": "Retrieves a list of email threads from a Gmail account, identified by `user_id` (email address or 'm...",
+        "CLICKUP_GET_FOLDERLESS_LISTS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_FOLDERLESS_LISTS",
+          "description": "Retrieves all Lists within a specified Space that are not located in any Folder.",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_LIST_THREADS"
+                "CLICKUP_GET_FOLDERLESS_LISTS"
               ]
             }
           }
         },
-        "GMAIL_REPLY_TO_THREAD": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_REPLY_TO_THREAD",
-          "description": "Sends a reply within a specific Gmail thread using the original thread's subject; do not provide a c...",
+        "CLICKUP_GET_SPACES": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_SPACES",
+          "description": "Retrieves Spaces for a Team ID; member information for private Spaces is returned only if the authen...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_REPLY_TO_THREAD"
+                "CLICKUP_GET_SPACES"
               ]
             }
           }
         },
-        "GMAIL_GET_ATTACHMENT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_GET_ATTACHMENT",
-          "description": "Retrieves a specific attachment by ID from a message in a user's Gmail mailbox, requiring valid mess...",
+        "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES",
+          "description": "Retrieves a list of Workspaces (Teams) the authenticated user can access.",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_GET_ATTACHMENT"
+                "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_TASK": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_TASK",
+          "description": "Retrieves comprehensive details for a ClickUp task by its ID, supporting standard or custom task IDs...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_TASK"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:35:48.776Z",
-        "current_time_utc_epoch_seconds": 1786563348,
+        "current_time_utc": "2026-08-12T20:51:37.333Z",
+        "current_time_utc_epoch_seconds": 1786567897,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "wife",
+        "id": "know",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"wife\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"know\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -334,6 +363,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_FQ-lQ1coqRWL"
+    "log_id": "log_A22FXt912kgz"
   }
 }

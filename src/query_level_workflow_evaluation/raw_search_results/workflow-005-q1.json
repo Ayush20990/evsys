@@ -3,15 +3,19 @@
     "query_id": "workflow-005-q1",
     "workflow_id": 5,
     "workflow_task": "Manage a partner-operations pipeline across Gmail, ClickUp, and Notion: create outreach drafts and task handoffs, inspect and update existing handoffs, scan recent email threads against CRM records, and write evidence-supported CRM status updates.",
-    "query": "search notion for partner CRM records",
-    "required_tools": [
-      "NOTION_QUERY_DATABASE_WITH_FILTER",
-      "NOTION_SEARCH_NOTION_PAGE"
+    "query": "create gmail outreach draft",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GMAIL_CREATE_EMAIL_DRAFT"
+        ],
+        "purpose": "create outreach email draft"
+      }
     ],
     "supporting_tools": [
-      "NOTION_FETCH_DATABASE"
+      "GMAIL_GET_DRAFT"
     ],
-    "rationale": "An agent needs to query and search Notion databases to find existing CRM records and partner pipeline statuses.",
+    "rationale": "Searches for tool to create email drafts in Gmail for outreach.",
     "candidate_tools": [
       "CLICKUP_CREATE_TASK",
       "CLICKUP_GET_TASK",
@@ -33,196 +37,576 @@
     ]
   },
   "request": {
-    "query": "search notion for partner CRM records"
+    "query": "create gmail outreach draft"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "search notion for partner CRM records",
-          "execution_guidance": "Found 4 tools for this query. Look at the schemas to know how to use them.",
+          "use_case": "create gmail outreach draft",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Determine new draft vs in-thread reply and gather to/cc/bcc/subject/body/is_html; for replies keep thread_id aligned to the same mailbox context and consider leaving subject unset to preserve threading, using GMAIL_SEARCH_PEOPLE (only if recipient needs disambiguation).",
+            "[Optional (if batching drafts or worried about losing IDs)] [Prerequisite]: Checkpoint inputs and returned draft identifiers using COMPOSIO_REMOTE_WORKBENCH (persist state between runs).",
+            "[Required] [Step]: Create the draft using GMAIL_CREATE_EMAIL_DRAFT (include thread_id only when intentionally replying) and save the returned draft identifier for downstream actions.",
+            "[Optional (for validation before edits/sending)] [Next Step]: Read back the stored draft using GMAIL_GET_DRAFT (use a detailed format when validating MIME/HTML/body).",
+            "[Optional (if content/recipients must change)] [Next Step]: Replace the stored draft using GMAIL_UPDATE_DRAFT (re-supply all fields you want to keep).",
+            "[Optional (only after explicit approval to send)] [Step]: Send the finalized stored draft using GMAIL_SEND_DRAFT (uses the saved draft identifier).",
+            "[Fallback (if draft identifier is missing or draft calls fail)] [Fallback]: Recover by paging GMAIL_LIST_DRAFTS, confirm the target via GMAIL_GET_DRAFT, then retry; if draft flow remains blocked, send a fresh email using GMAIL_SEND_EMAIL."
+          ],
+          "known_pitfalls": [
+            "[GMAIL_CREATE_EMAIL_DRAFT] Response contains multiple identifiers\u2014use the draft identifier at data.id for GMAIL_GET_DRAFT/GMAIL_UPDATE_DRAFT/GMAIL_SEND_DRAFT (not data.message.id).",
+            "[GMAIL_CREATE_EMAIL_DRAFT] 400 validation errors occur for malformed recipients (invalid address; cc/bcc not passed as lists/arrays).",
+            "[GMAIL_CREATE_EMAIL_DRAFT] 403 or 400 with FAILED_PRECONDITION can occur when authorization scopes are missing or mail access is not enabled.",
+            "[GMAIL_UPDATE_DRAFT] Update behaves like a full replace; passing empty strings can trigger 400\u2014omit fields you want preserved.",
+            "[GMAIL_SEND_DRAFT] Sends exactly what is stored (no recipient overrides); some drafts may return FAILED_PRECONDITION\u2014recreate via GMAIL_CREATE_EMAIL_DRAFT and retry sending."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract draft identifier, message identifier, and thread identifier from a create-draft response",
+              "code": "```python\ndraft_id=resp[\"data\"][\"id\"]\nmessage_id=resp[\"data\"][\"message\"][\"id\"]\nthread_id=resp[\"data\"][\"message\"][\"threadId\"]\n```"
+            },
+            {
+              "description": "Inspect stored content using message text and MIME type",
+              "code": "```python\nr,e=run_composio_tool(\"GMAIL_GET_DRAFT\",{\"draft_id\":draft_id,\"format\":\"full\"})\nmsg=r.get(\"data\",{}).get(\"message\",{})\nmt=msg.get(\"payload\",{}).get(\"mimeType\")\ntext=msg.get(\"messageText\",\"\") or \"\"\nprint(mt)\nprint(len(text))\n```"
+            }
+          ],
+          "difficulty": "easy",
           "primary_tool_slugs": [
-            "NOTION_SEARCH_NOTION_PAGE"
+            "GMAIL_CREATE_EMAIL_DRAFT"
           ],
           "related_tool_slugs": [
-            "NOTION_FETCH_BLOCK_CONTENTS",
-            "NOTION_FETCH_DATABASE",
-            "NOTION_QUERY_DATABASE"
+            "GMAIL_GET_DRAFT",
+            "GMAIL_UPDATE_DRAFT",
+            "GMAIL_SEND_DRAFT",
+            "GMAIL_LIST_DRAFTS",
+            "GMAIL_SEARCH_PEOPLE",
+            "GMAIL_SEND_EMAIL"
           ],
           "toolkits": [
-            "notion"
-          ]
+            "gmail"
+          ],
+          "plan_id": "cdbeebf4541749dabc0c138b960be8db"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "notion",
+          "toolkit": "gmail",
           "has_active_connection": false,
-          "description": "Notion centralizes notes, docs, wikis, and tasks in a unified workspace, letting teams build custom workflows for collaboration and knowledge management",
-          "status_message": "No Active connection for toolkit=notion. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"notion\") to create a connection BEFORE executing any notion tools."
+          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
+          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
         }
       ],
       "tool_schemas": {
-        "NOTION_SEARCH_NOTION_PAGE": {
-          "toolkit": "NOTION",
-          "tool_slug": "NOTION_SEARCH_NOTION_PAGE",
-          "description": "Searches Notion pages and databases by title. Use specific search terms to find items by title (primary approach). KNOWN LIMITATIONS: (1) Search indexing is not immediate - recently shared items may not appear. (2) Search is not exhaustive - results may be incomplete. (3) Database pages return all custom properties with full nested structures, which can create large responses for databases with many properties - use filter_properties to reduce response size. FALLBACK STRATEGY: If a specific title search returns empty results despite knowing items exist, try an empty query to list all accessible items and filter client-side.",
+        "GMAIL_CREATE_EMAIL_DRAFT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_CREATE_EMAIL_DRAFT",
+          "description": "Creates a Gmail email draft. While all fields are optional per the Gmail API, practical validation requires at least one of recipient_email, cc, or bcc and at least one of subject or body. Supports To/Cc/Bcc recipients, subject, plain/HTML body (ensure `is_html=True` for HTML), attachments, and threading. Returns a draft_id that must be used as-is with GMAIL_SEND_DRAFT \u2014 synthetic or stale IDs will fail. When creating a draft reply to an existing thread (thread_id provided), leave subject empty to stay in the same thread; setting a subject will create a NEW thread instead. HTTP 429 may occur on rapid creation/send sequences; apply exponential backoff.",
           "input_schema": {
             "type": "object",
             "properties": {
-              "query": {
-                "type": "string",
-                "default": "",
-                "description": "Text to search for in page and database titles. Use specific search terms to find items by title (primary approach). Note: Notion's search has known limitations - indexing is not immediate and recently shared items may not appear. If a specific query returns empty results, try an empty query as a fallback to list all accessible items and filter client-side."
-              },
-              "direction": {
-                "type": "string",
-                "examples": [
-                  "ascending",
-                  "descending"
-                ],
-                "description": "Specifies the sort direction for the results. Required if `timestamp` is provided. Valid values are `ascending` or `descending`."
-              },
-              "page_size": {
-                "type": "integer",
-                "default": 25,
-                "maximum": 100,
-                "minimum": 1,
-                "description": "The number of items to include in the response. Must be an integer between 1 and 100, inclusive. Defaults to 25."
-              },
-              "timestamp": {
-                "type": "string",
-                "description": "The timestamp field to sort the results by. Currently, the only supported value is `last_edited_time`. If provided, `direction` must also be specified."
-              },
-              "filter_value": {
-                "enum": [
-                  "page",
-                  "database"
-                ],
-                "type": "string",
-                "default": "page",
-                "examples": [
-                  "page",
-                  "database"
-                ],
-                "description": "Filters results by object type: 'page' or 'database'. Note: When searching databases, Notion's search may not find recently shared or newly created databases due to indexing delays. If specific database searches return empty results, try an empty query with filter_value='database' as a fallback to list all accessible databases."
-              },
-              "start_cursor": {
-                "type": "string",
-                "description": "An opaque cursor value from a previous response's `next_cursor` field. Must be exactly as returned by the API - do not pass page IDs, database IDs, or any other identifiers. If `None`, empty, or invalid, results start from the beginning."
-              },
-              "filter_property": {
-                "type": "string",
-                "default": "object",
-                "examples": [
-                  "object"
-                ],
-                "description": "The property to filter the search results by. Currently, the only supported value is `object`, which filters by the type specified in `filter_value`. Defaults to `object`."
-              },
-              "filter_properties": {
+              "cc": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 },
-                "description": "List of property names to include in the response for page results. When specified, only these properties will be returned in each page's 'properties' object, reducing response size. Useful for database pages with many custom properties. If not specified, all properties are returned. Note: This filter is applied client-side after receiving the API response."
+                "default": [],
+                "examples": [
+                  [
+                    "cc.recipient1@example.com",
+                    "CC User <cc.recipient2@example.com>"
+                  ]
+                ],
+                "description": "Carbon Copy (CC) recipients' email addresses. Each must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). Plain names without email addresses are NOT valid. Optional for drafts (recipients can be added later before sending)."
+              },
+              "bcc": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "bcc.recipient@example.com",
+                    "BCC User <bcc.user@example.com>"
+                  ]
+                ],
+                "description": "Blind Carbon Copy (BCC) recipients' email addresses. Each must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'Bob Jones <user@example.com>'). Plain names without email addresses are NOT valid. Optional for drafts (recipients can be added later before sending)."
+              },
+              "body": {
+                "type": "string",
+                "examples": [
+                  "Hello Team,\n\nPlease find the attached report for your review.\n\nBest regards,\nYour Name",
+                  "<h1>Meeting Confirmation</h1><p>This email confirms our meeting scheduled for next Tuesday.</p>"
+                ],
+                "description": "Email body content (plain text or HTML); `is_html` must be True if HTML. Optional - drafts can be created without a body and edited later before sending. Can also be provided as 'message_body'."
+              },
+              "is_html": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Set to True if `body` is already formatted HTML. When False, plain text newlines are auto-converted to <br/> tags. Both modes result in HTML email; this flag controls whether the body content is treated as raw HTML or plain text that gets HTML formatting applied."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Project Update Q3",
+                  "Meeting Reminder"
+                ],
+                "description": "Email subject line. Optional - drafts can be created without a subject and edited later before sending. When creating a draft reply to an existing thread (thread_id provided), leave this empty to stay in the same thread. Setting a subject will create a NEW thread instead."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "User's email address or 'me' for the authenticated user."
+              },
+              "thread_id": {
+                "type": "string",
+                "examples": [
+                  "17f45ec49a9c3f1b"
+                ],
+                "description": "ID of an existing Gmail thread to reply to; omit for new thread. If the thread ID is invalid or inaccessible, the draft will be created as a new thread instead of failing."
+              },
+              "attachment": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "title": "FileUploadable",
+                    "required": [
+                      "name",
+                      "mimetype",
+                      "s3key"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "examples": [
+                          "document.pdf",
+                          "image.jpg",
+                          "report.docx"
+                        ],
+                        "description": "The filename that will be used when uploading the file to the destination service"
+                      },
+                      "s3key": {
+                        "type": "string",
+                        "title": "S3Key",
+                        "examples": [
+                          "47563/gmail/GET_ATTACHMENT/response/12345"
+                        ],
+                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                      },
+                      "mimetype": {
+                        "type": "string",
+                        "title": "Mimetype",
+                        "examples": [
+                          "application/pdf",
+                          "image/jpeg",
+                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        ],
+                        "description": "The MIME type of the file"
+                      }
+                    },
+                    "file_uploadable": true
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "title": "FileUploadable",
+                      "required": [
+                        "name",
+                        "mimetype",
+                        "s3key"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "title": "Name",
+                          "examples": [
+                            "document.pdf",
+                            "image.jpg",
+                            "report.docx"
+                          ],
+                          "description": "The filename that will be used when uploading the file to the destination service"
+                        },
+                        "s3key": {
+                          "type": "string",
+                          "title": "S3Key",
+                          "examples": [
+                            "47563/gmail/GET_ATTACHMENT/response/12345"
+                          ],
+                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                        },
+                        "mimetype": {
+                          "type": "string",
+                          "title": "Mimetype",
+                          "examples": [
+                            "application/pdf",
+                            "image/jpeg",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ],
+                          "description": "The MIME type of the file"
+                        }
+                      },
+                      "file_uploadable": true
+                    }
+                  }
+                ],
+                "description": "File(s) to attach to the email. Accepts a single file or a list of files. Total message size including base64-encoded attachments must be under 25 MB; use shareable links (e.g., Google Drive) for larger files."
+              },
+              "recipient_email": {
+                "type": "string",
+                "examples": [
+                  "john.doe@example.com",
+                  "John Doe <john.doe@example.com>"
+                ],
+                "description": "Primary recipient's email address. Must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). A plain name without an email address (e.g., 'John Doe') is NOT valid - the '@' symbol and domain are required. Optional for drafts (recipients can be added later before sending). Use extra_recipients if you want to send to multiple recipients."
+              },
+              "extra_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "jane.doe@example.com",
+                    "Jane Doe <jane.doe@example.com>"
+                  ]
+                ],
+                "description": "Additional 'To' recipients' email addresses (not Cc or Bcc). Each must be a valid email address (e.g., 'user@example.com'), display name format (e.g., 'Jane Doe <user@example.com>'), or 'me' for the authenticated user. Plain names without email addresses are NOT valid. Should only be used if recipient_email is also provided."
               }
             }
           },
           "hasFullSchema": true
         },
-        "NOTION_FETCH_BLOCK_CONTENTS": {
-          "toolkit": "NOTION",
-          "tool_slug": "NOTION_FETCH_BLOCK_CONTENTS",
-          "description": "Retrieves a paginated list of direct, first-level child block objects along with contents for a given parent Notion block or page ID; use block IDs from the response for subsequent calls to access deeply nested content.",
+        "GMAIL_GET_DRAFT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_GET_DRAFT",
+          "description": "Retrieves a single Gmail draft by its ID. Use this to fetch and inspect draft content before sending via GMAIL_SEND_DRAFT. The format parameter controls the level of detail returned.",
           "input_schema": {
             "type": "object",
             "required": [
-              "block_id"
+              "draft_id"
             ],
             "properties": {
-              "block_id": {
+              "format": {
+                "type": "string",
+                "default": "full",
+                "examples": [
+                  "full",
+                  "metadata",
+                  "minimal",
+                  "raw"
+                ],
+                "description": "Format for the draft message: 'minimal' (ID/labels only), 'full' (complete data with parsed payload), 'raw' (base64url-encoded RFC 2822 format), 'metadata' (ID/labels/headers only)."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The user's email address. The special value `me` can be used to indicate the authenticated user."
+              },
+              "draft_id": {
                 "type": "string",
                 "examples": [
-                  "c02fc1d3-db8b-45c5-a222-27595b15aea7"
+                  "r99885592323229922",
+                  "r-8388446164079304564"
                 ],
-                "description": "UUID of the parent Notion block or page whose children are to be fetched. Accepts both hyphenated (e.g., 'c02fc1d3-db8b-45c5-a222-27595b15aea7') and non-hyphenated (e.g., 'c02fc1d3db8b45c5a22227595b15aea7') UUID formats. Notion's API does not support special identifiers like 'root' or 'top-level' - you must always provide an actual page or block UUID. To discover valid page/block IDs, first use 'NOTION_SEARCH_NOTION_PAGE' to find pages or 'NOTION_QUERY_DATABASE' to query databases."
-              },
-              "page_size": {
-                "type": "integer",
-                "examples": [
-                  "25",
-                  "50",
-                  "100"
-                ],
-                "description": "The maximum number of child blocks to return in a single response. The actual number of results may be lower if there are fewer child blocks available or if the end of the list is reached. Maximum allowed value is 100. If unspecified, Notion's default page size will be used."
-              },
-              "start_cursor": {
-                "type": "string",
-                "examples": [
-                  "a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6"
-                ],
-                "description": "Pagination cursor from next_cursor in a previous API response. When paginating through results, pass the next_cursor value from the previous response here to fetch the next page. Must be a valid UUID format or cursor string returned by Notion's API. If omitted, returns the first page of results."
+                "description": "The ID of the draft to retrieve. Draft IDs are typically alphanumeric strings (e.g., 'r99885592323229922'). Use GMAIL_LIST_DRAFTS to retrieve valid draft IDs."
               }
             }
           },
           "hasFullSchema": true
         },
-        "NOTION_FETCH_DATABASE": {
-          "toolkit": "NOTION",
-          "tool_slug": "NOTION_FETCH_DATABASE",
-          "description": "Fetches a Notion database's structural metadata (properties, title, etc.) via its `database_id`, not the data entries; `database_id` must reference an existing database.",
+        "GMAIL_UPDATE_DRAFT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_UPDATE_DRAFT",
+          "description": "Updates (replaces) an existing Gmail draft's content in-place by draft ID. This action replaces the entire draft content with the new message - it does not patch individual fields. All fields are optional; if not provided, you should provide complete draft content to avoid data loss.",
           "input_schema": {
             "type": "object",
             "required": [
-              "database_id"
+              "draft_id"
             ],
             "properties": {
-              "database_id": {
+              "cc": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "cc.recipient1@example.com",
+                    "CC User <cc.recipient2@example.com>"
+                  ]
+                ],
+                "description": "Carbon Copy (CC) recipients' email addresses. Each must be a valid email address or display name format."
+              },
+              "bcc": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "bcc.recipient@example.com",
+                    "BCC User <bcc.user@example.com>"
+                  ]
+                ],
+                "description": "Blind Carbon Copy (BCC) recipients' email addresses. Each must be a valid email address or display name format."
+              },
+              "body": {
                 "type": "string",
                 "examples": [
-                  "2ec43c10-7ecd-8159-a8f4-ff16630df66c"
+                  "Hello Team,\n\nPlease find the attached report.\n\nBest regards",
+                  "<h1>Meeting Confirmation</h1><p>This confirms our meeting.</p>"
                 ],
-                "minLength": 1,
-                "description": "Required. The unique identifier of the Notion database in UUID format (e.g., '2ec43c10-7ecd-8159-a8f4-ff16630df66c') or unhyphenated 32-char hex (e.g., '2ec43c107ecd8159a8f4ff16630df66c'). Must be a DATABASE ID, not a page ID. Linked databases are NOT supported - use the original source database ID. To find database IDs: use NOTION_SEARCH_NOTION_PAGE with filter_value='database', or extract from database URLs (notion.so/{database_id})."
+                "description": "Email body content (plain text or HTML); is_html must be True if HTML. If not provided, previous body is preserved. Can also be provided as 'message_body'."
+              },
+              "is_html": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Set to True if body is already formatted HTML. When False, plain text newlines are auto-converted to <br/> tags."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Project Update Q3",
+                  "Meeting Reminder"
+                ],
+                "description": "Email subject line. If not provided, previous subject is preserved."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "User's email address or 'me' for the authenticated user."
+              },
+              "draft_id": {
+                "type": "string",
+                "examples": [
+                  "r-8388446164079304564",
+                  "r1234567890123456789"
+                ],
+                "description": "The ID of the draft to update. Must be a valid draft ID from GMAIL_LIST_DRAFTS or GMAIL_CREATE_EMAIL_DRAFT."
+              },
+              "thread_id": {
+                "type": "string",
+                "examples": [
+                  "17f45ec49a9c3f1b"
+                ],
+                "description": "ID of an existing Gmail thread. If provided, the draft will be part of this thread."
+              },
+              "attachment": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "title": "FileUploadable",
+                    "required": [
+                      "name",
+                      "mimetype",
+                      "s3key"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "examples": [
+                          "document.pdf",
+                          "image.jpg",
+                          "report.docx"
+                        ],
+                        "description": "The filename that will be used when uploading the file to the destination service"
+                      },
+                      "s3key": {
+                        "type": "string",
+                        "title": "S3Key",
+                        "examples": [
+                          "47563/gmail/GET_ATTACHMENT/response/12345"
+                        ],
+                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                      },
+                      "mimetype": {
+                        "type": "string",
+                        "title": "Mimetype",
+                        "examples": [
+                          "application/pdf",
+                          "image/jpeg",
+                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        ],
+                        "description": "The MIME type of the file"
+                      }
+                    },
+                    "file_uploadable": true
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "title": "FileUploadable",
+                      "required": [
+                        "name",
+                        "mimetype",
+                        "s3key"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "title": "Name",
+                          "examples": [
+                            "document.pdf",
+                            "image.jpg",
+                            "report.docx"
+                          ],
+                          "description": "The filename that will be used when uploading the file to the destination service"
+                        },
+                        "s3key": {
+                          "type": "string",
+                          "title": "S3Key",
+                          "examples": [
+                            "47563/gmail/GET_ATTACHMENT/response/12345"
+                          ],
+                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                        },
+                        "mimetype": {
+                          "type": "string",
+                          "title": "Mimetype",
+                          "examples": [
+                            "application/pdf",
+                            "image/jpeg",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ],
+                          "description": "The MIME type of the file"
+                        }
+                      },
+                      "file_uploadable": true
+                    }
+                  }
+                ],
+                "description": "File(s) to attach to the draft. Accepts a single file or a list of files. Replaces any existing attachments."
+              },
+              "recipient_email": {
+                "type": "string",
+                "examples": [
+                  "john.doe@example.com",
+                  "John Doe <john.doe@example.com>"
+                ],
+                "description": "Primary recipient's email address. Must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). Optional - if not provided, previous recipients are preserved."
+              },
+              "extra_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "jane.doe@example.com",
+                    "Jane Doe <jane.doe@example.com>"
+                  ]
+                ],
+                "description": "Additional 'To' recipients' email addresses. Each must be a valid email address or display name format. Should only be used if recipient_email is also provided."
               }
             }
           },
           "hasFullSchema": true
         },
-        "NOTION_QUERY_DATABASE": {
-          "toolkit": "NOTION",
-          "tool_slug": "NOTION_QUERY_DATABASE",
-          "description": "Queries a Notion database to retrieve pages (rows). In Notion, databases are collections where each ...",
+        "GMAIL_SEND_DRAFT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_SEND_DRAFT",
+          "description": "Sends an existing draft email AS-IS to recipients already defined within the draft. IMPORTANT: This ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "NOTION_QUERY_DATABASE"
+                "GMAIL_SEND_DRAFT"
+              ]
+            }
+          }
+        },
+        "GMAIL_LIST_DRAFTS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_LIST_DRAFTS",
+          "description": "Retrieves a paginated list of email drafts from a user's Gmail account. Use verbose=true to get full...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_LIST_DRAFTS"
+              ]
+            }
+          }
+        },
+        "GMAIL_SEARCH_PEOPLE": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_SEARCH_PEOPLE",
+          "description": "Searches contacts by matching the query against names, nicknames, emails, phone numbers, and organiz...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_SEARCH_PEOPLE"
+              ]
+            }
+          }
+        },
+        "GMAIL_SEND_EMAIL": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_SEND_EMAIL",
+          "description": "Sends an email via Gmail API using the authenticated user's Google profile display name. Sends immed...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_SEND_EMAIL"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:35:46.136Z",
-        "current_time_utc_epoch_seconds": 1786563346,
+        "current_time_utc": "2026-08-12T20:51:31.944Z",
+        "current_time_utc_epoch_seconds": 1786567891,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "wall",
+        "id": "ants",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"wall\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"ants\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
-        "Follow these steps carefully to begin the task:",
-        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
       ],
       "success": true,
       "error": null
     },
     "error": null,
-    "log_id": "log_PgPS9DF1wRz1"
+    "log_id": "log_K_mRj5l6nE93"
   }
 }

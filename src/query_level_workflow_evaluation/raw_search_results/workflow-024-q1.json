@@ -3,14 +3,19 @@
     "query_id": "workflow-024-q1",
     "workflow_id": 24,
     "workflow_task": "Build a recurring job-search digest by finding relevant LinkedIn job listings and sending the result or status update via Gmail.",
-    "query": "remote software engineer job listings on LinkedIn this week",
-    "required_tools": [
-      "COMPOSIO_SEARCH_WEB"
+    "query": "find recent LinkedIn job listings for job search digest",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "COMPOSIO_SEARCH_WEB"
+        ],
+        "purpose": "search for web pages containing LinkedIn job listings"
+      }
     ],
     "supporting_tools": [
-      "COMPOSIO_SEARCH_TRENDS"
+      "BROWSER_TOOL_CREATE_TASK"
     ],
-    "rationale": "An agent needs to query the web to find and scrape recent LinkedIn job posting URLs matching specific criteria.",
+    "rationale": "Finding job listings on LinkedIn requires a web search capability to surface relevant external pages.",
     "candidate_tools": [
       "BROWSER_TOOL_CREATE_TASK",
       "BROWSER_TOOL_WATCH_TASK",
@@ -21,54 +26,56 @@
     ]
   },
   "request": {
-    "query": "remote software engineer job listings on LinkedIn this week"
+    "query": "find recent LinkedIn job listings for job search digest"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "remote software engineer job listings on LinkedIn this week",
+          "use_case": "find recent LinkedIn job listings for job search digest",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Step]: Run broad discovery using COMPOSIO_SEARCH_WEB (organization + careers/jobs + role + location/remote + recency) and capture candidate links from response.data.citations.",
-            "[Required] [Next Step]: Run 2\u20134 tighter follow-up queries using COMPOSIO_SEARCH_WEB (role/department synonyms + apply/requirements terms), then merge results and deduplicate by canonicalized URL.",
-            "[Required] [Next Step]: Build a shortlist of posting-shaped pages (individual postings) and attach citation evidence (title/snippet/source/URL) for each item.",
-            "[Optional (if citations don\u2019t confirm requirements/apply details)] [Next Step]: Validate a small batch using COMPOSIO_SEARCH_FETCH_URL_CONTENT and keep only pages whose extracted text contains clear role + requirements + application sections.",
-            "[Optional (if extra corroboration is needed and access exists)] [Next Step]: Cross-check context using COMPOSIO_SEARCH_NEWS and optionally verify via LINKEDIN_GET_COMPANY_INFO or LINKEDIN_GET_POST_CONTENT.",
-            "[Fallback (if fetch is truncated, gated, or low-signal)] [Fallback]: Re-run COMPOSIO_SEARCH_WEB to find an alternate canonical posting URL, then re-fetch with COMPOSIO_SEARCH_FETCH_URL_CONTENT using a higher max_characters and discard closed/boilerplate pages."
+            "[Required] [Prerequisite]: Draft several distinct, narrow queries for COMPOSIO_SEARCH_WEB (role/skills + location/region + work arrangement + seniority + freshness terms; optionally add source qualifiers).",
+            "[Required] [Step]: For each query, call COMPOSIO_SEARCH_WEB and capture leads from results.citations first (title/snippet/url), using other URL-like fields only if citations are empty; ignore narrative answer when it conflicts.",
+            "[Optional (if a next-page token is present)] [Next Step]: Continue paging with COMPOSIO_SEARCH_WEB up to a small cap, aggregating across queries while tracking duplicates.",
+            "[Required] [Next Step]: Canonicalize and deduplicate URLs across pages/queries; keep the best snippet and strongest freshness/location hints per canonical URL.",
+            "[Required] [Next Step]: Enrich shortlisted leads with COMPOSIO_SEARCH_FETCH_URL_CONTENT (cap with max_characters) and parse data.results[] (and data.statuses[] if present) to extract role, location/remote, requirements, compensation (if stated), and apply link.",
+            "[Required] [Step]: Filter out non-posting pages, then rank by match quality and explicit freshness evidence found in snippets or fetched text; return a concise list of links with extracted highlights (leave missing fields as unknown).",
+            "[Required] [Fallback]: If results are sparse or aggregator-heavy, use COMPOSIO_SEARCH_NEWS or COMPOSIO_SEARCH_TRENDS to refine keywords/query wording (or relax over-strict terms), then rerun COMPOSIO_SEARCH_WEB and re-validate via COMPOSIO_SEARCH_FETCH_URL_CONTENT."
           ],
           "known_pitfalls": [
-            "[COMPOSIO_SEARCH_WEB] response.data.answer may be narrative or truncated; rely on response.data.citations for auditable URLs/snippets (full payload may be needed when previews are cut).",
-            "[COMPOSIO_SEARCH_WEB] Broad queries over-return hub/category/aggregator pages; add posting-specific qualifiers (apply/requirements) and filter for individual postings.",
-            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] response.data.statuses (per-URL outcome) is separate from response.data.results (content); join by id/url and ignore results when status is not successful.",
-            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] Long pages can be truncated by max_characters; missing sections can indicate truncation, not absence\u2014retry with a higher limit.",
-            "[LINKEDIN_GET_COMPANY_INFO] Calls may fail with HTTP 403 (permissions) or HTTP 429 (rate limiting); treat as optional enrichment, not primary discovery."
+            "[COMPOSIO_SEARCH_WEB] HTTP 429 can occur on heavy or near-duplicate queries; batch distinct searches and use exponential backoff.",
+            "[COMPOSIO_SEARCH_WEB] results.answer/data.answer may be generic or contradict results.citations; treat citations as the primary source of actionable links.",
+            "[COMPOSIO_SEARCH_WEB] results.citations field shapes vary (snippet/metadata often missing); null-check when extracting and ranking.",
+            "[COMPOSIO_SEARCH_WEB] \u201cInvalid request data provided\u2026 missing {'query'}\u201d occurs if the query field is absent/misnamed or empty.",
+            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] Content is typically under data.results[] (sometimes paired with data.statuses[]) and may be truncated by max_characters; refetch with a higher cap or treat missing sections as unknown."
           ],
           "reference_workbench_snippets": [
             {
-              "description": "Extract citation URLs and per-URL fetch statuses from saved COMPOSIO_SEARCH responses.",
-              "code": "```python\nimport json\n\ndef citations(obj):\n    for r in obj.get('results', []) or []:\n        data=(r.get('response') or {}).get('data') or {}\n        for c in data.get('citations', []) or []:\n            yield {'url':c.get('url'),'title':c.get('title'),'snippet':c.get('snippet')}\n\ndef fetch_rows(obj):\n    for r in obj.get('results', []) or []:\n        data=(r.get('response') or {}).get('data') or {}\n        sts={s.get('id') or s.get('url'):s for s in (data.get('statuses') or [])}\n        for p in (data.get('results') or []) or []:\n            st=sts.get(p.get('id')) or sts.get(p.get('url')) or {}\n            yield {'url':p.get('url'),'status':st.get('status'),'http':((st.get('error') or {}).get('httpStatusCode')),'tag':((st.get('error') or {}).get('tag')),'title':p.get('title'),'summary':p.get('summary')}\n\nobj=json.loads(raw)\nrows=list(fetch_rows(obj))\n```"
+              "description": "Extract citations from batch COMPOSIO_SEARCH_WEB responses and canonicalize/dedupe URLs",
+              "code": "```python\nfrom urllib.parse import urlsplit,urlunsplit\n\ndef canon(u):\n    try:\n        p=urlsplit(u or '')\n        return urlunsplit((p.scheme,p.netloc,p.path,'',''))\n    except Exception:\n        return u\n\ndef extract_dedup(results):\n    out=[]\n    for r in results:\n        d=(r.get('response',{}) or {}).get('data') or (r.get('response',{}) or {}).get('data_preview') or {}\n        res=d.get('results',d) or {}\n        for c in res.get('citations',[]) or []:\n            url=c.get('url') or c.get('id')\n            out.append({'title':c.get('title',''),'url':url,'snippet':c.get('snippet') or c.get('text','')})\n    seen=set(); dedup=[]\n    for x in out:\n        u=canon(x.get('url'))\n        if u and u not in seen:\n            seen.add(u); x['url']=u; dedup.append(x)\n    return dedup\n```"
+            },
+            {
+              "description": "Minimal parser for COMPOSIO_SEARCH_WEB citations into job-lead records",
+              "code": "```python\ndef collect_citations(data):\n    res=(data or {}).get('results',data) or {}\n    return [{'title':c.get('title',''),'url':c.get('url') or c.get('id',''),'snippet':c.get('snippet') or c.get('text','')} for c in (res.get('citations',[]) or [])]\n```"
             }
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "COMPOSIO_SEARCH_WEB",
-            "COMPOSIO_SEARCH_FETCH_URL_CONTENT"
+            "COMPOSIO_SEARCH_WEB"
           ],
           "related_tool_slugs": [
+            "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
             "COMPOSIO_SEARCH_NEWS",
-            "LINKEDIN_GET_COMPANY_INFO",
-            "LINKEDIN_GET_POST_CONTENT",
             "COMPOSIO_SEARCH_TRENDS",
-            "COMPOSIO_SEARCH_IMAGE",
-            "COMPOSIO_SEARCH_GOOGLE_MAPS"
+            "LINKEDIN_GET_POST_CONTENT"
           ],
           "toolkits": [
             "composio_search",
             "linkedin"
           ],
-          "plan_id": "198cc4931fa741c5b780c4b49fac75b3"
+          "plan_id": "52bed3dfcf224675ba3b8ef9126e8b88"
         }
       ],
       "toolkit_connection_statuses": [
@@ -244,16 +251,16 @@
           },
           "hasFullSchema": true
         },
-        "LINKEDIN_GET_COMPANY_INFO": {
-          "toolkit": "LINKEDIN",
-          "tool_slug": "LINKEDIN_GET_COMPANY_INFO",
-          "description": "Retrieves organizations where the authenticated user has specific roles (ACLs), to determine their m...",
+        "COMPOSIO_SEARCH_TRENDS": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_TRENDS",
+          "description": "Discover trending topics, search patterns, and popularity data. Analyzes search interest over time, ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "LINKEDIN_GET_COMPANY_INFO"
+                "COMPOSIO_SEARCH_TRENDS"
               ]
             }
           }
@@ -271,59 +278,17 @@
               ]
             }
           }
-        },
-        "COMPOSIO_SEARCH_TRENDS": {
-          "toolkit": "COMPOSIO_SEARCH",
-          "tool_slug": "COMPOSIO_SEARCH_TRENDS",
-          "description": "Discover trending topics, search patterns, and popularity data. Analyzes search interest over time, ...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "COMPOSIO_SEARCH_TRENDS"
-              ]
-            }
-          }
-        },
-        "COMPOSIO_SEARCH_IMAGE": {
-          "toolkit": "COMPOSIO_SEARCH",
-          "tool_slug": "COMPOSIO_SEARCH_IMAGE",
-          "description": "The ImageSearch class performs an image search using the Composio Image Search API, targeting image ...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "COMPOSIO_SEARCH_IMAGE"
-              ]
-            }
-          }
-        },
-        "COMPOSIO_SEARCH_GOOGLE_MAPS": {
-          "toolkit": "COMPOSIO_SEARCH",
-          "tool_slug": "COMPOSIO_SEARCH_GOOGLE_MAPS",
-          "description": "Performs a location-specific search via the Composio Google Maps Search API, returning results under...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "COMPOSIO_SEARCH_GOOGLE_MAPS"
-              ]
-            }
-          }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:39:27.410Z",
-        "current_time_utc_epoch_seconds": 1786563567,
+        "current_time_utc": "2026-08-12T20:55:14.310Z",
+        "current_time_utc_epoch_seconds": 1786568114,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "high",
+        "id": "spin",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"high\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"spin\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) You may call COMPOSIO_MANAGE_CONNECTIONS: Some toolkits lack active connections",
@@ -333,6 +298,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_hSYr3oV2q-nX"
+    "log_id": "log_m-AkjPFu8IP2"
   }
 }

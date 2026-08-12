@@ -3,15 +3,26 @@
     "query_id": "workflow-007-q2",
     "workflow_id": 7,
     "workflow_task": "Aggregate and act on personal productivity signals across email, calendar, GitHub, LinkedIn, and SMS; additionally configure SMS receiving/sending and manage calendar access/events.",
-    "query": "buy an sms number and configure inbound automations",
-    "required_tools": [
-      "CLICKSEND_POST_NUMBERS_BUY",
-      "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND"
+    "query": "connect to calendar and retrieve calendar list",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "CAL_CONNECT_TO_CALENDAR",
+          "GOOGLECALENDAR_LIST_CALENDARS"
+        ],
+        "purpose": "connect to and list available calendars"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "CAL_RETRIEVE_CALENDAR_LIST"
+        ],
+        "purpose": "retrieve the calendar list"
+      }
     ],
     "supporting_tools": [
-      "CLICKSEND_GET_NUMBERS_SEARCH"
+      "GOOGLECALENDAR_GET_CURRENT_DATE_TIME"
     ],
-    "rationale": "Configuring SMS receiving involves searching/buying a number and setting up the inbound automation endpoints.",
+    "rationale": "Managing calendar access requires connecting to the calendar service and retrieving the list of calendars.",
     "candidate_tools": [
       "CAL_CONNECT_TO_CALENDAR",
       "CAL_RETRIEVE_CALENDAR_LIST",
@@ -39,323 +50,272 @@
     ]
   },
   "request": {
-    "query": "buy an sms number and configure inbound automations"
+    "query": "connect to calendar and retrieve calendar list"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "buy an sms number and configure inbound automations",
-          "execution_guidance": "Found 6 tools for this query. Look at the schemas to know how to use them.",
+          "use_case": "connect to calendar and retrieve calendar list",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if connection inactive or scopes changed)] [Prerequisite]: Initiate/complete authorization using CAL_CONNECT_TO_CALENDAR (continue only once the connection is active).",
+            "[Optional (if consent cannot be completed or scope errors persist)] [Fallback]: Generate a consent URL using CAL_GET_GOOGLE_CALENDAR_OAUTH_AUTHENTICATION_URL (complete consent) then retry CAL_CONNECT_TO_CALENDAR.",
+            "[Required] [Step]: Enumerate accessible calendars using GOOGLECALENDAR_LIST_CALENDARS (store calendars[].id, primary, accessRole; paginate using the returned page-token field until absent).",
+            "[Optional (if constructing relative/local-day windows)] [Prerequisite]: Get an offset-aware reference timestamp using GOOGLECALENDAR_GET_CURRENT_DATE_TIME (derive valid time_min/time_max bounds).",
+            "[Required] [Step]: Verify read access using GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS (query a bounded window; tune response_detail for payload size; if unexpectedly empty, widen/shift bounds before concluding no events).",
+            "[Optional (if results are ambiguous or you need strict per-calendar reads)] [Next Step]: Query a single calendar using GOOGLECALENDAR_EVENTS_LIST (use calendar_id from GOOGLECALENDAR_LIST_CALENDARS to isolate visibility/scope issues).",
+            "[Optional (if timezone/metadata is needed to interpret timestamps)] [Next Step]: Fetch timezone context using GOOGLECALENDAR_GET_CALENDAR and/or GOOGLECALENDAR_SETTINGS_LIST (normalize time_min/time_max and display consistently)."
+          ],
+          "known_pitfalls": [
+            "[GOOGLECALENDAR_LIST_CALENDARS] HTTP 403 insufficientPermissions / ACCESS_TOKEN_SCOPE_INSUFFICIENT indicates missing OAuth scopes; re-run consent before retrying reads.",
+            "[GOOGLECALENDAR_LIST_CALENDARS] Pagination cursor field names vary (nextPageToken vs next_page_token); next_sync_token may appear but is not a page cursor.",
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] Invalid/inverted time_min/time_max can yield an empty result without an explicit error; adjust bounds before treating as no data.",
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] response_detail='minimal' may populate only a compact/summary view while omitting a full events array; request fuller detail only when required.",
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] Event start/end can be all-day (date) or timed (dateTime); parsers must handle both shapes."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Normalize event start time shape (dateTime vs date) from a JSON response.",
+              "code": "```python\nimport json,sys\np=json.load(sys.stdin)\nev=p.get('items') or p.get('events') or []\nss=[((e.get('start') or {}).get('dateTime') or (e.get('start') or {}).get('date')) for e in ev]\nss=[s for s in ss if s]\nprint(len(ev), ss[:5])\n```"
+            },
+            {
+              "description": "Compute total duration from nested timed events while skipping cancelled and all-day shapes.",
+              "code": "```python\nfrom datetime import datetime\n\ndef it(p):\n    for w in p.get('events') or []:\n        e=(w or {}).get('event') or {}\n        if e.get('status')=='cancelled':\n            continue\n        s,e2=(e.get('start') or {}),(e.get('end') or {})\n        if 'date' in s or 'date' in e2:\n            continue\n        sd,ed=s.get('dateTime'),e2.get('dateTime')\n        if not sd or not ed:\n            continue\n        yield datetime.fromisoformat(sd.replace('Z','+00:00')),datetime.fromisoformat(ed.replace('Z','+00:00'))\n\ndef total_hours(p):\n    return sum(max(0,(b-a).total_seconds()) for a,b in it(p))/3600.0\n```"
+            }
+          ],
+          "difficulty": "easy",
           "primary_tool_slugs": [
-            "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND",
-            "CLICKSEND_POST_NUMBERS_BUY"
+            "CAL_CONNECT_TO_CALENDAR",
+            "GOOGLECALENDAR_LIST_CALENDARS"
           ],
           "related_tool_slugs": [
-            "CLICKSEND_GET_NUMBERS",
-            "CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND",
-            "CLICKSEND_SMS_INBOUND_AUTOMATION_PUT",
-            "CLICKSEND_GET_NUMBERS_SEARCH"
+            "GOOGLECALENDAR_GET_CALENDAR",
+            "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+            "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+            "CAL_GET_GOOGLE_CALENDAR_OAUTH_AUTHENTICATION_URL",
+            "GOOGLECALENDAR_SETTINGS_LIST",
+            "GOOGLECALENDAR_EVENTS_LIST"
           ],
           "toolkits": [
-            "clicksend"
-          ]
+            "cal",
+            "googlecalendar"
+          ],
+          "plan_id": "0367eabb3bae49f6bd58ec14f92fc82f"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "clicksend",
+          "toolkit": "cal",
           "has_active_connection": false,
-          "description": "ClickSend is a cloud-based SMS and email marketing platform that enables businesses to send and receive SMS messages, manage contacts, and track campaign performance.",
-          "status_message": "No Active connection for toolkit=clicksend. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"clicksend\") to create a connection BEFORE executing any clicksend tools."
+          "description": "Cal simplifies meeting coordination by providing shareable booking pages, calendar syncing, and availability management to streamline the scheduling process",
+          "status_message": "No Active connection for toolkit=cal. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"cal\") to create a connection BEFORE executing any cal tools."
+        },
+        {
+          "toolkit": "googlecalendar",
+          "has_active_connection": false,
+          "description": "Google Calendar is a time management tool providing scheduling features, event reminders, and integration with email and other apps for streamlined organization",
+          "status_message": "No Active connection for toolkit=googlecalendar. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlecalendar\") to create a connection BEFORE executing any googlecalendar tools."
         }
       ],
       "tool_schemas": {
-        "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND": {
-          "toolkit": "CLICKSEND",
-          "tool_slug": "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND",
-          "description": "Tool to create a new inbound SMS automation rule in ClickSend. Use when you need to set up automated actions to trigger when inbound SMS messages are received.",
+        "CAL_CONNECT_TO_CALENDAR": {
+          "toolkit": "CAL",
+          "tool_slug": "CAL_CONNECT_TO_CALENDAR",
+          "description": "Initiates or checks the external connection status for a specified calendar, possibly returning a redirect URL for user authorization to complete integration, without altering calendar data.",
           "input_schema": {
             "type": "object",
             "required": [
-              "dedicated_number",
-              "rule_name",
-              "message_search_type",
-              "action",
-              "action_address",
-              "enabled"
+              "calendar"
             ],
             "properties": {
-              "action": {
+              "calendar": {
                 "type": "string",
+                "pattern": "^(apple|google|office365)$",
                 "examples": [
-                  "EMAIL_FIXED",
-                  "POLL",
-                  "AUTO_REPLY"
+                  "google",
+                  "office365",
+                  "apple"
                 ],
-                "description": "Action to perform when rule matches. Valid values: AUTO_REPLY, EMAIL_USER, EMAIL_FIXED, URL, SMS, POLL, GROUP_SMS, MOVE_CONTACT, CREATE_CONTACT, CREATE_CONTACT_PLUS_EMAIL, CREATE_CONTACT_PLUS_NAME_EMAIL, CREATE_CONTACT_PLUS_NAME, SMPP, NONE."
-              },
-              "enabled": {
-                "type": "integer",
-                "examples": [
-                  0,
-                  1
-                ],
-                "description": "Controls activation status of the rule. 0 = disabled, 1 = enabled."
-              },
-              "rule_name": {
-                "type": "string",
-                "examples": [
-                  "Test Inbound SMS Automation",
-                  "My Rule"
-                ],
-                "description": "Name of the automation rule to identify it. Helps organize and manage multiple rules."
-              },
-              "webhook_type": {
-                "type": "string",
-                "examples": [
-                  "json",
-                  "post",
-                  "get"
-                ],
-                "description": "Webhook format type. Valid values: 'post', 'get', or 'json'. Defaults to 'post' if not specified."
-              },
-              "action_address": {
-                "type": "string",
-                "examples": [
-                  "john@doe.com",
-                  "test@example.com",
-                  "430"
-                ],
-                "description": "Target destination for the specified action. For EMAIL_FIXED provide email address, for URL provide webhook URL, for contact lists provide list ID."
-              },
-              "dedicated_number": {
-                "type": "string",
-                "examples": [
-                  "+61298441484",
-                  "*"
-                ],
-                "description": "The dedicated phone number to apply this rule to. Use '*' to apply the rule to all numbers."
-              },
-              "message_search_term": {
-                "type": "string",
-                "examples": [
-                  "My Search Term",
-                  "Hello"
-                ],
-                "description": "Text pattern to match against incoming messages. Can be null for message_search_type=0 (any message)."
-              },
-              "message_search_type": {
-                "type": "integer",
-                "examples": [
-                  0,
-                  1,
-                  2,
-                  3
-                ],
-                "description": "Message matching logic. 0 = Any message, 1 = starts with, 2 = contains, 3 = does not contain."
+                "description": "The calendar type to connect to. Valid values: apple, google, office365"
               }
             }
           },
           "hasFullSchema": true
         },
-        "CLICKSEND_POST_NUMBERS_BUY": {
-          "toolkit": "CLICKSEND",
-          "tool_slug": "CLICKSEND_POST_NUMBERS_BUY",
-          "description": "Tool to purchase a dedicated phone number from ClickSend. Use when you need to buy a specific number for SMS messaging and other communication services.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "dedicated_number",
-              "type"
-            ],
-            "properties": {
-              "type": {
-                "type": "string",
-                "examples": [
-                  "sms"
-                ],
-                "description": "The type of service for the number (e.g., 'sms')"
-              },
-              "country": {
-                "type": "string",
-                "examples": [
-                  "US",
-                  "AU"
-                ],
-                "description": "Two-character ISO country code (e.g., 'US', 'AU')"
-              },
-              "dedicated_number": {
-                "type": "string",
-                "examples": [
-                  "+18335134410",
-                  "+614197651956"
-                ],
-                "description": "The phone number to purchase, including country code (e.g., '+14155551234')"
-              },
-              "registration_data": {
-                "type": "object",
-                "properties": {
-                  "state": {
-                    "type": "string",
-                    "examples": [
-                      "CA"
-                    ],
-                    "description": "State or province"
-                  },
-                  "suburb": {
-                    "type": "string",
-                    "examples": [
-                      "San Francisco"
-                    ],
-                    "description": "Suburb or city"
-                  },
-                  "country": {
-                    "type": "string",
-                    "examples": [
-                      "US",
-                      "AU"
-                    ],
-                    "description": "Two-character ISO country code"
-                  },
-                  "postcode": {
-                    "type": "string",
-                    "examples": [
-                      "94102"
-                    ],
-                    "description": "Postal or zip code"
-                  },
-                  "contact_name": {
-                    "type": "string",
-                    "examples": [
-                      "John Doe"
-                    ],
-                    "description": "Contact person name"
-                  },
-                  "business_name": {
-                    "type": "string",
-                    "examples": [
-                      "Acme Corporation"
-                    ],
-                    "description": "Name of the business"
-                  },
-                  "contact_number": {
-                    "type": "string",
-                    "examples": [
-                      "+14155551234"
-                    ],
-                    "description": "Contact phone number"
-                  },
-                  "business_address": {
-                    "type": "string",
-                    "examples": [
-                      "123 Main Street"
-                    ],
-                    "description": "Physical address of the business"
-                  }
-                },
-                "description": "Registration information for compliance purposes.",
-                "additionalProperties": false
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "CLICKSEND_GET_NUMBERS": {
-          "toolkit": "CLICKSEND",
-          "tool_slug": "CLICKSEND_GET_NUMBERS",
-          "description": "Tool to retrieve all available dedicated numbers associated with your ClickSend account. Use when you need to view dedicated numbers that can be used as sender IDs for messaging services.",
+        "GOOGLECALENDAR_LIST_CALENDARS": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_LIST_CALENDARS",
+          "description": "Retrieves calendars from the user's Google Calendar list, with options for pagination and filtering. Loop through all pages using nextPageToken until absent to avoid missing calendars. Use the primary flag and accessRole field from the response to identify calendars \u2014 display names are not valid calendar_id values. Read access (listing) does not imply write OAuth scopes.",
           "input_schema": {
             "type": "object",
             "properties": {
-              "page": {
-                "type": "integer",
-                "default": 1,
-                "minimum": 1,
+              "page_token": {
+                "type": "string",
                 "examples": [
-                  1,
-                  2,
-                  3
+                  " nextPageToken123"
                 ],
-                "description": "Page number for pagination. Must be at least 1."
+                "description": "Token for the page of results to return, from a previous response."
               },
-              "limit": {
+              "sync_token": {
+                "type": "string",
+                "examples": [
+                  "syncToken123"
+                ],
+                "description": "Sync token from a previous list request to get only changed entries; showDeleted, showHidden, and pageToken are ignored if provided. Also ignores minAccessRole. An HTTP 410 Gone response means the token has expired; perform a full resync by omitting sync_token."
+              },
+              "max_results": {
                 "type": "integer",
                 "default": 10,
+                "maximum": 250,
                 "minimum": 1,
                 "examples": [
-                  10,
                   25,
-                  50
+                  100
                 ],
-                "description": "Number of records per page. Must be at least 1."
+                "description": "Maximum number of calendars to return per page. Max 250."
+              },
+              "show_hidden": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include calendars not typically shown in the UI."
+              },
+              "show_deleted": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include deleted calendars in the result."
+              },
+              "min_access_role": {
+                "type": "string",
+                "examples": [
+                  "reader",
+                  "owner"
+                ],
+                "description": "Minimum access role for calendars returned. Valid values are 'freeBusyReader', 'owner', 'reader', 'writer'. freeBusyReader calendars expose only free/busy slots \u2014 no event details and writes fail with 403. Omit this filter to include read-only calendars."
               }
             }
           },
           "hasFullSchema": true
         },
-        "CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND": {
-          "toolkit": "CLICKSEND",
-          "tool_slug": "CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND",
-          "description": "Tool to retrieve all inbound SMS automation rules configured in your ClickSend account. Use when you...",
+        "GOOGLECALENDAR_GET_CALENDAR": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_GET_CALENDAR",
+          "description": "Retrieves a specific Google Calendar, identified by `calendar_id`, to which the authenticated user has access. Response includes `timeZone` (IANA format, e.g., 'America/Los_Angeles') \u2014 use it directly when constructing `timeMin`/`timeMax` in other tools to avoid DST errors. An empty `defaultReminders` list is valid (no defaults configured). Insufficient `accessRole` may omit fields like `defaultReminders` and `colorId`.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "calendar_id": {
+                "type": "string",
+                "default": "primary",
+                "examples": [
+                  "primary",
+                  "user@example.com",
+                  "en.usa#holiday@group.v.calendar.google.com"
+                ],
+                "description": "Identifier of the Google Calendar to retrieve. Must be 'primary' (the default) for the user's main calendar, or an email-like identifier (e.g., 'user@example.com' or 'en.usa#holiday@group.v.calendar.google.com'). IMPORTANT: Calendar display names/titles (e.g., 'Work', 'Vacation') are NOT valid identifiers and will result in errors. To find a calendar's ID, use the LIST_CALENDARS action which returns the 'id' field for each calendar."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLECALENDAR_GET_CURRENT_DATE_TIME": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+          "description": "Gets the current date and time, allowing for a specific timezone offset. Call this tool first before...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND"
+                "GOOGLECALENDAR_GET_CURRENT_DATE_TIME"
               ]
             }
           }
         },
-        "CLICKSEND_SMS_INBOUND_AUTOMATION_PUT": {
-          "toolkit": "CLICKSEND",
-          "tool_slug": "CLICKSEND_SMS_INBOUND_AUTOMATION_PUT",
-          "description": "Tool to update an existing inbound SMS automation rule in ClickSend. Use when you need to modify aut...",
+        "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+          "description": "Return a unified event list across all calendars in the user's calendar list for a given time range....",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "CLICKSEND_SMS_INBOUND_AUTOMATION_PUT"
+                "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS"
               ]
             }
           }
         },
-        "CLICKSEND_GET_NUMBERS_SEARCH": {
-          "toolkit": "CLICKSEND",
-          "tool_slug": "CLICKSEND_GET_NUMBERS_SEARCH",
-          "description": "Tool to search for available dedicated numbers by country code. Use when you need to find purchasabl...",
+        "CAL_GET_GOOGLE_CALENDAR_OAUTH_AUTHENTICATION_URL": {
+          "toolkit": "CAL",
+          "tool_slug": "CAL_GET_GOOGLE_CALENDAR_OAUTH_AUTHENTICATION_URL",
+          "description": "Generates the initial Google Calendar OAuth 2.0 authorization URL for user redirection to begin the ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "CLICKSEND_GET_NUMBERS_SEARCH"
+                "CAL_GET_GOOGLE_CALENDAR_OAUTH_AUTHENTICATION_URL"
+              ]
+            }
+          }
+        },
+        "GOOGLECALENDAR_SETTINGS_LIST": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_SETTINGS_LIST",
+          "description": "Returns all user settings for the authenticated user. Results include multiple settings keyed by id ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLECALENDAR_SETTINGS_LIST"
+              ]
+            }
+          }
+        },
+        "GOOGLECALENDAR_EVENTS_LIST": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_EVENTS_LIST",
+          "description": "Returns events on the specified calendar. TIMEZONE WARNING: When using timeMin/timeMax with UTC time...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLECALENDAR_EVENTS_LIST"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:36:30.823Z",
-        "current_time_utc_epoch_seconds": 1786563390,
+        "current_time_utc": "2026-08-12T20:51:56.403Z",
+        "current_time_utc_epoch_seconds": 1786567916,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "nice",
+        "id": "cool",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"nice\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"cool\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
-        "Follow these steps carefully to begin the task:",
-        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
       ],
       "success": true,
       "error": null
     },
     "error": null,
-    "log_id": "log_PPNRZ7VnN0N4"
+    "log_id": "log_5rNYJAoZL4sU"
   }
 }

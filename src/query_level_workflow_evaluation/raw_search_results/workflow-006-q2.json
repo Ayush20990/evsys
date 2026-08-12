@@ -3,14 +3,25 @@
     "query_id": "workflow-006-q2",
     "workflow_id": 6,
     "workflow_task": "Manage Salesforce leads, contacts, campaign membership, campaign attendance statuses, a campaign-based static list, and MQL lead activity reporting.",
-    "query": "find salesforce campaigns by name",
-    "required_tools": [
-      "SALESFORCE_SEARCH_CAMPAIGNS"
+    "query": "search campaigns and add contact to campaign",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "SALESFORCE_SEARCH_CAMPAIGNS"
+        ],
+        "purpose": "find the relevant campaign"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "SALESFORCE_ADD_CONTACT_TO_CAMPAIGN"
+        ],
+        "purpose": "add the contact to the campaign"
+      }
     ],
     "supporting_tools": [
-      "SALESFORCE_RUN_SOQL_QUERY"
+      "SALESFORCE_CREATE_A_RECORD"
     ],
-    "rationale": "Locating the correct campaign is a prerequisite for adding contacts and managing campaign attendance statuses or static lists.",
+    "rationale": "Managing campaign membership requires first searching for the campaign and then adding the contact to it.",
     "candidate_tools": [
       "SALESFORCE_ADD_CONTACT_TO_CAMPAIGN",
       "SALESFORCE_CREATE_A_RECORD",
@@ -26,187 +37,237 @@
     ]
   },
   "request": {
-    "query": "find salesforce campaigns by name"
+    "query": "search campaigns and add contact to campaign"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "find salesforce campaigns by name",
-          "execution_guidance": "Found 4 tools for this query. Look at the schemas to know how to use them.",
+          "use_case": "search campaigns and add contact to campaign",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Retrieve campaigns using EMELIA_LIST_CAMPAIGNS (select target campaign ID(s) by name).",
+            "[Optional (if campaign does not exist)] [Fallback]: Create the campaign using EMELIA_CREATE_CAMPAIGN, then re-run EMELIA_LIST_CAMPAIGNS (capture new ID).",
+            "[Optional (if avoiding duplicates or doing post-checks)] [Prerequisite]: Baseline membership using EMELIA_LIST_CAMPAIGN_CONTACTS (paginate by page until all contacts collected).",
+            "[Required] [Step]: Add each person using EMELIA_ADD_CONTACT_TO_CAMPAIGN (provide campaign \"id\" plus contact email and name fields).",
+            "[Required] [Next Step]: Re-run EMELIA_LIST_CAMPAIGN_CONTACTS (paginate if needed) to confirm newly added contacts and updated count.",
+            "[Optional (if audit/verification needed)] [Next Step]: Inspect enrollment/activity using EMELIA_GET_CAMPAIGN_ACTIVITIES.",
+            "[Optional (if rollback needed after mistaken adds, after user confirmation)] [Step]: Remove contacts using EMELIA_DELETE_CONTACT_FROM_CAMPAIGN."
+          ],
+          "known_pitfalls": [
+            "[EMELIA_ADD_CONTACT_TO_CAMPAIGN] Campaign identifier parameter is named \"id\", while EMELIA_LIST_CAMPAIGN_CONTACTS uses \"campaignId\".",
+            "[EMELIA_ADD_CONTACT_TO_CAMPAIGN] Missing required contact fields (email/name) can block enrollment.",
+            "[EMELIA_ADD_CONTACT_TO_CAMPAIGN] Can fail with status_code 400 indicating the contact is already included; treat as idempotent success or pre-check via EMELIA_LIST_CAMPAIGN_CONTACTS.",
+            "[EMELIA_LIST_CAMPAIGN_CONTACTS] Page-based pagination is required; collect pages until no more items rather than relying on a single call.",
+            "[EMELIA_LIST_CAMPAIGN_CONTACTS] Response includes both \"count\" and a \"list\" array; empty results may be \"count\": 0 with \"list\": [] (and nested executions may place lists under results[i].response.data.list)."
+          ],
+          "difficulty": "easy",
           "primary_tool_slugs": [
-            "SALESFORCE_SEARCH_CAMPAIGNS"
+            "EMELIA_LIST_CAMPAIGNS",
+            "EMELIA_ADD_CONTACT_TO_CAMPAIGN"
           ],
           "related_tool_slugs": [
-            "SALESFORCE_GET_CAMPAIGN",
-            "SALESFORCE_LIST_CAMPAIGNS",
-            "SALESFORCE_ADD_LEAD_TO_CAMPAIGN"
+            "EMELIA_CREATE_CAMPAIGN",
+            "EMELIA_GET_CAMPAIGN_ACTIVITIES",
+            "EMELIA_LIST_CAMPAIGN_CONTACTS",
+            "EMELIA_DELETE_CONTACT_FROM_CAMPAIGN"
           ],
           "toolkits": [
-            "salesforce"
-          ]
+            "emelia"
+          ],
+          "plan_id": "26fdd85ed0524865ae8438c7ea4cbc0c"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "salesforce",
+          "toolkit": "emelia",
           "has_active_connection": false,
-          "description": "Salesforce is a leading CRM platform integrating sales, service, marketing, and analytics to build customer relationships and drive business growth",
-          "status_message": "No Active connection for toolkit=salesforce. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"salesforce\") to create a connection BEFORE executing any salesforce tools."
+          "description": "Emelia is an all-in-one B2B prospecting tool offering features like cold-emailing, LinkedIn outreach, email warm-up, email finder, and LinkedIn Sales Navigator scraping.",
+          "status_message": "No Active connection for toolkit=emelia. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"emelia\") to create a connection BEFORE executing any emelia tools."
         }
       ],
       "tool_schemas": {
-        "SALESFORCE_SEARCH_CAMPAIGNS": {
-          "toolkit": "SALESFORCE",
-          "tool_slug": "SALESFORCE_SEARCH_CAMPAIGNS",
-          "description": "Search for Salesforce campaigns using multiple criteria like name, type, status, date range, or active status. Requires access to the Campaign object (Marketing User feature must be enabled in the org). For complex sorting (multi-field ORDER BY), use SALESFORCE_RUN_SOQL_QUERY instead.",
+        "EMELIA_LIST_CAMPAIGNS": {
+          "toolkit": "EMELIA",
+          "tool_slug": "EMELIA_LIST_CAMPAIGNS",
+          "description": "Tool to retrieve all email campaigns. Use when you need to fetch the list of campaigns, with optional pagination or search filters.",
           "input_schema": {
             "type": "object",
             "properties": {
-              "name": {
-                "type": "string",
+              "page": {
+                "type": "integer",
+                "minimum": 1,
                 "examples": [
-                  "Summer Sale",
-                  "Product Launch",
-                  "Webinar"
+                  1
                 ],
-                "description": "Search by campaign name. Supports partial matches. Combine with type, status, or date range filters to narrow results when names are non-unique."
-              },
-              "type": {
-                "type": "string",
-                "examples": [
-                  "Email",
-                  "Webinar",
-                  "Trade Show",
-                  "Public Relations"
-                ],
-                "description": "Search by campaign type."
+                "description": "Page number for pagination (1-based index)"
               },
               "limit": {
                 "type": "integer",
-                "default": 50,
-                "maximum": 2000,
                 "minimum": 1,
-                "description": "Maximum number of campaigns to return. Check totalSize in the response to determine if results are truncated; issue additional queries if needed."
-              },
-              "fields": {
-                "type": "string",
-                "default": "Id,Name,Type,Status,StartDate,EndDate,IsActive,Description,BudgetedCost,ActualCost,NumberOfContacts,NumberOfLeads",
                 "examples": [
-                  "Id,Name,Type,Status,StartDate,EndDate",
-                  "Id,Name,Type,Status,StartDate,EndDate,IsActive,BudgetedCost,ActualCost"
+                  20
                 ],
-                "description": "Comma-separated list of Campaign fields to retrieve."
+                "description": "Number of items per page"
               },
-              "status": {
+              "search": {
                 "type": "string",
                 "examples": [
-                  "Planned",
-                  "In Progress",
-                  "Completed",
-                  "Aborted"
+                  "welcome"
                 ],
-                "description": "Search by campaign status."
-              },
-              "is_active": {
-                "type": "boolean",
-                "description": "Filter by active status. True for active campaigns, False for inactive."
-              },
-              "start_date_to": {
-                "type": "string",
-                "examples": [
-                  "2024-12-31"
-                ],
-                "description": "Upper bound for StartDate (inclusive). Use YYYY-MM-DD."
-              },
-              "start_date_from": {
-                "type": "string",
-                "examples": [
-                  "2024-01-01"
-                ],
-                "description": "Lower bound for StartDate (inclusive). Use YYYY-MM-DD."
+                "description": "Search string to filter campaigns by name or attributes"
               }
             }
           },
           "hasFullSchema": true
         },
-        "SALESFORCE_GET_CAMPAIGN": {
-          "toolkit": "SALESFORCE",
-          "tool_slug": "SALESFORCE_GET_CAMPAIGN",
-          "description": "Retrieves a specific campaign by ID from Salesforce, returning all available fields.",
+        "EMELIA_ADD_CONTACT_TO_CAMPAIGN": {
+          "toolkit": "EMELIA",
+          "tool_slug": "EMELIA_ADD_CONTACT_TO_CAMPAIGN",
+          "description": "Tool to add a contact to an email campaign. Use when you have collected subscriber details and want to enroll them in a campaign.",
           "input_schema": {
             "type": "object",
             "required": [
-              "campaign_id"
+              "id",
+              "contact"
             ],
             "properties": {
-              "campaign_id": {
+              "id": {
                 "type": "string",
                 "examples": [
-                  "701Wd00000BVUYAIA5",
-                  "701XXXXXXXXXXXXXXX"
+                  "campaign_1234"
                 ],
-                "description": "The Salesforce ID of the campaign to retrieve."
+                "description": "Campaign ID to which the contact will be added"
+              },
+              "contact": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "examples": [
+                      "user@example.com"
+                    ],
+                    "description": "Contact's email address"
+                  },
+                  "field1": {
+                    "type": "string",
+                    "examples": [
+                      "Preferred customer"
+                    ],
+                    "description": "Custom field 1 for this contact"
+                  },
+                  "field2": {
+                    "type": "string",
+                    "examples": [
+                      "VIP"
+                    ],
+                    "description": "Custom field 2 for this contact"
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "examples": [
+                      "Doe"
+                    ],
+                    "description": "Contact's last name"
+                  },
+                  "firstName": {
+                    "type": "string",
+                    "examples": [
+                      "John"
+                    ],
+                    "description": "Contact's first name"
+                  }
+                },
+                "description": "Contact object containing email and optional name/fields",
+                "additionalProperties": false
               }
             }
           },
           "hasFullSchema": true
         },
-        "SALESFORCE_LIST_CAMPAIGNS": {
-          "toolkit": "SALESFORCE",
-          "tool_slug": "SALESFORCE_LIST_CAMPAIGNS",
-          "description": "Lists campaigns from Salesforce using SOQL query, allowing flexible filtering, sorting, and field selection. Results returned under `response_data.records`; use `Id` (not `Name`) to identify campaigns in downstream operations.",
+        "EMELIA_CREATE_CAMPAIGN": {
+          "toolkit": "EMELIA",
+          "tool_slug": "EMELIA_CREATE_CAMPAIGN",
+          "description": "Tool to create a new email campaign. Use after you have finalized the campaign name.",
           "input_schema": {
             "type": "object",
+            "required": [
+              "name"
+            ],
             "properties": {
-              "query": {
+              "name": {
                 "type": "string",
-                "default": "SELECT Id, Name, Type, Status, StartDate, EndDate, BudgetedCost, ActualCost, ExpectedRevenue, IsActive, ParentId FROM Campaign",
-                "examples": [
-                  "SELECT Id, Name, Type, Status FROM Campaign WHERE IsActive = true",
-                  "SELECT Id, Name, StartDate, EndDate FROM Campaign ORDER BY StartDate DESC LIMIT 10",
-                  "SELECT Id, Name, BudgetedCost FROM Campaign WHERE Type = 'Email' AND Status = 'In Progress'"
-                ],
-                "description": "SOQL query to fetch campaigns. Use standard SOQL syntax to filter, sort, and limit results. To disambiguate similarly named campaigns, filter on `Type`, `Status`, `StartDate`, or `EndDate`."
+                "description": "Name of the email campaign"
               }
             }
           },
           "hasFullSchema": true
         },
-        "SALESFORCE_ADD_LEAD_TO_CAMPAIGN": {
-          "toolkit": "SALESFORCE",
-          "tool_slug": "SALESFORCE_ADD_LEAD_TO_CAMPAIGN",
-          "description": "Adds a lead to a campaign by creating a CampaignMember record, allowing you to track campaign engage...",
+        "EMELIA_GET_CAMPAIGN_ACTIVITIES": {
+          "toolkit": "EMELIA",
+          "tool_slug": "EMELIA_GET_CAMPAIGN_ACTIVITIES",
+          "description": "Tool to retrieve activities for a specific email campaign. Use after obtaining the campaign ID.",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "SALESFORCE_ADD_LEAD_TO_CAMPAIGN"
+                "EMELIA_GET_CAMPAIGN_ACTIVITIES"
+              ]
+            }
+          }
+        },
+        "EMELIA_LIST_CAMPAIGN_CONTACTS": {
+          "toolkit": "EMELIA",
+          "tool_slug": "EMELIA_LIST_CAMPAIGN_CONTACTS",
+          "description": "Tool to list contacts in a specific email campaign. Use when you need to retrieve campaign subscribe...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "EMELIA_LIST_CAMPAIGN_CONTACTS"
+              ]
+            }
+          }
+        },
+        "EMELIA_DELETE_CONTACT_FROM_CAMPAIGN": {
+          "toolkit": "EMELIA",
+          "tool_slug": "EMELIA_DELETE_CONTACT_FROM_CAMPAIGN",
+          "description": "Tool to remove a contact from an email campaign. Use when you need to revoke a contact's subscriptio...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "EMELIA_DELETE_CONTACT_FROM_CAMPAIGN"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:36:08.501Z",
-        "current_time_utc_epoch_seconds": 1786563368,
+        "current_time_utc": "2026-08-12T20:51:48.230Z",
+        "current_time_utc_epoch_seconds": 1786567908,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "safe",
+        "id": "area",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"safe\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"area\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
-        "Follow these steps carefully to begin the task:",
-        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
       ],
       "success": true,
       "error": null
     },
     "error": null,
-    "log_id": "log_NZkkOcY9B1zD"
+    "log_id": "log_dP1OzcJbNnAA"
   }
 }

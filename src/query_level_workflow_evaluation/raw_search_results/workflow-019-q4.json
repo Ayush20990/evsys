@@ -1,77 +1,87 @@
 {
   "query_ground_truth": {
-    "query_id": "workflow-018-q2",
-    "workflow_id": 18,
-    "workflow_task": "Find recent remote or hybrid contract data-engineering-related job listings in a target region, validate/extract job details from job boards, compile a curated digest, and email it to someone.",
-    "query": "send the compiled job digest email",
+    "query_id": "workflow-019-q4",
+    "workflow_id": 19,
+    "workflow_task": "Find relevant Java backend and Spring Boot jobs, build or retrieve tailored resume documents, and email job alerts or applications through Gmail.",
+    "query": "send an email with the job alert or application",
     "requirement_groups": [
       {
         "acceptable_tool_slugs": [
           "GMAIL_SEND_EMAIL"
         ],
-        "purpose": "send an email message"
+        "purpose": "Send the application or job alert via Gmail"
       }
     ],
-    "supporting_tools": [],
-    "rationale": "The query focuses on delivering the final curated digest via email.",
+    "supporting_tools": [
+      "GMAIL_FETCH_EMAILS"
+    ],
+    "rationale": "Delivering job alerts or applications necessitates an email sending tool.",
     "candidate_tools": [
       "BROWSER_TOOL_CREATE_TASK",
+      "BROWSER_TOOL_GET_SESSION",
       "BROWSER_TOOL_STOP_TASK",
       "BROWSER_TOOL_WATCH_TASK",
+      "COMPOSIO_SEARCH_EXA_ANSWER",
+      "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+      "COMPOSIO_SEARCH_GROQ_CHAT",
+      "COMPOSIO_SEARCH_WEB",
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
       "GMAIL_SEND_EMAIL",
-      "LINKEDIN_PROXY_EXECUTE"
+      "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN",
+      "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+      "GOOGLEDRIVE_DOWNLOAD_FILE",
+      "GOOGLEDRIVE_FIND_FILE",
+      "GOOGLEDRIVE_UPLOAD_FROM_URL",
+      "LINKEDIN_PROXY_EXECUTE",
+      "LINKEDIN_SEARCH_AD_TARGETING_ENTITIES"
     ]
   },
   "request": {
-    "query": "send the compiled job digest email"
+    "query": "send an email with the job alert or application"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "send the compiled job digest email",
+          "use_case": "send an email with the job alert or application",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Prerequisite]: Gather final recipient_email (plus optional cc/bcc), subject, body, and is_html intent for GMAIL_SEND_EMAIL or GMAIL_CREATE_EMAIL_DRAFT (avoid missing required fields).",
-            "[Optional (if recipient address is uncertain)] [Prerequisite]: Disambiguate the intended recipient using GMAIL_SEARCH_PEOPLE (don\u2019t guess on close/ambiguous matches).",
-            "[Optional (if sending from a non-default alias)] [Prerequisite]: Verify an allowed sender identity using GMAIL_LIST_SEND_AS (avoid invalid from_email).",
-            "[Required] [Prerequisite]: Get explicit confirmation of recipients, chosen sender identity (if any), and final content before any irreversible action using GMAIL_SEND_EMAIL or GMAIL_SEND_DRAFT (prevent mis-send/duplicate-send).",
-            "[Optional (if review-before-send is needed)] [Step]: Create a draft using GMAIL_CREATE_EMAIL_DRAFT (adds an approval checkpoint).",
-            "[Optional (if a draft was created and needs edits)] [Next Step]: Review and adjust recipients/content using GMAIL_GET_DRAFT then GMAIL_UPDATE_DRAFT (ensure draft matches intent).",
-            "[Required] [Step]: Send exactly once using GMAIL_SEND_DRAFT (approved draft) or GMAIL_SEND_EMAIL (new send) or GMAIL_REPLY_TO_THREAD (reply in-thread), then store returned message identifiers for traceability.",
-            "[Optional (if send fails with permission/scope errors)] [Fallback]: Fix authorization/scopes causing send failures, then retry the chosen send tool once using GMAIL_SEND_EMAIL or GMAIL_SEND_DRAFT (avoid repeated sends)."
+            "[Required (for write operations)] [Prerequisite]: Validate recipients (at least one of to/cc/bcc or recipient_email), content (at least one of subject/body), HTML flags, and attachment readiness before using GMAIL_SEND_EMAIL or OUTLOOK_SEND_EMAIL (avoid schema errors/mis-sends).",
+            "[Required (before external side effects)] [Prerequisite]: Get explicit user confirmation of final recipients, subject/body, and attachments before using GMAIL_SEND_EMAIL, OUTLOOK_SEND_EMAIL, GMAIL_SEND_DRAFT, OUTLOOK_SEND_DRAFT, or RESEND_SEND_EMAIL (irreversible).",
+            "[Optional (if using Outlook and preflight is desired)] [Prerequisite]: Check recipient/mailbox signals using OUTLOOK_GET_MAIL_TIPS before OUTLOOK_SEND_EMAIL (invalid targets/OOF/quota).",
+            "[Optional (if review/approval is needed)] [Step]: Create a draft using GMAIL_CREATE_EMAIL_DRAFT or OUTLOOK_CREATE_DRAFT (stage content for review).",
+            "[Required (if a draft workflow is used)] [Next Step]: Send the prepared draft using GMAIL_SEND_DRAFT or OUTLOOK_SEND_DRAFT (sends stored draft content).",
+            "[Required (if sending immediately)] [Step]: Send the message using GMAIL_SEND_EMAIL or OUTLOOK_SEND_EMAIL (direct delivery; record returned message identifiers).",
+            "[Optional (if the primary provider send fails)] [Fallback]: Send using RESEND_SEND_EMAIL (provider fallback to complete delivery)."
           ],
           "known_pitfalls": [
-            "[GMAIL_SEND_EMAIL] May fail with 403 PERMISSION_DENIED / ACCESS_TOKEN_SCOPE_INSUFFICIENT; retries will keep failing until scopes are corrected.",
-            "[GMAIL_SEND_EMAIL] Success payload may return mostly identifiers/labels and a display link (not the composed subject/body); persist outbound content separately if needed.",
-            "[GMAIL_SEND_EMAIL] 400 validation can occur if recipient_email is not passed as the expected type (commonly requires a single string, not a list-like shape).",
-            "[GMAIL_SEND_DRAFT] Sends the draft as-is and does not support overriding recipients at send time; ensure recipients/content are correct in the draft first.",
-            "[COMPOSIO_REMOTE_WORKBENCH] Helper execution may return tuple-wrapped results and Gmail payloads may be nested under a top-level data object; unwrap/extract before field access to avoid AttributeError/key errors."
-          ],
-          "reference_workbench_snippets": [
-            {
-              "description": "Normalize a tuple-wrapped helper result and extract the nested data payload before reading Gmail response fields.",
-              "code": "```python\ndef unwrap(x):\n    return x[0] if isinstance(x, tuple) else x\nresp = unwrap(run_composio_tool(\"GMAIL_SEND_EMAIL\", {}))\npayload = resp.data if hasattr(resp, \"data\") else resp\npayload = payload.get(\"data\", payload) if isinstance(payload, dict) else {}\n```"
-            }
+            "[OUTLOOK_SEND_EMAIL] May return status_code=202 with an empty body; treat 202 as accepted and avoid automatic retries that can duplicate sends.",
+            "[GMAIL_SEND_EMAIL] Can hard-fail validation if recipient_email is missing or not a valid string; multiple recipients may require recipient_email plus extra_recipients.",
+            "[GMAIL_SEND_EMAIL] Can fail with status_code=403 due to insufficient authorization scopes; re-authorize with required permissions before retrying.",
+            "[GMAIL_SEND_EMAIL] Success identifiers may appear as data.id/data.threadId or nested under data.response_data; persist them for auditing/deduplication.",
+            "[COMPOSIO_REMOTE_WORKBENCH] Attachment staging can fail if the runtime cannot access the intended file; ensure attachments exist in the execution environment before sending."
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
             "GMAIL_SEND_EMAIL",
-            "GMAIL_CREATE_EMAIL_DRAFT"
+            "OUTLOOK_SEND_EMAIL"
           ],
           "related_tool_slugs": [
+            "RESEND_SEND_EMAIL",
+            "GMAIL_CREATE_EMAIL_DRAFT",
             "GMAIL_SEND_DRAFT",
-            "GMAIL_GET_DRAFT",
-            "GMAIL_UPDATE_DRAFT",
-            "GMAIL_REPLY_TO_THREAD",
-            "GMAIL_SEARCH_PEOPLE",
-            "GMAIL_LIST_SEND_AS"
+            "OUTLOOK_CREATE_DRAFT",
+            "OUTLOOK_SEND_DRAFT",
+            "OUTLOOK_GET_MAIL_TIPS"
           ],
           "toolkits": [
-            "gmail"
+            "gmail",
+            "outlook",
+            "resend"
           ],
-          "plan_id": "3d8e527668cc471fb3f1917ae454b700"
+          "plan_id": "929cf855348b465290ad328d2cf8ad04"
         }
       ],
       "toolkit_connection_statuses": [
@@ -80,6 +90,18 @@
           "has_active_connection": false,
           "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
           "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+        },
+        {
+          "toolkit": "outlook",
+          "has_active_connection": false,
+          "description": "Outlook is Microsoft's email and calendaring platform integrating contacts and scheduling, enabling users to manage communications and events in a unified workspace",
+          "status_message": "No Active connection for toolkit=outlook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"outlook\") to create a connection BEFORE executing any outlook tools."
+        },
+        {
+          "toolkit": "resend",
+          "has_active_connection": false,
+          "description": "The universal API for sending emails.",
+          "status_message": "No Active connection for toolkit=resend. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"resend\") to create a connection BEFORE executing any resend tools."
         }
       ],
       "tool_schemas": {
@@ -270,81 +292,87 @@
           },
           "hasFullSchema": true
         },
-        "GMAIL_CREATE_EMAIL_DRAFT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_CREATE_EMAIL_DRAFT",
-          "description": "Creates a Gmail email draft. While all fields are optional per the Gmail API, practical validation requires at least one of recipient_email, cc, or bcc and at least one of subject or body. Supports To/Cc/Bcc recipients, subject, plain/HTML body (ensure `is_html=True` for HTML), attachments, and threading. Returns a draft_id that must be used as-is with GMAIL_SEND_DRAFT \u2014 synthetic or stale IDs will fail. When creating a draft reply to an existing thread (thread_id provided), leave subject empty to stay in the same thread; setting a subject will create a NEW thread instead. HTTP 429 may occur on rapid creation/send sequences; apply exponential backoff.",
+        "OUTLOOK_SEND_EMAIL": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEND_EMAIL",
+          "description": "Sends an email with subject, body, recipients, and optional attachments via Microsoft Graph API. Supports comma-separated email addresses in the to_email field for multiple recipients. Accepts either a single file or a list of files as attachments. Attachments require a non-empty file with valid name and mimetype.",
           "input_schema": {
             "type": "object",
+            "required": [
+              "subject",
+              "body",
+              "to"
+            ],
             "properties": {
-              "cc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
+              "to": {
+                "type": "string",
                 "examples": [
-                  [
-                    "cc.recipient1@example.com",
-                    "CC User <cc.recipient2@example.com>"
-                  ]
+                  "recipient@example.com",
+                  "john.doe@company.com",
+                  "alice@example.com, bob@example.com"
                 ],
-                "description": "Carbon Copy (CC) recipients' email addresses. Each must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). Plain names without email addresses are NOT valid. Optional for drafts (recipients can be added later before sending)."
-              },
-              "bcc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "bcc.recipient@example.com",
-                    "BCC User <bcc.user@example.com>"
-                  ]
-                ],
-                "description": "Blind Carbon Copy (BCC) recipients' email addresses. Each must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'Bob Jones <user@example.com>'). Plain names without email addresses are NOT valid. Optional for drafts (recipients can be added later before sending)."
+                "description": "The primary recipient's email address(es). You can provide a single email or multiple emails separated by commas. Valid email addresses will be extracted from strings containing extra text. Format: name@domain.com"
               },
               "body": {
                 "type": "string",
                 "examples": [
-                  "Hello Team,\n\nPlease find the attached report for your review.\n\nBest regards,\nYour Name",
-                  "<h1>Meeting Confirmation</h1><p>This email confirms our meeting scheduled for next Tuesday.</p>"
+                  "Hello team, please find the attached report.",
+                  "<h1>Project Phoenix</h1><p>Initial proposal attached.</p>"
                 ],
-                "description": "Email body content (plain text or HTML); `is_html` must be True if HTML. Optional - drafts can be created without a body and edited later before sending. Can also be provided as 'message_body'."
+                "description": "The content of the email body as a plain string (plain text or HTML based on `is_html`). Do not pass structured objects; provide only the raw text/HTML content."
               },
               "is_html": {
                 "type": "boolean",
                 "default": false,
                 "examples": [
-                  true,
-                  false
+                  "true",
+                  "false"
                 ],
-                "description": "Set to True if `body` is already formatted HTML. When False, plain text newlines are auto-converted to <br/> tags. Both modes result in HTML email; this flag controls whether the body content is treated as raw HTML or plain text that gets HTML formatting applied."
+                "description": "Specifies if the email body is HTML; `True` for HTML, `False` for plain text."
               },
               "subject": {
                 "type": "string",
                 "examples": [
-                  "Project Update Q3",
-                  "Meeting Reminder"
+                  "Project Update",
+                  "Important Announcement"
                 ],
-                "description": "Email subject line. Optional - drafts can be created without a subject and edited later before sending. When creating a draft reply to an existing thread (thread_id provided), leave this empty to stay in the same thread. Setting a subject will create a NEW thread instead."
+                "maxLength": 255,
+                "minLength": 1,
+                "description": "The subject line of the email."
+              },
+              "to_name": {
+                "type": "string",
+                "examples": [
+                  "Valued Customer",
+                  "John Doe"
+                ],
+                "description": "The display name of the primary recipient."
               },
               "user_id": {
                 "type": "string",
                 "default": "me",
                 "examples": [
                   "me",
-                  "user@example.com"
+                  "specific.user@example.com"
                 ],
-                "description": "User's email address or 'me' for the authenticated user."
+                "description": "The user's email address or the alias 'me' to represent the authenticated user."
               },
-              "thread_id": {
-                "type": "string",
+              "cc_emails": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
                 "examples": [
-                  "17f45ec49a9c3f1b"
+                  [
+                    "jane.doe@example.com",
+                    "cc.recipient@example.com"
+                  ],
+                  [
+                    "team@company.com"
+                  ]
                 ],
-                "description": "ID of an existing Gmail thread to reply to; omit for new thread. If the thread ID is invalid or inaccessible, the draft will be created as a new thread instead of failing."
+                "description": "List of email addresses for CC recipients. Each email should be a separate string in the array. Do NOT pass comma-separated values as a single string."
               },
               "attachment": {
                 "anyOf": [
@@ -432,17 +460,9 @@
                     }
                   }
                 ],
-                "description": "File(s) to attach to the email. Accepts a single file or a list of files. Total message size including base64-encoded attachments must be under 25 MB; use shareable links (e.g., Google Drive) for larger files."
+                "description": "File(s) to attach. Accepts a single file or a list of files."
               },
-              "recipient_email": {
-                "type": "string",
-                "examples": [
-                  "john.doe@example.com",
-                  "John Doe <john.doe@example.com>"
-                ],
-                "description": "Primary recipient's email address. Must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). A plain name without an email address (e.g., 'John Doe') is NOT valid - the '@' symbol and domain are required. Optional for drafts (recipients can be added later before sending). Use extra_recipients if you want to send to multiple recipients."
-              },
-              "extra_recipients": {
+              "bcc_emails": {
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -450,126 +470,219 @@
                 "default": [],
                 "examples": [
                   [
-                    "jane.doe@example.com",
-                    "Jane Doe <jane.doe@example.com>"
+                    "manager@example.com",
+                    "supervisor@example.com"
+                  ],
+                  [
+                    "hr@company.com"
                   ]
                 ],
-                "description": "Additional 'To' recipients' email addresses (not Cc or Bcc). Each must be a valid email address (e.g., 'user@example.com'), display name format (e.g., 'Jane Doe <user@example.com>'), or 'me' for the authenticated user. Plain names without email addresses are NOT valid. Should only be used if recipient_email is also provided."
+                "description": "List of email addresses for BCC recipients. Each email should be a separate string in the array. Do NOT pass comma-separated values as a single string."
+              },
+              "from_address": {
+                "type": "string",
+                "examples": [
+                  "shared.mailbox@contoso.com",
+                  "alias@example.com"
+                ],
+                "description": "Optional From address to set on the message (send as/on behalf). Provide a single email address. Requires appropriate mailbox permissions."
+              },
+              "save_to_sent_items": {
+                "type": "boolean",
+                "default": true,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Indicates if the email should be saved in 'Sent Items'."
               }
             }
           },
           "hasFullSchema": true
+        },
+        "RESEND_SEND_EMAIL": {
+          "toolkit": "RESEND",
+          "tool_slug": "RESEND_SEND_EMAIL",
+          "description": "Send an email using Resend. Confirm recipients and content with the user before invoking \u2014 sends are irreversible. All recipients must be listed explicitly via `to`, `cc`, or `bcc`; audience-based sending is unsupported. Render HTML or plain text externally before passing via `html` or `text`.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "from",
+              "to",
+              "subject"
+            ],
+            "properties": {
+              "cc": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Cc recipient email address. For multiple addresses, send as an array of strings."
+              },
+              "to": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Recipient email address. For multiple addresses, send as an array of strings. Max 50."
+              },
+              "bcc": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Bcc recipient email address. For multiple addresses, send as an array of strings. Use `bcc` instead of `to` when sending to multiple recipients to prevent them from seeing each other's addresses."
+              },
+              "from": {
+                "type": "string",
+                "description": "Sender email address. To include a name, use the format 'Your Name <sender@domain.com>'."
+              },
+              "html": {
+                "type": "string",
+                "description": "The HTML version of the message. At least one of 'html' or 'text' must be provided."
+              },
+              "text": {
+                "type": "string",
+                "description": "The plain text version of the message. At least one of 'html' or 'text' must be provided."
+              },
+              "react": {
+                "type": "string",
+                "description": "The React version of the message. Only available in the Node.js SDK."
+              },
+              "headers": {
+                "type": "object",
+                "description": "Custom headers to add to the email. Must be a dictionary/object with key-value pairs (e.g., {'X-Custom-Header': 'value'}). Pass None or omit to exclude.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "subject": {
+                "type": "string",
+                "description": "Email subject."
+              },
+              "reply_to": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Reply-to email address. For multiple addresses, send as an array of strings."
+              },
+              "scheduled_at": {
+                "type": "string",
+                "description": "Schedule email to be sent later. The date should be in ISO 8601 format (e.g., '2024-08-05T11:52:01.858Z')."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GMAIL_CREATE_EMAIL_DRAFT": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_CREATE_EMAIL_DRAFT",
+          "description": "Creates a Gmail email draft. While all fields are optional per the Gmail API, practical validation r...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_CREATE_EMAIL_DRAFT"
+              ]
+            }
+          }
         },
         "GMAIL_SEND_DRAFT": {
           "toolkit": "GMAIL",
           "tool_slug": "GMAIL_SEND_DRAFT",
-          "description": "Sends an existing draft email AS-IS to recipients already defined within the draft. IMPORTANT: This action does NOT accept recipient parameters (to, cc, bcc). The Gmail API's drafts/send endpoint sends drafts to whatever recipients are already set in the draft's To, Cc, and Bcc headers - it cannot add or override recipients. If the draft has no recipients, you must either: 1. Create a new draft with recipients using GMAIL_CREATE_EMAIL_DRAFT, then send it 2. Use GMAIL_SEND_EMAIL to send a new email directly with recipients. Send is immediate and irreversible \u2014 confirm recipients and content before calling. No scheduling support; trigger at the desired UTC time externally. Gmail enforces ~25 MB message size limit and daily send caps (~500 recipients/day personal, ~2,000/day Workspace).",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "draft_id"
-            ],
-            "properties": {
-              "user_id": {
-                "type": "string",
-                "default": "me",
-                "examples": [
-                  "me",
-                  "user@example.com"
-                ],
-                "description": "The user's email address. The special value `me` can be used to indicate the authenticated user."
-              },
-              "draft_id": {
-                "type": "string",
-                "examples": [
-                  "r99885592323229922"
-                ],
-                "description": "The ID of the draft to send. Draft IDs are typically alphanumeric strings (e.g., 'r99885592323229922'). Important: Do not confuse draft_id with message_id - they are different identifiers. Use GMAIL_LIST_DRAFTS to retrieve valid draft IDs, or GMAIL_CREATE_EMAIL_DRAFT to create a new draft and get its ID. IMPORTANT: The draft MUST already have recipients (To, Cc, or Bcc) set - this action cannot add or override recipients. If the draft has no recipients, first create a new draft with recipients using GMAIL_CREATE_EMAIL_DRAFT, or use GMAIL_SEND_EMAIL to send a new email directly."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "GMAIL_GET_DRAFT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_GET_DRAFT",
-          "description": "Retrieves a single Gmail draft by its ID. Use this to fetch and inspect draft content before sending...",
+          "description": "Sends an existing draft email AS-IS to recipients already defined within the draft. IMPORTANT: This ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_GET_DRAFT"
+                "GMAIL_SEND_DRAFT"
               ]
             }
           }
         },
-        "GMAIL_UPDATE_DRAFT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_UPDATE_DRAFT",
-          "description": "Updates (replaces) an existing Gmail draft's content in-place by draft ID. This action replaces the ...",
+        "OUTLOOK_CREATE_DRAFT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_CREATE_DRAFT",
+          "description": "Creates a new Outlook email draft with subject, body, recipients, and an optional attachment. This a...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_UPDATE_DRAFT"
+                "OUTLOOK_CREATE_DRAFT"
               ]
             }
           }
         },
-        "GMAIL_REPLY_TO_THREAD": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_REPLY_TO_THREAD",
-          "description": "Sends a reply within a specific Gmail thread using the original thread's subject; do not provide a c...",
+        "OUTLOOK_SEND_DRAFT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEND_DRAFT",
+          "description": "Tool to send an existing draft message. Use after creating a draft when you want to deliver it to re...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_REPLY_TO_THREAD"
+                "OUTLOOK_SEND_DRAFT"
               ]
             }
           }
         },
-        "GMAIL_SEARCH_PEOPLE": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_SEARCH_PEOPLE",
-          "description": "Searches contacts by matching the query against names, nicknames, emails, phone numbers, and organiz...",
+        "OUTLOOK_GET_MAIL_TIPS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_GET_MAIL_TIPS",
+          "description": "Tool to retrieve mail tips such as automatic replies and mailbox full status. Use when you need to c...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_SEARCH_PEOPLE"
-              ]
-            }
-          }
-        },
-        "GMAIL_LIST_SEND_AS": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_LIST_SEND_AS",
-          "description": "Lists the send-as aliases for a Gmail account, including the primary address and custom 'from' alias...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "GMAIL_LIST_SEND_AS"
+                "OUTLOOK_GET_MAIL_TIPS"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T20:54:05.099Z",
-        "current_time_utc_epoch_seconds": 1786568045,
+        "current_time_utc": "2026-08-12T20:54:18.496Z",
+        "current_time_utc_epoch_seconds": 1786568058,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "your",
+        "id": "crop",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"your\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"crop\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -579,6 +692,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_W3eOJzrruqpm"
+    "log_id": "log_tNM4JFFzGkn7"
   }
 }

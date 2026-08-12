@@ -3,14 +3,25 @@
     "query_id": "workflow-023-q2",
     "workflow_id": 23,
     "workflow_task": "Analyze and triage Zendesk support tickets at scale: search ticket queues, enrich tickets with requester/order context, add private AI triage notes and tags, verify queues are drained, and aggregate product-support trends over a large historical ticket set.",
-    "query": "fetch user profile and order history for ticket requester",
-    "required_tools": [
-      "ZENDESK_GET_USER"
+    "query": "update tickets with AI triage notes, tags, and enrich with requester context",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "ZENDESK_UPDATE_ZENDESK_TICKET"
+        ],
+        "purpose": "add private AI triage notes and tags to tickets"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "ZENDESK_GET_USER"
+        ],
+        "purpose": "enrich tickets with requester and order context"
+      }
     ],
     "supporting_tools": [
       "ZENDESK_GET_ZENDESK_TICKET_BY_ID"
     ],
-    "rationale": "Enriching a ticket requires looking up specific user details and context associated with the ticket.",
+    "rationale": "Enriching tickets with user context and updating them with triage notes represent the modification and enrichment phases of the workflow.",
     "candidate_tools": [
       "ZENDESK_GET_USER",
       "ZENDESK_GET_ZENDESK_TICKET_BY_ID",
@@ -19,21 +30,22 @@
     ]
   },
   "request": {
-    "query": "fetch user profile and order history for ticket requester"
+    "query": "update tickets with AI triage notes, tags, and enrich with requester context"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "fetch user profile and order history for ticket requester",
-          "execution_guidance": "Found 3 tools for this query. Look at the schemas to know how to use them.",
+          "use_case": "update tickets with AI triage notes, tags, and enrich with requester context",
+          "execution_guidance": "Found 4 tools for this query. Look at the schemas to know how to use them.",
           "primary_tool_slugs": [
-            "ZENDESK_GET_USER"
+            "ZENDESK_UPDATE_TICKETS_TAGS"
           ],
           "related_tool_slugs": [
-            "ZENDESK_SEARCH_ZENDESK_USERS",
-            "ZENDESK_GET_ZENDESK_ORGANIZATION"
+            "ZENDESK_GET_ZENDESK_TICKETS_TAGS",
+            "ZENDESK_GET_ZENDESK_TICKET_BY_ID",
+            "ZENDESK_GET_AUTOCOMPLETE_TAGS"
           ],
           "toolkits": [
             "zendesk"
@@ -49,107 +61,122 @@
         }
       ],
       "tool_schemas": {
-        "ZENDESK_GET_USER": {
+        "ZENDESK_UPDATE_TICKETS_TAGS": {
           "toolkit": "ZENDESK",
-          "tool_slug": "ZENDESK_GET_USER",
-          "description": "Tool to fetch a single Zendesk user by numeric user_id. Use when you have a user ID from ticket payloads (requester_id, submitter_id, assignee_id, author_id) and need to enrich with full user details (name, email, role, organization_id, etc.).",
+          "tool_slug": "ZENDESK_UPDATE_TICKETS_TAGS",
+          "description": "Update tags on a Zendesk ticket via PUT request to /api/v2/tickets/{ticket_id}/tags. Use when you need to add, replace, or manage tags on an existing ticket. This operation replaces all existing tags with the provided list.",
           "input_schema": {
             "type": "object",
             "required": [
-              "user_id"
+              "ticket_id",
+              "tags"
             ],
             "properties": {
-              "user_id": {
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "curl-test-tag"
+                  ],
+                  [
+                    "support",
+                    "urgent",
+                    "billing"
+                  ]
+                ],
+                "description": "An array of tag names to set on the ticket. Using this endpoint replaces all existing tags on the ticket with the provided tags."
+              },
+              "ticket_id": {
                 "type": "integer",
                 "examples": [
-                  123456789
+                  123456,
+                  82
                 ],
-                "description": "The numeric ID of the Zendesk user to retrieve. This is the user ID found in ticket payloads (requester_id, submitter_id, assignee_id, author_id)."
+                "description": "The ID of the ticket to update tags for."
               }
             }
           },
           "hasFullSchema": true
         },
-        "ZENDESK_SEARCH_ZENDESK_USERS": {
+        "ZENDESK_GET_ZENDESK_TICKETS_TAGS": {
           "toolkit": "ZENDESK",
-          "tool_slug": "ZENDESK_SEARCH_ZENDESK_USERS",
-          "description": "Search for Zendesk users by query or external ID. Use when you need to find users using flexible search criteria with Zendesk search syntax (e.g., partial name matches, email patterns, notes, phone numbers). For exact email lookups, consider using the 'Search Zendesk Users' action instead.",
+          "tool_slug": "ZENDESK_GET_ZENDESK_TICKETS_TAGS",
+          "description": "List all tags associated with a specific Zendesk ticket. Use when you need to retrieve the tags assigned to a particular ticket for categorization, filtering, or reporting purposes.",
           "input_schema": {
             "type": "object",
+            "required": [
+              "ticket_id"
+            ],
+            "properties": {
+              "ticket_id": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  123456,
+                  82
+                ],
+                "description": "The numeric ID of the ticket whose tags to retrieve. Must be a non-null integer. Obtain from ZENDESK_LIST_ZENDESK_TICKETS, ZENDESK_GET_ZENDESK_TICKET_BY_ID, or other ticket-related actions."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZENDESK_GET_ZENDESK_TICKET_BY_ID": {
+          "toolkit": "ZENDESK",
+          "tool_slug": "ZENDESK_GET_ZENDESK_TICKET_BY_ID",
+          "description": "Get ticket details from Zendesk. Returns the full ticket record (status, requester_id, assignee_id, organization_id, tags, custom_fields, created_at/updated_at, etc.) alongside its comments. Response wraps all data under a top-level `data` key; access `data['comments']` for comments and `data['comments'][i]['attachments']` for attachments (attachments unavailable from list endpoints). Each comment has both `html_body` and plain `body` fields \u2014 choose appropriately. Fields like `subject`, `organization_id`, `author_id`, and `body` may be null; handle defensively. First comment in `data.comments` is not necessarily from the requester \u2014 compare `author_id` against ticket `requester_id` to identify requester messages. For bulk calls, honor `Retry-After` headers on HTTP 429.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ticket_id"
+            ],
             "properties": {
               "page": {
                 "type": "integer",
                 "minimum": 1,
-                "examples": [
-                  1
-                ],
-                "description": "Page number for offset-based pagination (non-negative integer)."
-              },
-              "query": {
-                "type": "string",
-                "examples": [
-                  "jdoe"
-                ],
-                "description": "The `query` parameter supports the Zendesk search syntax for more advanced user searches. It can specify a partial or full value of any user property, including name, email address, notes, or phone. Example: `query='jdoe'`. See the [Search API](/api-reference/ticketing/ticket-management/search/)."
-              },
-              "include": {
-                "type": "string",
-                "examples": [
-                  "organizations"
-                ],
-                "description": "A comma-separated list of sideloads to include in the response."
+                "description": "Page number for paginating through ticket comments (starts at 1). Zendesk returns up to 100 comments per page by default."
               },
               "per_page": {
                 "type": "integer",
+                "maximum": 100,
                 "minimum": 1,
-                "examples": [
-                  25
-                ],
-                "description": "Number of records to return per page. Default and maximum values vary by endpoint."
+                "description": "Number of comments to return per page (max 100). Use with 'page' to control pagination of ticket comments."
               },
-              "external_id": {
-                "type": "string",
-                "examples": [
-                  "abc124"
-                ],
-                "description": "The `external_id` parameter does not support the search syntax. It only accepts exact ID values."
+              "ticket_id": {
+                "type": "integer",
+                "description": "ID of the ticket to get details for."
               }
             }
           },
           "hasFullSchema": true
         },
-        "ZENDESK_GET_ZENDESK_ORGANIZATION": {
+        "ZENDESK_GET_AUTOCOMPLETE_TAGS": {
           "toolkit": "ZENDESK",
-          "tool_slug": "ZENDESK_GET_ZENDESK_ORGANIZATION",
-          "description": "Get metadata for a specific Zendesk organization by ID. Response fields are available under data.organization_info. Does not return member/user lists.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "organization_id"
-            ],
-            "properties": {
-              "organization_id": {
-                "type": "integer",
-                "minimum": 1,
-                "examples": [
-                  123456
-                ],
-                "description": "Numeric ID of the organization to retrieve (e.g. 123456). Must be a non-null integer; cast to int if sourced from tools that return it as a string. Do not pass null (skip the call if ticket's organization_id is null). Obtain from ZENDESK_GET_ALL_ZENDESK_ORGANIZATIONS or ZENDESK_CREATE_ZENDESK_ORGANIZATION; never derive from organization name."
-              }
+          "tool_slug": "ZENDESK_GET_AUTOCOMPLETE_TAGS",
+          "description": "Search for Zendesk tags using autocomplete. Use when you need to find tag suggestions based on a par...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZENDESK_GET_AUTOCOMPLETE_TAGS"
+              ]
             }
-          },
-          "hasFullSchema": true
+          }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:39:20.016Z",
-        "current_time_utc_epoch_seconds": 1786563560,
+        "current_time_utc": "2026-08-12T20:55:11.612Z",
+        "current_time_utc_epoch_seconds": 1786568111,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "lady",
+        "id": "gift",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"lady\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"gift\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "Follow these steps carefully to begin the task:",
@@ -159,6 +186,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_N-xqDx8EWzxj"
+    "log_id": "log_SwQt7bAo2FzN"
   }
 }

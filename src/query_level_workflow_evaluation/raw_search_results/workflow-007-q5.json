@@ -1,0 +1,343 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-007-q5",
+    "workflow_id": 7,
+    "workflow_task": "Aggregate and act on personal productivity signals across email, calendar, GitHub, LinkedIn, and SMS; additionally configure SMS receiving/sending and manage calendar access/events.",
+    "query": "configure SMS inbound automations and buy numbers",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND"
+        ],
+        "purpose": "create SMS inbound automations"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "CLICKSEND_POST_NUMBERS_BUY"
+        ],
+        "purpose": "buy phone numbers for SMS"
+      }
+    ],
+    "supporting_tools": [
+      "CLICKSEND_GET_NUMBERS_SEARCH",
+      "CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND"
+    ],
+    "rationale": "Configuring SMS receiving involves purchasing numbers and setting up inbound automations.",
+    "candidate_tools": [
+      "CAL_CONNECT_TO_CALENDAR",
+      "CAL_RETRIEVE_CALENDAR_LIST",
+      "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND",
+      "CLICKSEND_CREATE_SMS_SEND",
+      "CLICKSEND_DELETE_AUTOMATIONS_SMS_INBOUND",
+      "CLICKSEND_GET_ACCOUNT",
+      "CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND",
+      "CLICKSEND_GET_NUMBERS_SEARCH",
+      "CLICKSEND_GET_SMS_HISTORY",
+      "CLICKSEND_GET_SMS_INBOUND",
+      "CLICKSEND_GET_SMS_RECEIPTS",
+      "CLICKSEND_POST_NUMBERS_BUY",
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_LIST_THREADS",
+      "GOOGLECALENDAR_ACL_INSERT",
+      "GOOGLECALENDAR_ACL_UPDATE",
+      "GOOGLECALENDAR_BATCH_EVENTS",
+      "GOOGLECALENDAR_EVENTS_GET",
+      "GOOGLECALENDAR_EVENTS_LIST",
+      "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+      "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+      "GOOGLECALENDAR_LIST_CALENDARS",
+      "LINKEDIN_PROXY_EXECUTE"
+    ]
+  },
+  "request": {
+    "query": "configure SMS inbound automations and buy numbers"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "configure SMS inbound automations and buy numbers",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Retrieve inbound SMS using CLICKSEND_GET_SMS_INBOUND (page through results until the returned data array is empty; optionally apply supported q/order_by filters).",
+            "[Optional (if inbound retrieval is unexpectedly empty)] [Prerequisite]: Check inbound polling setup using CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND (confirm an enabled rule with action POLL exists for the target number).",
+            "[Optional (if no suitable polling rule exists)] [Prerequisite]: Create or enable polling using CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND (set action POLL and the target number), then retry CLICKSEND_GET_SMS_INBOUND.",
+            "[Fallback (if you need a strict window or full audit)] [Step]: Pull message history using CLICKSEND_GET_SMS_HISTORY (paginate until current_page==last_page, then keep only records where direction='in').",
+            "[Optional (after processing; confirm before write)] [Next Step]: Mark handled inbound messages as read using CLICKSEND_SMS_INBOUND_READ_PUT (reduces reprocessing on future unread pulls).",
+            "[Optional (if expected replies are missing)] [Next Step]: Verify outbound delivery using CLICKSEND_GET_SMS_RECEIPTS (confirm the triggering outbound message was delivered)."
+          ],
+          "known_pitfalls": [
+            "[CLICKSEND_GET_SMS_INBOUND] Can return an empty data array even when inbound records exist in CLICKSEND_GET_SMS_HISTORY (often tied to missing/disabled POLL automation).",
+            "[CLICKSEND_GET_SMS_INBOUND] Typically returns unread inbound only; after CLICKSEND_SMS_INBOUND_READ_PUT those messages may no longer appear in subsequent unread fetches.",
+            "[CLICKSEND_GET_SMS_INBOUND] Query filtering often expects field:value syntax; malformed q strings can silently yield zero matches.",
+            "[CLICKSEND_GET_SMS_HISTORY] Payload is commonly nested under data.data.data while pagination metadata is under data.data; parsing the wrong level breaks filtering/paging.",
+            "[CLICKSEND_GET_SMS_HISTORY] Inbound items may appear only on later pages; early pages can contain zero direction='in' even when later pages do."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract nested history records and filter inbound direction",
+              "code": "```python\nmsgs=result[\"data\"][\"data\"][\"data\"]\ninbound=[m for m in msgs if m.get(\"direction\")==\"in\"]\nlen(inbound)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "CLICKSEND_GET_SMS_INBOUND",
+            "CLICKSEND_GET_SMS_HISTORY"
+          ],
+          "related_tool_slugs": [
+            "CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND",
+            "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND",
+            "CLICKSEND_SMS_INBOUND_READ_PUT",
+            "CLICKSEND_GET_SMS_RECEIPTS"
+          ],
+          "toolkits": [
+            "clicksend"
+          ],
+          "plan_id": "4b50439aa3b842dd82c31130574c35fa"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "clicksend",
+          "has_active_connection": false,
+          "description": "ClickSend is a cloud-based SMS and email marketing platform that enables businesses to send and receive SMS messages, manage contacts, and track campaign performance.",
+          "status_message": "No Active connection for toolkit=clicksend. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"clicksend\") to create a connection BEFORE executing any clicksend tools."
+        }
+      ],
+      "tool_schemas": {
+        "CLICKSEND_GET_SMS_INBOUND": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_GET_SMS_INBOUND",
+          "description": "Retrieves inbound SMS messages received by your ClickSend account. Use this tool when you need to: - View messages sent TO your ClickSend numbers FROM customers/recipients - Search for specific messages by sender, recipient, or content - Monitor incoming SMS replies and interactions Important: To receive inbound messages via API polling, you must first configure an inbound rule in the ClickSend Dashboard with the Action set to 'POLL'. By default, only unread messages are returned.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "examples": [
+                  "from:+61437085284",
+                  "to:+61426123123",
+                  "body:reply"
+                ],
+                "description": "Search query to filter inbound SMS messages. Format: field_name:value (e.g., from:+61437085284). Searches are case-insensitive. Available searchable fields: from (sender number), to (recipient number), message_id, body (message text). Multiple criteria can be combined using the operator parameter Malformed queries silently return zero results instead of errors."
+              },
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "minimum": 1,
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Page number for pagination. Default: 1 Increment iteratively with consistent limit to retrieve all records."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 15,
+                "minimum": 1,
+                "examples": [
+                  15,
+                  25,
+                  50
+                ],
+                "description": "Number of records per page. Default: 15"
+              },
+              "operator": {
+                "type": "string",
+                "examples": [
+                  "AND",
+                  "OR"
+                ],
+                "description": "Search operator to combine multiple search criteria in the q parameter. Use 'AND' to match all criteria (default) or 'OR' to match any criteria. Only relevant when multiple field:value pairs are provided in the q parameter"
+              },
+              "order_by": {
+                "type": "string",
+                "examples": [
+                  "date:desc",
+                  "date:asc"
+                ],
+                "description": "Sort order for results. Format: field_name:direction where direction is 'asc' (ascending) or 'desc' (descending). Default is 'date:asc' (oldest first). Use 'date:desc' to get newest messages first"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKSEND_GET_SMS_HISTORY": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_GET_SMS_HISTORY",
+          "description": "Tool to retrieve sent SMS message history with filtering and pagination. Use when you need to view previously sent SMS messages or check delivery status.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "examples": [
+                  "from:+61411111111,status_code:201",
+                  "status:Sent",
+                  "to:+61426729707"
+                ],
+                "description": "Custom query string for filtering results. Format: field:value pairs separated by commas. Example: 'from:+61411111111,status_code:201' or 'status:Sent'. Searchable fields: status (Queued, Completed, Scheduled, WaitApproval, Failed, Cancelled, CancelledAfterReview, Received, Sent), to (recipient phone number). Searches are case-insensitive."
+              },
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "minimum": 1,
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Page number for pagination. Used to navigate through result pages."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 10,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50,
+                  100
+                ],
+                "description": "Number of records to return per page."
+              },
+              "date_to": {
+                "type": "integer",
+                "examples": [
+                  1734220800
+                ],
+                "description": "Filter messages sent up to this date. Unix timestamp format (seconds since epoch)."
+              },
+              "operator": {
+                "enum": [
+                  "AND",
+                  "OR"
+                ],
+                "type": "string",
+                "description": "Logical operator for multiple search filters. Use 'AND' to match all filters or 'OR' to match any filter."
+              },
+              "order_by": {
+                "type": "string",
+                "examples": [
+                  "date:desc",
+                  "status:asc"
+                ],
+                "description": "Sort results by field. Format: field:asc or field:desc (e.g., 'date:desc', 'status:asc')."
+              },
+              "date_from": {
+                "type": "integer",
+                "examples": [
+                  1731628800
+                ],
+                "description": "Filter messages sent from this date onwards. Unix timestamp format (seconds since epoch)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_GET_AUTOMATIONS_SMS_INBOUND",
+          "description": "Tool to retrieve all inbound SMS automation rules configured in your ClickSend account. Use when you need to view or list all inbound SMS automation configurations. Supports pagination and filtering.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "examples": [
+                  "webhook",
+                  "auto_reply"
+                ],
+                "description": "Search keyword or query filter to search automation rules"
+              },
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "minimum": 1,
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Page number for pagination. Default: 1"
+              },
+              "limit": {
+                "type": "integer",
+                "default": 10,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  25,
+                  50
+                ],
+                "description": "Number of records per page. Default: 10"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND",
+          "description": "Tool to create a new inbound SMS automation rule in ClickSend. Use when you need to set up automated...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND"
+              ]
+            }
+          }
+        },
+        "CLICKSEND_SMS_INBOUND_READ_PUT": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_SMS_INBOUND_READ_PUT",
+          "description": "Mark inbound SMS messages as read in ClickSend. Use this action to mark all inbound SMS messages as ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKSEND_SMS_INBOUND_READ_PUT"
+              ]
+            }
+          }
+        },
+        "CLICKSEND_GET_SMS_RECEIPTS": {
+          "toolkit": "CLICKSEND",
+          "tool_slug": "CLICKSEND_GET_SMS_RECEIPTS",
+          "description": "Tool to retrieve SMS delivery receipts from your ClickSend account. Use when you need to poll and vi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKSEND_GET_SMS_RECEIPTS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T20:52:08.015Z",
+        "current_time_utc_epoch_seconds": 1786567928,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "plus",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"plus\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_cevl6CImPSZe"
+  }
+}

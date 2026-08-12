@@ -3,15 +3,18 @@
     "query_id": "workflow-007-q1",
     "workflow_id": 7,
     "workflow_task": "Aggregate and act on personal productivity signals across email, calendar, GitHub, LinkedIn, and SMS; additionally configure SMS receiving/sending and manage calendar access/events.",
-    "query": "fetch recent emails and check calendar schedule",
-    "required_tools": [
-      "GMAIL_FETCH_EMAILS",
-      "GOOGLECALENDAR_EVENTS_LIST"
+    "query": "fetch and list email threads",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GMAIL_FETCH_EMAILS",
+          "GMAIL_LIST_THREADS"
+        ],
+        "purpose": "retrieve and list email messages and threads"
+      }
     ],
-    "supporting_tools": [
-      "GMAIL_LIST_THREADS"
-    ],
-    "rationale": "An agent needs to aggregate productivity signals by retrieving recent emails and checking scheduled calendar events.",
+    "supporting_tools": [],
+    "rationale": "Retrieving productivity signals from email requires fetching or listing email threads.",
     "candidate_tools": [
       "CAL_CONNECT_TO_CALENDAR",
       "CAL_RETRIEVE_CALENDAR_LIST",
@@ -39,54 +42,32 @@
     ]
   },
   "request": {
-    "query": "fetch recent emails and check calendar schedule"
+    "query": "fetch and list email threads"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "fetch recent emails and check calendar schedule",
-          "execution_guidance": "Found 8 tools for this query. Look at the schemas to know how to use them.",
+          "use_case": "fetch and list email threads",
+          "execution_guidance": "Found 7 tools for this query. Look at the schemas to know how to use them.",
           "primary_tool_slugs": [
-            "OUTLOOK_GET_SCHEDULE",
-            "SUPPORTBEE_FETCH_EMAILS",
-            "CAL_FETCH_SCHEDULE_BY_ID",
+            "GMAIL_LIST_THREADS",
             "GMAIL_FETCH_EMAILS"
           ],
           "related_tool_slugs": [
-            "OUTLOOK_GET_MAILBOX_SETTINGS",
-            "OUTLOOK_CALENDAR_CREATE_EVENT",
+            "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+            "GMAIL_MODIFY_THREAD_LABELS",
+            "GMAIL_REPLY_TO_THREAD",
             "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
-            "GMAIL_LIST_THREADS"
+            "GMAIL_ADD_LABEL_TO_EMAIL"
           ],
           "toolkits": [
-            "outlook",
-            "supportbee",
-            "cal",
             "gmail"
           ]
         }
       ],
       "toolkit_connection_statuses": [
-        {
-          "toolkit": "outlook",
-          "has_active_connection": false,
-          "description": "Outlook is Microsoft's email and calendaring platform integrating contacts and scheduling, enabling users to manage communications and events in a unified workspace",
-          "status_message": "No Active connection for toolkit=outlook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"outlook\") to create a connection BEFORE executing any outlook tools."
-        },
-        {
-          "toolkit": "supportbee",
-          "has_active_connection": false,
-          "description": "SupportBee is a web-based email support tool that helps businesses organize their customer support emails efficiently.",
-          "status_message": "No Active connection for toolkit=supportbee. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"supportbee\") to create a connection BEFORE executing any supportbee tools."
-        },
-        {
-          "toolkit": "cal",
-          "has_active_connection": false,
-          "description": "Cal simplifies meeting coordination by providing shareable booking pages, calendar syncing, and availability management to streamline the scheduling process",
-          "status_message": "No Active connection for toolkit=cal. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"cal\") to create a connection BEFORE executing any cal tools."
-        },
         {
           "toolkit": "gmail",
           "has_active_connection": false,
@@ -95,139 +76,60 @@
         }
       ],
       "tool_schemas": {
-        "OUTLOOK_GET_SCHEDULE": {
-          "toolkit": "OUTLOOK",
-          "tool_slug": "OUTLOOK_GET_SCHEDULE",
-          "description": "Retrieves free/busy schedule information for specified email addresses within a defined time window. Read-only; does not reserve time or prevent conflicts \u2014 verify availability before creating events.",
+        "GMAIL_LIST_THREADS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_LIST_THREADS",
+          "description": "Retrieves a list of email threads from a Gmail account, identified by `user_id` (email address or 'me'), supporting filtering and pagination. Spam and trash are excluded by default unless explicitly targeted via `label:spam` or `label:trash` in the query.",
           "input_schema": {
             "type": "object",
-            "required": [
-              "schedules",
-              "startTime",
-              "endTime"
-            ],
             "properties": {
-              "userId": {
+              "query": {
                 "type": "string",
+                "default": "",
                 "examples": [
-                  "43f0c14d-bca8-421f-b762-c3d8dd75be1f",
-                  "user@domain.com"
+                  "is:unread",
+                  "from:john.doe@example.com",
+                  "subject:important"
                 ],
-                "description": "The user ID or principal name of the user whose calendar to query. Required for S2S (application) authentication. Can be either the GUID user ID (e.g., '43f0c14d-bca8-421f-b762-c3d8dd75be1f') or the user principal name (e.g., 'user@domain.com'). If not provided, the endpoint will use '/me' which requires delegated authentication."
+                "description": "Filter for threads, using Gmail search query syntax (e.g., 'from:user@example.com is:unread'). Supported operators include `from:`, `to:`, `subject:`, `label:`, `is:unread`, `has:attachment`, `after:`, `before:`. Dates must use `YYYY/MM/DD` format; date operators are UTC-based. Exact subject phrases require quotes (e.g., `subject:'meeting notes'`)."
               },
-              "endTime": {
-                "type": "object",
-                "required": [
-                  "dateTime",
-                  "timeZone"
-                ],
-                "properties": {
-                  "dateTime": {
-                    "type": "string",
-                    "examples": [
-                      "2024-07-15T09:00:00",
-                      "2024-12-25T18:30:00"
-                    ],
-                    "description": "A single point in time, expressed in a combined date and time format (ISO 8601). Example: '2023-10-26T10:00:00'."
-                  },
-                  "timeZone": {
-                    "type": "string",
-                    "examples": [
-                      "UTC",
-                      "Eastern Standard Time",
-                      "Pacific Standard Time"
-                    ],
-                    "description": "The time zone for the 'dateTime'. Uses standard time zone names. Example: 'Pacific Standard Time'."
-                  }
-                },
-                "description": "The end date, time, and time zone for the period for which to retrieve schedules. The period can be up to 62 days. Object must include `dateTime` (ISO 8601) and `timeZone` (valid Windows or IANA identifier). Must use same timezone convention as `startTime`.",
-                "additionalProperties": false
-              },
-              "schedules": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "examples": [
-                  [
-                    "user1@example.com",
-                    "room1@example.com"
-                  ],
-                  [
-                    "user2@example.com"
-                  ]
-                ],
-                "description": "A list of SMTP email addresses for users, distribution lists, or resources whose schedules are to be retrieved. Maximum of 20 addresses. Include all relevant participants; omitted addresses may cause slots to appear falsely free. External or invalid addresses may silently return no data."
-              },
-              "startTime": {
-                "type": "object",
-                "required": [
-                  "dateTime",
-                  "timeZone"
-                ],
-                "properties": {
-                  "dateTime": {
-                    "type": "string",
-                    "examples": [
-                      "2024-07-15T09:00:00",
-                      "2024-12-25T18:30:00"
-                    ],
-                    "description": "A single point in time, expressed in a combined date and time format (ISO 8601). Example: '2023-10-26T10:00:00'."
-                  },
-                  "timeZone": {
-                    "type": "string",
-                    "examples": [
-                      "UTC",
-                      "Eastern Standard Time",
-                      "Pacific Standard Time"
-                    ],
-                    "description": "The time zone for the 'dateTime'. Uses standard time zone names. Example: 'Pacific Standard Time'."
-                  }
-                },
-                "description": "The start date, time, and time zone for the period for which to retrieve schedules. Object must include `dateTime` (ISO 8601) and `timeZone` (valid Windows or IANA identifier, e.g., 'UTC', 'Eastern Standard Time'). Invalid or naive timezone values cause HTTP 400 or silent DST-shifted windows.",
-                "additionalProperties": false
-              },
-              "availabilityViewInterval": {
+              "user_id": {
                 "type": "string",
-                "default": "30",
+                "default": "me",
                 "examples": [
-                  "15",
-                  "30",
-                  "60"
+                  "me",
+                  "user@example.com"
                 ],
-                "description": "The duration of each time slot in the availability view, specified in minutes. Minimum: 5, Maximum: 1440. Default: 30."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "SUPPORTBEE_FETCH_EMAILS": {
-          "toolkit": "SUPPORTBEE",
-          "tool_slug": "SUPPORTBEE_FETCH_EMAILS",
-          "description": "Retrieve all forwarding email addresses configured for the company. Use this tool to list the support email addresses that forward emails to SupportBee.",
-          "input_schema": {
-            "type": "object",
-            "properties": {}
-          },
-          "hasFullSchema": true
-        },
-        "CAL_FETCH_SCHEDULE_BY_ID": {
-          "toolkit": "CAL",
-          "tool_slug": "CAL_FETCH_SCHEDULE_BY_ID",
-          "description": "Fetches comprehensive details for a specific, existing schedule using its `scheduleId`.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "scheduleId"
-            ],
-            "properties": {
-              "scheduleId": {
+                "description": "The user's email address or 'me' to specify the authenticated Gmail account."
+              },
+              "verbose": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "If false, returns threads with basic fields (id, snippet, historyId). If true, returns threads with complete message details including headers, body, attachments, and metadata for each message in the thread. Combining `verbose=true` with large `max_results` produces very large responses; keep `max_results` modest when verbose is enabled."
+              },
+              "page_token": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "abcPageToken123"
+                ],
+                "description": "Token from a previous response to retrieve a specific page of results; omit for the first page."
+              },
+              "max_results": {
                 "type": "integer",
+                "default": 10,
+                "maximum": 500,
+                "minimum": 1,
                 "examples": [
-                  12345,
-                  67890
+                  "10",
+                  "50",
+                  "100"
                 ],
-                "description": "Unique identifier of the schedule to retrieve."
+                "description": "Maximum number of threads to return. Hard cap is ~500 per call. For full mailbox coverage, loop using `nextPageToken` via `page_token` until absent."
               }
             }
           },
@@ -329,50 +231,69 @@
           },
           "hasFullSchema": true
         },
-        "OUTLOOK_GET_MAILBOX_SETTINGS": {
-          "toolkit": "OUTLOOK",
-          "tool_slug": "OUTLOOK_GET_MAILBOX_SETTINGS",
-          "description": "Tool to retrieve mailbox settings. Use when you need to view settings such as automatic replies, time zone, and working hours for the signed-in or specified user.",
+        "GMAIL_FETCH_MESSAGE_BY_THREAD_ID": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+          "description": "Retrieves messages from a Gmail thread using its `thread_id`, where the thread must be accessible by the specified `user_id`. Returns a `messages` array; `thread_id` is not echoed in the response. Message order is not guaranteed \u2014 sort by `internalDate` to find oldest/newest. Check `labelIds` per message to filter drafts. Concurrent bulk calls may trigger 403 `userRateLimitExceeded` or 429; cap concurrency ~10 and use exponential backoff.",
           "input_schema": {
             "type": "object",
+            "required": [
+              "thread_id"
+            ],
             "properties": {
-              "select": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "examples": [
-                  [
-                    "automaticRepliesSetting",
-                    "timeZone",
-                    "workingHours"
-                  ]
-                ],
-                "description": "OData $select query to specify mailbox settings properties to include. Valid properties: archiveFolder, automaticRepliesSetting, dateFormat, delegateMeetingMessageDeliveryOptions, language, timeFormat, timeZone, userPurpose, workingHours."
-              },
               "user_id": {
                 "type": "string",
                 "default": "me",
                 "examples": [
                   "me",
-                  "AdeleV@contoso.onmicrosoft.com"
+                  "user@example.com"
                 ],
-                "description": "The user's unique identifier or principal name. Use 'me' for the signed-in user."
+                "description": "The email address of the user."
+              },
+              "thread_id": {
+                "type": "string",
+                "examples": [
+                  "19bf77729bcb3a44",
+                  "msg-f:19bf77729bcb3a44"
+                ],
+                "description": "Hexadecimal thread ID from Gmail API (e.g., '19bf77729bcb3a44'). Obtain from GMAIL_LIST_THREADS or GMAIL_FETCH_EMAILS. Prefixes like 'msg-f:' or 'thread-f:' are auto-stripped. Legacy Gmail web UI IDs (e.g., 'FMfcgzQfBZdVqKZcSVBhqwWLKWCtDdWQ') are NOT supported - use the API thread ID instead. Deduplicate thread_ids before calling when multiple listed messages share the same threadId to avoid redundant calls."
+              },
+              "page_token": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "CiAKGhIKJdealEffectivelyPageToken"
+                ],
+                "description": "Opaque page token for fetching a specific page of messages if results are paginated. Iterate calls by passing the returned `nextPageToken` until it is absent; stopping early will miss messages in long threads."
               }
             }
           },
           "hasFullSchema": true
         },
-        "OUTLOOK_CALENDAR_CREATE_EVENT": {
-          "toolkit": "OUTLOOK",
-          "tool_slug": "OUTLOOK_CALENDAR_CREATE_EVENT",
-          "description": "Creates a new Outlook calendar event, ensuring `start_datetime` is chronologically before `end_datet...",
+        "GMAIL_MODIFY_THREAD_LABELS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_MODIFY_THREAD_LABELS",
+          "description": "Adds or removes specified existing label IDs from a Gmail thread, affecting all its messages; ensure...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "OUTLOOK_CALENDAR_CREATE_EVENT"
+                "GMAIL_MODIFY_THREAD_LABELS"
+              ]
+            }
+          }
+        },
+        "GMAIL_REPLY_TO_THREAD": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_REPLY_TO_THREAD",
+          "description": "Sends a reply within a specific Gmail thread using the original thread's subject; do not provide a c...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_REPLY_TO_THREAD"
               ]
             }
           }
@@ -391,30 +312,30 @@
             }
           }
         },
-        "GMAIL_LIST_THREADS": {
+        "GMAIL_ADD_LABEL_TO_EMAIL": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_LIST_THREADS",
-          "description": "Retrieves a list of email threads from a Gmail account, identified by `user_id` (email address or 'm...",
+          "tool_slug": "GMAIL_ADD_LABEL_TO_EMAIL",
+          "description": "Adds and/or removes specified Gmail labels for a message; ensure `message_id` and all `label_ids` ar...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_LIST_THREADS"
+                "GMAIL_ADD_LABEL_TO_EMAIL"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:36:27.142Z",
-        "current_time_utc_epoch_seconds": 1786563387,
+        "current_time_utc": "2026-08-12T20:51:53.511Z",
+        "current_time_utc_epoch_seconds": 1786567913,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "push",
+        "id": "atom",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"push\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"atom\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "Follow these steps carefully to begin the task:",
@@ -424,6 +345,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_UoaKL0PTlgwf"
+    "log_id": "log_YFSmOk-_uFIR"
   }
 }

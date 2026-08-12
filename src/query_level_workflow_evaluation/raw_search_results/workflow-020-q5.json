@@ -1,0 +1,393 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-020-q5",
+    "workflow_id": 20,
+    "workflow_task": "Maintain and reconcile CRM, portal, billing, and project documentation across Google Docs, Google Sheets, Zoho CRM, Google Drive, and QuickBooks while verifying live system fields and updating records.",
+    "query": "manage quickbooks billing data",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "QUICKBOOKS_PROXY_EXECUTE"
+        ],
+        "purpose": "execute operations for billing records in QuickBooks"
+      }
+    ],
+    "supporting_tools": [],
+    "rationale": "Billing reconciliation necessitates fetching and updating financial records via QuickBooks.",
+    "candidate_tools": [
+      "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+      "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+      "GOOGLEDOCS_INSERT_TEXT_ACTION",
+      "GOOGLEDOCS_REPLACE_ALL_TEXT",
+      "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "GOOGLESHEETS_PROXY_EXECUTE",
+      "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+      "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+      "GOOGLESHEETS_UPSERT_ROWS",
+      "GOOGLESHEETS_VALUES_GET",
+      "GOOGLESHEETS_VALUES_UPDATE",
+      "QUICKBOOKS_PROXY_EXECUTE",
+      "ZOHO_GET_MODULE_FIELDS",
+      "ZOHO_PROXY_EXECUTE"
+    ]
+  },
+  "request": {
+    "query": "manage quickbooks billing data"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "manage quickbooks billing data",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if vendor identifier is unknown)] [Prerequisite]: Find candidate vendors using QUICKBOOKS_QUERY_ENTITIES (Vendor lookup by searchable fields) and select the best match.",
+            "[Optional (if multiple vendor matches)] [Next Step]: Confirm the chosen vendor using QUICKBOOKS_READ_VENDOR (verify the vendor record before downstream joins).",
+            "[Required] [Step]: Pull in-scope bills using QUICKBOOKS_QUERY_ENTITIES (Bill query for the target window; prefer open/unpaid items, otherwise filter client-side).",
+            "[Required] [Next Step]: Paginate bills using QUICKBOOKS_QUERY_ENTITIES (iterate STARTPOSITION/MAXRESULTS until QueryResponse indicates completion).",
+            "[Required] [Next Step]: Pull vendor payments using QUICKBOOKS_QUERY_ENTITIES (BillPayment for the same scope; keep VendorRef, TotalAmt, and Line[].LinkedTxn for matching).",
+            "[Required] [Next Step]: Reconcile bills vs payments using COMPOSIO_REMOTE_WORKBENCH (join Bill.Id to BillPayment.Line[].LinkedTxn[].TxnId; compute paid vs remaining; flag duplicates/unmatched).",
+            "[Optional (if mismatches need allocation detail)] [Next Step]: Validate a specific payment using QUICKBOOKS_GET_BILL_PAYMENT (confirm LinkedTxn allocations against expected bills).",
+            "[Optional (if payables totals must be tied out)] [Next Step]: Cross-check open items using QUICKBOOKS_GET_REPORT_AGED_PAYABLE_DETAIL (verify the report\u2019s period header before trusting totals).",
+            "[Fallback (if entity queries are incomplete or too large to handle)] [Fallback]: Use QUICKBOOKS_GET_TRANSACTION_LIST_REPORT (pull the same scope, keep only Data rows, and reconcile/aggregate client-side)."
+          ],
+          "known_pitfalls": [
+            "[QUICKBOOKS_QUERY_ENTITIES] No-result responses may omit the entity array entirely (e.g., missing QueryResponse.Bill); treat missing arrays as empty lists.",
+            "[QUICKBOOKS_QUERY_ENTITIES] Pagination: maxResults may be lower than requested (often ~100); rely on QueryResponse.startPosition/maxResults/totalCount to stop.",
+            "[QUICKBOOKS_QUERY_ENTITIES] Query filters can fail with 400 ValidationFault (e.g., 4001/4000) or invalid identifiers (e.g., 2030); simplify queries and filter locally.",
+            "[QUICKBOOKS_GET_VENDOR_EXPENSES_REPORT] Header period fields may not reflect the intended window even when dates are supplied; verify header before comparing totals.",
+            "[QUICKBOOKS_GET_TRANSACTION_LIST_REPORT] Rows are hierarchical; only Rows.Row with type==\"Data\" map cleanly to Columns.Column/ColData\u2014ignore non-Data rows to avoid double counts."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Safely extract Bill rows from a QUICKBOOKS_QUERY_ENTITIES response (including wrapper shapes)",
+              "code": "```python\nd=resp.get('data',resp)\nif isinstance(d,dict) and 'results' in d: d=d['results'][0].get('response',{}).get('data',{})\nq=d.get('QueryResponse',{})\nbills=q.get('Bill',[]) or []\n```"
+            },
+            {
+              "description": "Join Bills to BillPayments via Line[].LinkedTxn[].TxnId for reconciliation",
+              "code": "```python\nbill_by_id={b.get('Id'):b for b in bills}\nlinks=[]\nfor bp in bill_payments or []:\n for line in (bp.get('Line') or []):\n  for lt in (line.get('LinkedTxn') or []):\n   bid=lt.get('TxnId')\n   links.append({'bill_id':bid,'billpayment_id':bp.get('Id'),'payment_amt':bp.get('TotalAmt'),'bill_balance':(bill_by_id.get(bid) or {}).get('Balance')})\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "QUICKBOOKS_QUERY_ENTITIES",
+            "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT"
+          ],
+          "related_tool_slugs": [
+            "QUICKBOOKS_GET_BILL_PAYMENT",
+            "QUICKBOOKS_GET_REPORT_AGED_PAYABLE_DETAIL",
+            "QUICKBOOKS_GET_VENDOR_EXPENSES_REPORT",
+            "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
+            "QUICKBOOKS_READ_VENDOR",
+            "QUICKBOOKS_GET_BILL"
+          ],
+          "toolkits": [
+            "quickbooks"
+          ],
+          "plan_id": "d09cba44a184437ab787a532ab5ada2e"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "quickbooks",
+          "has_active_connection": false,
+          "description": "Quickbooks is a cloud-based accounting software that helps you manage your finances, track your income and expenses, and get insights into your business",
+          "status_message": "No Active connection for toolkit=quickbooks. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"quickbooks\") to create a connection BEFORE executing any quickbooks tools."
+        }
+      ],
+      "tool_schemas": {
+        "QUICKBOOKS_QUERY_ENTITIES": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_QUERY_ENTITIES",
+          "description": "Execute SQL-like queries on QuickBooks Online entities. Supports all entity types (Customer, Invoice, Bill, Payment, Purchase, Account, etc.) with WHERE clauses, pattern matching, ordering, and pagination. IMPORTANT: Many fields are NOT queryable in WHERE clauses including PrivateNote, AccountRef, CurrencyRef, DepartmentRef, ClassRef, etc. Use queryable fields like Id, TxnDate, PaymentType, DisplayName instead. For non-queryable field filtering, query by date range and filter client-side. See parameter description for full list of queryable vs non-queryable fields. Use entity-specific query tools when available for typed responses.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "SELECT * FROM Customer MAXRESULTS 5",
+                  "SELECT * FROM Customer WHERE DisplayName LIKE '%Smith%' MAXRESULTS 10",
+                  "SELECT * FROM Invoice WHERE TotalAmt > '100' ORDERBY TxnDate",
+                  "SELECT COUNT(*) FROM Bill WHERE DueDate < '2024-01-01'",
+                  "SELECT * FROM Payment WHERE TxnDate >= '2024-01-01' AND TxnDate <= '2024-12-31'",
+                  "SELECT * FROM Purchase WHERE TxnDate >= '2024-01-01' AND PaymentType = 'Check'",
+                  "SELECT * FROM Customer WHERE Id IN ('1', '2', '3') MAXRESULTS 10"
+                ],
+                "description": "SQL-like query string to retrieve data from QuickBooks Online entities. Generic query tool supporting all entity types: Customer, Invoice, Bill, Payment, Purchase, Account, Vendor, Employee, Item, and more. \n\nQuery syntax: SELECT [fields] FROM [EntityName] [WHERE conditions] [ORDERBY field] [STARTPOSITION n] [MAXRESULTS n] \n\nNOTE: QuickBooks API returns ALL fields regardless of SELECT clause - field projections are not supported. \n\nSupported operators: = < > <= >= != LIKE (% wildcard) IN AND ORDERBY MAXRESULTS (max 1000, default 100) STARTPOSITION COUNT. \n\nCRITICAL: OR operator is NOT supported for most QuickBooks entities (including Item, Account, and many others). If you attempt to use OR in a query, the API will return a QueryParserError. Use IN operator instead for matching multiple specific values (e.g., 'WHERE Id IN (\"1\", \"2\", \"3\")' instead of 'WHERE Id = \"1\" OR Id = \"2\"'). For pattern matching across multiple terms with LIKE (e.g., finding items containing 'Larkspur' in FullyQualifiedName OR Description), query without the WHERE clause or with a broader filter, then filter results client-side. \n\nCRITICAL QUERY FIELD RESTRICTIONS: Top-level entity references like CustomerRef, VendorRef are queryable on transactions (e.g., 'SELECT * FROM Invoice WHERE CustomerRef = \"123\"'). NON-QUERYABLE fields: PrivateNote, AccountRef, CurrencyRef, DepartmentRef, ClassRef on any entity; nested references like Line[].ItemRef. Using these in WHERE causes QueryValidationError. \n\nWORKAROUND: Query by date range and filter results client-side, or use entity-specific GET actions. \n\nPurchase entity queryable fields: Id, TxnDate, PaymentType, DocNumber, TotalAmt, PrintStatus. NOT queryable: AccountRef, CurrencyRef, DepartmentRef, ClassRef, PrivateNote. \n\nThese lists are common examples, not exhaustive. Consult the QuickBooks API documentation or test incrementally to discover all queryable fields. Reference fields are generally NOT queryable unless explicitly documented. \n\nIMPORTANT: Use entity-specific query tools when available (e.g., QueryAccount for Account entities) as they provide typed responses. This generic tool returns untyped data and should be used only when no specific query tool exists."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_TRANSACTION_LIST_REPORT",
+          "description": "Get the Transaction List report showing all transactions in the company. Use when you need a comprehensive view of all transactions with flexible filtering by date, customer, vendor, account, or other criteria.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "cleared": {
+                "type": "string",
+                "examples": [
+                  "All",
+                  "Cleared",
+                  "Uncleared",
+                  "Reconciled"
+                ],
+                "description": "Filter for transaction cleared status. Options: 'All', 'Cleared', 'Uncleared', 'Reconciled'. Note that 'cleared' can only be used as a filter parameter, not as a column in the result."
+              },
+              "columns": {
+                "type": "string",
+                "examples": [
+                  "date,transaction_type,number,name,memo,account,amount",
+                  "tx_date,txn_type,doc_num,name,memo,account_name,subt_nat_amount",
+                  "date,account,amount"
+                ],
+                "description": "Comma-separated list of columns to include in the report. Supports both user-friendly names and QuickBooks API identifiers: date/tx_date (Date), transaction_type/txn_type (Transaction Type), number/num/doc_num (Number), name (Name), memo/description (Memo/Description), account/account_name (Account), amount/subt_nat_amount (Amount), net_amount (Net Amount), split (Split), balance (Balance), customer (Customer), vendor (Vendor), employee (Employee), product_service (Product/Service), quantity (Quantity), rate (Rate), class (Class), department/dept (Department), location (Location). If not specified, report uses default columns."
+              },
+              "sort_by": {
+                "type": "string",
+                "examples": [
+                  "date",
+                  "amount",
+                  "tx_date",
+                  "subt_nat_amount"
+                ],
+                "description": "Column to sort report rows by. Supports both user-friendly names (date, transaction_type, amount, account, etc.) and QuickBooks API identifiers (tx_date, txn_type, subt_nat_amount, account_name, etc.). Must be a column that exists in the report."
+              },
+              "end_date": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31",
+                  "2024-06-30"
+                ],
+                "description": "Report end date in YYYY-MM-DD format. Used to filter transactions up to this date. If not provided, the report uses its default end date or date_macro setting."
+              },
+              "group_by": {
+                "type": "string",
+                "examples": [
+                  "Customer",
+                  "Vendor",
+                  "Account"
+                ],
+                "description": "Column type to use for grouping report rows. Common values include 'Customer', 'Vendor', 'Account', etc. Groups transactions by the specified entity type."
+              },
+              "class_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of class IDs to filter the report. If not provided, the report includes all classes. Each ID should be the Class.Id value (e.g., ['1', '2'])."
+              },
+              "date_macro": {
+                "enum": [
+                  "Today",
+                  "Yesterday",
+                  "This Week",
+                  "Last Week",
+                  "This Week-to-date",
+                  "Last Week-to-date",
+                  "Next Week",
+                  "Next 4 Weeks",
+                  "This Month",
+                  "Last Month",
+                  "This Month-to-date",
+                  "Last Month-to-date",
+                  "Next Month",
+                  "This Fiscal Quarter",
+                  "Last Fiscal Quarter",
+                  "This Fiscal Quarter-to-date",
+                  "Last Fiscal Quarter-to-date",
+                  "Next Fiscal Quarter",
+                  "This Fiscal Year",
+                  "Last Fiscal Year",
+                  "This Fiscal Year-to-date",
+                  "Last Fiscal Year-to-date",
+                  "Next Fiscal Year"
+                ],
+                "type": "string",
+                "description": "Predefined date range for the report. Use if you want the report to cover a standard report date range; otherwise, use start_date and end_date to cover an explicit report date range."
+              },
+              "sort_order": {
+                "enum": [
+                  "ascend",
+                  "descend"
+                ],
+                "type": "string",
+                "description": "The sort order for rows (ascending or descending). Default is ascending."
+              },
+              "start_date": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01",
+                  "2024-06-01"
+                ],
+                "description": "Report start date in YYYY-MM-DD format. Used to filter transactions from this date onwards. If not provided, the report uses its default start date or date_macro setting."
+              },
+              "vendor_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of vendor IDs to filter the report. If not provided, the report includes all vendors. Each ID should be the Vendor.Id value from the Vendor object (e.g., ['5', '8', '12'])."
+              },
+              "account_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of account IDs to filter the report. If not provided, the report includes all accounts. Each ID should be the Account.Id value from the Account object (e.g., ['1', '35', '82'])."
+              },
+              "customer_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of customer IDs to filter the report. If not provided, the report includes all customers. Each ID should be the Customer.Id value from the Customer object (e.g., ['1', '2', '10'])."
+              },
+              "department_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of department IDs to filter the report. If not provided, the report includes all departments. Filters report contents to include information for specified departments if so configured in the company file."
+              },
+              "accounting_method": {
+                "enum": [
+                  "Cash",
+                  "Accrual"
+                ],
+                "type": "string",
+                "description": "The accounting method used in the report (Cash or Accrual)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_BILL_PAYMENT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_BILL_PAYMENT",
+          "description": "Tool to retrieve details of a specific bill payment by ID in QuickBooks Online. Use when you need to view information about an existing bill payment.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "bill_payment_id"
+            ],
+            "properties": {
+              "minorversion": {
+                "type": "integer",
+                "examples": [
+                  75
+                ],
+                "description": "QuickBooks API minor version number (e.g., 65, 70, 75). If not specified, uses the default from headers."
+              },
+              "bill_payment_id": {
+                "type": "string",
+                "examples": [
+                  "10",
+                  "12345"
+                ],
+                "description": "ID of the bill payment to retrieve."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "QUICKBOOKS_GET_REPORT_AGED_PAYABLE_DETAIL": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_REPORT_AGED_PAYABLE_DETAIL",
+          "description": "Generate an aged payable detail report showing aging detail for accounts payable. Use when you need ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_REPORT_AGED_PAYABLE_DETAIL"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_VENDOR_EXPENSES_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_VENDOR_EXPENSES_REPORT",
+          "description": "Retrieve a vendor expenses report from QuickBooks showing expense transactions by vendor. This repor...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_VENDOR_EXPENSES_REPORT"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
+          "description": "Generate a General Ledger report showing all transactions with debits, credits, and running balances...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_READ_VENDOR": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_READ_VENDOR",
+          "description": "Read a vendor in QuickBooks with the given vendor ID.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_READ_VENDOR"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_GET_BILL": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_BILL",
+          "description": "Tool to fetch a QuickBooks bill by ID. Use when needing to retrieve bill details including vendor re...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_GET_BILL"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-12T20:54:41.294Z",
+        "current_time_utc_epoch_seconds": 1786568081,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "news",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"news\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_sLyqCR1dNNmD"
+  }
+}

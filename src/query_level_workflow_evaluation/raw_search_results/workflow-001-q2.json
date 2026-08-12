@@ -3,15 +3,19 @@
     "query_id": "workflow-001-q2",
     "workflow_id": 1,
     "workflow_task": "Prepare HubSpot launch assets for a paid event registration flow: assess payment-link feasibility, create a review-only automated confirmation email, create a disabled confirmation workflow, verify the assets remain inert, and attempt to create a custom-object registration ledger.",
-    "query": "create automated review email for registration confirmation",
-    "required_tools": [
-      "HUBSPOT_CLONE_MARKETING_EMAIL"
+    "query": "create a disabled automation workflow for event registration",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "HUBSPOT_CREATE_WORKFLOW"
+        ],
+        "purpose": "create the disabled confirmation workflow in HubSpot"
+      }
     ],
     "supporting_tools": [
-      "HUBSPOT_SEARCH_EMAILS",
-      "HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL"
+      "HUBSPOT_GET_WORKFLOWS"
     ],
-    "rationale": "Setting up a review-only confirmation email requires finding and cloning an existing marketing email template.",
+    "rationale": "specifically targets workflow creation capabilities needed to set up the registration automation.",
     "candidate_tools": [
       "HUBSPOT_CLONE_MARKETING_EMAIL",
       "HUBSPOT_CREATE_OBJECT_SCHEMA",
@@ -26,333 +30,298 @@
     ]
   },
   "request": {
-    "query": "create automated review email for registration confirmation"
+    "query": "create a disabled automation workflow for event registration"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "create automated review email for registration confirmation",
+          "use_case": "create a disabled automation workflow for event registration",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Prerequisite]: Create a reusable welcome template using RESEND_CREATE_TEMPLATE (add variables only if you will personalize at send time).",
-            "[Optional (if iterating on content)] [Next Step]: Retrieve the current template using RESEND_GET_TEMPLATE (confirm variable keys/placeholders before editing).",
-            "[Optional (if changes needed)] [Next Step]: Update subject/html and variable keys using RESEND_UPDATE_TEMPLATE (keep placeholders aligned to keys to avoid validation errors).",
-            "[Required] [Step]: Send the welcome email on each signup using RESEND_SEND_EMAIL (populate template variables as needed).",
-            "[Optional (if your org sends via Gmail instead of Resend)] [Step]: Send the welcome email using GMAIL_SEND_EMAIL (mirror the same subject/body as the template)."
+            "[Required] [Prerequisite]: Action using CALENDLY_LIST_EVENT_TYPES (locate the target event type and capture its uri for identification).",
+            "[Optional (if multiple similar event types exist or you want to confirm before changing)] [Prerequisite]: Action using CALENDLY_GET_EVENT_TYPE (verify the chosen event type details match the intended target).",
+            "[Required] [Step]: Action using CALENDLY_UPDATE_EVENT_TYPE (disable the event type by updating it to inactive using the event type identifier).",
+            "[Required] [Next Step]: Action using CALENDLY_UPDATE_EVENT_TYPE (confirm the update response reflects the event type is now inactive)."
           ],
           "known_pitfalls": [
-            "[RESEND_CREATE_TEMPLATE] 422 validation_error if HTML placeholders are not in triple-brace form {{{VARIABLE_NAME}}}.",
-            "[RESEND_CREATE_TEMPLATE] 422 validation_error if placeholder names don\u2019t exactly match the declared variable keys (case/spacing differences included).",
-            "[RESEND_CREATE_TEMPLATE] 422 validation_error if a variable key is reserved (observed with FIRST_NAME); rename the key and update placeholders accordingly."
+            "[CALENDLY_UPDATE_EVENT_TYPE] Requires the event type identifier (uuid); when you only have the uri, derive it from the last path segment.",
+            "[CALENDLY_LIST_EVENT_TYPES] Listing can surface multiple similar event types; selecting the wrong uri will disable the wrong event type.",
+            "[CALENDLY_LIST_EVENT_TYPES] The scheduling_url is not the update identifier; prefer the uri when extracting the uuid.",
+            "[CALENDLY_UPDATE_EVENT_TYPE] This flow disables by setting inactive (not a hard delete), so confirm expectations before proceeding."
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "RESEND_CREATE_TEMPLATE",
-            "RESEND_SEND_EMAIL"
+            "CALENDLY_UPDATE_EVENT_TYPE"
           ],
           "related_tool_slugs": [
-            "RESEND_GET_TEMPLATE",
-            "RESEND_UPDATE_TEMPLATE",
-            "GMAIL_CREATE_EMAIL_DRAFT",
-            "GMAIL_SEND_EMAIL"
+            "CALENDLY_LIST_EVENT_TYPES",
+            "CALENDLY_GET_EVENT_TYPE"
           ],
           "toolkits": [
-            "gmail",
-            "resend"
+            "calendly"
           ],
-          "plan_id": "2784325bb9844448b06d6a2f61dfb7b3"
+          "plan_id": "32c5e80d727044debada00e3291ed2b4"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "gmail",
+          "toolkit": "calendly",
           "has_active_connection": false,
-          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
-          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
-        },
-        {
-          "toolkit": "resend",
-          "has_active_connection": false,
-          "description": "The universal API for sending emails.",
-          "status_message": "No Active connection for toolkit=resend. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"resend\") to create a connection BEFORE executing any resend tools."
+          "description": "Calendly is an appointment scheduling tool that automates meeting invitations, availability checks, and reminders, helping individuals and teams avoid email back-and-forth",
+          "status_message": "No Active connection for toolkit=calendly. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"calendly\") to create a connection BEFORE executing any calendly tools."
         }
       ],
       "tool_schemas": {
-        "RESEND_CREATE_TEMPLATE": {
-          "toolkit": "RESEND",
-          "tool_slug": "RESEND_CREATE_TEMPLATE",
-          "description": "Tool to create a new email template in Resend. Use when you need to define reusable email templates with optional variables.",
+        "CALENDLY_UPDATE_EVENT_TYPE": {
+          "toolkit": "CALENDLY",
+          "tool_slug": "CALENDLY_UPDATE_EVENT_TYPE",
+          "description": "Tool to update an existing one-on-one event type (kind: solo) in Calendly. Use when you need to modify event type settings such as name, duration, location, or description. NOTE: Currently only supports one-on-one event types.",
           "input_schema": {
             "type": "object",
             "required": [
-              "name",
-              "html"
+              "uuid"
             ],
             "properties": {
-              "from": {
-                "type": "string",
-                "description": "Sender email address. To include a friendly name, use the format 'Your Name <sender@domain.com>'."
-              },
-              "html": {
-                "type": "string",
-                "examples": [
-                  "<html><body><p>Welcome {{FIRST_NAME}}!</p></body></html>"
-                ],
-                "description": "The HTML version of the template. Use {{VARIABLE_NAME}} syntax to reference template variables."
-              },
               "name": {
                 "type": "string",
                 "examples": [
-                  "Verification Template",
-                  "Welcome Email Template"
+                  "15 Minute Meeting",
+                  "30 Minute Consultation",
+                  "Product Demo"
                 ],
-                "description": "The name of the template."
+                "description": "The event type name that will be displayed to invitees"
               },
-              "text": {
+              "uuid": {
                 "type": "string",
-                "description": "The plain text version of the template. If omitted, Resend will auto-generate from HTML."
-              },
-              "alias": {
-                "type": "string",
-                "description": "The alias of the template. This is an optional identifier that can be used instead of the template ID."
-              },
-              "subject": {
-                "type": "string",
-                "description": "Email subject for the template."
-              },
-              "reply_to": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
+                "examples": [
+                  "AAAAAAAAAAAAAAAA",
+                  "cdeba4c3-5adb-477d-8972-7317836eb40d",
+                  "https://api.calendly.com/event_types/04856865-014d-43d9-9052-d02de8f1625c"
                 ],
-                "description": "Reply-to email address. For multiple addresses, send as an array of strings."
+                "description": "Unique identifier (UUID) of the event type to update. Can be provided as either the full event type URI (e.g., 'https://api.calendly.com/event_types/AAAAAAAAAAAAAAAA') or just the UUID portion (e.g., 'AAAAAAAAAAAAAAAA'). Supports both alphanumeric format (e.g., 'GBGBDCAADAEDCRZ2') and standard UUID format (e.g., 'cdeba4c3-5adb-477d-8972-7317836eb40d'). Use LIST_USER_S_EVENT_TYPES action to retrieve valid event type URIs."
               },
-              "variables": {
+              "color": {
+                "type": "string",
+                "pattern": "^#[a-f\\d]{6}$",
+                "examples": [
+                  "#fff200",
+                  "#8247f5"
+                ],
+                "description": "Hexadecimal color value for the scheduling page. Must match pattern ^#[a-f\\d]{6}$ (e.g., '#fff200')"
+              },
+              "active": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Indicates if the event type is active and available for booking"
+              },
+              "locale": {
+                "enum": [
+                  "de",
+                  "en",
+                  "es",
+                  "fr",
+                  "it",
+                  "nl",
+                  "pt",
+                  "uk"
+                ],
+                "type": "string",
+                "examples": [
+                  "en",
+                  "es",
+                  "fr"
+                ],
+                "description": "Locale for the event type's scheduling page language"
+              },
+              "duration": {
+                "type": "integer",
+                "maximum": 720,
+                "minimum": 1,
+                "examples": [
+                  15,
+                  30,
+                  45,
+                  60
+                ],
+                "description": "Length of sessions in minutes. Must be between 1 and 720 minutes. Should be one of the duration_options if both are provided."
+              },
+              "locations": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "required": [
-                    "key",
-                    "type"
+                    "kind"
                   ],
                   "properties": {
-                    "key": {
+                    "kind": {
                       "type": "string",
-                      "description": "The key of the variable. Recommended to use capitalized format (e.g., PRODUCT_NAME). Reserved names: FIRST_NAME, LAST_NAME, EMAIL, RESEND_UNSUBSCRIBE_URL, contact, this."
-                    },
-                    "type": {
-                      "enum": [
-                        "string",
-                        "number"
+                      "examples": [
+                        "zoom_conference",
+                        "physical",
+                        "ask_invitee"
                       ],
+                      "description": "Type of location for the event. Common values: 'zoom_conference', 'google_meet', 'microsoft_teams', 'physical', 'ask_invitee', 'outbound_call', 'inbound_call', 'custom'"
+                    },
+                    "location": {
                       "type": "string",
-                      "description": "The type of the variable, either 'string' or 'number'."
-                    },
-                    "fallback_value": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "integer"
-                        },
-                        {
-                          "type": "number"
-                        }
+                      "examples": [
+                        "123 Main St, San Francisco, CA 94105",
+                        "Virtual Reality Meeting Space"
                       ],
-                      "description": "The fallback value of the variable. If no fallback value is provided, you must provide a value for the variable when sending an email using the template."
+                      "description": "Location address or description (required when kind is 'physical' or 'custom')"
+                    },
+                    "phone_number": {
+                      "type": "string",
+                      "examples": [
+                        "+14155551234"
+                      ],
+                      "description": "Phone number for phone call locations (required when kind is 'outbound_call' or 'inbound_call')"
+                    },
+                    "additional_info": {
+                      "type": "string",
+                      "examples": [
+                        "Building A, Floor 3"
+                      ],
+                      "description": "Additional location information or instructions for invitees"
                     }
                   },
-                  "description": "Template variable definition."
+                  "description": "Location configuration for the event type."
                 },
-                "description": "Template variables. Up to 50 variables can be defined per template."
+                "examples": [
+                  [
+                    {
+                      "kind": "zoom_conference"
+                    }
+                  ],
+                  [
+                    {
+                      "kind": "physical",
+                      "additional_info": "Office Building A"
+                    }
+                  ]
+                ],
+                "description": "Configuration information for each possible location where the event can take place"
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "A quick 15 minute meeting to discuss your needs"
+                ],
+                "description": "The event type description that will be shown on the scheduling page (plain text format)"
+              },
+              "duration_options": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "examples": [
+                  [
+                    15,
+                    30,
+                    45,
+                    60
+                  ]
+                ],
+                "description": "Alternative duration choices for flexible meetings. Maximum 4 unique values allowed. Each must be between 1 and 720 minutes."
               }
             }
           },
           "hasFullSchema": true
         },
-        "RESEND_SEND_EMAIL": {
-          "toolkit": "RESEND",
-          "tool_slug": "RESEND_SEND_EMAIL",
-          "description": "Send an email using Resend. Confirm recipients and content with the user before invoking \u2014 sends are irreversible. All recipients must be listed explicitly via `to`, `cc`, or `bcc`; audience-based sending is unsupported. Render HTML or plain text externally before passing via `html` or `text`.",
+        "CALENDLY_LIST_EVENT_TYPES": {
+          "toolkit": "CALENDLY",
+          "tool_slug": "CALENDLY_LIST_EVENT_TYPES",
+          "description": "Tool to list all Event Types associated with a specified User or Organization. Use when you need to retrieve event types for a user or organization. Use scheduling_url from results directly; do not manually construct event type URLs.",
           "input_schema": {
             "type": "object",
-            "required": [
-              "from",
-              "to",
-              "subject"
-            ],
             "properties": {
-              "cc": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
+              "sort": {
+                "type": "string",
+                "examples": [
+                  "name:asc",
+                  "created_at:desc"
                 ],
-                "description": "Cc recipient email address. For multiple addresses, send as an array of strings."
+                "description": "Order results by field(s) and direction. Accepts comma-separated list of field:direction values (e.g., 'name:asc,created_at:desc'). Default: name:asc"
               },
-              "to": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
+              "user": {
+                "type": "string",
+                "examples": [
+                  "https://api.calendly.com/users/BBBBBBBBBBBBBBBB"
                 ],
-                "description": "Recipient email address. For multiple addresses, send as an array of strings. Max 50."
+                "description": "URI of the user whose event types to list. Exactly one of 'user' or 'organization' must be provided (mutually exclusive)."
               },
-              "bcc": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
+              "count": {
+                "type": "integer",
+                "examples": [
+                  20,
+                  50,
+                  100
                 ],
-                "description": "Bcc recipient email address. For multiple addresses, send as an array of strings. Use `bcc` instead of `to` when sending to multiple recipients to prevent them from seeing each other's addresses."
+                "description": "Number of results per page."
               },
-              "from": {
+              "active": {
+                "type": "boolean",
+                "description": "Filter by active status. Return only active event types if true, only inactive if false, or all event types if omitted."
+              },
+              "page_token": {
                 "type": "string",
-                "description": "Sender email address. To include a name, use the format 'Your Name <sender@domain.com>'."
+                "description": "Pagination token for retrieving subsequent pages. Check pagination.next_page_token in the response; if non-null, pass it as page_token in the next call. Repeat until next_page_token is null."
               },
-              "html": {
+              "organization": {
                 "type": "string",
-                "description": "The HTML version of the message. At least one of 'html' or 'text' must be provided."
-              },
-              "text": {
-                "type": "string",
-                "description": "The plain text version of the message. At least one of 'html' or 'text' must be provided."
-              },
-              "react": {
-                "type": "string",
-                "description": "The React version of the message. Only available in the Node.js SDK."
-              },
-              "headers": {
-                "type": "object",
-                "description": "Custom headers to add to the email. Must be a dictionary/object with key-value pairs (e.g., {'X-Custom-Header': 'value'}). Pass None or omit to exclude.",
-                "additionalProperties": {
-                  "type": "string"
-                }
-              },
-              "subject": {
-                "type": "string",
-                "description": "Email subject."
-              },
-              "reply_to": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
+                "examples": [
+                  "https://api.calendly.com/organizations/AAAAAAAAAAAAAAAA"
                 ],
-                "description": "Reply-to email address. For multiple addresses, send as an array of strings."
+                "description": "URI of the organization whose event types to list. Exactly one of 'organization' or 'user' must be provided (mutually exclusive)."
               },
-              "scheduled_at": {
+              "admin_managed": {
+                "type": "boolean",
+                "description": "Filter by admin management status. True for admin-managed only, false to exclude admin-managed, or omitted to include all."
+              },
+              "user_availability_schedule": {
                 "type": "string",
-                "description": "Schedule email to be sent later. The date should be in ISO 8601 format (e.g., '2024-08-05T11:52:01.858Z')."
+                "examples": [
+                  "https://api.calendly.com/user_availability_schedules/CCCCCCCCCCCCCCCC"
+                ],
+                "description": "URI of the user's availability schedule. Used with 'user' parameter to filter event types by primary availability schedule."
               }
             }
           },
           "hasFullSchema": true
         },
-        "RESEND_GET_TEMPLATE": {
-          "toolkit": "RESEND",
-          "tool_slug": "RESEND_GET_TEMPLATE",
-          "description": "Retrieve a single template by ID or alias from Resend. Use when you need to view template details.",
+        "CALENDLY_GET_EVENT_TYPE": {
+          "toolkit": "CALENDLY",
+          "tool_slug": "CALENDLY_GET_EVENT_TYPE",
+          "description": "Retrieves details for a specific Calendly event type, identified by its UUID, which must be valid and correspond to an existing event type.",
           "input_schema": {
             "type": "object",
-            "required": [
-              "template_id"
-            ],
             "properties": {
-              "template_id": {
+              "uuid": {
                 "type": "string",
-                "description": "The Template ID or alias to retrieve."
+                "examples": [
+                  "AAAAAAAAAAAAAAAA"
+                ],
+                "description": "Unique identifier (UUID) for the event type. This is a required path parameter - extract the UUID from the event type URI (e.g., for 'https://api.calendly.com/event_types/abc123', use 'abc123')."
               }
             }
           },
           "hasFullSchema": true
-        },
-        "RESEND_UPDATE_TEMPLATE": {
-          "toolkit": "RESEND",
-          "tool_slug": "RESEND_UPDATE_TEMPLATE",
-          "description": "Tool to update an existing email template in Resend. Use when you need to modify template properties...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "RESEND_UPDATE_TEMPLATE"
-              ]
-            }
-          }
-        },
-        "GMAIL_CREATE_EMAIL_DRAFT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_CREATE_EMAIL_DRAFT",
-          "description": "Creates a Gmail email draft. While all fields are optional per the Gmail API, practical validation r...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "GMAIL_CREATE_EMAIL_DRAFT"
-              ]
-            }
-          }
-        },
-        "GMAIL_SEND_EMAIL": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_SEND_EMAIL",
-          "description": "Sends an email via Gmail API using the authenticated user's Google profile display name. Sends immed...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "GMAIL_SEND_EMAIL"
-              ]
-            }
-          }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:35:04.918Z",
-        "current_time_utc_epoch_seconds": 1786563304,
+        "current_time_utc": "2026-08-12T20:51:01.608Z",
+        "current_time_utc_epoch_seconds": 1786567861,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "wore",
+        "id": "cold",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"wore\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"cold\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -362,6 +331,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_drQ6TDFm2Xzd"
+    "log_id": "log_w7FVfYahGv87"
   }
 }

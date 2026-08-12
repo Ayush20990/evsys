@@ -13,21 +13,41 @@ A real agent never searches that way — it decomposes first:
 High-level task → agent decomposes → fundamental search intents → queries → COMPOSIO_SEARCH_TOOLS → tools
 ```
 
-So ground truth is defined **per intent, not per task**. Each generated query carries its own small set of
-`required_tools` (genuinely needed for that one intent) and `supporting_tools` (relevant but not required),
-drawn only from the task's candidate pool. Scoring is recall over the required set, so a query expecting
-two tools and retrieving one scores 0.5 rather than a binary miss.
+So ground truth is defined **per intent, not per task**. Each generated query carries its own ground truth,
+drawn only from the task's candidate pool, structured as one or more **requirement groups**:
 
-Every generated decomposition is validated before use (query count in range, no invented slugs, 1–3 required
-tools per query, no duplicates); failures are recorded with a rejection reason rather than silently dropped.
+- Within a group, **any one** tool satisfies it — these are true alternatives (e.g. either
+  `GMAIL_SEARCH_EMAILS` or `GMAIL_FETCH_EMAILS` would do).
+- Across groups, **all** are required — these are genuinely compositional intents (e.g. find an email AND
+  schedule a follow-up).
+
+A flat required-tool list can't express "either tool is fine," and scoring it as a plain set silently
+penalized correct alternative-tool hits as partial misses. Recall is `groups_satisfied / total_groups`.
+
+The number of queries per workflow also scales with the candidate-pool size instead of a fixed cap
+(`query_count_range()` in `query_level_workflow_evaluation.py`: roughly 1 query per 2–3 candidate tools, floor
+1–2, ceiling 10). A fixed 2–4 cap was measured to silently drop genuine sub-intents for complex workflows —
+on average 51% of a workflow's candidate tools were never assigned to any query under that cap.
+
+Because ground truth is still one LLM's opinion, constrained to a human-curated pool built for the *whole*
+workflow rather than derived fresh for each atomic query, every query search still misses gets a cheap
+secondary **judged-recall** pass: an independent Gemini call, given the workflow's context, checks whether
+an *actually-returned* tool — even one never pre-labeled — plausibly satisfies the missed requirement. This
+is reported as `judged_recall` alongside strict recall, never in place of it, and it's vendor-scoped: if the
+workflow explicitly names a vendor for that data/action (e.g. "in Salesforce"), only a same-vendor tool can
+be credited, so a functionally similar competitor tool doesn't inflate the number.
+
+Every generated decomposition is validated before use (query count in the computed range, no invented slugs,
+1–4 tools per group, no duplicate queries); failures are recorded with a rejection reason rather than
+silently dropped.
 
 ## Benchmarks
 
 | # | Script | What it tests |
 |---|---|---|
-| 1 | `src/query_level_workflow_evaluation.py` | **Primary.** Decomposes each workflow in `top-100-eval-use-cases.md` into 2–4 agent-like search intents with per-query ground truth, then scores retrieval, ranking, and latency. |
-| 2 | `src/query_robustness_evaluation.py` | **Secondary — diagnostic.** Re-runs benchmark 1's intents as explicit / implicit / paraphrased variants with the required tools held constant, isolating phrasing sensitivity from decomposition quality. Not a second ground-truth source; see note below. |
-| 3 | `src/synthetic_query_level_evaluation.py` | **Tertiary.** LLM-invented tasks independent of `top-100-eval-use-cases.md`, grounded in real tool slugs/descriptions fetched live from Composio so ground truth is never hallucinated. Same per-query decomposition and scoring as benchmark 1. |
+| 1 | `src/query_level_workflow_evaluation.py` | **Primary.** Decomposes each workflow in `top-100-eval-use-cases.md` into a pool-scaled number of agent-like search intents with per-query, requirement-group ground truth, then scores strict + judged retrieval, ranking, and latency. |
+| 2 | `src/query_robustness_evaluation.py` | **Secondary — diagnostic.** Re-runs benchmark 1's intents as explicit / implicit / paraphrased variants with the required tools held constant, isolating phrasing sensitivity from decomposition quality. Not a second ground-truth source; see note below. ⚠️ still on the older flat-required-tool schema — see Known gaps. |
+| 3 | `src/synthetic_query_level_evaluation.py` | **Tertiary.** LLM-invented tasks independent of `top-100-eval-use-cases.md`, grounded in real tool slugs/descriptions fetched live from Composio so ground truth is never hallucinated. ⚠️ still on the older flat-required-tool schema — see Known gaps. |
 | 4 | `src/single_tool_evaluation.py` | **Baseline.** Samples tools across many toolkits and asks whether one natural query retrieves that specific tool, explicitly and implicitly. |
 
 **On the explicit/implicit distinction (benchmark 2):** a real agent doesn't decompose a task and then
@@ -74,8 +94,8 @@ calls are not cached. Scale each benchmark with these constants:
 
 | Constant | File | Effect |
 |---|---|---|
-| `MAX_USE_CASES` | `query_level_workflow_evaluation.py` | Workflows decomposed. Currently **25** → 79 queries. Raise to 100 for the full suite. |
-| `MAX_QUERIES_PER_WORKFLOW` | `query_level_workflow_evaluation.py` | Upper bound on intents per workflow (default 4). |
+| `MAX_USE_CASES` | `query_level_workflow_evaluation.py` | Workflows decomposed. Currently **25** → 82 queries. Raise to 100 for the full suite. |
+| `MIN_QUERIES_FLOOR`, `MAX_QUERIES_CEILING`, `TOOLS_PER_QUERY_TARGET` | `query_level_workflow_evaluation.py` | Query-count-per-workflow scales with pool size (`query_count_range()`); these bound the floor/ceiling and the tools-per-query ratio. |
 | `MAX_SOURCE_QUERIES` | `query_robustness_evaluation.py` | Source intents × 3 variants = search calls. Currently **60** → 180 searches. |
 | `NUM_TASKS` | `synthetic_query_level_evaluation.py` | LLM-invented tasks generated. Currently **10** — one Gemini call per accepted task (task text + decomposition combined into a single call to keep this cheap). |
 | `NUM_TOOLKITS_TO_SAMPLE`, `TOOLS_PER_TOOLKIT` | `single_tool_evaluation.py` | Sampling breadth and depth. |
@@ -85,26 +105,32 @@ aggregate. The generated mappings should be spot-checked before the numbers mean
 
 ## Results
 
-Current run: 25 workflows attempted (24 accepted, 1 rejected on validation) → 79 query-level tests;
-60 of those intents × 3 phrasings → 180 robustness searches; 10 synthetic tasks (19 attempts, 9 rejected)
-→ 23 query-level tests; 174 single-tool queries across 20 toolkits.
+Current run: 25 workflows accepted, 0 rejected on validation → 82 query-level tests (requirement-group
+schema, dynamic query cap, judged recall); 60 intents from the *previous* flat-schema ground truth × 3
+phrasings → 180 robustness searches; 10 synthetic tasks (19 attempts, 9 rejected) → 23 query-level tests
+(also previous flat schema); 174 single-tool queries across 20 toolkits.
 
-### 1. Query-level workflow benchmark — 79 queries
+### 1. Query-level workflow benchmark — 82 queries, requirement-group schema
 
 | Metric | Value |
 |---|---|
-| Any-required-tool hit rate | 84.8% |
-| Retrieval recall (primary ∪ related) | 77.8% |
-| Primary-only recall | 63.9% |
-| Fully correct queries | 56 / 79 |
-| Total misses (nothing required retrieved) | 12 / 79 |
+| Any-required-group hit rate | 73.2% |
+| Retrieval recall (strict, groups satisfied) | 66.7% |
+| Primary-only recall (strict) | 54.1% |
+| **Judged recall** (strict + plausible unlabeled hits, vendor-scoped) | **81.3%** |
+| Perfect strict-recall queries | 49 / 82 |
+| Total misses (no group satisfied at all) | 22 / 82 |
+| Queries that needed the judge pass | 33 / 82 |
 
-| Query shape | Queries | Recall | Primary recall |
-|---|---:|---:|---:|
-| 1 required tool | 48 | 77.1% | 68.8% |
-| 2+ required tools | 31 | 79.0% | 56.5% |
+Latency: 2.77 s average, 2.50 s median, 4.61 s P95, 8.63 s maximum.
 
-Latency: 3.10 s average, 2.87 s median, 4.59 s P95, 10.63 s maximum.
+The 14.6-point gap between strict and judged recall is the direct answer to "is recall the right metric":
+strict recall alone understates real performance by roughly that much, because a meaningful fraction of
+"misses" are search correctly finding a valid tool we simply hadn't pre-labeled as acceptable. The judge is
+deliberately conservative and vendor-scoped — it explicitly rejected credit for e.g. `EMELIA_LIST_CAMPAIGNS`
+returned for a Salesforce-specific query, and for `CALENDLY_UPDATE_EVENT_TYPE` returned for a
+HubSpot-workflow query — so 81.3% is not an inflated ceiling, and both numbers should be read together, not
+either one alone.
 
 ### 2. Query robustness benchmark — 180 searches
 
@@ -147,27 +173,47 @@ while **GitHub scored 0% on both explicit and implicit queries** across 10 sampl
    The single-tool baseline understates this badly (7-point gap), because short single-tool queries are far
    easier than real workflow intents.
 
-2. **Multi-tool intents fail at ranking, not retrieval.** Going from 1 to 2+ required tools leaves total
-   recall flat (77.1% → 79.0%) but drops primary recall (68.8% → 56.5%). The right tools are found and then
-   demoted into `related`. 18 of 79 queries had a required tool appear only as related. This contradicts the
-   earlier whole-task benchmark's conclusion that recall collapses with tool count — that was an artifact of
-   the invalid method, not a real property of search.
+2. **Compositional queries (2+ requirement groups) genuinely underperform**, now that the requirement-group
+   schema separates real compositionality from mere alternatives. 1-group queries: 70.2% recall / 61.4%
+   primary recall. 2+-group queries: 58.7% recall / 37.3% primary recall — a real, unconfounded drop. Under
+   the earlier flat-list schema this looked like "recall stays flat, only ranking drops" — that read was an
+   artifact of OR-alternatives being scored as AND-required; the corrected picture is that multi-operation
+   queries are harder on both axes.
 
-3. **Generic action verbs lose to domain-matching toolkits.** `GMAIL_SEND_EMAIL` accounts for 5 of the 12
-   total misses. Queries like "send curated job digest email" return `DICE_MCP_SEARCH_JOBS`,
-   `ZIPRECRUITER_MCP_SEARCH_JOBS`, or `HUBSPOT_CREATE_A_NEW_MARKETING_EMAIL` — the domain noun in the query
-   ("job", "support", "marketing") outweighs the actual operation ("send an email").
+3. **Generic action verbs lose to domain-matching toolkits.** `GMAIL_SEND_EMAIL` and `GMAIL_FETCH_EMAILS`
+   are the most-missed tools across the run. Queries like "send curated job digest email" or "send outreach
+   email for marketing" return `SENDGRID_SEND_A_TEST_MARKETING_EMAIL`, `HUBSPOT_CLONE_MARKETING_EMAIL`, or
+   job-board tools — the domain noun in the query ("job", "marketing") outweighs the actual operation
+   ("send an email"). The judge pass does *not* rescue these: sending email is rarely vendor-locked, so if a
+   returned tool genuinely sent email it would be credited, and mostly it wasn't a real send-email tool at all.
 
-4. **Cross-toolkit intrusion is common and systematic.** Most frequent intruders across the run: `EXCEL` (8),
-   `GOOGLEDRIVE` (8), `MERCURY` (7), `HEYGEN` (5), `GOOGLESHEETS` (5), `RESEND` (4), `KADOA` (4),
-   `FREEAGENT` (4). These are near-neighbour products substituting for the requested one — e.g.
-   "create a disabled confirmation workflow" returns `KADOA_CREATE_WORKFLOW_TRIGGER` instead of
-   `HUBSPOT_CREATE_WORKFLOW`; QuickBooks ledger queries return `MERCURY_MCP_LIST_TRANSACTIONS`.
+4. **Cross-toolkit intrusion is common and systematic.** Most frequent intruder prefixes across the run:
+   `SALESFORCE` (20, mostly CRM-adjacent tasks pulling in Salesforce over the actually-requested CRM/tool),
+   `MAILCHIMP` (15), `GOOGLEDRIVE` (13), `EXCEL` (8), `OUTLOOK` (7), `EMELIA` (6), `BREVO` (6). Some of these
+   are legitimate near-misses the judge credits (e.g. `OUTLOOK_SEND_EMAIL` for a generic "send email" need);
+   others are exactly the vendor-mismatch the judge is built to reject (e.g. `EMELIA_LIST_CAMPAIGNS` for an
+   explicitly-Salesforce campaign query).
 
-5. **All 12 total misses returned results** — search never returned nothing, it returned confidently wrong
-   tools. That is worse for an agent than an empty result, which it could recover from.
+5. **Judged recall (81.3%) vs strict recall (66.7%): a 14.6-point gap directly caused by ground-truth
+   incompleteness**, not by search actually improving. This is the concrete, measured answer to "is recall
+   the right metric" — a meaningful slice of what strict scoring calls a miss is really search finding a
+   correct-but-unlabeled tool. Report both numbers; neither alone is trustworthy in isolation.
 
-6. **Latency is stable but has a long tail:** ~2.9 s median across benchmarks, with outliers past 10 s.
+6. **Latency is stable but has a long tail:** ~2.5–2.9 s median across benchmarks, with outliers past 8 s.
+
+## Known gaps
+
+- **Benchmarks 2 and 3 haven't been migrated to the requirement-group + judged-recall schema yet.** Their
+  numbers in this document (robustness: explicit 82.5% / implicit 34.2% / paraphrase 53.3%; synthetic: 82.6%
+  any-hit) were computed under the older flat-required-tool-list scoring, before the group/judged-recall
+  redesign in benchmark 1. They're internally consistent and the phrasing-sensitivity finding is real, but
+  they aren't directly comparable to benchmark 1's current numbers, and re-running them under the new schema
+  might shift them (probably upward, for the same reason benchmark 1's judged recall exceeds its strict
+  recall). Do this before citing 2 or 3 alongside 1 in the same table.
+- **Coverage of the candidate pool is still well under 100%** (47% for the current 25-workflow run) even
+  after replacing the fixed query cap with a dynamic one. This is now believed to be expected rather than a
+  bug: the human-curated pool intentionally includes "might be needed" tools (verification steps,
+  alternates, optional paths) that one realistic decomposition won't all touch — see Methodology.
 
 ## Artifacts
 

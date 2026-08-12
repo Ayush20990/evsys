@@ -3,12 +3,19 @@
     "query_id": "workflow-021-q2",
     "workflow_id": 21,
     "workflow_task": "Read reference documents and a spreadsheet, discover fiscal-period logic from available workspace sources, update spreadsheet formulas, and create a summary worksheet.",
-    "query": "read document plaintext content to discover fiscal period rules",
-    "required_tools": [
-      "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT"
+    "query": "read document plaintext content",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT"
+        ],
+        "purpose": "extract document text"
+      }
     ],
-    "supporting_tools": [],
-    "rationale": "Once the file is found, the agent must fetch the raw text of the document to extract the specific fiscal-period logic.",
+    "supporting_tools": [
+      "GOOGLEDRIVE_FIND_FILE"
+    ],
+    "rationale": "Fetches the actual text content of the reference documents to discover the fiscal-period logic.",
     "candidate_tools": [
       "GMAIL_FETCH_EMAILS",
       "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
@@ -20,61 +27,60 @@
     ]
   },
   "request": {
-    "query": "read document plaintext content to discover fiscal period rules"
+    "query": "read document plaintext content"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "read document plaintext content to discover fiscal period rules",
+          "use_case": "read document plaintext content",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Optional (if file identifier is unknown)] [Prerequisite]: Locate a single candidate using GOOGLEDRIVE_FIND_FILE (refine query until one match; capture files[].id).",
-            "[Optional (if you prefer docs-first discovery)] [Prerequisite]: Find a single document using GOOGLEDOCS_SEARCH_DOCUMENTS (capture document_id).",
-            "[Required] [Prerequisite]: Inspect type/size using GOOGLEDRIVE_GET_FILE_METADATA (decide Docs plaintext vs Sheets values vs export/download).",
-            "[Required (if item is a native text doc and plaintext is sufficient)] [Step]: Read content using GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT (capture title and plain_text; spot-check completeness for long docs).",
-            "[Optional (if item is a spreadsheet or you need a bounded lookup)] [Step]: List tabs using GOOGLESHEETS_GET_SHEET_NAMES, then read a specific range using GOOGLESHEETS_VALUES_GET.",
-            "[Optional (if formatting or non-text bytes are needed)] [Next Step]: Retrieve formatted output using GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE (workspace-native) or GOOGLEDRIVE_DOWNLOAD_FILE (other types); validate non-empty bytes/URL and parse if needed via COMPOSIO_REMOTE_WORKBENCH.",
-            "[Fallback (if read/export/download fails due to access)] [Fallback]: Check access/sharing using GOOGLEDRIVE_LIST_PERMISSIONS, then retry the chosen read path."
+            "[Optional (if file identifier unknown)] [Prerequisite]: Locate the item using GOOGLEDRIVE_FIND_FILE (refine query; paginate with nextPageToken until one files[].id is chosen).",
+            "[Required] [Prerequisite]: Route the read method using GOOGLEDRIVE_GET_FILE_METADATA (check mimeType; if a shortcut, use shortcutDetails.targetId downstream).",
+            "[Optional (if access/share issues suspected after 403)] [Prerequisite]: Diagnose readability using GOOGLEDRIVE_LIST_PERMISSIONS (confirm permission gaps before retrying).",
+            "[Required (if Workspace-native doc and plain text is sufficient)] [Step]: Read content using GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT (consume data.plain_text; keep data.title if needed).",
+            "[Optional (if plaintext is incomplete or structure is needed)] [Next Step]: Fetch the full model using GOOGLEDOCS_GET_DOCUMENT_BY_ID (parse body content client-side for tables/objects).",
+            "[Required (if non-native file OR Docs read fails/unavailable)] [Step]: Retrieve bytes using GOOGLEDRIVE_DOWNLOAD_FILE (often returns downloaded_file_content.s3url; fetch promptly and parse by file type).",
+            "[Optional (if a specific output format is required for a Workspace-native file)] [Next Step]: Export using GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE (fetch from returned file.s3url and verify non-empty output).",
+            "[Fallback (if download/export returns a long-running operation)] [Fallback]: Complete retrieval using GOOGLEDRIVE_DOWNLOAD_FILE_OPERATION (then fetch the resulting downloaded_file_content reference)."
           ],
           "known_pitfalls": [
-            "[GOOGLEDRIVE_GET_FILE_METADATA] HTTP 403 PERMISSION_DENIED with reason ACCESS_TOKEN_SCOPE_INSUFFICIENT blocks downstream reads until scopes are corrected.",
-            "[GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE] HTTP 400 indicating export is only supported for editor-native files; export can also yield empty output\u2014validate bytes.",
-            "[GOOGLEDRIVE_DOWNLOAD_FILE] May return a temporary signed URL instead of inline bytes\u2014fetch promptly and verify non-empty content.",
-            "[GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT] Fails validation if document_id is empty; long documents may produce truncated plain_text.",
-            "[GOOGLESHEETS_GET_SHEET_NAMES] Requires spreadsheet_id; missing/invalid id triggers a request validation failure."
+            "[GOOGLEDRIVE_FIND_FILE] 403 PERMISSION_DENIED / ACCESS_TOKEN_SCOPE_INSUFFICIENT indicates missing OAuth scopes and requires re-auth with correct scopes.",
+            "[GOOGLEDRIVE_GET_FILE_METADATA] Shortcuts require using shortcutDetails.targetId; using the shortcut id for read/download/export can fail.",
+            "[GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT] HTTP 400 FAILED_PRECONDITION can occur for non-native files; long/complex docs may produce placeholders/truncation.",
+            "[GOOGLEDRIVE_DOWNLOAD_FILE] Often returns downloaded_file_content.s3url (signed/expiring) instead of inline bytes; fetch quickly; for non-Workspace files, mime_type export is ignored.",
+            "[GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE] HTTP 400 for unsupported export types and occasional empty output (size_bytes=0); validate content after fetching from file.s3url."
           ],
           "reference_workbench_snippets": [
             {
-              "description": "Dereference a signed URL and decode to text (UTF-8 with BOM strip; fallback to bytes)",
-              "code": "```python\nimport requests\n\ndef fetch_text(s3url,timeout=60):\n    r=requests.get(s3url,timeout=timeout)\n    r.raise_for_status()\n    b=r.content\n    try:\n        return b.decode('utf-8',errors='replace').lstrip('\\ufeff')\n    except Exception:\n        return b\n```"
+              "description": "Fetch signed-URL content and decode as UTF-8 (BOM-stripping), else return raw bytes",
+              "code": "```python\nimport requests\n\ndef fetch_text(u,timeout=60):\n    r=requests.get(u,timeout=timeout)\n    r.raise_for_status()\n    b=r.content\n    try:\n        return b.decode('utf-8',errors='replace').lstrip('\\ufeff')\n    except Exception:\n        return b\n```"
             },
             {
-              "description": "Extract text from a PDF after dereferencing a signed URL",
-              "code": "```python\nimport io,requests,pdfplumber\n\ndef read_pdf_text(s3url,timeout=30):\n    r=requests.get(s3url,timeout=timeout)\n    r.raise_for_status()\n    with pdfplumber.open(io.BytesIO(r.content)) as pdf:\n        return \"\\n\".join((p.extract_text() or \"\") for p in pdf.pages).strip()\n```"
+              "description": "Extract combined paragraph + table text from a downloaded DOCX at a signed URL",
+              "code": "```python\nimport io,requests\nfrom docx import Document\n\ndef extract_docx_text(u,timeout=60):\n    r=requests.get(u,timeout=timeout)\n    r.raise_for_status()\n    doc=Document(io.BytesIO(r.content))\n    out=[(p.text or '').strip() for p in doc.paragraphs if (p.text or '').strip()]\n    for t in doc.tables:\n        for row in t.rows:\n            out.append(' | '.join((c.text or '').strip() for c in row.cells))\n    return '\\n'.join(out)\n```"
             }
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "GOOGLEDRIVE_FIND_FILE",
+            "GOOGLEDRIVE_GET_FILE_METADATA",
             "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
-            "GOOGLESHEETS_VALUES_GET"
+            "GOOGLEDRIVE_DOWNLOAD_FILE"
           ],
           "related_tool_slugs": [
-            "GOOGLEDOCS_SEARCH_DOCUMENTS",
-            "GOOGLEDRIVE_GET_FILE_METADATA",
+            "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
             "GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE",
-            "GOOGLESHEETS_GET_SHEET_NAMES",
-            "GOOGLEDRIVE_DOWNLOAD_FILE",
-            "GOOGLEDRIVE_LIST_PERMISSIONS"
+            "GOOGLEDRIVE_LIST_PERMISSIONS",
+            "GOOGLEDRIVE_FIND_FILE",
+            "GOOGLEDRIVE_DOWNLOAD_FILE_OPERATION"
           ],
           "toolkits": [
             "googledocs",
-            "googledrive",
-            "googlesheets"
+            "googledrive"
           ],
-          "plan_id": "36bfa34239d04490a9a8c2a3c6558253"
+          "plan_id": "231281a7dd99452da208a4110f53252c"
         }
       ],
       "toolkit_connection_statuses": [
@@ -89,201 +95,42 @@
           "has_active_connection": false,
           "description": "Google Drive is a cloud storage solution for uploading, sharing, and collaborating on files across devices, with robust search and offline access. Special usecases: Sharing google sheets/docs or any G-Suite files with specific emails.",
           "status_message": "No Active connection for toolkit=googledrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledrive\") to create a connection BEFORE executing any googledrive tools."
-        },
-        {
-          "toolkit": "googlesheets",
-          "has_active_connection": false,
-          "description": "Google Sheets is a cloud-based spreadsheet tool enabling real-time collaboration, data analysis, and integration with other Google Workspace apps. STRICT RATE LIMITS apply - max 60 reads/minute and 60 writes/minute. Exceeding this causes errors.",
-          "status_message": "No Active connection for toolkit=googlesheets. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesheets\") to create a connection BEFORE executing any googlesheets tools."
         }
       ],
       "tool_schemas": {
-        "GOOGLEDRIVE_FIND_FILE": {
+        "GOOGLEDRIVE_GET_FILE_METADATA": {
           "toolkit": "GOOGLEDRIVE",
-          "tool_slug": "GOOGLEDRIVE_FIND_FILE",
-          "description": "The comprehensive Google Drive search tool that handles all file and folder discovery needs. Use this for any file finding task - from simple name searches to complex queries with date filters, MIME types, permissions, custom properties, folder scoping, and more. Searches across My Drive and shared drives with full metadata support. Examples: - Find PDFs: q=\"mimeType = 'application/pdf'\" - Find recent files: q=\"modifiedTime > '2024-01-01T00:00:00'\" - Search by name: q=\"name contains 'report'\" - Files in folder: folderId=\"abc123\" or q=\"'FOLDER_ID' in parents\"",
+          "tool_slug": "GOOGLEDRIVE_GET_FILE_METADATA",
+          "description": "Tool to get a file's metadata by ID. Use to verify `mimeType`, `parents`, and `trashed` status before destructive operations (delete/move/export), or to confirm `mimeType='application/vnd.google-apps.document'` before calling GOOGLEDOCS_* tools (non-native files require GOOGLEDRIVE_DOWNLOAD_FILE). Only returns metadata visible to the connected account; public access requires GOOGLEDRIVE_ADD_FILE_SHARING_PREFERENCE. High-frequency calls risk `403 rateLimitExceeded`; apply exponential backoff.",
           "input_schema": {
             "type": "object",
+            "required": [
+              "fileId"
+            ],
             "properties": {
-              "q": {
-                "type": "string",
-                "examples": [
-                  "name = 'Budget 2024'",
-                  "name = 'Valentine's Day'",
-                  "name contains 'Jan'26 Schedule'",
-                  "name contains 'report'",
-                  "mimeType = 'application/pdf'",
-                  "mimeType = 'application/vnd.google-apps.folder'",
-                  "'FOLDER_ID' in parents",
-                  "modifiedTime > '2024-01-01T00:00:00'",
-                  "modifiedTime > '2024-10-01T14:30:00' and modifiedTime < '2024-10-01T18:00:00'",
-                  "createdTime > '2024-10-02T00:00:00' and createdTime < '2024-10-02T23:59:59'",
-                  "sharedWithMe = true",
-                  "sharedWithMe = true and name contains 'report'",
-                  "sharedWithMe = true and mimeType = 'application/pdf'",
-                  "starred = true and mimeType = 'application/pdf'",
-                  "trashed = false",
-                  "'user@example.com' in owners",
-                  "'user@example.com' in writers",
-                  "fullText contains 'quarterly results'",
-                  "name contains 'report' and not name contains 'draft'",
-                  "(mimeType contains 'image/' or mimeType contains 'video/')",
-                  "name contains 'invoice' and modifiedTime > '2024-01-01T00:00:00' and trashed = false"
-                ],
-                "description": "Query string to filter file results. Accepts both simple text searches and full Google Drive query syntax.\n\n        **Simple Text Search:** Bare text (e.g., \"SAM RFP\") is auto-converted to fullText search. Bare email addresses are auto-converted to owner search.\n\n        **Full Query Syntax:** 'field operator value' combined with 'and', 'or', 'not'\n\n        **Operators:** =, !=, <, >, <=, >=, contains, in\n\n        **Common Fields:**\n        - `name` - File name (exact match with = or partial match with contains)\n        - `fullText` - File content search\n        - `mimeType` - File type (e.g., 'application/pdf', 'application/vnd.google-apps.folder')\n        - `modifiedTime`, `createdTime` - Dates (RFC 3339: '2024-01-01T00:00:00')\n        - `parents` - Folder IDs containing the file\n        - `owners`, `writers` - User email addresses (MUST use 'in' operator, NOT colon syntax)\n        - `properties`, `appProperties` - Custom metadata\n\n        **Boolean Filter Fields (sharedWithMe, trashed, starred):**\n        These fields require explicit `= true` or `= false` syntax:\n        - `sharedWithMe = true` - Find files shared with you by others\n        - `sharedWithMe = false` - Find files NOT shared with you (your own files)\n        - `trashed = true` - Find files in trash\n        - `trashed = false` - Exclude trashed files from results\n        - `starred = true` - Find starred/favorited files\n        - `starred = false` - Find non-starred files\n\n        Combine with other conditions using 'and':\n        - \"sharedWithMe = true and name contains 'report'\" - Find shared files with 'report' in name\n        - \"sharedWithMe = true and mimeType = 'application/pdf'\" - Find shared PDF files\n        - \"starred = true and modifiedTime > '2024-01-01T00:00:00'\" - Find recently modified starred files\n\n        **Query Complexity Limits:**\n        Queries with many OR clauses (typically >5-10) may fail with 'The query is too complex' error.\n\n        **Name Field Usage:**\n        Wildcards (*) are NOT supported. Use 'contains' operator for partial matching.\n\n        **User Email Searches:**\n        - CORRECT: \"'user@example.com' in owners\" or \"'user@example.com' in writers\" or \"'user@example.com' in readers\"\n        - INCORRECT: \"owner:user@example.com\" (colon syntax is NOT supported and will cause errors)\n        - Always use the 'in' operator with quoted email addresses for user-based searches\n\n        **Special Syntax:**\n        - Dates: RFC 3339 format (time zone defaults to UTC)\n        - Apostrophes/quotes in values: Automatically escaped. You can write \"name = 'Jan'26'\" or \"name = 'Valentine's Day'\" without manual escaping.\n        - Grouping: Use parentheses for OR: \"(mimeType contains 'image/' or mimeType contains 'video/')\"\n        - Custom properties: \"properties has { key='department' and value='sales' }\"\n\n        **IMPORTANT - Root Folder ('My Drive'):**\n        'My Drive' is NOT a searchable folder name. To work with the root folder, use the 'root' alias: folder_id='root' or \"'root' in parents\" in your query.\n        "
-              },
               "fields": {
                 "type": "string",
-                "examples": [
-                  "*",
-                  "files(id,name,mimeType)",
-                  "id,name,mimeType",
-                  "nextPageToken,files(id,name,mimeType)",
-                  "files(id,name,modifiedTime,size,webViewLink)",
-                  "nextPageToken,files(id,name,parents,permissions)"
-                ],
-                "description": "Selector specifying which fields to include in a partial response. Use '*' for all fields.\n\n**Default Behavior (Recommended for Discovery):**\nWhen omitted, returns essential file discovery fields: id, name, mimeType, size, modifiedTime, createdTime, parents, webViewLink, trashed, starred. This lightweight default is optimized for file search/discovery use cases without verbose permission or capability metadata.\n\n**Format:** For file fields, use 'files(field1,field2,...)' format. For example: 'files(id,name,mimeType)'.\nTop-level response fields (kind, nextPageToken, incompleteSearch) can be used directly.\n\n**Note:** Bare field names like 'id,name,mimeType' will be automatically wrapped in 'files()' for convenience.\nThe 'editors' field is not valid in Drive API v3; use 'permissions' instead for access control information."
+                "description": "Comma-separated list of fields to include in the response. Use this for partial responses to request only specific metadata fields. Common fields: id, name, mimeType, webViewLink, webContentLink, createdTime, modifiedTime, size, quotaBytesUsed, parents, owners, permissions. Use '*' to return all available fields. Note: The deprecated v2 field 'alternateLink' is automatically migrated to 'webViewLink'. Example: 'id,name,mimeType,webViewLink,createdTime,modifiedTime'. Most fields (webViewLink, parents, owners, size, modifiedTime, etc.) are omitted by default \u2014 explicitly list required fields or use '*' (increases latency). `md5Checksum` is null for native Google Workspace files (Docs/Sheets/Slides); use `mimeType` to classify items \u2014 folders use `mimeType='application/vnd.google-apps.folder'` and Workspace files return `size=null`. `modifiedTime` is RFC 3339 UTC format."
               },
-              "spaces": {
-                "type": "string",
-                "default": "drive",
-                "examples": [
-                  "drive",
-                  "appDataFolder",
-                  "photos",
-                  "drive,appDataFolder"
-                ],
-                "description": "A comma-separated list of spaces to query. Supported values are 'drive', 'appDataFolder' and 'photos'."
-              },
-              "corpora": {
-                "enum": [
-                  "user",
-                  "drive",
-                  "domain",
-                  "allDrives"
-                ],
-                "type": "string",
-                "default": "allDrives",
-                "examples": [
-                  "user",
-                  "domain",
-                  "drive",
-                  "allDrives"
-                ],
-                "description": "Specifies which collections of files to search. Defaults to 'allDrives' (searches My Drive + all accessible shared drives).\n\n        **Values:**\n        - `user` - Search only user's personal My Drive\n        - `domain` - Search all files shared within Google Workspace domain\n        - `drive` - Search specific shared drive (requires 'driveId' parameter and 'includeItemsFromAllDrives' must be true)\n        - `allDrives` - Search My Drive + all accessible shared drives (DEFAULT, requires 'includeItemsFromAllDrives' to be true)\n\n        **When to Use:**\n        - Personal files only: Use 'user'\n        - Organization-wide: Use 'domain'\n        - Specific shared drive: Use 'drive' with 'driveId'\n        - Maximum coverage: Use 'allDrives' (auto-enables supportsAllDrives and includeItemsFromAllDrives)\n        "
-              },
-              "driveId": {
-                "type": "string",
-                "description": "ID of the shared drive to search. When provided, 'corpora' will automatically be set to 'drive' (mutually exclusive with corpora='allDrives'). Required if 'corpora' is 'drive'."
-              },
-              "orderBy": {
+              "fileId": {
                 "type": "string",
                 "examples": [
-                  "modifiedTime desc",
-                  "createdTime",
-                  "name",
-                  "name_natural",
-                  "viewedByMeTime desc",
-                  "quotaBytesUsed desc",
-                  "folder,modifiedTime desc,name",
-                  "starred desc,name",
-                  "recency desc"
+                  "1a2b3c4d5e6f7g8h9i0j"
                 ],
-                "description": "Comma-separated sort keys. Ascending by default; add 'desc' for descending. Cannot be used when query (q) contains fullText search terms.\n\n        **Valid Keys:**\n        - `createdTime`, `modifiedTime`, `modifiedByMeTime` - Dates\n        - `viewedByMeTime`, `sharedWithMeTime` - Activity dates\n        - `name`, `name_natural` - File name (natural: file1, file2, file10)\n        - `folder` - Folder hierarchy\n        - `quotaBytesUsed` - Storage size (NOTE: 'size' is NOT valid, use 'quotaBytesUsed')\n        - `starred` - Starred status\n        - `recency` - Recent activity (combines view time and modification time for relevance-based sorting)\n\n        **Important:** 'size' is NOT a valid sort key. Use 'quotaBytesUsed' to sort by file size.\n\n        **Restriction:** Sorting is not supported when the query contains fullText searches (e.g., \"fullText contains 'keyword'\"). Omit orderBy when using fullText queries.\n        "
+                "description": "The Google Drive file ID (an opaque alphanumeric string like '1a2b3c4d5e6f7g8h9i0j'), NOT a file name. If you only have a file name, use GOOGLEDRIVE_FIND_FILE or GOOGLEDRIVE_LIST_FILES to get the file ID first."
               },
-              "pageSize": {
-                "type": "integer",
-                "default": 100,
-                "maximum": 1000,
-                "minimum": 1,
-                "examples": [
-                  10,
-                  50,
-                  100,
-                  500,
-                  1000
-                ],
-                "description": "The maximum number of files to return per page."
-              },
-              "folder_id": {
+              "includeLabels": {
                 "type": "string",
-                "examples": [
-                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-                  "root"
-                ],
-                "description": "ID of a specific folder to search within. This automatically adds \"'folder_id' in parents\" to the query. Can be combined with the 'q' parameter to further filter results within the folder. Use 'root' to search within the user's root folder (My Drive). Note: 'My Drive' is not a searchable folder name - use 'root' alias instead."
-              },
-              "pageToken": {
-                "type": "string",
-                "description": "The token for continuing a previous list request on the next page. IMPORTANT: This must be the exact opaque string from a previous response's 'nextPageToken' field - do not modify, truncate, URL-encode, or construct tokens manually. Invalid or corrupted tokens will result in API errors."
-              },
-              "include_labels": {
-                "type": "string",
-                "examples": [
-                  "label_abc123",
-                  "label_xyz789,label_def456",
-                  "priority_label,status_label,department_label"
-                ],
-                "description": "A comma-separated list of label IDs to include in the `labelInfo` part of the response for each file. Empty strings are automatically treated as omitted."
-              },
-              "pagetoken_dropped": {
-                "type": "boolean",
-                "default": false,
-                "description": "Indicates whether the page token was dropped from the request."
+                "description": "A comma-separated list of IDs of labels to include in the labelInfo part of the response."
               },
               "supportsAllDrives": {
                 "type": "boolean",
                 "default": true,
-                "description": "Whether the requesting application supports both My Drives and shared drives. If 'includeItemsFromAllDrives' is true, this must also be true."
+                "description": "Whether the requesting application supports both My Drives and shared drives. Defaults to true to ensure files in shared drives are accessible."
               },
-              "original_email_query": {
+              "includePermissionsForView": {
                 "type": "string",
-                "description": "The original email query before transformation."
-              },
-              "editors_field_removed": {
-                "type": "boolean",
-                "default": false,
-                "description": "Indicates whether the editors field was removed from the request."
-              },
-              "email_query_transformed": {
-                "type": "boolean",
-                "default": false,
-                "description": "Indicates whether an email query was transformed into a search filter."
-              },
-              "orderby_size_transformed": {
-                "type": "boolean",
-                "default": false,
-                "description": "Indicates whether the orderBy size value was transformed."
-              },
-              "original_bare_text_query": {
-                "type": "string",
-                "description": "The original bare text query before transformation."
-              },
-              "includeItemsFromAllDrives": {
-                "type": "boolean",
-                "default": true,
-                "description": "Whether both My Drive and shared drive items should be included in results. Must be true when corpora is 'drive' or 'allDrives'. If true, 'supportsAllDrives' should also be true."
-              },
-              "emailaddress_field_removed": {
-                "type": "boolean",
-                "default": false,
-                "description": "Indicates whether the email address field was removed from the request."
-              },
-              "original_invalid_pagetoken": {
-                "type": "string",
-                "description": "The original invalid page token that was dropped."
-              },
-              "bare_text_query_transformed": {
-                "type": "boolean",
-                "default": false,
-                "description": "Indicates whether a bare text query was transformed into a search filter."
-              },
-              "include_permissions_for_view": {
-                "type": "string",
-                "examples": [
-                  "published"
-                ],
-                "description": "Specifies which additional view's permissions to include in the response. Must be either omitted entirely or set to 'published'. Empty strings are automatically treated as omitted."
+                "description": "Specifies which additional view's permissions to include in the response. Only 'published' is supported."
               }
             }
           },
@@ -363,176 +210,84 @@
           },
           "hasFullSchema": true
         },
-        "GOOGLESHEETS_VALUES_GET": {
-          "toolkit": "GOOGLESHEETS",
-          "tool_slug": "GOOGLESHEETS_VALUES_GET",
-          "description": "Returns a range of values from a spreadsheet. Use when you need to read data from specific cells or ranges in a Google Sheet.",
+        "GOOGLEDRIVE_DOWNLOAD_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_DOWNLOAD_FILE",
+          "description": "Downloads a file from Google Drive by its ID. For Google Workspace documents (Docs, Sheets, Slides), optionally exports to a specified `mime_type`. For other file types, downloads in their native format regardless of mime_type. Examples: Export a Google Doc to plain text: {\"file_id\": \"1N2o5xQWmAbCdEfGhIJKlmnOPq\", \"mime_type\": \"text/plain\"} Download a Google Sheet as CSV: {\"file_id\": \"1ZyXwVuTsRqPoNmLkJiHgFeDcB\", \"mime_type\": \"text/csv\"}",
           "input_schema": {
             "type": "object",
             "required": [
-              "spreadsheet_id",
-              "range"
+              "fileId"
             ],
             "properties": {
-              "range": {
+              "fileId": {
                 "type": "string",
                 "examples": [
-                  "Sheet1!A1:B3",
-                  "'My Sheet'!A1:D5",
-                  "'Feuille 1'!A1:C10",
-                  "A1:D5",
-                  "Sheet1!A:A"
+                  "1aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"
                 ],
-                "description": "The A1 notation or R1C1 notation of the range to retrieve values from. If the sheet name contains spaces or special characters, wrap the sheet name in single quotes (e.g., \"'My Sheet'!A1:B2\"). Without single quotes, the API will return a 400 error for sheet names with spaces. Examples: 'Sheet1!A1:B3', \"'Sheet With Spaces'!A1:D5\", 'A1:D5' (no sheet name uses first visible sheet), 'Sheet1!A:A' (entire column), 'SheetName' (entire sheet)."
+                "description": "The unique identifier of the file to be downloaded from Google Drive. Must be a valid Google Drive file ID containing only alphanumeric characters, hyphens, and underscores. File paths with slashes (/) are not valid. This ID can typically be found in the file's URL in Google Drive or obtained from API calls that list files."
               },
-              "end_row": {
-                "type": "integer",
-                "description": "1-based row number to stop reading at (inclusive). Use with start_row for pagination to avoid large response errors. Example: start_row=501, end_row=1000 fetches rows 501-1000."
-              },
-              "start_row": {
-                "type": "integer",
-                "description": "1-based row number to start reading from (inclusive). Use with end_row for pagination to avoid large response errors. Example: start_row=1, end_row=500 fetches the first 500 rows."
-              },
-              "spreadsheet_id": {
+              "mime_type": {
+                "enum": [
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  "application/vnd.oasis.opendocument.text",
+                  "application/rtf",
+                  "application/pdf",
+                  "text/plain",
+                  "application/zip",
+                  "application/epub+zip",
+                  "text/html",
+                  "text/markdown",
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                  "application/vnd.oasis.opendocument.spreadsheet",
+                  "text/csv",
+                  "text/tab-separated-values",
+                  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                  "application/vnd.oasis.opendocument.presentation",
+                  "image/jpeg",
+                  "image/png",
+                  "image/svg+xml",
+                  "application/vnd.google-apps.script+json",
+                  "application/vnd.google-apps.vid"
+                ],
                 "type": "string",
                 "examples": [
-                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                  "application/pdf",
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  "text/csv"
                 ],
-                "description": "The unique identifier of the Google Spreadsheet from which to retrieve values. This is the long alphanumeric string found in the spreadsheet URL between '/d/' and '/edit' (e.g., '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms'). WARNING: Do NOT use the spreadsheet name or title (e.g., 'My Sales Report'); you must use the actual ID from the URL."
-              },
-              "major_dimension": {
-                "enum": [
-                  "DIMENSION_UNSPECIFIED",
-                  "ROWS",
-                  "COLUMNS"
-                ],
-                "type": "string",
-                "description": "The major dimension for results."
-              },
-              "value_render_option": {
-                "enum": [
-                  "FORMATTED_VALUE",
-                  "UNFORMATTED_VALUE",
-                  "FORMULA"
-                ],
-                "type": "string",
-                "default": "FORMATTED_VALUE",
-                "description": "How values should be rendered in the output. FORMATTED_VALUE: Values are calculated and formatted (default). UNFORMATTED_VALUE: Values are calculated but not formatted. FORMULA: Values are not calculated; the formula is returned instead."
-              },
-              "date_time_render_option": {
-                "enum": [
-                  "SERIAL_NUMBER",
-                  "FORMATTED_STRING"
-                ],
-                "type": "string",
-                "default": "SERIAL_NUMBER",
-                "description": "How dates, times, and durations should be represented in the output. SERIAL_NUMBER: Dates are returned as serial numbers (default). FORMATTED_STRING: Dates returned as formatted strings."
+                "description": "ONLY for Google Workspace documents (Docs, Sheets, Slides, Drawings). Specifies the export format. Has NO effect on regular files (PDFs, images, videos, Office documents, etc.) - they are always downloaded in their native format. Google Forms and Maps cannot be downloaded as they do not support exports through the Drive API. If omitted for Google Workspace files, defaults to PDF. Different Workspace types support different formats. Use application/pdf for universal compatibility."
               }
             }
           },
           "hasFullSchema": true
         },
-        "GOOGLEDOCS_SEARCH_DOCUMENTS": {
+        "GOOGLEDOCS_GET_DOCUMENT_BY_ID": {
           "toolkit": "GOOGLEDOCS",
-          "tool_slug": "GOOGLEDOCS_SEARCH_DOCUMENTS",
-          "description": "Search for Google Documents using various filters including name, content, date ranges, and more.",
+          "tool_slug": "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+          "description": "Retrieves an existing Google Document by its ID; will error if the document is not found.",
           "input_schema": {
             "type": "object",
+            "required": [
+              "id"
+            ],
             "properties": {
-              "query": {
+              "id": {
                 "type": "string",
                 "examples": [
-                  "quarterly report",
-                  "name contains 'report'",
-                  "fullText contains 'important'",
-                  "name contains 'project' and fullText contains 'status'"
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                  "https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
                 ],
-                "description": "Search query to filter documents. Provide either: (1) Plain text to search in document content (e.g., 'quarterly report'), which will search fullText, or (2) Drive API query syntax with operators like 'name contains', 'fullText contains', combined with 'and', 'or', 'not'. Leave empty to get all documents."
+                "description": "The unique identifier for a native Google Docs document (typically a 44-character alphanumeric string). Accepts either a document ID or a full Google Docs URL (e.g., https://docs.google.com/document/d/{DOCUMENT_ID}/edit). When a URL is provided, the document ID will be automatically extracted. IMPORTANT: This tool only works with native Google Docs documents (mimeType application/vnd.google-apps.document), not uploaded Office files (DOCX, XLSX, etc.) stored in Google Drive. Use GOOGLEDOCS_SEARCH_DOCUMENTS to find available documents."
               },
-              "order_by": {
-                "type": "string",
-                "default": "modifiedTime desc",
-                "examples": [
-                  "modifiedTime desc",
-                  "name",
-                  "createdTime desc",
-                  "viewedByMeTime desc"
-                ],
-                "description": "Order results by field. Common options: 'modifiedTime desc', 'modifiedTime asc', 'name', 'createdTime desc'"
-              },
-              "page_token": {
-                "type": "string",
-                "description": "Token for continuing a previous search request on the next page. Use the next_page_token from the previous response to retrieve additional results."
-              },
-              "max_results": {
-                "type": "integer",
-                "default": 10,
-                "maximum": 100,
-                "minimum": 1,
-                "description": "Maximum number of documents to return per page (1-100). Defaults to 10. Use page_token for pagination when more results are available."
-              },
-              "starred_only": {
+              "includeTabsContent": {
                 "type": "boolean",
                 "default": false,
-                "description": "Whether to return only starred documents. Defaults to False."
-              },
-              "created_after": {
-                "type": "string",
-                "examples": [
-                  "2024-01-01T00:00:00Z",
-                  "2024-12-01T12:00:00-08:00"
-                ],
-                "description": "Return documents created after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
-              },
-              "modified_after": {
-                "type": "string",
-                "examples": [
-                  "2024-01-01T00:00:00Z",
-                  "2024-12-01T12:00:00-08:00"
-                ],
-                "description": "Return documents modified after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
-              },
-              "shared_with_me": {
-                "type": "boolean",
-                "default": false,
-                "description": "Whether to return only documents shared with the current user. Defaults to False."
-              },
-              "include_trashed": {
-                "type": "boolean",
-                "default": false,
-                "description": "Whether to include documents in trash. Defaults to False."
-              },
-              "response_detail": {
-                "enum": [
-                  "minimal",
-                  "full"
-                ],
-                "type": "string",
-                "default": "minimal",
-                "description": "Level of detail in the response. 'minimal' returns only essential fields (id, name, modifiedTime, webViewLink) for efficient token usage. 'full' returns comprehensive metadata including permissions, owners, timestamps, and other detailed information."
-              },
-              "include_shared_drives": {
-                "type": "boolean",
-                "default": true,
-                "description": "Whether to include documents from shared drives you have access to. Defaults to True."
+                "description": "When true, request includeTabsContent=true so the response includes document.tabs with content for all tabs. When false, Google Docs returns the legacy first-tab content fields."
               }
             }
           },
           "hasFullSchema": true
-        },
-        "GOOGLEDRIVE_GET_FILE_METADATA": {
-          "toolkit": "GOOGLEDRIVE",
-          "tool_slug": "GOOGLEDRIVE_GET_FILE_METADATA",
-          "description": "Tool to get a file's metadata by ID. Use to verify `mimeType`, `parents`, and `trashed` status befor...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "GOOGLEDRIVE_GET_FILE_METADATA"
-              ]
-            }
-          }
         },
         "GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE": {
           "toolkit": "GOOGLEDRIVE",
@@ -544,34 +299,6 @@
             "args": {
               "tool_slugs": [
                 "GOOGLEDRIVE_EXPORT_GOOGLE_WORKSPACE_FILE"
-              ]
-            }
-          }
-        },
-        "GOOGLESHEETS_GET_SHEET_NAMES": {
-          "toolkit": "GOOGLESHEETS",
-          "tool_slug": "GOOGLESHEETS_GET_SHEET_NAMES",
-          "description": "Lists all worksheet names from a specified Google Spreadsheet (which must exist), useful for discove...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "GOOGLESHEETS_GET_SHEET_NAMES"
-              ]
-            }
-          }
-        },
-        "GOOGLEDRIVE_DOWNLOAD_FILE": {
-          "toolkit": "GOOGLEDRIVE",
-          "tool_slug": "GOOGLEDRIVE_DOWNLOAD_FILE",
-          "description": "Downloads a file from Google Drive by its ID. For Google Workspace documents (Docs, Sheets, Slides),...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "GOOGLEDRIVE_DOWNLOAD_FILE"
               ]
             }
           }
@@ -589,11 +316,39 @@
               ]
             }
           }
+        },
+        "GOOGLEDRIVE_FIND_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_FIND_FILE",
+          "description": "The comprehensive Google Drive search tool that handles all file and folder discovery needs. Use thi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_FIND_FILE"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_DOWNLOAD_FILE_OPERATION": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_DOWNLOAD_FILE_OPERATION",
+          "description": "Tool to download file content using long-running operations. Use when you need to download Google Vi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_DOWNLOAD_FILE_OPERATION"
+              ]
+            }
+          }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:38:53.272Z",
-        "current_time_utc_epoch_seconds": 1786563533,
+        "current_time_utc": "2026-08-12T20:54:47.524Z",
+        "current_time_utc_epoch_seconds": 1786568087,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
@@ -609,6 +364,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_J4gRNWfl9mX2"
+    "log_id": "log_tSUr0JnaMPjx"
   }
 }

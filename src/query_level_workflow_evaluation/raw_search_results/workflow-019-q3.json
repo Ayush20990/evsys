@@ -3,14 +3,19 @@
     "query_id": "workflow-019-q3",
     "workflow_id": 19,
     "workflow_task": "Find relevant Java backend and Spring Boot jobs, build or retrieve tailored resume documents, and email job alerts or applications through Gmail.",
-    "query": "send application email via gmail with the tailored resume attached",
-    "required_tools": [
-      "GMAIL_SEND_EMAIL"
+    "query": "create a tailored resume document for the application",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN"
+        ],
+        "purpose": "Generate a new formatted resume document"
+      }
     ],
     "supporting_tools": [
-      "GMAIL_FETCH_EMAILS"
+      "GOOGLEDRIVE_UPLOAD_FROM_URL"
     ],
-    "rationale": "Sending out job applications and email alerts requires the Gmail send capability as the primary tool.",
+    "rationale": "Building a tailored resume requires document creation tools to format and save the customized version.",
     "candidate_tools": [
       "BROWSER_TOOL_CREATE_TASK",
       "BROWSER_TOOL_GET_SESSION",
@@ -33,545 +38,355 @@
     ]
   },
   "request": {
-    "query": "send application email via gmail with the tailored resume attached"
+    "query": "create a tailored resume document for the application"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "send application email via gmail with the tailored resume attached",
+          "use_case": "create a tailored resume document for the application",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Prerequisite]: Prepare attachment reference object(s) for GMAIL_SEND_EMAIL (each includes name, mimetype, s3key pointing to stored content; not a local path, URL, or inline data).",
-            "[Optional (if attachments come from an existing email)] [Prerequisite]: Retrieve the file content using GMAIL_GET_ATTACHMENT so it can be re-staged into a valid s3key reference for GMAIL_SEND_EMAIL.",
-            "[Optional (if recipient is unknown/ambiguous)] [Prerequisite]: Resolve To/CC/BCC addresses using GMAIL_SEARCH_PEOPLE (reduce misaddressed sends).",
-            "[Required] [Prerequisite]: Immediately before sending, confirm sender identity, recipients, subject/body, is_html when needed, and final attachment refs for GMAIL_SEND_EMAIL (irreversible).",
-            "[Required] [Step]: Send using GMAIL_SEND_EMAIL and retain returned message/thread identifiers (if present) for traceability.",
-            "[Required] [Fallback]: If review is needed or send fails, create a draft using GMAIL_CREATE_EMAIL_DRAFT, verify via GMAIL_GET_DRAFT, repair via GMAIL_UPDATE_DRAFT, then send using GMAIL_SEND_DRAFT (re-confirm recipients embedded in the draft)."
+            "[Required] [Prerequisite]: Use the assistant LLM (no tools) to draft tailored resume/CV and cover-letter markdown_text from job_description and resume_content.",
+            "[Required] [Step]: Create the primary resume/CV in Google Docs using GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN (store formatted content with a clear title).",
+            "[Optional (if also producing a cover letter)] [Next Step]: Create the cover-letter doc using GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN (separate title and markdown_text).",
+            "[Optional (if iterating on an existing doc)] [Next Step]: Replace full content using GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN (bulk revisions).",
+            "[Optional (if only tweaking sections)] [Next Step]: Patch small edits using GOOGLEDOCS_INSERT_TEXT_ACTION (targeted personalization without full regen).",
+            "[Optional (if reusing prior versions/templates)] [Next Step]: Find or duplicate prior docs using GOOGLEDOCS_SEARCH_DOCUMENTS and GOOGLEDOCS_COPY_DOCUMENT (then update content).",
+            "[Optional (if a PDF is needed from a Google Doc)] [Next Step]: Export finalized docs using GOOGLEDOCS_EXPORT_DOCUMENT_AS_PDF (preferred PDF path).",
+            "[Optional (if Google Docs export isn\u2019t usable)] [Fallback]: Convert final text directly to PDF using TEXT_TO_PDF_CONVERT_TEXT_TO_PDF (deliver downloadable PDF without a Doc)."
           ],
           "known_pitfalls": [
-            "[GMAIL_SEND_EMAIL] Attachments must be reference objects (name/mimetype/s3key); local paths, URLs, or inline/base64-style values used as s3key can fail or drop attachments.",
-            "[GMAIL_SEND_EMAIL] Invalid/expired attachment refs can surface as storage not-found errors (commonly HTTP 400/404); re-stage to a fresh s3key before retrying.",
-            "[GMAIL_SEND_EMAIL] ToolRouterV2_PayloadTooLarge (HTTP 413) can occur with large bundled attachments; reduce size or split into multiple sends.",
-            "[GMAIL_SEND_EMAIL] 403 PERMISSION_DENIED can occur if the sending identity does not match the authenticated mailbox (delegation/impersonation not allowed).",
-            "[GMAIL_SEND_EMAIL] Validation can fail when no recipient field is provided (must include at least one of to/recipient_email/cc/bcc) or when recipient fields are passed in an unexpected shape."
-          ],
-          "reference_workbench_snippets": [
-            {
-              "description": "Validate attachment reference objects are present and populated before calling GMAIL_SEND_EMAIL or draft tools.",
-              "code": "```python\nreq=(\"name\",\"mimetype\",\"s3key\")\nbad=[a for a in (attachments or []) if any(not (a or {}).get(k) for k in req)]\nprint(len(attachments or []),len(bad))\n```"
-            }
+            "[GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN] Requires valid auth/scopes; missing permissions commonly fail with 401/403 instead of creating the doc.",
+            "[GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN] Complex markdown (tables, deep nesting) can render unpredictably in Google Docs\u2014prefer simple headings/bullets for ATS-friendly output.",
+            "[GOOGLEDOCS_INSERT_TEXT_ACTION] insertion_index must be a valid UTF-16 index; incorrect indices/field names cause validation errors or misplaced inserts.",
+            "[GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN] Replaces the document body; ensure you include all sections (or you may unintentionally wipe existing content).",
+            "[TEXT_TO_PDF_CONVERT_TEXT_TO_PDF] Download link may be time-bound (presigned URL expiry); download promptly or re-run conversion."
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "GMAIL_SEND_EMAIL"
+            "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN",
+            "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN",
+            "GOOGLEDOCS_EXPORT_DOCUMENT_AS_PDF"
           ],
           "related_tool_slugs": [
-            "GMAIL_CREATE_EMAIL_DRAFT",
-            "GMAIL_SEND_DRAFT",
-            "GMAIL_UPDATE_DRAFT",
-            "GMAIL_GET_DRAFT",
-            "GMAIL_SEARCH_PEOPLE",
-            "GMAIL_GET_ATTACHMENT"
+            "TEXT_TO_PDF_CONVERT_TEXT_TO_PDF",
+            "GOOGLEDRIVE_ADD_FILE_SHARING_PREFERENCE",
+            "GOOGLEDOCS_INSERT_TEXT_ACTION",
+            "GOOGLEDOCS_COPY_DOCUMENT",
+            "GOOGLEDOCS_SEARCH_DOCUMENTS",
+            "GEMINI_GENERATE_IMAGE"
           ],
           "toolkits": [
-            "gmail"
+            "gemini",
+            "googledocs",
+            "googledrive",
+            "text_to_pdf"
           ],
-          "plan_id": "a943a9c9ac534893a76e00022729db76"
+          "plan_id": "80ffbbe76a324740b0813f4178f7f908"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "gmail",
+          "toolkit": "gemini",
+          "has_active_connection": true,
+          "description": "Comprehensive Gemini integration supporting Veo 3 video generation, Gemini Flash text generation (Nano Banana), chat completions, and multimodal AI capabilities via the Google Gemini API.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        },
+        {
+          "toolkit": "text_to_pdf",
+          "has_active_connection": true,
+          "description": "Convert text to PDF",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        },
+        {
+          "toolkit": "googledocs",
           "has_active_connection": false,
-          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
-          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+          "description": "Google Docs is a cloud-based word processor with real-time collaboration, version history, and integration with other Google Workspace apps",
+          "status_message": "No Active connection for toolkit=googledocs. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledocs\") to create a connection BEFORE executing any googledocs tools."
+        },
+        {
+          "toolkit": "googledrive",
+          "has_active_connection": false,
+          "description": "Google Drive is a cloud storage solution for uploading, sharing, and collaborating on files across devices, with robust search and offline access. Special usecases: Sharing google sheets/docs or any G-Suite files with specific emails.",
+          "status_message": "No Active connection for toolkit=googledrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledrive\") to create a connection BEFORE executing any googledrive tools."
         }
       ],
       "tool_schemas": {
-        "GMAIL_SEND_EMAIL": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_SEND_EMAIL",
-          "description": "Sends an email via Gmail API using the authenticated user's Google profile display name. Sends immediately and is irreversible \u2014 confirm recipients, subject, body, and attachments before calling. At least one of 'to' (or 'recipient_email'), 'cc', or 'bcc' must be provided. At least one of subject or body must be provided. Requires `is_html=True` if the body contains HTML. All common file types including PNG, JPG, PDF, MP4, etc. are supported as attachments. Gmail API limits total message size to ~25 MB after base64 encoding. To reply in an existing thread, use GMAIL_REPLY_TO_THREAD instead. No scheduled send support; enforce timing externally.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "cc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "manager@example.com",
-                    "teamlead@example.com"
-                  ]
-                ],
-                "description": "Carbon Copy (CC) recipients' email addresses. At least one of 'to'/'recipient_email', 'cc', or 'bcc' must be provided."
-              },
-              "bcc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "auditor@example.com"
-                  ]
-                ],
-                "description": "Blind Carbon Copy (BCC) recipients' email addresses. At least one of 'to'/'recipient_email', 'cc', or 'bcc' must be provided."
-              },
-              "body": {
-                "type": "string",
-                "examples": [
-                  "Hello team, let's discuss the project updates tomorrow.",
-                  "<h1>Welcome!</h1><p>Thank you for signing up.</p>",
-                  ""
-                ],
-                "description": "Email content (plain text or HTML). Either subject or body must be provided for the email to be sent. If HTML, `is_html` must be `True`."
-              },
-              "is_html": {
-                "type": "boolean",
-                "default": false,
-                "description": "Set to `True` if the email body contains HTML tags."
-              },
-              "subject": {
-                "type": "string",
-                "examples": [
-                  "Project Update Meeting",
-                  "Your Weekly Newsletter"
-                ],
-                "description": "Subject line of the email. Either subject or body must be provided for the email to be sent."
-              },
-              "user_id": {
-                "type": "string",
-                "default": "me",
-                "examples": [
-                  "user@example.com",
-                  "me"
-                ],
-                "description": "User's email address; the literal 'me' refers to the authenticated user."
-              },
-              "attachment": {
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "title": "FileUploadable",
-                    "required": [
-                      "name",
-                      "mimetype",
-                      "s3key"
-                    ],
-                    "properties": {
-                      "name": {
-                        "type": "string",
-                        "title": "Name",
-                        "examples": [
-                          "document.pdf",
-                          "image.jpg",
-                          "report.docx"
-                        ],
-                        "description": "The filename that will be used when uploading the file to the destination service"
-                      },
-                      "s3key": {
-                        "type": "string",
-                        "title": "S3Key",
-                        "examples": [
-                          "47563/gmail/GET_ATTACHMENT/response/12345"
-                        ],
-                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
-                      },
-                      "mimetype": {
-                        "type": "string",
-                        "title": "Mimetype",
-                        "examples": [
-                          "application/pdf",
-                          "image/jpeg",
-                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        ],
-                        "description": "The MIME type of the file"
-                      }
-                    },
-                    "file_uploadable": true
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "title": "FileUploadable",
-                      "required": [
-                        "name",
-                        "mimetype",
-                        "s3key"
-                      ],
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "title": "Name",
-                          "examples": [
-                            "document.pdf",
-                            "image.jpg",
-                            "report.docx"
-                          ],
-                          "description": "The filename that will be used when uploading the file to the destination service"
-                        },
-                        "s3key": {
-                          "type": "string",
-                          "title": "S3Key",
-                          "examples": [
-                            "47563/gmail/GET_ATTACHMENT/response/12345"
-                          ],
-                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
-                        },
-                        "mimetype": {
-                          "type": "string",
-                          "title": "Mimetype",
-                          "examples": [
-                            "application/pdf",
-                            "image/jpeg",
-                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          ],
-                          "description": "The MIME type of the file"
-                        }
-                      },
-                      "file_uploadable": true
-                    }
-                  }
-                ],
-                "description": "File(s) to attach. Accepts a single file or a list of files. IMPORTANT: mimetype MUST contain a '/' separator - single words like 'pdf' or 'new' are invalid. Gmail API limits: total message size must not exceed ~25 MB after base64 encoding. Omit or set to null for no attachment. Empty attachment objects (with all fields empty/whitespace) are treated as no attachment."
-              },
-              "from_email": {
-                "type": "string",
-                "examples": [
-                  "alias@example.com",
-                  "marketing@company.com"
-                ],
-                "description": "Sender email address for the 'From' header. Use this to send from a verified alias configured in Gmail's 'Send mail as' settings. When not provided, the authenticated user's primary email address is used. The alias must be verified in Gmail settings before use."
-              },
-              "recipient_email": {
-                "type": "string",
-                "examples": [
-                  "john@doe.com",
-                  "me"
-                ],
-                "description": "Primary recipient's email address. You can also use 'to' as an alias for this parameter. At least one of 'to'/'recipient_email', 'cc', or 'bcc' must be provided. Use extra_recipients if you want to send to multiple recipients. Use the special value 'me' to send to your own authenticated email address. Must be a full user@domain address; 'me' is not valid here and will fail."
-              },
-              "extra_recipients": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "jane.doe@example.com",
-                    "support@example.com"
-                  ]
-                ],
-                "description": "Additional 'To' recipients' email addresses (not Cc or Bcc). Should only be used if recipient_email is also provided."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "GMAIL_CREATE_EMAIL_DRAFT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_CREATE_EMAIL_DRAFT",
-          "description": "Creates a Gmail email draft. While all fields are optional per the Gmail API, practical validation requires at least one of recipient_email, cc, or bcc and at least one of subject or body. Supports To/Cc/Bcc recipients, subject, plain/HTML body (ensure `is_html=True` for HTML), attachments, and threading. Returns a draft_id that must be used as-is with GMAIL_SEND_DRAFT \u2014 synthetic or stale IDs will fail. When creating a draft reply to an existing thread (thread_id provided), leave subject empty to stay in the same thread; setting a subject will create a NEW thread instead. HTTP 429 may occur on rapid creation/send sequences; apply exponential backoff.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "cc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "cc.recipient1@example.com",
-                    "CC User <cc.recipient2@example.com>"
-                  ]
-                ],
-                "description": "Carbon Copy (CC) recipients' email addresses. Each must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). Plain names without email addresses are NOT valid. Optional for drafts (recipients can be added later before sending)."
-              },
-              "bcc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "bcc.recipient@example.com",
-                    "BCC User <bcc.user@example.com>"
-                  ]
-                ],
-                "description": "Blind Carbon Copy (BCC) recipients' email addresses. Each must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'Bob Jones <user@example.com>'). Plain names without email addresses are NOT valid. Optional for drafts (recipients can be added later before sending)."
-              },
-              "body": {
-                "type": "string",
-                "examples": [
-                  "Hello Team,\n\nPlease find the attached report for your review.\n\nBest regards,\nYour Name",
-                  "<h1>Meeting Confirmation</h1><p>This email confirms our meeting scheduled for next Tuesday.</p>"
-                ],
-                "description": "Email body content (plain text or HTML); `is_html` must be True if HTML. Optional - drafts can be created without a body and edited later before sending. Can also be provided as 'message_body'."
-              },
-              "is_html": {
-                "type": "boolean",
-                "default": false,
-                "examples": [
-                  true,
-                  false
-                ],
-                "description": "Set to True if `body` is already formatted HTML. When False, plain text newlines are auto-converted to <br/> tags. Both modes result in HTML email; this flag controls whether the body content is treated as raw HTML or plain text that gets HTML formatting applied."
-              },
-              "subject": {
-                "type": "string",
-                "examples": [
-                  "Project Update Q3",
-                  "Meeting Reminder"
-                ],
-                "description": "Email subject line. Optional - drafts can be created without a subject and edited later before sending. When creating a draft reply to an existing thread (thread_id provided), leave this empty to stay in the same thread. Setting a subject will create a NEW thread instead."
-              },
-              "user_id": {
-                "type": "string",
-                "default": "me",
-                "examples": [
-                  "me",
-                  "user@example.com"
-                ],
-                "description": "User's email address or 'me' for the authenticated user."
-              },
-              "thread_id": {
-                "type": "string",
-                "examples": [
-                  "17f45ec49a9c3f1b"
-                ],
-                "description": "ID of an existing Gmail thread to reply to; omit for new thread. If the thread ID is invalid or inaccessible, the draft will be created as a new thread instead of failing."
-              },
-              "attachment": {
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "title": "FileUploadable",
-                    "required": [
-                      "name",
-                      "mimetype",
-                      "s3key"
-                    ],
-                    "properties": {
-                      "name": {
-                        "type": "string",
-                        "title": "Name",
-                        "examples": [
-                          "document.pdf",
-                          "image.jpg",
-                          "report.docx"
-                        ],
-                        "description": "The filename that will be used when uploading the file to the destination service"
-                      },
-                      "s3key": {
-                        "type": "string",
-                        "title": "S3Key",
-                        "examples": [
-                          "47563/gmail/GET_ATTACHMENT/response/12345"
-                        ],
-                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
-                      },
-                      "mimetype": {
-                        "type": "string",
-                        "title": "Mimetype",
-                        "examples": [
-                          "application/pdf",
-                          "image/jpeg",
-                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        ],
-                        "description": "The MIME type of the file"
-                      }
-                    },
-                    "file_uploadable": true
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "title": "FileUploadable",
-                      "required": [
-                        "name",
-                        "mimetype",
-                        "s3key"
-                      ],
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "title": "Name",
-                          "examples": [
-                            "document.pdf",
-                            "image.jpg",
-                            "report.docx"
-                          ],
-                          "description": "The filename that will be used when uploading the file to the destination service"
-                        },
-                        "s3key": {
-                          "type": "string",
-                          "title": "S3Key",
-                          "examples": [
-                            "47563/gmail/GET_ATTACHMENT/response/12345"
-                          ],
-                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
-                        },
-                        "mimetype": {
-                          "type": "string",
-                          "title": "Mimetype",
-                          "examples": [
-                            "application/pdf",
-                            "image/jpeg",
-                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          ],
-                          "description": "The MIME type of the file"
-                        }
-                      },
-                      "file_uploadable": true
-                    }
-                  }
-                ],
-                "description": "File(s) to attach to the email. Accepts a single file or a list of files. Total message size including base64-encoded attachments must be under 25 MB; use shareable links (e.g., Google Drive) for larger files."
-              },
-              "recipient_email": {
-                "type": "string",
-                "examples": [
-                  "john.doe@example.com",
-                  "John Doe <john.doe@example.com>"
-                ],
-                "description": "Primary recipient's email address. Must be a valid email address (e.g., 'user@example.com') or display name format (e.g., 'John Doe <user@example.com>'). A plain name without an email address (e.g., 'John Doe') is NOT valid - the '@' symbol and domain are required. Optional for drafts (recipients can be added later before sending). Use extra_recipients if you want to send to multiple recipients."
-              },
-              "extra_recipients": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "jane.doe@example.com",
-                    "Jane Doe <jane.doe@example.com>"
-                  ]
-                ],
-                "description": "Additional 'To' recipients' email addresses (not Cc or Bcc). Each must be a valid email address (e.g., 'user@example.com'), display name format (e.g., 'Jane Doe <user@example.com>'), or 'me' for the authenticated user. Plain names without email addresses are NOT valid. Should only be used if recipient_email is also provided."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "GMAIL_SEND_DRAFT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_SEND_DRAFT",
-          "description": "Sends an existing draft email AS-IS to recipients already defined within the draft. IMPORTANT: This action does NOT accept recipient parameters (to, cc, bcc). The Gmail API's drafts/send endpoint sends drafts to whatever recipients are already set in the draft's To, Cc, and Bcc headers - it cannot add or override recipients. If the draft has no recipients, you must either: 1. Create a new draft with recipients using GMAIL_CREATE_EMAIL_DRAFT, then send it 2. Use GMAIL_SEND_EMAIL to send a new email directly with recipients. Send is immediate and irreversible \u2014 confirm recipients and content before calling. No scheduling support; trigger at the desired UTC time externally. Gmail enforces ~25 MB message size limit and daily send caps (~500 recipients/day personal, ~2,000/day Workspace).",
+        "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN",
+          "description": "Creates a new Google Docs document, optionally initializing it with a title and content provided as Markdown text.",
           "input_schema": {
             "type": "object",
             "required": [
-              "draft_id"
+              "title"
             ],
             "properties": {
-              "user_id": {
+              "title": {
                 "type": "string",
-                "default": "me",
                 "examples": [
-                  "me",
-                  "user@example.com"
+                  "Meeting Notes Q3",
+                  "Project Alpha Proposal",
+                  "My New Story Draft"
                 ],
-                "description": "The user's email address. The special value `me` can be used to indicate the authenticated user."
+                "description": "The title for the new Google Docs document."
               },
-              "draft_id": {
+              "image_assets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "file"
+                  ],
+                  "properties": {
+                    "file": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "mimetype",
+                        "s3key"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "examples": [
+                            "document.pdf",
+                            "image.jpg",
+                            "report.docx"
+                          ],
+                          "description": "The filename that will be used when uploading the file to the destination service"
+                        },
+                        "s3key": {
+                          "type": "string",
+                          "examples": [
+                            "47563/gmail/GET_ATTACHMENT/response/12345"
+                          ],
+                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                        },
+                        "mimetype": {
+                          "type": "string",
+                          "examples": [
+                            "application/pdf",
+                            "image/jpeg",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ],
+                          "description": "The MIME type of the file"
+                        }
+                      },
+                      "description": "Uploaded image file. The action converts it into a temporary public URL that Google Docs can fetch.",
+                      "file_uploadable": true,
+                      "additionalProperties": false
+                    },
+                    "name": {
+                      "type": "string",
+                      "examples": [
+                        "diagram",
+                        "diagram.png"
+                      ],
+                      "description": "Name used to reference the uploaded image from Markdown, for example attachment://diagram or ./diagram.png."
+                    }
+                  }
+                },
+                "description": "Optional uploaded images that Markdown can reference by name. Use Markdown image syntax like ![Alt](attachment://diagram). Public HTTPS image URLs in markdown do not need image_assets."
+              },
+              "markdown_text": {
                 "type": "string",
-                "examples": [
-                  "r99885592323229922"
-                ],
-                "description": "The ID of the draft to send. Draft IDs are typically alphanumeric strings (e.g., 'r99885592323229922'). Important: Do not confuse draft_id with message_id - they are different identifiers. Use GMAIL_LIST_DRAFTS to retrieve valid draft IDs, or GMAIL_CREATE_EMAIL_DRAFT to create a new draft and get its ID. IMPORTANT: The draft MUST already have recipients (To, Cc, or Bcc) set - this action cannot add or override recipients. If the draft has no recipients, first create a new draft with recipients using GMAIL_CREATE_EMAIL_DRAFT, or use GMAIL_SEND_EMAIL to send a new email directly."
+                "default": "",
+                "description": "The initial content for the document, formatted as Markdown. Also accepts 'content' as an alias. Supports headings, real Google Docs lists including nested lists, multiple Markdown tables, task-list markers, images via publicly accessible URLs or matching image_assets uploads (max 2KB URL length after resolution; formats: JPEG, PNG, GIF; SVG not supported), blockquotes, code blocks, hyperlinks (e.g., [text](url)), and text formatting (bold, italic, etc.). If empty or omitted, creates document with title only."
               }
             }
           },
           "hasFullSchema": true
         },
-        "GMAIL_UPDATE_DRAFT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_UPDATE_DRAFT",
-          "description": "Updates (replaces) an existing Gmail draft's content in-place by draft ID. This action replaces the ...",
+        "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN",
+          "description": "Replaces the entire content of an existing Google Docs document with new Markdown text; requires edit permissions for the document.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id",
+              "markdown"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                  "https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
+                ],
+                "description": "The unique identifier for the Google Docs document to update. Accepts either a document ID (alphanumeric string, length varies by document age - newer documents typically have 44-character IDs) or a full Google Docs URL (e.g., https://docs.google.com/document/d/{DOCUMENT_ID}/edit). When a URL is provided, the document ID will be automatically extracted."
+              },
+              "tab_id": {
+                "type": "string",
+                "examples": [
+                  "t.abc123"
+                ],
+                "description": "Optional tab ID to replace with the rendered Markdown. When omitted, the first tab is updated."
+              },
+              "markdown": {
+                "type": "string",
+                "examples": [
+                  "# Document Title\n\nThis is a paragraph with **bold** and *italic* text.\n\n- Unordered list item 1\n- Unordered list item 2\n\n1. Ordered list item 1\n2. Ordered list item 2\n\nAn image: ![Alt text for image](https://www.example.com/image.png)",
+                  "## Advanced Markdown\n\n\n# Example Python code\ndef greet(name):\n    print(f'Hello, {name}!')\ngreet('World')\n\n\n| Column A | Column B |\n|----------|----------|\n|   Data 1 |   Data 2 |\n|   Data 3 |   Data 4 |\n\n> This is a blockquote."
+                ],
+                "description": "Markdown content that will replace the document's entire existing content. Supports standard Markdown features."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_EXPORT_DOCUMENT_AS_PDF": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_EXPORT_DOCUMENT_AS_PDF",
+          "description": "Tool to export a Google Docs file as PDF using the Google Drive API. Use when you need to generate a PDF version of a Google Docs document for download or distribution. Note: Google Drive enforces a 10MB limit on export content.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "file_id"
+            ],
+            "properties": {
+              "file_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "minLength": 1,
+                "description": "The ID of the Google Docs file to export as PDF. This is the same as the document ID for Google Docs files - typically a 44-character alphanumeric string. Extract it from a Google Docs URL: https://docs.google.com/document/d/{FILE_ID}/edit"
+              },
+              "filename": {
+                "type": "string",
+                "examples": [
+                  "document.pdf",
+                  "report.pdf"
+                ],
+                "description": "Optional suggested filename for the exported PDF (e.g., 'report.pdf'). If not provided, a default filename will be generated."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TEXT_TO_PDF_CONVERT_TEXT_TO_PDF": {
+          "toolkit": "TEXT_TO_PDF",
+          "tool_slug": "TEXT_TO_PDF_CONVERT_TEXT_TO_PDF",
+          "description": "Convert plain text or Markdown content into a downloadable PDF document. Supports Unicode characters, special symbols, and Markdown formatting including headers, lists, code blocks, links, and emphasis. Images require publicly accessible URLs to render. The response includes the generated PDF file, filename, and MIME type.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "file_type",
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "The text content to convert to PDF. For 'txt' format, text is rendered as-is. For 'markdown' format, Markdown syntax will be parsed and styled. Must contain the complete, final content inline \u2014 document IDs, URLs, or external references are not accepted. Empty or placeholder text produces a nearly blank PDF. Malformed Markdown (unclosed lists, improperly nested headings, mixed HTML) degrades PDF structure; normalize before conversion."
+              },
+              "file_type": {
+                "enum": [
+                  "txt",
+                  "markdown"
+                ],
+                "type": "string",
+                "description": "The format of the input text. Use 'txt' for plain text (preserves whitespace and formatting) or 'markdown' for Markdown-formatted text (supports headers, lists, bold, links, etc.) Only `'txt'` and `'markdown'` are accepted; any other value causes failure. Mismatching format to content (e.g., passing Markdown as `'txt'`) degrades headings, lists, and tables in output."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDRIVE_ADD_FILE_SHARING_PREFERENCE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_ADD_FILE_SHARING_PREFERENCE",
+          "description": "DEPRECATED: Use GOOGLEDRIVE_CREATE_PERMISSION instead; use GOOGLEDRIVE_UPDATE_PERMISSION to modify e...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_UPDATE_DRAFT"
+                "GOOGLEDRIVE_ADD_FILE_SHARING_PREFERENCE"
               ]
             }
           }
         },
-        "GMAIL_GET_DRAFT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_GET_DRAFT",
-          "description": "Retrieves a single Gmail draft by its ID. Use this to fetch and inspect draft content before sending...",
+        "GOOGLEDOCS_INSERT_TEXT_ACTION": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_INSERT_TEXT_ACTION",
+          "description": "Tool to insert a string of text at a specified location within a Google Document. Use when you need ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_GET_DRAFT"
+                "GOOGLEDOCS_INSERT_TEXT_ACTION"
               ]
             }
           }
         },
-        "GMAIL_SEARCH_PEOPLE": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_SEARCH_PEOPLE",
-          "description": "Searches contacts by matching the query against names, nicknames, emails, phone numbers, and organiz...",
+        "GOOGLEDOCS_COPY_DOCUMENT": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_COPY_DOCUMENT",
+          "description": "Tool to create a copy of an existing Google Document. Use this to duplicate a document, for example,...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_SEARCH_PEOPLE"
+                "GOOGLEDOCS_COPY_DOCUMENT"
               ]
             }
           }
         },
-        "GMAIL_GET_ATTACHMENT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_GET_ATTACHMENT",
-          "description": "Retrieves a specific attachment by ID from a message in a user's Gmail mailbox, requiring valid mess...",
+        "GOOGLEDOCS_SEARCH_DOCUMENTS": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_SEARCH_DOCUMENTS",
+          "description": "Search for Google Documents using various filters including name, content, date ranges, and more.",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_GET_ATTACHMENT"
+                "GOOGLEDOCS_SEARCH_DOCUMENTS"
+              ]
+            }
+          }
+        },
+        "GEMINI_GENERATE_IMAGE": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_GENERATE_IMAGE",
+          "description": "Generates images from text prompts using Gemini models (Nano Banana). Supports models: 'gemini-2.5-f...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GEMINI_GENERATE_IMAGE"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:38:38.464Z",
-        "current_time_utc_epoch_seconds": 1786563518,
+        "current_time_utc": "2026-08-12T20:54:15.077Z",
+        "current_time_utc_epoch_seconds": 1786568055,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "look",
+        "id": "firm",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"look\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"firm\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
-        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "1) You may call COMPOSIO_MANAGE_CONNECTIONS: Some toolkits lack active connections",
         "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
       ],
       "success": true,
       "error": null
     },
     "error": null,
-    "log_id": "log_8gbn5W5GamjT"
+    "log_id": "log_gTBt6W_hko25"
   }
 }

@@ -3,13 +3,23 @@
     "query_id": "workflow-011-q3",
     "workflow_id": 11,
     "workflow_task": "Maintain an internal OneDrive-based operations knowledge base, create and verify strategy/support documents, coordinate operational tasks via Discord, check queue and system state files, and configure Gmail support labels and routing.",
-    "query": "configure Gmail support labels and filters for routing",
-    "required_tools": [
-      "GMAIL_CREATE_LABEL",
-      "GMAIL_CREATE_FILTER"
+    "query": "create a new label and filter rule in Gmail",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GMAIL_CREATE_LABEL"
+        ],
+        "purpose": "create a support label in Gmail"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "GMAIL_CREATE_FILTER"
+        ],
+        "purpose": "create a routing filter rule in Gmail"
+      }
     ],
     "supporting_tools": [],
-    "rationale": "Both label creation and filter creation are necessary to fully set up Gmail support labels and routing rules.",
+    "rationale": "Configuring Gmail support routing requires both creating labels and setting up routing filters.",
     "candidate_tools": [
       "DISCORDBOT_LIST_MESSAGES",
       "DISCORDBOT_TEST_AUTH",
@@ -27,53 +37,55 @@
     ]
   },
   "request": {
-    "query": "configure Gmail support labels and filters for routing"
+    "query": "create a new label and filter rule in Gmail"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "configure Gmail support labels and filters for routing",
+          "use_case": "create a new label and filter rule in Gmail",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Prerequisite]: Discover current labels using GMAIL_LIST_LABELS (build a case-normalized name\u2192id map from the full labels array; keep labels[].type to distinguish system vs user; use id for all writes).",
-            "[Required (if any requested user label is missing)] [Step]: Create missing label(s) using GMAIL_CREATE_LABEL (check the map first to avoid duplicates; store returned id).",
-            "[Optional (if labels were created/renamed/deleted or IDs must be canonical)] [Next Step]: Rebuild the mapping using GMAIL_LIST_LABELS (refresh from the full labels array before further writes).",
-            "[Optional (if verifying or changing label settings)] [Next Step]: Review then adjust a user label using GMAIL_GET_LABEL \u2192 GMAIL_PATCH_LABEL (operate by id; change only supported fields like name/visibility/color; avoid system labels).",
-            "[Fallback (only with explicit confirmation; if a conflicting user label blocks progress)] [Fallback]: Remove the conflicting label using GMAIL_DELETE_LABEL (by id; never system labels), then retry GMAIL_CREATE_LABEL or GMAIL_PATCH_LABEL."
+            "[Optional (if avoiding duplicates or name conflicts)] [Prerequisite]: Action using GMAIL_LIST_LABELS (scan existing labels by display name and reuse the matching labels[].id instead of creating a new one).",
+            "[Required] [Step]: Action using GMAIL_CREATE_LABEL (create the label; immediately store the returned data.id for all later operations; set visibility/color only if needed).",
+            "[Optional (for verification or to standardize settings)] [Next Step]: Action using GMAIL_GET_LABEL (confirm properties by id) then Action using GMAIL_UPDATE_LABEL (align visibility/color/settings if mismatched).",
+            "[Optional (if labeling existing mail at scale)] [Next Step]: Action using GMAIL_BATCH_MODIFY_MESSAGES (apply the stored label id via addLabelIds across messageIds; batch to tool limits; for conversation-level labeling, use GMAIL_MODIFY_THREAD_LABELS with the same label id).",
+            "[Optional (if rollback is required and explicitly confirmed)] [Fallback]: Action using GMAIL_DELETE_LABEL (delete the newly created label by id; destructive)."
           ],
           "known_pitfalls": [
-            "[GMAIL_LIST_LABELS] response.data.labels includes both system and user labels via labels[].type; patching/deleting system labels with GMAIL_PATCH_LABEL or GMAIL_DELETE_LABEL may fail or be unsafe.",
-            "[GMAIL_LIST_LABELS] The response may be bulky or appear truncated; build mappings from the full labels array (fall back to data_preview only if that\u2019s all that exists).",
-            "[GMAIL_CREATE_LABEL] 400/409 can occur for empty/duplicate/reserved names; prefer reusing an existing id from GMAIL_LIST_LABELS over blind retries.",
-            "[GMAIL_CREATE_LABEL] Invalid color combinations may return 400/FAILED_PRECONDITION; omit color fields if unsure; intermittent HTTP 500 can occur\u2014retry serially.",
-            "[GMAIL_DELETE_LABEL] 404 often indicates a stale/already-removed id; re-run GMAIL_LIST_LABELS before retrying (intermittent 500 can also occur)."
+            "[GMAIL_CREATE_LABEL] HTTP 400/FAILED_PRECONDITION can occur for invalid/reserved names or system-like names; retry with a compliant name.",
+            "[GMAIL_CREATE_LABEL] Color/background settings may be rejected if not in the supported palette; if setting colors, provide both background and text values together.",
+            "[GMAIL_CREATE_LABEL] 403 permission/delegation errors can occur if the authenticated mailbox context is not the intended one.",
+            "[GMAIL_BATCH_MODIFY_MESSAGES] Request keys are strict camelCase (messageIds/addLabelIds/removeLabelIds); using snake_case can fail validation.",
+            "[GMAIL_BATCH_MODIFY_MESSAGES] Max 1000 messageIds per call; addLabelIds must be label IDs or the call may 400."
           ],
           "reference_workbench_snippets": [
             {
-              "description": "Build a lowercase label-name \u2192 id map from a saved GMAIL_LIST_LABELS response object.",
-              "code": "```python\nlabels=(resp.get('data') or {}).get('labels',[])\nname_to_id={l.get('name','').lower():l.get('id') for l in labels if l.get('name') and l.get('id')}\n```"
+              "description": "Argument shape for bulk labeling with GMAIL_BATCH_MODIFY_MESSAGES (camelCase keys; batching-friendly).",
+              "code": "```python\ndef batch_modify(message_ids, add_label_id=None, remove_label_id=None):\n    args={\"messageIds\":message_ids}\n    if add_label_id: args[\"addLabelIds\"]=[add_label_id]\n    if remove_label_id: args[\"removeLabelIds\"]=[remove_label_id]\n    return run_composio_tool(\"GMAIL_BATCH_MODIFY_MESSAGES\",args)\n```"
             },
             {
-              "description": "Prefer full payload; fall back to preview payload when only that is available.",
-              "code": "```python\npayload=resp.get('data') or resp.get('data_preview') or {}\nlabels=payload.get('labels',[])\n```"
+              "description": "Safely unwrap a potentially tuple-wrapped tool result before reading data.",
+              "code": "```python\nwrapped=result[0] if isinstance(result,tuple) and result else result\ndata=wrapped.get(\"data\",{}) if isinstance(wrapped,dict) else {}\n```"
             }
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "GMAIL_LIST_LABELS",
             "GMAIL_CREATE_LABEL"
           ],
           "related_tool_slugs": [
+            "GMAIL_LIST_LABELS",
             "GMAIL_GET_LABEL",
-            "GMAIL_PATCH_LABEL",
-            "GMAIL_DELETE_LABEL"
+            "GMAIL_UPDATE_LABEL",
+            "GMAIL_BATCH_MODIFY_MESSAGES",
+            "GMAIL_DELETE_LABEL",
+            "GMAIL_MODIFY_THREAD_LABELS"
           ],
           "toolkits": [
             "gmail"
           ],
-          "plan_id": "2282da8a49494b76a1b6f93f984ced07"
+          "plan_id": "f416fcba260942a6ae9e4f70773ec613"
         }
       ],
       "toolkit_connection_statuses": [
@@ -85,35 +97,6 @@
         }
       ],
       "tool_schemas": {
-        "GMAIL_LIST_LABELS": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_LIST_LABELS",
-          "description": "Retrieves all system and user-created labels for a Gmail account in a single unpaginated response. Primary use: obtain internal label IDs (e.g., 'Label_123') required by other Gmail tools \u2014 display names cannot be used as label identifiers and cause silent failures or errors. System labels (INBOX, UNREAD, SPAM, TRASH, etc.) are case-sensitive and must be used exactly as returned; INBOX, SPAM, and TRASH are read-only and cannot be added/removed via label modification tools. The Gmail search 'label:' operator accepts display names, but label_ids parameters in tools like GMAIL_FETCH_EMAILS require internal IDs from this tool \u2014 mixing conventions yields zero results silently. Do not hardcode label IDs across sessions; refresh via this tool on conflict errors.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "user_id": {
-                "type": "string",
-                "default": "me",
-                "examples": [
-                  "me",
-                  "user@example.com"
-                ],
-                "description": "Identifies the Gmail account (owner's email or 'me' for authenticated user) for which labels will be listed."
-              },
-              "include_details": {
-                "type": "boolean",
-                "default": false,
-                "examples": [
-                  true,
-                  false
-                ],
-                "description": "If true, fetches detailed info for each label including message/thread counts (messagesTotal, messagesUnread, threadsTotal, threadsUnread). This requires additional API calls and may be slower for accounts with many labels. If false (default), returns basic label info (id, name, type) which is faster. Counts are eventually consistent and may lag real-time mailbox state by a few seconds."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
         "GMAIL_CREATE_LABEL": {
           "toolkit": "GMAIL",
           "tool_slug": "GMAIL_CREATE_LABEL",
@@ -414,6 +397,35 @@
           },
           "hasFullSchema": true
         },
+        "GMAIL_LIST_LABELS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_LIST_LABELS",
+          "description": "Retrieves all system and user-created labels for a Gmail account in a single unpaginated response. Primary use: obtain internal label IDs (e.g., 'Label_123') required by other Gmail tools \u2014 display names cannot be used as label identifiers and cause silent failures or errors. System labels (INBOX, UNREAD, SPAM, TRASH, etc.) are case-sensitive and must be used exactly as returned; INBOX, SPAM, and TRASH are read-only and cannot be added/removed via label modification tools. The Gmail search 'label:' operator accepts display names, but label_ids parameters in tools like GMAIL_FETCH_EMAILS require internal IDs from this tool \u2014 mixing conventions yields zero results silently. Do not hardcode label IDs across sessions; refresh via this tool on conflict errors.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "Identifies the Gmail account (owner's email or 'me' for authenticated user) for which labels will be listed."
+              },
+              "include_details": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "If true, fetches detailed info for each label including message/thread counts (messagesTotal, messagesUnread, threadsTotal, threadsUnread). This requires additional API calls and may be slower for accounts with many labels. If false (default), returns basic label info (id, name, type) which is faster. Counts are eventually consistent and may lag real-time mailbox state by a few seconds."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
         "GMAIL_GET_LABEL": {
           "toolkit": "GMAIL",
           "tool_slug": "GMAIL_GET_LABEL",
@@ -447,16 +459,30 @@
           },
           "hasFullSchema": true
         },
-        "GMAIL_PATCH_LABEL": {
+        "GMAIL_UPDATE_LABEL": {
           "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_PATCH_LABEL",
-          "description": "Patches the specified user-created label. System labels (e.g., INBOX, SENT, SPAM) cannot be modified...",
+          "tool_slug": "GMAIL_UPDATE_LABEL",
+          "description": "Tool to update the properties of an existing Gmail label. Use when you need to modify label name, vi...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_PATCH_LABEL"
+                "GMAIL_UPDATE_LABEL"
+              ]
+            }
+          }
+        },
+        "GMAIL_BATCH_MODIFY_MESSAGES": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_BATCH_MODIFY_MESSAGES",
+          "description": "Modify labels on multiple Gmail messages in one efficient API call. Supports up to 1,000 messages pe...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_BATCH_MODIFY_MESSAGES"
               ]
             }
           }
@@ -474,17 +500,31 @@
               ]
             }
           }
+        },
+        "GMAIL_MODIFY_THREAD_LABELS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_MODIFY_THREAD_LABELS",
+          "description": "Adds or removes specified existing label IDs from a Gmail thread, affecting all its messages; ensure...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_MODIFY_THREAD_LABELS"
+              ]
+            }
+          }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:37:07.471Z",
-        "current_time_utc_epoch_seconds": 1786563427,
+        "current_time_utc": "2026-08-12T20:52:37.455Z",
+        "current_time_utc_epoch_seconds": 1786567957,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "path",
+        "id": "hunt",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"path\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"hunt\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -494,6 +534,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_RJrR-5SwtSRv"
+    "log_id": "log_1ScqYVZjLqpb"
   }
 }

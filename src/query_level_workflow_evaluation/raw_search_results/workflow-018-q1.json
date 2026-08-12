@@ -3,14 +3,19 @@
     "query_id": "workflow-018-q1",
     "workflow_id": 18,
     "workflow_task": "Find recent remote or hybrid contract data-engineering-related job listings in a target region, validate/extract job details from job boards, compile a curated digest, and email it to someone.",
-    "query": "search LinkedIn for remote data engineering contract jobs",
-    "required_tools": [
-      "LINKEDIN_PROXY_EXECUTE"
+    "query": "search for remote data engineering contract job listings on LinkedIn",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "LINKEDIN_PROXY_EXECUTE"
+        ],
+        "purpose": "execute searches for job listings on LinkedIn"
+      }
     ],
     "supporting_tools": [
       "BROWSER_TOOL_CREATE_TASK"
     ],
-    "rationale": "Executes targeted queries on LinkedIn to find matching remote and hybrid contract listings.",
+    "rationale": "The query specifically targets job listings on LinkedIn, which matches the proxy execution tool.",
     "candidate_tools": [
       "BROWSER_TOOL_CREATE_TASK",
       "BROWSER_TOOL_STOP_TASK",
@@ -20,58 +25,56 @@
     ]
   },
   "request": {
-    "query": "search LinkedIn for remote data engineering contract jobs"
+    "query": "search for remote data engineering contract job listings on LinkedIn"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "search LinkedIn for remote data engineering contract jobs",
+          "use_case": "search for remote data engineering contract job listings on LinkedIn",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Optional (if you must confirm authenticated access or tailor keywords)] [Prerequisite]: Fetch account snapshot using LINKEDIN_GET_MY_INFO (verify access; derive seniority/skill terms).",
-            "[Required] [Step]: Discover job-posting candidates using COMPOSIO_SEARCH_WEB (run multiple query variants combining role keywords + target region/work-mode + recency hints; bias toward job-detail style paths).",
-            "[Required] [Next Step]: From COMPOSIO_SEARCH_WEB results.citations, collect url/title/snippet/(if present) published metadata; normalize and dedupe URLs; drop obvious non-posting pages (profiles, hubs/listing pages, aggregators) via domain/path cues.",
-            "[Required] [Step]: Validate the shortlist using COMPOSIO_SEARCH_FETCH_URL_CONTENT (batch URLs, set max_characters cap; record per-URL success/failure from data.statuses[]).",
-            "[Required] [Next Step]: From COMPOSIO_SEARCH_FETCH_URL_CONTENT data.results[], keep only single-posting pages with posting-specific text; extract compact job cards and rank by fit; treat gated/boilerplate-only/truncated pages as low confidence.",
-            "[Optional (if you need consistent structured fields like posted-date parsing)] [Step]: Convert fetched text into strict JSON job cards using COMPOSIO_SEARCH_GROQ_CHAT (validate JSON parse before filtering/ranking).",
-            "[Optional (if results are thin/noisy)] [Next Step]: Refine/expand high-signal keywords using COMPOSIO_SEARCH_TRENDS, then repeat COMPOSIO_SEARCH_WEB \u2192 COMPOSIO_SEARCH_FETCH_URL_CONTENT.",
-            "[Optional (if response volume is too large to process inline)] [Step]: Use COMPOSIO_REMOTE_WORKBENCH to batch-parse citations/pages and generate ranked job cards programmatically.",
-            "[Required] [Fallback]: If most URLs are gated, hubs, or fetch failures, re-run COMPOSIO_SEARCH_WEB with tighter operators (stricter role phrases + stronger job-detail path constraints) and re-validate via COMPOSIO_SEARCH_FETCH_URL_CONTENT."
+            "[Required] [Prerequisite]: Draft several distinct, narrow queries for COMPOSIO_SEARCH_WEB (role/skills + location/region + work arrangement + seniority + freshness terms; optionally add source qualifiers).",
+            "[Required] [Step]: For each query, call COMPOSIO_SEARCH_WEB and capture leads from results.citations first (title/snippet/url), using other URL-like fields only if citations are empty; ignore narrative answer when it conflicts.",
+            "[Optional (if a next-page token is present)] [Next Step]: Continue paging with COMPOSIO_SEARCH_WEB up to a small cap, aggregating across queries while tracking duplicates.",
+            "[Required] [Next Step]: Canonicalize and deduplicate URLs across pages/queries; keep the best snippet and strongest freshness/location hints per canonical URL.",
+            "[Required] [Next Step]: Enrich shortlisted leads with COMPOSIO_SEARCH_FETCH_URL_CONTENT (cap with max_characters) and parse data.results[] (and data.statuses[] if present) to extract role, location/remote, requirements, compensation (if stated), and apply link.",
+            "[Required] [Step]: Filter out non-posting pages, then rank by match quality and explicit freshness evidence found in snippets or fetched text; return a concise list of links with extracted highlights (leave missing fields as unknown).",
+            "[Required] [Fallback]: If results are sparse or aggregator-heavy, use COMPOSIO_SEARCH_NEWS or COMPOSIO_SEARCH_TRENDS to refine keywords/query wording (or relax over-strict terms), then rerun COMPOSIO_SEARCH_WEB and re-validate via COMPOSIO_SEARCH_FETCH_URL_CONTENT."
           ],
           "known_pitfalls": [
-            "[COMPOSIO_SEARCH_WEB] results.answer can be generic or contradictory; actionable links are in results.citations, and citations may be empty even when an answer is returned.",
-            "[COMPOSIO_SEARCH_WEB] Recency hints are not guaranteed; verify freshness from citation metadata/snippets or fetched page text rather than assuming the query constraint worked.",
-            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] Page text lives in data.results[] while per-URL outcomes are in data.statuses[] (e.g., error.tag like CRAWL_NOT_FOUND with httpStatusCode 404); don\u2019t assume arrays align by index.",
-            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] max_characters truncation and content_quality_warning/composio_execution_message can yield boilerplate-only text even on \u201csuccess\u201d; treat missing sections as unknown and lower confidence.",
-            "[COMPOSIO_SEARCH_GROQ_CHAT] HTTP 404 invalid_request_error (code model_not_found) can occur for unavailable models, and non-JSON responses can break parsers; retry with an available model and enforce/validate JSON-only output."
+            "[COMPOSIO_SEARCH_WEB] HTTP 429 can occur on heavy or near-duplicate queries; batch distinct searches and use exponential backoff.",
+            "[COMPOSIO_SEARCH_WEB] results.answer/data.answer may be generic or contradict results.citations; treat citations as the primary source of actionable links.",
+            "[COMPOSIO_SEARCH_WEB] results.citations field shapes vary (snippet/metadata often missing); null-check when extracting and ranking.",
+            "[COMPOSIO_SEARCH_WEB] \u201cInvalid request data provided\u2026 missing {'query'}\u201d occurs if the query field is absent/misnamed or empty.",
+            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] Content is typically under data.results[] (sometimes paired with data.statuses[]) and may be truncated by max_characters; refetch with a higher cap or treat missing sections as unknown."
           ],
           "reference_workbench_snippets": [
             {
-              "description": "Access the i-th tool payload from a multi-tool JSON result consistently",
-              "code": "```python\ndef payload(multi,i):\n    return multi[\"results\"][i][\"response\"][\"data\"]\n```"
+              "description": "Extract citations from batch COMPOSIO_SEARCH_WEB responses and canonicalize/dedupe URLs",
+              "code": "```python\nfrom urllib.parse import urlsplit,urlunsplit\n\ndef canon(u):\n    try:\n        p=urlsplit(u or '')\n        return urlunsplit((p.scheme,p.netloc,p.path,'',''))\n    except Exception:\n        return u\n\ndef extract_dedup(results):\n    out=[]\n    for r in results:\n        d=(r.get('response',{}) or {}).get('data') or (r.get('response',{}) or {}).get('data_preview') or {}\n        res=d.get('results',d) or {}\n        for c in res.get('citations',[]) or []:\n            url=c.get('url') or c.get('id')\n            out.append({'title':c.get('title',''),'url':url,'snippet':c.get('snippet') or c.get('text','')})\n    seen=set(); dedup=[]\n    for x in out:\n        u=canon(x.get('url'))\n        if u and u not in seen:\n            seen.add(u); x['url']=u; dedup.append(x)\n    return dedup\n```"
             },
             {
-              "description": "Align COMPOSIO_SEARCH_FETCH_URL_CONTENT results with statuses when some URLs fail (match by id/url)",
-              "code": "```python\nd=result_data\nm={p.get('id') or p.get('url'):p for p in d.get('results',[])}\npages=[m.get(s.get('id')) for s in d.get('statuses',[]) if s.get('status')=='success']\npages=[p for p in pages if p]\n```"
+              "description": "Minimal parser for COMPOSIO_SEARCH_WEB citations into job-lead records",
+              "code": "```python\ndef collect_citations(data):\n    res=(data or {}).get('results',data) or {}\n    return [{'title':c.get('title',''),'url':c.get('url') or c.get('id',''),'snippet':c.get('snippet') or c.get('text','')} for c in (res.get('citations',[]) or [])]\n```"
             }
           ],
-          "difficulty": "medium",
+          "difficulty": "easy",
           "primary_tool_slugs": [
-            "COMPOSIO_SEARCH_WEB",
-            "COMPOSIO_SEARCH_FETCH_URL_CONTENT"
+            "COMPOSIO_SEARCH_WEB"
           ],
           "related_tool_slugs": [
+            "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+            "COMPOSIO_SEARCH_NEWS",
             "COMPOSIO_SEARCH_TRENDS",
-            "LINKEDIN_GET_MY_INFO",
-            "COMPOSIO_SEARCH_GROQ_CHAT"
+            "LINKEDIN_GET_POST_CONTENT"
           ],
           "toolkits": [
             "composio_search",
             "linkedin"
           ],
-          "plan_id": "c1bd37b5e56e4c24b876bf1e9a64c87a"
+          "plan_id": "52bed3dfcf224675ba3b8ef9126e8b88"
         }
       ],
       "toolkit_connection_statuses": [
@@ -168,79 +171,123 @@
           },
           "hasFullSchema": true
         },
-        "COMPOSIO_SEARCH_TRENDS": {
+        "COMPOSIO_SEARCH_NEWS": {
           "toolkit": "COMPOSIO_SEARCH",
-          "tool_slug": "COMPOSIO_SEARCH_TRENDS",
-          "description": "Discover trending topics, search patterns, and popularity data. Analyzes search interest over time, compares multiple topics, and identifies rising trends. Returns normalized 0\u2013100 relative interest indices (not absolute search volumes) via interest_over_time.timeline_data; values are objects with 'extracted_value' (may be string '<1'). The final timeline entry may have partial_data=true for incomplete periods. Data typically lags ~24\u201348 hours. Response schema varies by data_type: TIMESERIES returns timeline_data, GEO_MAP returns regional breakdowns, RELATED_TOPICS/RELATED_QUERIES return topic/query lists \u2014 parse accordingly. Ideal for market research, content planning, and SEO analysis.",
+          "tool_slug": "COMPOSIO_SEARCH_NEWS",
+          "description": "Search for the latest news articles and current events with smart filtering. Searches news-oriented sources only (not blogs, docs, or company pages). Results nest under `data.results.news_results`; a 200 response with empty `news_results` or `news_results_state: 'Fully empty'` means no results \u2014 broaden query or `when` window. Auto-correction (`showing_results_for`) can silently redirect queries; verify returned articles match intended topic. Only first page returned by default; follow `pagination.next` for more pages. Supports 100+ languages and countries. Use advanced operators like 'site:' for publisher filtering directly in your query. Examples: query=\"artificial intelligence\" + when=\"w\" for past week's AI news query=\"climate change\" + gl=\"us\" + hl=\"en\" for US climate news query=\"business news\" + when=\"d\" for today's business news query=\"site:bbc.com tesla\" + when=\"d\" for today's BBC Tesla news",
           "input_schema": {
             "type": "object",
-            "required": [
-              "query"
-            ],
             "properties": {
-              "date": {
+              "gl": {
                 "type": "string",
                 "examples": [
-                  "today 5-y",
-                  "now 7-d",
-                  "2021-01-01 2023-01-01"
+                  "us",
+                  "uk",
+                  "ca",
+                  "au",
+                  "de",
+                  "fr",
+                  "jp",
+                  "in",
+                  "br",
+                  "mx"
                 ],
-                "description": "Time range for trend data. Predefined ranges: 'now 1-H' (past hour), 'now 4-H' (past 4 hours), 'now 1-d' (past day), 'now 7-d' (past 7 days), 'today 1-m' (past 30 days), 'today 3-m' (past 90 days), 'today 12-m' (past 12 months), 'today 5-y' (past 5 years), 'all' (2004 to present). Custom ranges: 'yyyy-mm-dd yyyy-mm-dd' (e.g., '2021-10-15 2022-05-25') or with hours 'yyyy-mm-ddThh yyyy-mm-ddThh' (e.g., '2022-05-19T10 2022-05-24T22'). Defaults to past 12 months if not specified. Windows longer than ~90 days aggregate data weekly, smoothing short-lived spikes; use shorter windows (e.g., 'now 7-d') alongside longer ones to detect brief surges."
+                "description": "Country code for news region (ISO 3166-1 alpha-2). Determines which country's news sources to prioritize."
+              },
+              "hl": {
+                "type": "string",
+                "examples": [
+                  "en",
+                  "es",
+                  "fr",
+                  "de",
+                  "pt",
+                  "it",
+                  "ja",
+                  "ko",
+                  "zh-cn",
+                  "zh-tw",
+                  "ar",
+                  "hi",
+                  "ru"
+                ],
+                "description": "Language code for news interface and results. Most languages use ISO 639-1 codes (e.g., 'en', 'es'). Chinese requires regional variants: 'zh-cn' (Simplified) or 'zh-tw' (Traditional). Standalone 'zh' is normalized to 'zh-cn'."
+              },
+              "when": {
+                "type": "string",
+                "examples": [
+                  "d",
+                  "w",
+                  "m",
+                  "y"
+                ],
+                "description": "Time filter for news articles. 'd' = past day, 'w' = past week, 'm' = past month, 'y' = past year. These are coarse UTC-based buckets with no finer granularity; filter `published_at` client-side for precise ranges. Combining narrow queries with strict `when` filters frequently returns zero results; broaden either before concluding no data exists."
               },
               "query": {
                 "type": "string",
                 "examples": [
-                  "Python programming"
+                  "artificial intelligence",
+                  "climate change",
+                  "site:bbc.com technology",
+                  "when:7d startup funding",
+                  "Tesla stock market",
+                  "COVID-19 vaccine news"
                 ],
-                "description": "The search query for the Google Trends Search API, specifying the trend topic. For TIMESERIES, accepts up to 5 comma-separated topics (e.g., 'Python,JavaScript,Rust'); exceeding 5 returns 'Maximum number of queries accepted is 5'. Overly specific or multi-concept queries may return empty results (organic_results_state='Fully empty') \u2014 use concise single-concept keywords."
+                "description": "Search query for news articles. Supports advanced operators like 'site:', 'when:', etc. Cannot be used with topic_token, publication_token, or story_token."
               },
-              "data_type": {
-                "type": "string",
-                "default": "TIMESERIES",
-                "description": "Parameter defines the type of search you want to do. Available options: TIMESERIES - Interest over time (default) - Accepts both single and multiple queries per search. GEO_MAP - Compared breakdown by region - Accepts only multiple queries per search. GEO_MAP_0 - Interest by region - Accepts only single query per search. RELATED_TOPICS - Related topics - Accepts only single query per search. RELATED_QUERIES - Related queries - Accepts only single query per search. TIMESERIES accepts 1\u20135 comma-separated queries; GEO_MAP_0, RELATED_TOPICS, and RELATED_QUERIES accept only a single query \u2014 mismatching causes validation errors or empty results. Response schema differs per type; branch parsing logic accordingly. RELATED_TOPICS/RELATED_QUERIES with multi-term queries may silently fall back to TIMESERIES \u2014 verify results.search_parameters.data_type."
+              "start": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0,
+                  10,
+                  20,
+                  30
+                ],
+                "description": "Result offset for pagination. Each page typically contains 10 results. Use multiples of 10 (0, 10, 20, 30, ...) to navigate pages. Stop paginating when a page returns no new results."
               }
             }
           },
           "hasFullSchema": true
         },
-        "LINKEDIN_GET_MY_INFO": {
-          "toolkit": "LINKEDIN",
-          "tool_slug": "LINKEDIN_GET_MY_INFO",
-          "description": "Fetches the authenticated LinkedIn user's profile information including name, headline, profile pict...",
+        "COMPOSIO_SEARCH_TRENDS": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_TRENDS",
+          "description": "Discover trending topics, search patterns, and popularity data. Analyzes search interest over time, ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "LINKEDIN_GET_MY_INFO"
+                "COMPOSIO_SEARCH_TRENDS"
               ]
             }
           }
         },
-        "COMPOSIO_SEARCH_GROQ_CHAT": {
-          "toolkit": "COMPOSIO_SEARCH",
-          "tool_slug": "COMPOSIO_SEARCH_GROQ_CHAT",
-          "description": "Execute fast LLM inference using Groq's optimized hardware and API. Groq provides ultra-fast inferen...",
+        "LINKEDIN_GET_POST_CONTENT": {
+          "toolkit": "LINKEDIN",
+          "tool_slug": "LINKEDIN_GET_POST_CONTENT",
+          "description": "Tool to retrieve detailed post content including text, images, videos, and metadata from LinkedIn by...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "COMPOSIO_SEARCH_GROQ_CHAT"
+                "LINKEDIN_GET_POST_CONTENT"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:38:20.957Z",
-        "current_time_utc_epoch_seconds": 1786563500,
+        "current_time_utc": "2026-08-12T20:54:02.264Z",
+        "current_time_utc_epoch_seconds": 1786568042,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "zulu",
+        "id": "camp",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"zulu\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"camp\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) You may call COMPOSIO_MANAGE_CONNECTIONS: Some toolkits lack active connections",
@@ -250,6 +297,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_iYxw-U6T5A1J"
+    "log_id": "log_WCMwAhVOn3mb"
   }
 }

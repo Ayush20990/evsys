@@ -3,13 +3,19 @@
     "query_id": "workflow-004-q3",
     "workflow_id": 4,
     "workflow_task": "Publish approved carousel content from a Trello workflow to LinkedIn, add a first comment, update Trello status/logs, and adjust the Trello board workflow structure.",
-    "query": "update Trello card status and add comment",
-    "required_tools": [
-      "TRELLO_UPDATE_CARDS_ID_LIST_BY_ID_CARD",
-      "TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD"
+    "query": "modify Trello board lists and workflow structure",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "TRELLO_ADD_LISTS"
+        ],
+        "purpose": "add new lists to adjust the board workflow"
+      }
     ],
-    "supporting_tools": [],
-    "rationale": "The agent needs to simultaneously update the card's list location and leave an execution log comment on the card.",
+    "supporting_tools": [
+      "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD"
+    ],
+    "rationale": "This query covers the board-level structural adjustments required by the workflow, specifically adding new lists.",
     "candidate_tools": [
       "LINKEDIN_CREATE_COMMENT_ON_POST",
       "LINKEDIN_CREATE_LINKED_IN_POST",
@@ -24,48 +30,52 @@
     ]
   },
   "request": {
-    "query": "update Trello card status and add comment"
+    "query": "modify Trello board lists and workflow structure"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "update Trello card status and add comment",
+          "use_case": "modify Trello board lists and workflow structure",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Optional (if current list/assignees or board context is unknown)] [Prerequisite]: Fetch card details using TRELLO_GET_CARDS_BY_ID_CARD (capture idList, idMembers, idBoard for downstream lookups).",
-            "[Optional (if destination list identifier is unknown)] [Prerequisite]: Enumerate board lists using TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD (map intended list to destination idList; include closed lists only if needed).",
-            "[Optional (if assignee member identifiers are unknown)] [Prerequisite]: Search members using TRELLO_GET_SEARCH_MEMBERS (disambiguate close matches before selecting member IDs).",
-            "[Required] [Step]: Update the card using TRELLO_UPDATE_CARDS_BY_ID_CARD (set destination idList and intended idMembers together when supported; avoid repeated list updates).",
-            "[Optional (if member assignment was not applied or must be an exact set)] [Step]: Set/replace assignees using TRELLO_UPDATE_CARDS_ID_MEMBERS_BY_ID_CARD (apply the intended member ID set).",
-            "[Fallback (if list move did not apply)] [Fallback]: Force the list change using TRELLO_UPDATE_CARDS_ID_LIST_BY_ID_CARD (destination list must be on the same board).",
-            "[Required] [Step]: Add an audit/status comment using TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD (post after the move so activity context matches the final list).",
-            "[Optional (for verification)] [Next Step]: Re-fetch the card using TRELLO_GET_CARDS_BY_ID_CARD (confirm final idList/idMembers and that updates persisted)."
+            "[Optional (if board identifier unknown)] [Prerequisite]: Action using TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER (find the target board identifier).",
+            "[Required] [Prerequisite]: Action using TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD (map current list names to list identifiers and capture current order).",
+            "[Required] [Prerequisite]: Action using TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD_BY_FILTER (enumerate cards and current list identifiers for moves).",
+            "[Required] [Step]: Action using TRELLO_UPDATE_LISTS_BY_ID_LIST (apply list renames/attribute changes needed for the target structure).",
+            "[Required] [Step]: Action using TRELLO_ADD_LISTS (create any missing lists needed for the new workflow).",
+            "[Required] [Step]: Action using TRELLO_UPDATE_LISTS_POS_BY_ID_LIST (set positions to enforce the desired list ordering across affected lists).",
+            "[Required] [Step]: Action using TRELLO_UPDATE_CARDS_BY_ID_CARD (move each selected card by updating its destination list identifier).",
+            "[Optional (for verification after writes)] [Next Step]: Action using TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD (re-fetch lists to confirm final names and ordering).",
+            "[Fallback (if a card move fails with 404)] [Fallback]: Action using TRELLO_GET_CARDS_BY_ID_CARD (validate the card exists and read its current list), then retry using TRELLO_UPDATE_CARDS_BY_ID_CARD (apply the move)."
           ],
           "known_pitfalls": [
-            "[TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD] Lists may appear under different connector paths (often response.data.lists[] vs nested details); extract IDs from the actual list objects returned.",
-            "[TRELLO_GET_SEARCH_MEMBERS] Search can return multiple close matches and may be nested (for example under data.details[]); verify the exact member ID before writing.",
-            "[TRELLO_UPDATE_CARDS_BY_ID_CARD] Write responses can be very large and appear truncated; rely on tool success and/or confirm via TRELLO_GET_CARDS_BY_ID_CARD.",
-            "[TRELLO_UPDATE_CARDS_BY_ID_CARD] Multiple sequential idList updates overwrite each other; the last write determines the final list state.",
-            "[TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD] Comment responses may include large nested payloads and appear truncated; re-fetch with TRELLO_GET_CARDS_BY_ID_CARD if you must confirm."
+            "[TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD] Lists may be nested under response.data.lists; an empty lists result can be valid (e.g., empty board or incorrect board identifier).",
+            "[TRELLO_ADD_LISTS] Requested list placement/pos can be normalized by the server; confirm the actual ordering and adjust with TRELLO_UPDATE_LISTS_BY_ID_LIST or TRELLO_UPDATE_LISTS_POS_BY_ID_LIST.",
+            "[TRELLO_UPDATE_LISTS_POS_BY_ID_LIST] Reordering is only deterministic if you set positions for all lists whose relative order should change; updating just one list can leave the rest effectively unchanged.",
+            "[TRELLO_UPDATE_CARDS_BY_ID_CARD] Moves can fail with 404 when the card identifier is invalid; validate with TRELLO_GET_CARDS_BY_ID_CARD before retrying.",
+            "[TRELLO_UPDATE_LISTS_BY_ID_LIST] Bulk updates based on stale state can cause unintended changes; if uncertain, confirm the current list fields first with TRELLO_GET_LISTS_BY_ID_LIST."
           ],
-          "difficulty": "easy",
+          "difficulty": "medium",
           "primary_tool_slugs": [
-            "TRELLO_UPDATE_CARDS_BY_ID_CARD",
-            "TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD"
+            "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD",
+            "TRELLO_ADD_LISTS",
+            "TRELLO_UPDATE_LISTS_BY_ID_LIST",
+            "TRELLO_UPDATE_CARDS_BY_ID_CARD"
           ],
           "related_tool_slugs": [
-            "TRELLO_GET_CARDS_BY_ID_CARD",
-            "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD",
-            "TRELLO_UPDATE_CARDS_ID_LIST_BY_ID_CARD",
-            "TRELLO_GET_SEARCH_MEMBERS",
-            "TRELLO_UPDATE_CARDS_ID_MEMBERS_BY_ID_CARD"
+            "TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER",
+            "TRELLO_GET_LISTS_BY_ID_LIST",
+            "TRELLO_UPDATE_LISTS_NAME_BY_ID_LIST",
+            "TRELLO_UPDATE_LISTS_POS_BY_ID_LIST",
+            "TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD_BY_FILTER",
+            "TRELLO_GET_CARDS_BY_ID_CARD"
           ],
           "toolkits": [
             "trello"
           ],
-          "plan_id": "873144e45d6f461fa1056f2781d71f79"
+          "plan_id": "644622a5d03f430f9ae023041b8aadf2"
         }
       ],
       "toolkit_connection_statuses": [
@@ -77,6 +87,183 @@
         }
       ],
       "tool_schemas": {
+        "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD",
+          "description": "Retrieves lists from a specified Trello board, with options to filter lists and include card details.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "idBoard"
+            ],
+            "properties": {
+              "cards": {
+                "type": "string",
+                "default": "none",
+                "examples": [
+                  "none",
+                  "open",
+                  "all",
+                  "closed"
+                ],
+                "description": "Determines which cards should be returned within the lists. Valid values are 'all', 'closed', 'none', or 'open'."
+              },
+              "fields": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "all",
+                  "name,pos",
+                  "idBoard,subscribed"
+                ],
+                "description": "Specifies the fields of the lists to be returned. Use 'all' for all fields, or provide a comma-separated list of specific fields. Valid fields include: closed, idBoard, name, pos, or subscribed."
+              },
+              "filter": {
+                "type": "string",
+                "default": "open",
+                "examples": [
+                  "open",
+                  "all",
+                  "closed"
+                ],
+                "description": "Filters the lists to be returned based on their status. Valid values are 'all', 'closed', 'none', or 'open'."
+              },
+              "idBoard": {
+                "type": "string",
+                "examples": [
+                  "60d5f2f1c8a8b4002b8f0123",
+                  "TH6F0pTM"
+                ],
+                "description": "The ID of the Trello board. Valid formats: 24-character hexadecimal ID (e.g., '60d5f2f1c8a8b4002b8f0123') OR 8-character shortLink (e.g., 'TH6F0pTM'). Human-readable board names or URL slugs (e.g., 'my-board', 'tech-jcorp') are NOT valid identifiers. In the URL 'trello.com/b/TH6F0pTM/my-board', 'TH6F0pTM' is the valid shortLink, while 'my-board' is just a slug and cannot be used. To find your board ID or shortLink: use TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER to list your boards, or look at the board URL in your browser."
+              },
+              "card_fields": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "all",
+                  "name,desc,due",
+                  "idShort,labels"
+                ],
+                "description": "Specifies the fields of cards to be returned if the 'cards' parameter is not 'none'. Use 'all' for all fields, or provide a comma-separated list of specific fields. Valid fields include: badges, checkItemStates, closed, dateLastActivity, desc, descData, due, email, idAttachmentCover, idBoard, idChecklists, idLabels, idList, idMembers, idMembersVoted, idShort, labels, manualCoverAttachment, name, pos, shortLink, shortUrl, subscribed, or url."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TRELLO_ADD_LISTS": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_ADD_LISTS",
+          "description": "Creates a new list on a specified Trello board, with options to copy an existing list, set its position, initial state (archived/subscribed), and does not modify existing lists or move cards.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "pos": {
+                "type": "string",
+                "examples": [
+                  "top",
+                  "bottom",
+                  "1024"
+                ],
+                "description": "The position of the new list on the board. Valid values are `top`, `bottom`, or a positive number (e.g., '1', '2.5')."
+              },
+              "name": {
+                "type": "string",
+                "examples": [
+                  "To Do",
+                  "In Progress"
+                ],
+                "description": "The name for the new list. Must be a string with a length from 1 to 16384 characters. This is a required parameter."
+              },
+              "closed": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Indicates whether the list should be created as closed (archived). Set to `true` for closed, or `false` for open."
+              },
+              "idBoard": {
+                "type": "string",
+                "examples": [
+                  "5abbe4b7ddc1b351ef961414"
+                ],
+                "description": "The ID of the board to which the new list should be added. This is a required parameter."
+              },
+              "subscribed": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Indicates whether the user creating the list should be automatically subscribed to it. Set to `true` to subscribe, or `false` otherwise."
+              },
+              "idListSource": {
+                "type": "string",
+                "examples": [
+                  "5abbe4b7ddc1b351ef961234"
+                ],
+                "description": "The ID of an existing list to copy when creating the new list. If provided, the new list will be a copy of this source list."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TRELLO_UPDATE_LISTS_BY_ID_LIST": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_UPDATE_LISTS_BY_ID_LIST",
+          "description": "Updates attributes of an existing Trello list, such as name, position, archive status, board, or copies cards from another list, provided the list `idList` exists.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "idList"
+            ],
+            "properties": {
+              "pos": {
+                "type": "string",
+                "examples": [
+                  "top",
+                  "bottom",
+                  "1",
+                  "1024.5"
+                ],
+                "description": "New position for the list on the board (e.g., 'top', 'bottom', '1', '1024.5')."
+              },
+              "name": {
+                "type": "string",
+                "description": "New name for the list (1-16384 characters)."
+              },
+              "closed": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Set to 'true' to archive the list, or 'false' to unarchive."
+              },
+              "idList": {
+                "type": "string",
+                "description": "The unique identifier of the Trello list to be updated. This ID is a path parameter."
+              },
+              "idBoard": {
+                "type": "string",
+                "description": "ID of the board to move the list to."
+              },
+              "subscribed": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Set to 'true' to subscribe the current user, or 'false' to unsubscribe."
+              },
+              "idListSource": {
+                "type": "string",
+                "description": "ID of a source list whose cards will be copied to this list."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
         "TRELLO_UPDATE_CARDS_BY_ID_CARD": {
           "toolkit": "TRELLO",
           "tool_slug": "TRELLO_UPDATE_CARDS_BY_ID_CARD",
@@ -224,173 +411,118 @@
           },
           "hasFullSchema": true
         },
-        "TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD": {
+        "TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER": {
           "toolkit": "TRELLO",
-          "tool_slug": "TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD",
-          "description": "Adds a new text comment, which can include @mentions, to a Trello card specified by its ID; file attachments are not supported via this action.",
+          "tool_slug": "TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER",
+          "description": "Retrieves board-level details (not lists/cards) for Trello boards associated with a member ID or username, allowing extensive customization of the returned data.",
           "input_schema": {
             "type": "object",
-            "required": [
-              "idCard",
-              "text"
-            ],
             "properties": {
-              "text": {
+              "lists": {
                 "type": "string",
+                "default": "open",
                 "examples": [
-                  "This is an important update!",
-                  "What's the status on this task? @username",
-                  "Review needed by EOD. Thanks!"
+                  "open",
+                  "all",
+                  "none",
+                  "closed"
                 ],
-                "description": "Comment text, between 1 and 16384 characters. Supports @mentions to notify Trello users."
-              },
-              "idCard": {
-                "type": "string",
-                "examples": [
-                  "60d21b4667d9290008f9b727",
-                  "myCardShortLink"
-                ],
-                "description": "ID or shortLink of the Trello card to add the comment to."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "TRELLO_GET_CARDS_BY_ID_CARD": {
-          "toolkit": "TRELLO",
-          "tool_slug": "TRELLO_GET_CARDS_BY_ID_CARD",
-          "description": "Retrieves a Trello card by its ID or shortlink, with options to include related data like actions, attachments, members, and checklists.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "idCard"
-            ],
-            "properties": {
-              "list": {
-                "type": "string",
-                "examples": [
-                  "true",
-                  "false"
-                ],
-                "description": "Include data for the card's list. Use 'true' or 'false'."
-              },
-              "board": {
-                "type": "string",
-                "examples": [
-                  "true",
-                  "false"
-                ],
-                "description": "Include data for the card's board. Use 'true' or 'false'."
+                "description": "Filters the lists returned for each board. Valid values: 'all', 'closed', 'none', 'open'."
               },
               "fields": {
                 "type": "string",
-                "default": "badges, checkItemStates, closed, dateLastActivity, desc, descData, due, email, idBoard, idChecklists, idLabels, idList, idMembers, idShort, idAttachmentCover, manualCoverAttachment, labels, name, pos, shortUrl and url",
-                "description": "Fields for the card: 'all' or comma-separated (e.g., 'name,desc'). Valid: badges, checkItemStates, closed, dateLastActivity, desc, descData, due, email, idAttachmentCover, idBoard, idChecklists, idLabels, idList, idMembers, idMembersVoted, idShort, labels, manualCoverAttachment, name, pos, shortLink, shortUrl, subscribed, url."
-              },
-              "idCard": {
-                "type": "string",
+                "default": "all",
                 "examples": [
-                  "5abbe4b7ddc1b351ef961414",
-                  "H0TZyzbK"
+                  "all",
+                  "name,url",
+                  "prefs,shortUrl"
                 ],
-                "description": "The unique identifier or shortlink of the Trello card. Must be either a 24-character hexadecimal ID (e.g., '5abbe4b7ddc1b351ef961414') or an 8-character alphanumeric shortlink (e.g., 'H0TZyzbK'). Short numeric strings like '6514' are not valid."
+                "description": "Specifies the fields to return for each board. Accepts 'all' or a comma-separated list of field names. Possible field names: 'closed', 'dateLastActivity', 'dateLastView', 'desc', 'descData', 'idOrganization', 'invitations', 'invited', 'labelNames', 'memberships', 'name', 'pinned', 'powerUps', 'prefs', 'shortLink', 'shortUrl', 'starred', 'subscribed', 'url'."
+              },
+              "filter": {
+                "type": "string",
+                "default": "all",
+                "examples": [
+                  "all",
+                  "open,starred",
+                  "organization,public"
+                ],
+                "description": "Filters the boards returned. Valid values are 'all' or a comma-separated list of: 'closed', 'members', 'open', 'organization', 'pinned', 'public', 'starred', 'unpinned'."
               },
               "actions": {
                 "type": "string",
-                "description": "Actions to return: 'all' or a comma-separated list of types (e.g., 'addAttachmentToCard', 'commentCard', 'updateCard'). For a complete list of types, consult the Trello API documentation."
-              },
-              "members": {
-                "type": "string",
                 "examples": [
-                  "true",
-                  "false"
+                  "all",
+                  "commentCard,createList"
                 ],
-                "description": "Include member data. Use 'true' or 'false'."
+                "description": "Specifies which actions to return for each board. Accepts 'all' or a comma-separated list of action types. Possible action types: 'addAttachmentToCard', 'addChecklistToCard', 'addMemberToBoard', 'addMemberToCard', 'addMemberToOrganization', 'addToOrganizationBoard', 'commentCard', 'convertToCardFromCheckItem', 'copyBoard', 'copyCard', 'copyCommentCard', 'createBoard', 'createCard', 'createList', 'createOrganization', 'deleteAttachmentFromCard', 'deleteBoardInvitation', 'deleteCard', 'deleteOrganizationInvitation', 'disablePowerUp', 'emailCard', 'enablePowerUp', 'makeAdminOfBoard', 'makeNormalMemberOfBoard', 'makeNormalMemberOfOrganization', 'makeObserverOfBoard', 'memberJoinedTrello', 'moveCardFromBoard', 'moveCardToBoard', 'moveListFromBoard', 'moveListToBoard', 'removeChecklistFromCard', 'removeFromOrganizationBoard', 'removeMemberFromCard', 'unconfirmedBoardInvitation', 'unconfirmedOrganizationInvitation', 'updateBoard', 'updateCard', 'updateCard:closed', 'updateCard:desc', 'updateCard:idList', 'updateCard:name', 'updateCheckItemStateOnCard', 'updateChecklist', 'updateList', 'updateList:closed', 'updateList:name', 'updateMember', 'updateOrganization'."
               },
-              "stickers": {
+              "idMember": {
                 "type": "string",
+                "default": "me",
                 "examples": [
-                  "true",
-                  "false"
+                  "me",
+                  "johndoe",
+                  "60d5f1b3e4b5f67890abcdef"
                 ],
-                "description": "Include sticker data. Use 'true' or 'false'."
+                "description": "The ID or username of the Trello member. Use 'me' to refer to the authenticated user. Defaults to 'me' if not provided."
               },
-              "checklists": {
+              "memberships": {
                 "type": "string",
                 "default": "none",
                 "examples": [
                   "all",
-                  "none"
+                  "me",
+                  "admin,normal"
                 ],
-                "description": "Include checklists: 'all' or 'none'."
+                "description": "Filters boards by the member's membership type. Accepts 'all' or a comma-separated list of: 'active', 'admin', 'deactivated', 'me', 'normal'."
               },
-              "attachments": {
-                "type": "string",
-                "examples": [
-                  "true",
-                  "false",
-                  "cover"
-                ],
-                "description": "Include attachments: 'true' (all), 'false' (none), or 'cover' (card cover only)."
-              },
-              "list_fields": {
-                "type": "string",
-                "default": "all",
-                "description": "Fields for the list: 'all' or comma-separated (e.g., 'name,pos'). Valid: closed, idBoard, name, pos, subscribed."
-              },
-              "board_fields": {
-                "type": "string",
-                "default": "name, desc, descData, closed, idOrganization, pinned, url and prefs",
-                "description": "Fields for the board: 'all' or comma-separated (e.g., 'name,desc'). Valid: closed, dateLastActivity, dateLastView, desc, descData, idOrganization, invitations, invited, labelNames, memberships, name, pinned, powerUps, prefs, shortLink, shortUrl, starred, subscribed, url."
-              },
-              "membersVoted": {
+              "organization": {
                 "type": "string",
                 "examples": [
                   "true",
                   "false"
                 ],
-                "description": "Include data for members who voted. Use 'true' or 'false'."
+                "description": "Determines whether to return organization data for boards. Valid values: 'true' or 'false'."
               },
               "action_fields": {
                 "type": "string",
                 "default": "all",
-                "description": "Fields for actions: 'all' or comma-separated (e.g., 'data,date'). Valid: data, date, idMemberCreator, type."
+                "examples": [
+                  "all",
+                  "data,date",
+                  "idMemberCreator"
+                ],
+                "description": "Specifies fields for returned actions if actions are requested. Accepts 'all' or a comma-separated list: 'data', 'date', 'idMemberCreator', 'type'."
               },
               "actions_limit": {
                 "type": "string",
-                "default": "50",
+                "default": "5",
                 "examples": [
                   "50",
                   "100",
-                  "250"
+                  "0"
                 ],
-                "description": "Maximum actions to return (0-1000)."
+                "description": "The maximum number of actions to return, from 0 to 1000."
               },
-              "member_fields": {
-                "type": "string",
-                "default": "avatarHash,fullName,initials,username",
-                "description": "Fields for members: 'all' or comma-separated (e.g., 'avatarHash,fullName'). Valid: avatarHash, bio, bioData, confirmed, fullName, idPremOrgsAdmin, initials, memberType, products, status, url, username."
-              },
-              "sticker_fields": {
-                "type": "string",
-                "default": "all",
-                "description": "Fields for stickers: 'all' or comma-separated (e.g., 'image,left'). Valid: image, imageScaled, imageUrl, left, rotate, top, zIndex."
-              },
-              "actions_display": {
+              "actions_since": {
                 "type": "string",
                 "examples": [
-                  "true",
-                  "false"
+                  "2023-01-01T00:00:00Z",
+                  "lastView",
+                  "null"
                 ],
-                "description": "Return display-friendly action data. Use 'true' or 'false'."
+                "description": "Filters actions to those that occurred after this date, or accepts 'null' or 'lastView'."
               },
-              "checkItemStates": {
+              "actions_format": {
                 "type": "string",
+                "default": "list",
                 "examples": [
-                  "true",
-                  "false"
+                  "list",
+                  "count",
+                  "minimal"
                 ],
-                "description": "Include check item states. Use 'true' or 'false'."
+                "description": "The format for returned actions. Valid values: 'count', 'list', or 'minimal'."
               },
               "actions_entities": {
                 "type": "string",
@@ -398,103 +530,102 @@
                   "true",
                   "false"
                 ],
-                "description": "Include entities (e.g., card, board, member) for actions. Use 'true' or 'false'."
+                "description": "Determines whether to return entity data for actions. Valid values: 'true' or 'false'."
               },
-              "checklist_fields": {
+              "organization_fields": {
                 "type": "string",
-                "default": "all",
-                "description": "Fields for checklists: 'all' or comma-separated (e.g., 'idBoard,name'). Valid: idBoard, idCard, name, pos."
-              },
-              "attachment_fields": {
-                "type": "string",
-                "default": "all",
-                "description": "Fields for attachments: 'all' or comma-separated (e.g., 'bytes,date'). Valid: bytes, date, edgeColor, idMember, isUpload, mimeType, name, previews, url."
-              },
-              "memberVoted_fields": {
-                "type": "string",
-                "default": "avatarHash,fullName,initials,username",
-                "description": "Fields for members who voted: 'all' or comma-separated (e.g., 'avatarHash,fullName'). Valid: avatarHash, bio, bioData, confirmed, fullName, idPremOrgsAdmin, initials, memberType, products, status, url, username."
-              },
-              "checkItemState_fields": {
-                "type": "string",
-                "default": "all",
-                "description": "Fields for check item states: 'all' or comma-separated (e.g., 'idCheckItem,state'). Valid: idCheckItem, state."
-              },
-              "action_memberCreator_fields": {
-                "type": "string",
-                "default": "avatarHash,fullName,initials,username",
-                "description": "Fields for the action creator: 'all' or comma-separated (e.g., 'avatarHash,fullName'). Valid: avatarHash, bio, bioData, confirmed, fullName, idPremOrgsAdmin, initials, memberType, products, status, url, username."
+                "default": "name and displayName",
+                "examples": [
+                  "all",
+                  "name,displayName",
+                  "products,url,idBoards"
+                ],
+                "description": "Specifies the fields to return for the organization if 'organization' is 'true'. Accepts 'all' or a comma-separated list of field names. Possible field names: 'billableMemberCount', 'desc', 'descData', 'displayName', 'idBoards', 'invitations', 'invited', 'logoHash', 'memberships', 'name', 'powerUps', 'prefs', 'premiumFeatures', 'products', 'url', 'website'."
               }
             }
           },
           "hasFullSchema": true
         },
-        "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD": {
+        "TRELLO_GET_LISTS_BY_ID_LIST": {
           "toolkit": "TRELLO",
-          "tool_slug": "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD",
-          "description": "Retrieves lists from a specified Trello board, with options to filter lists and include card details...",
+          "tool_slug": "TRELLO_GET_LISTS_BY_ID_LIST",
+          "description": "Retrieves a Trello list by its unique ID, optionally including details for its cards and parent boar...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD"
+                "TRELLO_GET_LISTS_BY_ID_LIST"
               ]
             }
           }
         },
-        "TRELLO_UPDATE_CARDS_ID_LIST_BY_ID_CARD": {
+        "TRELLO_UPDATE_LISTS_NAME_BY_ID_LIST": {
           "toolkit": "TRELLO",
-          "tool_slug": "TRELLO_UPDATE_CARDS_ID_LIST_BY_ID_CARD",
-          "description": "Moves a Trello card to a different list on the same Trello board; this operation is idempotent and o...",
+          "tool_slug": "TRELLO_UPDATE_LISTS_NAME_BY_ID_LIST",
+          "description": "Updates the name of an existing Trello list, identified by its ID; this only changes the list's name...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "TRELLO_UPDATE_CARDS_ID_LIST_BY_ID_CARD"
+                "TRELLO_UPDATE_LISTS_NAME_BY_ID_LIST"
               ]
             }
           }
         },
-        "TRELLO_GET_SEARCH_MEMBERS": {
+        "TRELLO_UPDATE_LISTS_POS_BY_ID_LIST": {
           "toolkit": "TRELLO",
-          "tool_slug": "TRELLO_GET_SEARCH_MEMBERS",
-          "description": "Searches Trello members by name, username, or email, optionally scoped to a board or organization.",
+          "tool_slug": "TRELLO_UPDATE_LISTS_POS_BY_ID_LIST",
+          "description": "Changes a Trello list's order on a board to 'top', 'bottom', or a specified numeric position, affect...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "TRELLO_GET_SEARCH_MEMBERS"
+                "TRELLO_UPDATE_LISTS_POS_BY_ID_LIST"
               ]
             }
           }
         },
-        "TRELLO_UPDATE_CARDS_ID_MEMBERS_BY_ID_CARD": {
+        "TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD_BY_FILTER": {
           "toolkit": "TRELLO",
-          "tool_slug": "TRELLO_UPDATE_CARDS_ID_MEMBERS_BY_ID_CARD",
-          "description": "Updates (sets/replaces) the list of members assigned to a Trello card. Pass a single member ID to as...",
+          "tool_slug": "TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD_BY_FILTER",
+          "description": "Retrieves cards from a specified Trello board, filtered by 'all' (all cards), 'closed' (archived onl...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "TRELLO_UPDATE_CARDS_ID_MEMBERS_BY_ID_CARD"
+                "TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD_BY_FILTER"
+              ]
+            }
+          }
+        },
+        "TRELLO_GET_CARDS_BY_ID_CARD": {
+          "toolkit": "TRELLO",
+          "tool_slug": "TRELLO_GET_CARDS_BY_ID_CARD",
+          "description": "Retrieves a Trello card by its ID or shortlink, with options to include related data like actions, a...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TRELLO_GET_CARDS_BY_ID_CARD"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:35:43.285Z",
-        "current_time_utc_epoch_seconds": 1786563343,
+        "current_time_utc": "2026-08-12T20:51:28.799Z",
+        "current_time_utc_epoch_seconds": 1786567888,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "told",
+        "id": "page",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"told\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"page\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -504,6 +635,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_2plHhOiHz_XL"
+    "log_id": "log_hTDfMU7UVJH2"
   }
 }

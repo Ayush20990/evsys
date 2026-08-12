@@ -3,14 +3,19 @@
     "query_id": "workflow-013-q2",
     "workflow_id": 13,
     "workflow_task": "Audit website search and traffic performance, prepare email marketing/contact lists, and send outreach emails for marketing and press engagement.",
-    "query": "get google analytics website traffic report",
-    "required_tools": [
-      "GOOGLE_ANALYTICS_RUN_REPORT"
+    "query": "get contact lists for email marketing",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "BREVO_GET_CONTACT_LISTS"
+        ],
+        "purpose": "fetch existing email contact lists"
+      }
     ],
     "supporting_tools": [
-      "GOOGLE_ANALYTICS_LIST_PROPERTIES"
+      "BREVO_CREATE_CONTACT_LIST"
     ],
-    "rationale": "To audit traffic performance alongside search performance, the agent must run reports from Google Analytics.",
+    "rationale": "required for preparing email marketing and contact lists before launching outreach.",
     "candidate_tools": [
       "BREVO_CREATE_CONTACT_LIST",
       "BREVO_GET_CONTACT_LISTS",
@@ -28,361 +33,472 @@
     ]
   },
   "request": {
-    "query": "get google analytics website traffic report"
+    "query": "get contact lists for email marketing"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "get google analytics website traffic report",
+          "use_case": "get contact lists for email marketing",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Prerequisite]: Discover accessible analytics accounts using GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA (pick an account for scoping).",
-            "[Required] [Prerequisite]: List properties for the chosen account using GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED (select a property; note its reporting time zone for day-boundaries; ensure the filter uses the supported parent/ancestor style).",
-            "[Optional (if dimension/metric apiNames are uncertain)] [Prerequisite]: Inspect available fields using GOOGLE_ANALYTICS_GET_METADATA (choose valid apiNames before building the request).",
-            "[Optional (if request validation fails or many fields/filters are mixed)] [Prerequisite]: Validate dimension/metric combinations using GOOGLE_ANALYTICS_CHECK_COMPATIBILITY (revise fields/filters before retrying).",
-            "[Required] [Step]: Retrieve traffic metrics for the requested window using GOOGLE_ANALYTICS_RUN_REPORT (run totals-only first, then key breakdowns; paginate with limit/offset until all rows are retrieved; split calls if metric/field limits are hit and map any dateRange labels back to requested ranges).",
-            "[Optional (if multiple report shapes are needed)] [Next Step]: Fetch multiple report variants in one call using GOOGLE_ANALYTICS_BATCH_RUN_REPORTS (keep report ordering stable when reading data.reports[]).",
-            "[Optional (if standard reporting is delayed or shows no recent rows)] [Fallback]: Use GOOGLE_ANALYTICS_RUN_REALTIME_REPORT for directional near-live confirmation."
+            "=== MAILCHIMP WORKFLOW ===",
+            "[Required] [Prerequisite]: Retrieve available audiences using MAILCHIMP_GET_LISTS_INFO (capture only minimal identifiers/labels; if many, page with count/offset until total reached).",
+            "[Optional (if you must confirm settings/stats before writing)] [Step]: Validate the selected audience using MAILCHIMP_GET_LIST_INFO (ensure it matches intended use).",
+            "[Optional (if diagnosing unexpected member changes)] [Step]: Review recent list actions using MAILCHIMP_LIST_RECENT_ACTIVITY (sanity check before/after writes).",
+            "[Required] [Step]: Bulk add/update members using MAILCHIMP_BATCH_SUBSCRIBE_OR_UNSUBSCRIBE (set desired status; enable updating existing; include merge fields/tags only when needed).",
+            "[Optional (if the batch runs asynchronously)] [Next Step]: Monitor completion using MAILCHIMP_GET_BATCH_OPERATION_STATUS (treat changes as applied only when finished).",
+            "[Optional (if the batch has row-level failures or volume is small)] [Fallback]: Upsert only failed/few members using MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER (compute subscriber_hash; satisfy required merge-field schema).",
+            "[Optional (for QA/spot checks)] [Next Step]: Verify a sample using MAILCHIMP_SEARCH_MEMBERS or MAILCHIMP_LIST_MEMBERS_INFO (confirm expected status and key fields).",
+            "=== BREVO WORKFLOW ===",
+            "Required Prerequisite: Identify target audiences using BREVO_GET_CONTACT_LISTS (pick the list(s) representing currently subscribed recipients).",
+            "Required Step: Retrieve recipient records using BREVO_GET_ALL_CONTACTS (paginate with offset/limit; optionally narrow with modifiedSince to reduce volume) and confirm the audience is populated.",
+            "Optional (if sender not predetermined) Prerequisite: Select an approved sender using BREVO_GET_ALL_SENDERS (ensure the campaign uses a valid from identity).",
+            "Optional (if content not finalized) Step: Create or update campaign content using BREVO_CREATE_OR_UPDATE_EMAIL_TEMPLATE (produce a reusable template for the campaign).",
+            "Required Step: Find the campaign to reuse using BREVO_LIST_EMAIL_CAMPAIGNS (select the correct draft/ongoing campaign to update).",
+            "Required Step: Validate current settings using BREVO_GET_EMAIL_CAMPAIGN_DETAILS (confirm recipients, sender, and content before changing anything).",
+            "Required Step: Apply recipient list, sender, and template changes using BREVO_UPDATE_EMAIL_CAMPAIGN (get explicit user confirmation before enabling scheduling/sending changes).",
+            "Optional (for verification after updates) Next Step: Re-check configuration using BREVO_GET_EMAIL_CAMPAIGN_DETAILS (ensure the intended recipients and content are set)."
           ],
           "known_pitfalls": [
-            "[GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED] 400 INVALID_ARGUMENT if the filter is missing/malformed; it must be a single string expression scoped to the parent account.",
-            "[GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA] Call can succeed but return zero usable accounts; treat as access/scope and re-check permissions.",
-            "[GOOGLE_ANALYTICS_RUN_REPORT] dimensionValues[].value and metricValues[].value are strings and may be empty/non-numeric; cast defensively and tolerate unexpected tokens.",
-            "[GOOGLE_ANALYTICS_RUN_REPORT] totals[] may be absent (including totals-only queries); also handle missing headers when no dimensions are requested.",
-            "[GOOGLE_ANALYTICS_RUN_REPORT] With multiple dateRanges, rows can be keyed by dateRange label strings; map labels back to the requested ranges before comparison."
+            "=== MAILCHIMP PITFALLS ===",
+            "[MAILCHIMP_GET_LISTS_INFO] Audience list data is nested (not a simple top-level array); parse the nested list collection correctly.",
+            "[MAILCHIMP_GET_LISTS_INFO] Responses can be verbose and may include sensitive contact/profile fields; use fields/exclude_fields and retain only what\u2019s needed.",
+            "[MAILCHIMP_BATCH_SUBSCRIBE_OR_UNSUBSCRIBE] Requests can succeed but still partially fail; check error_count and per-row errors before assuming all updates applied.",
+            "[MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER] subscriber_hash must be MD5 of a normalized (trimmed/lowercased) email; mismatches can cause failed/duplicate upserts.",
+            "[MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER] skip_merge_validation bypasses required merge-field checks; use only if invalid/incomplete profiles are acceptable.",
+            "=== BREVO PITFALLS ===",
+            "[BREVO_GET_ALL_CONTACTS] Per-call limit is capped (observed at 1000); plan for multiple requests to cover the full audience.",
+            "[BREVO_GET_ALL_CONTACTS] Offset pagination is required for full retrieval; stop when a page returns fewer than the requested limit (or empty).",
+            "[BREVO_GET_ALL_CONTACTS] Using modifiedSince can reduce calls but will only return recently changed contacts; avoid relying on it when you need a complete audience snapshot."
           ],
           "reference_workbench_snippets": [
             {
-              "description": "Parse a GOOGLE_ANALYTICS_RUN_REPORT response into typed row dictionaries (dimensions/metrics arrive as strings)",
-              "code": "```python\ndef parse_ga(payload):\n  dims=[h.get('name') for h in (payload.get('dimensionHeaders') or [])]\n  mets=[h.get('name') for h in (payload.get('metricHeaders') or [])]\n  out=[]\n  for row in (payload.get('rows') or []):\n    rec={}\n    dv=row.get('dimensionValues') or []\n    mv=row.get('metricValues') or []\n    for i,k in enumerate(dims): rec[k]=dv[i].get('value') if i<len(dv) else None\n    for i,k in enumerate(mets):\n      v=mv[i].get('value') if i<len(mv) else None\n      try: rec[k]=None if v in (None,'') else (float(v) if '.' in str(v) else int(v))\n      except Exception: rec[k]=v\n    out.append(rec)\n  return out\n```"
+              "description": "Extract batch upsert failures from a saved batch response object",
+              "code": "```python\ndata=(res or {}).get('data') or {}\nfailed=[e for e in (data.get('errors') or []) if e]\nerror_count=data.get('error_count') or 0\n```"
             }
           ],
-          "difficulty": "easy",
           "primary_tool_slugs": [
-            "GOOGLE_ANALYTICS_RUN_REPORT"
+            "MAILCHIMP_GET_LISTS_INFO",
+            "MAILCHIMP_BATCH_SUBSCRIBE_OR_UNSUBSCRIBE",
+            "BREVO_GET_ALL_CONTACTS"
           ],
           "related_tool_slugs": [
-            "GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED",
-            "GOOGLE_ANALYTICS_GET_METADATA",
-            "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY",
-            "GOOGLE_ANALYTICS_RUN_REALTIME_REPORT",
-            "GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA",
-            "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS"
+            "MAILCHIMP_GET_LIST_INFO",
+            "MAILCHIMP_LIST_MEMBERS_INFO",
+            "MAILCHIMP_SEARCH_MEMBERS",
+            "MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER",
+            "MAILCHIMP_GET_BATCH_OPERATION_STATUS",
+            "MAILCHIMP_LIST_RECENT_ACTIVITY",
+            "BREVO_GET_CONTACT_LISTS",
+            "BREVO_GET_ALL_SENDERS",
+            "BREVO_CREATE_OR_UPDATE_EMAIL_TEMPLATE",
+            "BREVO_LIST_EMAIL_CAMPAIGNS",
+            "BREVO_GET_EMAIL_CAMPAIGN_DETAILS",
+            "BREVO_UPDATE_EMAIL_CAMPAIGN"
           ],
           "toolkits": [
-            "google_analytics"
+            "mailchimp",
+            "brevo"
           ],
-          "plan_id": "d3f5ed6cabaf4f56a6117fa038253042"
+          "plan_id": "c165f783c54f4f20915884ebb66e1fe1,5cbb44023e8b48f9b94f6b8d913499f0"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "google_analytics",
+          "toolkit": "mailchimp",
           "has_active_connection": false,
-          "description": "Google Analytics tracks and reports website traffic, user behavior, and conversion data, enabling marketers to optimize online performance and customer journeys",
-          "status_message": "No Active connection for toolkit=google_analytics. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"google_analytics\") to create a connection BEFORE executing any google_analytics tools."
+          "description": "Mailchimp is an email marketing and automation platform providing campaign templates, audience segmentation, and performance analytics to drive engagement and conversions",
+          "status_message": "No Active connection for toolkit=mailchimp. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"mailchimp\") to create a connection BEFORE executing any mailchimp tools."
+        },
+        {
+          "toolkit": "brevo",
+          "has_active_connection": false,
+          "description": "Brevo (formerly Sendinblue) is an all-in-one email and SMS marketing platform that provides transactional messaging, marketing automation, contact management, and CRM tools to help businesses communicate and engage with their customers.",
+          "status_message": "No Active connection for toolkit=brevo. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"brevo\") to create a connection BEFORE executing any brevo tools."
         }
       ],
       "tool_schemas": {
-        "GOOGLE_ANALYTICS_RUN_REPORT": {
-          "toolkit": "GOOGLE_ANALYTICS",
-          "tool_slug": "GOOGLE_ANALYTICS_RUN_REPORT",
-          "description": "Tool to run a customized GA4 data report. Use when you need event data after specifying dimensions, metrics, and date ranges. IMPORTANT - DIMENSION/METRIC COMPATIBILITY: The Google Analytics Data API has strict compatibility rules between dimensions and metrics. Not all combinations are valid. If you receive a 400 error with a message about incompatible dimensions/metrics, use the GOOGLE_ANALYTICS_CHECK_COMPATIBILITY action first to validate your dimension/metric combinations before running reports. Common incompatibilities include: - Demographic dimensions (userAgeBracket, userGender) with session-scoped dimensions/filters (sessionCampaignName, sessionSource) - Certain user-scoped dimensions with event-scoped metrics For complex queries, consider starting with simpler dimension/metric combinations or use CHECK_COMPATIBILITY to pre-validate your request.",
+        "MAILCHIMP_GET_LISTS_INFO": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_GET_LISTS_INFO",
+          "description": "Get information about all lists in the account.",
           "input_schema": {
             "type": "object",
-            "required": [
-              "property"
-            ],
             "properties": {
-              "limit": {
+              "count": {
                 "type": "integer",
-                "minimum": 1,
-                "examples": [
-                  1000
-                ],
-                "description": "Optional. Number of rows to return. Must be between 1 and 250000."
+                "default": 10,
+                "description": "The number of records to return. Default value is 10. Maximum value is 1000 "
+              },
+              "email": {
+                "type": "string",
+                "description": "Restrict results to lists that include a specific subscriber\"s email address. "
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A comma-separated list of fields to return. Reference parameters of sub-objects with dot notation. "
               },
               "offset": {
                 "type": "integer",
-                "minimum": 0,
-                "examples": [
-                  0
-                ],
-                "description": "Optional. 0-based start row for pagination. Must be >= 0."
+                "default": 0,
+                "description": "Used for [pagination](https://mailchimp.com/developer/marketing/docs/methods-parameters/#pagination), this it the number of records from a collection to skip. Default value is 0. "
               },
-              "metrics": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true
-                },
-                "examples": [
-                  {
-                    "name": "activeUsers"
-                  },
-                  {
-                    "name": "sessions"
-                  },
-                  {
-                    "name": "screenPageViews"
-                  }
+              "sort_dir": {
+                "enum": [
+                  "ASC",
+                  "DESC"
                 ],
-                "description": "Optional. The metrics to request and display. Maximum 10 metrics per request. Each metric MUST be an object with a required non-empty 'name' field. Common valid metric names: activeUsers, totalUsers, newUsers, sessions, engagedSessions, screenPageViews, eventCount, conversions, userEngagementDuration, engagementRate, bounceRate, averageSessionDuration, sessionsPerUser, screenPageViewsPerSession, purchaseRevenue, totalRevenue, transactions, ecommercePurchases, publisherAdClicks, publisherAdImpressions, totalAdRevenue. Custom metrics use format 'customEvent:parameter_name'. CRITICAL: 'averageEngagementTime' is NOT a valid metric - use 'userEngagementDuration' or 'averageSessionDuration' instead. 'exits' is NOT a valid metric in GA4."
-              },
-              "orderBys": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true
-                },
-                "examples": [
-                  {
-                    "desc": true,
-                    "metric": {
-                      "metricName": "activeUsers"
-                    }
-                  },
-                  {
-                    "desc": false,
-                    "dimension": {
-                      "orderType": "ALPHANUMERIC",
-                      "dimensionName": "country"
-                    }
-                  }
-                ],
-                "description": "Optional. Specify how rows are ordered. Each OrderBy object must have 'desc' (boolean) at the top level and exactly one of: 'metric' (with 'metricName' string), 'dimension' (with 'dimensionName' or 'name' string and optional 'orderType': 'ALPHANUMERIC', 'CASE_INSENSITIVE_ALPHANUMERIC', or 'NUMERIC'), or 'pivot'. Note: For dimension ordering, you can use either 'dimensionName' or 'name' field - both are accepted and normalized. Example for metric ordering: {'desc': true, 'metric': {'metricName': 'activeUsers'}}. Example for dimension ordering: {'desc': false, 'dimension': {'dimensionName': 'country', 'orderType': 'ALPHANUMERIC'}}."
-              },
-              "property": {
                 "type": "string",
-                "examples": [
-                  "properties/123456789"
+                "description": "Determines the order direction for sorted results."
+              },
+              "sort_field": {
+                "enum": [
+                  "date_created"
                 ],
-                "description": "Required. The property resource on which to run the report. Format: properties/{property_id} where property_id must be a numeric ID (e.g., 'properties/123456789')."
-              },
-              "cohortSpec": {
-                "type": "object",
-                "description": "Optional. Cohort specification. Requires requesting the cohort dimension.",
-                "additionalProperties": true
-              },
-              "dateRanges": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true
-                },
-                "examples": [
-                  {
-                    "endDate": "2023-01-31",
-                    "startDate": "2023-01-01"
-                  }
-                ],
-                "minItems": 1,
-                "description": "The date ranges to read. Required for standard reports. Each range MUST be an object with required 'startDate' and 'endDate' fields (both must be non-empty). Dates can be in YYYY-MM-DD format or special values like 'today', 'yesterday', '7daysAgo', '30daysAgo'. IMPORTANT: For cohort requests (when cohortSpec is provided), dateRanges must be omitted."
-              },
-              "dimensions": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true
-                },
-                "examples": [
-                  {
-                    "name": "city"
-                  },
-                  {
-                    "name": "date"
-                  },
-                  {
-                    "name": "deviceCategory"
-                  }
-                ],
-                "description": "Optional. The dimensions to request and display. Maximum 9 dimensions per request. Each dimension MUST be an object with a required non-empty 'name' field. Common valid dimension names: date, dateHour, dateHourMinute, year, month, week, day, dayOfWeek, hour, city, cityId, country, countryId, continent, continentId, region, subContinent, deviceCategory, browser, operatingSystem, platform, platformDeviceCategory, screenResolution, sessionSource, sessionMedium, sessionSourceMedium, sessionCampaignName, sessionDefaultChannelGroup, firstUserSource, firstUserMedium, firstUserCampaignName, firstUserDefaultChannelGroup, pagePath, pagePathPlusQueryString, pageTitle, landingPage, hostname, eventName, streamName, userAgeBracket, userGender, language, newVsReturning. Custom dimensions: 'customEvent:parameter_name' or 'customUser:parameter_name'. 'dateRange' is NOT a valid dimension \u2014 use date dimensions (date, dateHour, year, month, etc.) instead. 'exits' is NOT a valid dimension in GA4. COMPATIBILITY: Not all dimensions can be combined with each other or with certain metrics/filters. If you receive a compatibility error, use GOOGLE_ANALYTICS_CHECK_COMPATIBILITY to validate combinations, or see https://developers.google.com/analytics/devguides/reporting/data/v1/compatibility"
-              },
-              "comparisons": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true
-                },
-                "description": "Optional. The comparison configuration. Adds a comparison column to the response."
-              },
-              "currencyCode": {
                 "type": "string",
-                "examples": [
-                  "USD"
-                ],
-                "description": "Optional. The currency code to apply, in ISO 4217 format. Defaults to property currency."
+                "description": "Returns files sorted by the specified field."
               },
-              "metricFilter": {
-                "type": "object",
-                "description": "Optional. Filter expression to restrict rows by metric values. Applied after aggregation. IMPORTANT: Only use metric field names here (e.g., 'activeUsers', 'sessions', 'ecommercePurchases', 'purchaseRevenue'). Do NOT use dimension names in metricFilter - if you need to filter by a dimension (e.g., 'country', 'city', 'pagePath'), use dimensionFilter instead. The action validates that only metric names are used in metricFilter and will reject dimension names with a clear error. Structure: {'filter': {'fieldName': '<metric_name>', 'numericFilter': {'operation': 'GREATER_THAN', 'value': {'int64Value': '0'}}}} or use 'andGroup'/'orGroup' for multiple conditions.",
-                "additionalProperties": true
-              },
-              "keepEmptyRows": {
-                "type": "boolean",
-                "description": "Optional. If true, rows with all zero metrics will be returned; otherwise omitted."
-              },
-              "dimensionFilter": {
-                "type": "object",
-                "description": "Optional. Filter expression to restrict rows by dimension values. IMPORTANT: Only use dimension field names here (e.g., 'country', 'city', 'date', 'deviceCategory', 'pagePath'). Do NOT use metric names in dimensionFilter - if you need to filter by a metric (e.g., 'activeUsers', 'sessions', 'ecommercePurchases'), use metricFilter instead. Structure: {'filter': {'fieldName': '<dimension_name>', 'stringFilter': {...}}} or use 'andGroup'/'orGroup' for multiple conditions. COMPATIBILITY WARNING: Dimension filters must be compatible with the dimensions in your request. For example, filtering on 'sessionCampaignName' while using demographic dimensions (userAgeBracket, userGender) will fail. The filter field creates an implicit dimension that must be compatible with all other dimensions and metrics. Use GOOGLE_ANALYTICS_CHECK_COMPATIBILITY to verify your filter dimensions work with your requested dimensions/metrics.",
-                "additionalProperties": true
-              },
-              "metricAggregations": {
+              "exclude_fields": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 },
-                "examples": [
-                  "TOTAL"
-                ],
-                "description": "Optional. Aggregation types to include over metrics, e.g., 'TOTAL', 'MINIMUM', 'MAXIMUM'."
+                "description": "A comma-separated list of fields to exclude. Reference parameters of sub-objects with dot notation. "
               },
-              "returnPropertyQuota": {
+              "since_date_created": {
+                "type": "string",
+                "description": "Restrict results to lists created after the set date. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
+              },
+              "before_date_created": {
+                "type": "string",
+                "description": "Restrict response to lists created before the set date. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
+              },
+              "has_ecommerce_store": {
                 "type": "boolean",
-                "description": "Optional. If true, include the property's current quota state in the response."
+                "description": "Restrict results to lists that contain an active, connected, undeleted ecommerce store. "
               },
-              "removed_dimensions_internal": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Internal field to store filtered dimension names for execution message. Not sent to API."
+              "include_total_contacts": {
+                "type": "boolean",
+                "description": "Return the total_contacts field in the stats response, which contains an approximate count of all contacts in any state. "
+              },
+              "since_campaign_last_sent": {
+                "type": "string",
+                "description": "Restrict results to lists created after the last campaign send date. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
+              },
+              "before_campaign_last_sent": {
+                "type": "string",
+                "description": "Restrict results to lists created before the last campaign send date. Uses ISO 8601 time format: 2015-10-21T15:41:36+00:00. "
               }
             }
           },
           "hasFullSchema": true
         },
-        "GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED": {
-          "toolkit": "GOOGLE_ANALYTICS",
-          "tool_slug": "GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED",
-          "description": "Tool to list GA4 properties based on filter criteria. Use when you need to find properties under a specific parent account or with specific firebase projects. Supports pagination and including soft-deleted properties.",
+        "MAILCHIMP_BATCH_SUBSCRIBE_OR_UNSUBSCRIBE": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_BATCH_SUBSCRIBE_OR_UNSUBSCRIBE",
+          "description": "Batch subscribe or unsubscribe list members.",
           "input_schema": {
             "type": "object",
             "required": [
-              "filter"
+              "list_id",
+              "members"
             ],
             "properties": {
-              "filter": {
+              "list_id": {
                 "type": "string",
-                "examples": [
-                  "parent:accounts/123456789",
-                  "ancestor:accounts/123456789"
-                ],
-                "description": "Required. Expression for filtering the results. Fields eligible for filtering: `parent:` (resource name of parent account/property), `ancestor:` (resource name of parent account), or `firebase_project:` (id or number of linked firebase project). Examples: 'parent:accounts/123' (account with id 123), 'parent:properties/123' (property with id 123), 'ancestor:accounts/123' (account with id 123), 'firebase_project:project-id' (firebase project with id project-id), 'firebase_project:123' (firebase project with number 123)."
+                "description": "The unique ID for the list."
               },
-              "pageSize": {
+              "members": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "An array of member objects. Each object must contain 'email_address' (string) and 'status' (one of: 'subscribed', 'unsubscribed', 'cleaned', 'pending', 'transactional'). Optional fields include: 'merge_fields' (dict with field tags like FNAME, LNAME), 'tags' (list of tag names), 'vip' (bool), 'language' (string), 'email_type' ('html' or 'text'), 'ip_signup' and 'ip_opt' (strings). Up to 500 members may be added or updated with each API call."
+              },
+              "sync_tags": {
+                "type": "boolean",
+                "description": "Whether this batch operation will replace all existing tags with tags in request. "
+              },
+              "update_existing": {
+                "type": "boolean",
+                "description": "Whether this batch operation will change existing members' subscription status and data. Set to true to update existing members, false to only add new members. Defaults to false."
+              },
+              "skip_duplicate_check": {
+                "type": "boolean",
+                "description": "If skip_duplicate_check is true, we will ignore duplicates sent in the request when using the batch sub/unsub on the lists endpoint. The status of the first appearance in the request will be saved. This defaults to false. "
+              },
+              "skip_merge_validation": {
+                "type": "boolean",
+                "description": "If skip_merge_validation is true, member data will be accepted without merge field values, even if the merge field is usually required. This defaults to false. "
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "BREVO_GET_ALL_CONTACTS": {
+          "toolkit": "BREVO",
+          "tool_slug": "BREVO_GET_ALL_CONTACTS",
+          "description": "This tool retrieves all contacts from your Brevo account with pagination and filtering based on modification/creation dates, list IDs, segment IDs, and contact attributes. For complete retrieval, iterate pages by incrementing `offset` by `limit` on each call until no more records are returned; a single call returns at most `limit` contacts.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "sort": {
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "type": "string",
+                "default": "desc",
+                "description": "Sort the results in the ascending/descending order of record creation."
+              },
+              "limit": {
                 "type": "integer",
-                "maximum": 200,
+                "default": 50,
+                "maximum": 1000,
                 "minimum": 1,
-                "examples": [
-                  50
-                ],
-                "description": "Optional. Maximum number of properties to return (1-200). Default is 50."
+                "description": "Number of documents per page"
               },
-              "pageToken": {
+              "offset": {
+                "type": "integer",
+                "default": 0,
+                "minimum": 0,
+                "description": "Index of the first document of the page"
+              },
+              "listIds": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "description": "List of list IDs to filter contacts. Cannot be used together with segment_id."
+              },
+              "segmentId": {
+                "type": "integer",
+                "description": "ID of the segment to filter contacts. Cannot be used together with list_ids."
+              },
+              "createdSince": {
                 "type": "string",
                 "examples": [
-                  "token123"
+                  "2021-09-07T19:20:30+01:00"
                 ],
-                "description": "Optional. Token from previous ListProperties call to retrieve the next page."
+                "description": "Filter contacts created after a given UTC date-time. Format: YYYY-MM-DDTHH:mm:ss.SSSZ or YYYY-MM-DDTHH:mm:ss+HH:MM"
               },
-              "showDeleted": {
-                "type": "boolean",
-                "description": "Optional. Whether to include soft-deleted (trashed) properties. Default is false."
+              "modifiedSince": {
+                "type": "string",
+                "examples": [
+                  "2020-09-20T19:20:30+01:00"
+                ],
+                "description": "Filter contacts modified after a given UTC date-time. Format: YYYY-MM-DDTHH:mm:ss.SSSZ or YYYY-MM-DDTHH:mm:ss+HH:MM"
               }
             }
           },
           "hasFullSchema": true
         },
-        "GOOGLE_ANALYTICS_GET_METADATA": {
-          "toolkit": "GOOGLE_ANALYTICS",
-          "tool_slug": "GOOGLE_ANALYTICS_GET_METADATA",
-          "description": "Tool to get metadata for dimensions, metrics, and comparisons for a GA4 property. Use to discover available fields before building a report \u2014 always derive dimension/metric apiNames from this output rather than hardcoding from GA4 UI labels, which differ. Available fields vary per property; skip validation and downstream report tools like GOOGLE_ANALYTICS_RUN_REPORT return 400 INVALID_ARGUMENT on incompatible or invalid field combinations. Response can contain hundreds of fields; filter to relevant subset before passing to downstream logic.",
+        "MAILCHIMP_GET_LIST_INFO": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_GET_LIST_INFO",
+          "description": "Get information about a specific list in your Mailchimp account. Results include list members who have signed up but haven't confirmed their subscription yet and unsubscribed or cleaned.",
           "input_schema": {
             "type": "object",
             "required": [
-              "name"
+              "list_id"
             ],
             "properties": {
-              "name": {
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A comma-separated list of fields to return. Reference parameters of sub-objects with dot notation. "
+              },
+              "list_id": {
                 "type": "string",
-                "examples": [
-                  "properties/123456789/metadata"
-                ],
-                "description": "Resource name of the metadata to retrieve. Format: properties/{property_id}/metadata. Use property_id=0 to return only universal (non-custom) metadata."
+                "description": "The unique ID for the list."
+              },
+              "exclude_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "A comma-separated list of fields to exclude. Reference parameters of sub-objects with dot notation. "
+              },
+              "include_total_contacts": {
+                "type": "boolean",
+                "description": "Return the total_contacts field in the stats response, which contains an approximate count of all contacts in any state. "
               }
             }
           },
           "hasFullSchema": true
         },
-        "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY": {
-          "toolkit": "GOOGLE_ANALYTICS",
-          "tool_slug": "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY",
-          "description": "Tool to list dimensions and metrics compatible with a GA4 report request. Use when you need to valid...",
+        "MAILCHIMP_LIST_MEMBERS_INFO": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_LIST_MEMBERS_INFO",
+          "description": "Get information about members in a specific Mailchimp list.",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY"
+                "MAILCHIMP_LIST_MEMBERS_INFO"
               ]
             }
           }
         },
-        "GOOGLE_ANALYTICS_RUN_REALTIME_REPORT": {
-          "toolkit": "GOOGLE_ANALYTICS",
-          "tool_slug": "GOOGLE_ANALYTICS_RUN_REALTIME_REPORT",
-          "description": "Tool to run a customized realtime report of Google Analytics event data. Use when you need realtime ...",
+        "MAILCHIMP_SEARCH_MEMBERS": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_SEARCH_MEMBERS",
+          "description": "Search for list members. This search can be restricted to a specific list, or can be used to search ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GOOGLE_ANALYTICS_RUN_REALTIME_REPORT"
+                "MAILCHIMP_SEARCH_MEMBERS"
               ]
             }
           }
         },
-        "GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA": {
-          "toolkit": "GOOGLE_ANALYTICS",
-          "tool_slug": "GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA",
-          "description": "Tool to list all Google Analytics accounts accessible by the caller using v1beta API. Use when you n...",
+        "MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER",
+          "description": "Add or update a list member (subscriber) in a Mailchimp audience/list. This is an upsert operation: ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA"
+                "MAILCHIMP_ADD_OR_UPDATE_LIST_MEMBER"
               ]
             }
           }
         },
-        "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS": {
-          "toolkit": "GOOGLE_ANALYTICS",
-          "tool_slug": "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS",
-          "description": "Tool to return multiple analytics data reports in a batch. Use when you need to fetch multiple repor...",
+        "MAILCHIMP_GET_BATCH_OPERATION_STATUS": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_GET_BATCH_OPERATION_STATUS",
+          "description": "Get the status of a batch operation. Retrieves details about a specific batch operation including it...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS"
+                "MAILCHIMP_GET_BATCH_OPERATION_STATUS"
+              ]
+            }
+          }
+        },
+        "MAILCHIMP_LIST_RECENT_ACTIVITY": {
+          "toolkit": "MAILCHIMP",
+          "tool_slug": "MAILCHIMP_LIST_RECENT_ACTIVITY",
+          "description": "Get up to the previous 180 days of daily detailed aggregated activity stats for a list, not includin...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MAILCHIMP_LIST_RECENT_ACTIVITY"
+              ]
+            }
+          }
+        },
+        "BREVO_GET_CONTACT_LISTS": {
+          "toolkit": "BREVO",
+          "tool_slug": "BREVO_GET_CONTACT_LISTS",
+          "description": "Retrieves all contact lists from your Brevo account with pagination support. Returns list IDs, names...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BREVO_GET_CONTACT_LISTS"
+              ]
+            }
+          }
+        },
+        "BREVO_GET_ALL_SENDERS": {
+          "toolkit": "BREVO",
+          "tool_slug": "BREVO_GET_ALL_SENDERS",
+          "description": "This tool retrieves a list of all senders associated with the Brevo account. Senders are the email a...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BREVO_GET_ALL_SENDERS"
+              ]
+            }
+          }
+        },
+        "BREVO_CREATE_OR_UPDATE_EMAIL_TEMPLATE": {
+          "toolkit": "BREVO",
+          "tool_slug": "BREVO_CREATE_OR_UPDATE_EMAIL_TEMPLATE",
+          "description": "This tool creates a new email template or updates an existing one in Brevo. If a 'templateId' is pro...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BREVO_CREATE_OR_UPDATE_EMAIL_TEMPLATE"
+              ]
+            }
+          }
+        },
+        "BREVO_LIST_EMAIL_CAMPAIGNS": {
+          "toolkit": "BREVO",
+          "tool_slug": "BREVO_LIST_EMAIL_CAMPAIGNS",
+          "description": "This tool retrieves a list of all email campaigns associated with the user's Brevo account. It allow...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BREVO_LIST_EMAIL_CAMPAIGNS"
+              ]
+            }
+          }
+        },
+        "BREVO_GET_EMAIL_CAMPAIGN_DETAILS": {
+          "toolkit": "BREVO",
+          "tool_slug": "BREVO_GET_EMAIL_CAMPAIGN_DETAILS",
+          "description": "Tool to retrieve full configuration and content for a specific email campaign. Use when you need com...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BREVO_GET_EMAIL_CAMPAIGN_DETAILS"
+              ]
+            }
+          }
+        },
+        "BREVO_UPDATE_EMAIL_CAMPAIGN": {
+          "toolkit": "BREVO",
+          "tool_slug": "BREVO_UPDATE_EMAIL_CAMPAIGN",
+          "description": "Updates an email campaign in Brevo using its unique identifier.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BREVO_UPDATE_EMAIL_CAMPAIGN"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:37:24.513Z",
-        "current_time_utc_epoch_seconds": 1786563444,
+        "current_time_utc": "2026-08-12T20:52:58.805Z",
+        "current_time_utc_epoch_seconds": 1786567978,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "farm",
+        "id": "ring",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"farm\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"ring\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -392,6 +508,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_qwhnrCaATPV5"
+    "log_id": "log_aEwjPOl-Z2pX"
   }
 }

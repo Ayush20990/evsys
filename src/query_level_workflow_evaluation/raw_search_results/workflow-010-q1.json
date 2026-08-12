@@ -3,14 +3,19 @@
     "query_id": "workflow-010-q1",
     "workflow_id": 10,
     "workflow_task": "Reconcile an organization's QuickBooks bank-account ledger by querying existing transactions, removing or undoing incorrect entries, posting corrected ledger activity, creating adjustment entries, recording a customer payment, and verifying financial reports.",
-    "query": "query existing bank account ledger transactions",
-    "required_tools": [
-      "QUICKBOOKS_QUERY_ENTITIES"
+    "query": "query existing bank account transactions and company ledger entities",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "QUICKBOOKS_QUERY_ENTITIES"
+        ],
+        "purpose": "query existing ledger and transaction entities"
+      }
     ],
     "supporting_tools": [
       "QUICKBOOKS_GET_COMPANY_INFO"
     ],
-    "rationale": "An agent needs to search and query existing ledger entries and entities to review current bank transactions before reconciliation.",
+    "rationale": "The workflow requires retrieving existing transactions and ledger activity, which directly maps to querying entities.",
     "candidate_tools": [
       "QUICKBOOKS_CREATE_JOURNAL_ENTRY",
       "QUICKBOOKS_EXECUTE_BATCH_OPERATION",
@@ -21,281 +26,315 @@
     ]
   },
   "request": {
-    "query": "query existing bank account ledger transactions"
+    "query": "query existing bank account transactions and company ledger entities"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "query existing bank account ledger transactions",
-          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
-          "recommended_plan_steps": [
-            "[Optional (if defining \u201crecent\u201d relative to today)] [Prerequisite]: Get the current date using MERCURY_MCP_GET_CURRENT_DATE (derive a date window for filters).",
-            "[Required] [Step]: Fetch available accounts and balances using MERCURY_MCP_GET_ACCOUNTS (identify the target account).",
-            "[Optional (if you need details for one selected account)] [Step]: Fetch the chosen account using MERCURY_MCP_GET_ACCOUNT (confirm the selected account\u2019s attributes).",
-            "[Required] [Step]: List recent transactions using MERCURY_MCP_LIST_TRANSACTIONS (apply date/status filters and a conservative limit).",
-            "[Required (if page.nextPage is returned)] [Step]: Paginate MERCURY_MCP_LIST_TRANSACTIONS (pass page.nextPage as start_after until nextPage is absent).",
-            "[Optional (if a specific transaction needs drilldown)] [Next Step]: Fetch a single transaction using MERCURY_MCP_GET_TRANSACTION_BY_ID (retrieve full details)."
-          ],
-          "known_pitfalls": [
-            "[MERCURY_MCP_LIST_TRANSACTIONS] Responses may include page.nextPage; stopping after the first page can omit transactions.",
-            "[MERCURY_MCP_LIST_TRANSACTIONS] If status filtering is omitted, results can include non-final items; confirm whether only completed transactions are desired.",
-            "[MERCURY_MCP_GET_ACCOUNTS] Account objects can include sensitive fields; only surface what\u2019s necessary for the balance/transaction summary."
-          ],
-          "difficulty": "easy",
+          "use_case": "query existing bank account transactions and company ledger entities",
+          "execution_guidance": "Found 7 tools for this query. Look at the schemas to know how to use them.",
           "primary_tool_slugs": [
-            "MERCURY_MCP_GET_ACCOUNTS",
-            "MERCURY_MCP_LIST_TRANSACTIONS",
-            "MERCURY_MCP_GET_CURRENT_DATE"
+            "ZOHO_BOOKS_LIST_BANK_ACCOUNTS",
+            "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT"
           ],
           "related_tool_slugs": [
-            "MERCURY_MCP_GET_ACCOUNT",
-            "MERCURY_MCP_GET_TRANSACTION_BY_ID",
-            "MERCURY_MCP_GET_TREASURY",
-            "MERCURY_MCP_GET_TREASURY_TRANSACTIONS"
+            "ZOHO_BOOKS_LIST_ORGANIZATIONS",
+            "ZOHO_BOOKS_GET_BANK_ACCOUNT",
+            "ZOHO_BOOKS_LIST_BANK_TRANSACTIONS",
+            "QUICKBOOKS_GET_REPORT_ACCOUNT_LIST",
+            "QUICKBOOKS_QUERY_ACCOUNT"
           ],
           "toolkits": [
-            "mercury_mcp"
-          ],
-          "plan_id": "6aace5f682c24c828544bd47487b295e"
+            "zoho_books",
+            "quickbooks"
+          ]
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "mercury_mcp",
+          "toolkit": "zoho_books",
           "has_active_connection": false,
-          "description": "Mercury's official MCP server (Beta) for read-only access to your Mercury business banking data \u2014 accounts, balances, transactions, cards, recipients, statements, and treasury. Cannot initiate transactions or modify account data; all mutations are bl",
-          "status_message": "No Active connection for toolkit=mercury_mcp. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"mercury_mcp\") to create a connection BEFORE executing any mercury_mcp tools."
+          "description": "Zoho Books handles accounting, invoicing, and expense tracking, offering real-time collaboration and integrations within the Zoho ecosystem",
+          "status_message": "No Active connection for toolkit=zoho_books. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"zoho_books\") to create a connection BEFORE executing any zoho_books tools."
+        },
+        {
+          "toolkit": "quickbooks",
+          "has_active_connection": false,
+          "description": "Quickbooks is a cloud-based accounting software that helps you manage your finances, track your income and expenses, and get insights into your business",
+          "status_message": "No Active connection for toolkit=quickbooks. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"quickbooks\") to create a connection BEFORE executing any quickbooks tools."
         }
       ],
       "tool_schemas": {
-        "MERCURY_MCP_GET_ACCOUNTS": {
-          "toolkit": "MERCURY_MCP",
-          "tool_slug": "MERCURY_MCP_GET_ACCOUNTS",
-          "description": "\n    Retrieve a paginated list of accounts. Supports cursor-based pagination with limit, order, start_after, and end_before query parameters.\n\n    \n  ",
+        "ZOHO_BOOKS_LIST_BANK_ACCOUNTS": {
+          "toolkit": "ZOHO_BOOKS",
+          "tool_slug": "ZOHO_BOOKS_LIST_BANK_ACCOUNTS",
+          "description": "Tool to list bank and credit card accounts. Use when retrieving all accounts for reconciliation or overview. Paginate using `page` and `per_page` for large organizations with many accounts.",
           "input_schema": {
             "type": "object",
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "properties": {
-              "limit": {
-                "type": "integer",
-                "default": 1000,
-                "maximum": 1000,
-                "minimum": 1,
-                "description": "Maximum number of results to return. Allowed range: 1 to 1000. Defaults to 1000"
-              },
-              "order": {
-                "enum": [
-                  "asc",
-                  "desc"
-                ],
-                "type": "string",
-                "default": "asc",
-                "description": "Sort order. Can be 'asc' or 'desc'. Defaults to 'asc'"
-              },
-              "end_before": {
-                "type": "string",
-                "format": "uuid",
-                "description": "The ID of the account to end the page before (exclusive). When provided, results will end just before this ID and work backwards. Use this for reverse pagination or to retrieve previous pages. Cannot be combined with start_after."
-              },
-              "start_after": {
-                "type": "string",
-                "format": "uuid",
-                "description": "The ID of the account to start the page after (exclusive). When provided, results will begin with the account immediately following this ID. Use this for standard forward pagination to get the next page of results. Cannot be combined with end_before."
-              }
-            },
-            "additionalProperties": false
-          },
-          "hasFullSchema": true
-        },
-        "MERCURY_MCP_LIST_TRANSACTIONS": {
-          "toolkit": "MERCURY_MCP",
-          "tool_slug": "MERCURY_MCP_LIST_TRANSACTIONS",
-          "description": "\n    Retrieve a paginated list of all transactions across all accounts. Supports advanced filtering by date ranges, status, categories, and cursor-based pagination.\n\n    \n    CRITICAL TRUNCATION RULE - READ THIS FIRST:\n    ================================================================================\n    IF YOU SEE \"Result too long\" IN THE RESPONSE:\n    1. IMMEDIATELY STOP - Do not analyze or use the truncated data\n    2. The data is INCOMPLETE and any analysis will be WRONG\n    3. Start over with a smaller limit (reduce by 50%)\n    4. Paginate through ALL pages until you have complete data\n    5. NEVER provide answers based on truncated results\n    ================================================================================\n\n    MANDATORY PAGINATION FOR COMPLETE RESULTS:\n    When a user asks ANY question requiring complete data (totals, balances, aggregates, \n    \"most/least\", \"all transactions\", comparisons, or any calculation across transactions):\n\n    CRITICAL: Incomplete pagination will produce WRONG ANSWERS for questions about totals, \n    spending categories, balances, minimums, maximums, or \"most/least\". You must fetch everything \n    before calculating or answering.\n\n    1. Start with a limit of 300 transactions.\n    2. You MUST automatically paginate through ALL pages WITHOUT asking the user\n    3. Continue calling listTransactions using the page.nextPage value from each response\n    4. Keep fetching until page.nextPage is not present\n    5. If pagination would take more than 3 tool calls, ask the user to narrow down to a smaller time period\n    6. It is a CRITICAL ERROR to answer before having fetched ALL pages\n\n    FILTERING:\n    - IMPORTANT: WHEN FILTERING BY DATE, ALWAYS CHECK THE CURRENT DATE FIRST and ensure you're using the current year for current year queries\n    - Unless specified otherwise or queried for \"all transactions\", ONLY include transactions with \"status: sent\"\n    - To get transactions for a specific account, use the accountId parameter to filter by accountId\n\n    PAGINATION MECHANICS:\n    - Use the limit parameter to control page size\n    - If page.nextPage is returned, use it as the start_after parameter in your next call\n    - Keep fetching until page.nextPage is null/undefined\n    - The page.nextPage value is a transaction ID to start after (exclusive)\n\n    COMPUTATIONAL REQUIREMENTS:\n    - For any query requiring:\n      - Sums, totals, averages, medians, modes, ranges, most/least, or other aggregations across accounts/transactions\n      - Calculations involving currency amounts\n      - Comparisons of financial metrics\n    - You MUST:\n      - Create an artifact that processes the data programmatically\n      - Parse the JSON response and use JavaScript/Python to calculate\n      - Display intermediate steps for verification\n      - Never rely on mental arithmetic for financial calculations\n    - Example: \"What's my total balance?\"\n      - CORRECT: Create artifact that parses accounts, maps to balances, uses reduce() to sum\n      - INCORRECT: Manually adding up balance values\n\n    For queries about 'last two months' or 'this year', calculate dates based on the actual current date\n    Use the getCurrentDate tool to get the current date.\n\n    Use the getTransaction tool to get more details about a specific transaction.\n  \n  ",
-          "input_schema": {
-            "type": "object",
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "properties": {
-              "end": {
-                "type": "string",
-                "description": "Latest createdAt date to filter for. If it\u2019s not provided, it defaults to current day. Format: YYYY-MM-DD or an ISO 8601 string. Please note that your Mercury transactions on your Dashboard might have their postedAt date displayed, as opposed to createdAt"
-              },
-              "limit": {
-                "type": "integer",
-                "default": 1000,
-                "maximum": 1000,
-                "minimum": 1,
-                "description": "Maximum number of results to return. Allowed range: 1 to 1000. Defaults to 1000"
-              },
-              "order": {
-                "enum": [
-                  "asc",
-                  "desc"
-                ],
-                "type": "string",
-                "default": "asc",
-                "description": "Sort order. Can be 'asc' or 'desc'. Defaults to 'asc'"
-              },
-              "start": {
-                "type": "string",
-                "description": "Earliest createdAt date to filter for. If not provided, it defaults to the date of your first transaction. Format: YYYY-MM-DD or an ISO 8601 string. Please note that your Mercury transactions on your Dashboard might have their postedAt date displayed, as opposed to createdAt"
-              },
-              "search": {
-                "type": "string",
-                "description": "Search term to look for in transaction descriptions."
-              },
-              "status": {
-                "type": "array",
-                "items": {
-                  "enum": [
-                    "pending",
-                    "sent",
-                    "cancelled",
-                    "failed",
-                    "reversed",
-                    "blocked"
-                  ],
-                  "type": "string"
-                }
-              },
-              "start_at": {
-                "type": "string",
-                "description": "The ID of the resource to start the page at (inclusive). When provided, results will begin with and include the resource with this ID. Use this to retrieve a specific page when you know the exact starting point. Cannot be combined with start_after or end_before."
-              },
-              "accountId": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid",
-                  "description": "ID for a Mercury account."
-                }
-              },
-              "postedEnd": {
-                "type": "string",
-                "description": "Latest postedAt date to filter for. Format: YYYY-MM-DD or an ISO 8601 string"
-              },
-              "categoryId": {
-                "type": "string",
-                "description": "UUID of a custom category. Can be returned from /categories endpoint."
-              },
-              "end_before": {
-                "type": "string",
-                "format": "uuid",
-                "description": "The ID of the transaction to end the page before (exclusive). When provided, results will end just before this ID and work backwards. Use this for reverse pagination or to retrieve previous pages. Cannot be combined with start_after."
-              },
-              "postedStart": {
-                "type": "string",
-                "description": "Earliest postedAt date to filter for. Format: YYYY-MM-DD or an ISO 8601 string"
-              },
-              "start_after": {
-                "type": "string",
-                "format": "uuid",
-                "description": "The ID of the transaction to start the page after (exclusive). When provided, results will begin with the transaction immediately following this ID. Use this for standard forward pagination to get the next page of results. Cannot be combined with end_before."
-              },
-              "mercuryCategory": {
-                "type": "string",
-                "description": "Name of mercuryCategory you want to filter on. Merchant Type in the UI."
-              }
-            },
-            "additionalProperties": false
-          },
-          "hasFullSchema": true
-        },
-        "MERCURY_MCP_GET_CURRENT_DATE": {
-          "toolkit": "MERCURY_MCP",
-          "tool_slug": "MERCURY_MCP_GET_CURRENT_DATE",
-          "description": "Get the current date in the format. Example: Fri Oct 31 2025",
-          "input_schema": {
-            "type": "object",
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "properties": {},
-            "additionalProperties": false
-          },
-          "hasFullSchema": true
-        },
-        "MERCURY_MCP_GET_ACCOUNT": {
-          "toolkit": "MERCURY_MCP",
-          "tool_slug": "MERCURY_MCP_GET_ACCOUNT",
-          "description": "\n    Get account by ID\n\n    \n  ",
-          "input_schema": {
-            "type": "object",
-            "$schema": "http://json-schema.org/draft-07/schema#",
             "required": [
-              "accountId"
+              "organization_id"
             ],
             "properties": {
-              "accountId": {
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  1
+                ],
+                "description": "Page number to fetch (minimum 1)"
+              },
+              "per_page": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  200
+                ],
+                "description": "Number of records per page (minimum 1)"
+              },
+              "filter_by": {
+                "enum": [
+                  "Status.All",
+                  "Status.Active",
+                  "Status.Inactive"
+                ],
                 "type": "string",
-                "format": "uuid",
-                "description": "ID for a Mercury account."
+                "examples": [
+                  "Status.Active"
+                ],
+                "description": "Filter accounts by status. Allowed values: Status.All, Status.Active, Status.Inactive"
+              },
+              "sort_column": {
+                "enum": [
+                  "account_name",
+                  "account_type",
+                  "account_code"
+                ],
+                "type": "string",
+                "examples": [
+                  "account_name"
+                ],
+                "description": "Field to sort accounts by. Allowed values: account_name, account_type, account_code"
+              },
+              "organization_id": {
+                "type": "string",
+                "examples": [
+                  "60000000011"
+                ],
+                "description": "ID of the organization Must match the Zoho Books organization context; cross-org IDs cause request failures."
               }
-            },
-            "additionalProperties": false
+            }
           },
           "hasFullSchema": true
         },
-        "MERCURY_MCP_GET_TRANSACTION_BY_ID": {
-          "toolkit": "MERCURY_MCP",
-          "tool_slug": "MERCURY_MCP_GET_TRANSACTION_BY_ID",
-          "description": "\n    Retrieve a single transaction by its ID. Returns full transaction details including attachments...",
+        "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_GENERAL_LEDGER_REPORT",
+          "description": "Generate a General Ledger report showing all transactions with debits, credits, and running balances. Use when you need a detailed view of all accounting transactions posted to each account.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "string",
+                "description": "Column types to show in the report. Comma-separated list of column names (e.g., 'tx_date,txn_type,doc_num,name,memo,account,debit,credit,balance')."
+              },
+              "sort_by": {
+                "type": "string",
+                "description": "The column type on which to base sorting (e.g., 'tx_date', 'account', 'txn_type'). Default is 'txn_type' if not specified."
+              },
+              "end_date": {
+                "type": "string",
+                "description": "End date for the report period in YYYY-MM-DD format."
+              },
+              "class_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of class IDs to filter the report. If not provided, the report includes all classes. Each ID should be the Class.Id value (e.g., ['1', '2'])."
+              },
+              "date_macro": {
+                "enum": [
+                  "Today",
+                  "Yesterday",
+                  "This Week",
+                  "Last Week",
+                  "This Week-to-date",
+                  "Last Week-to-date",
+                  "Next Week",
+                  "Next 4 Weeks",
+                  "This Month",
+                  "Last Month",
+                  "This Month-to-date",
+                  "Last Month-to-date",
+                  "Next Month",
+                  "This Fiscal Quarter",
+                  "Last Fiscal Quarter",
+                  "This Fiscal Quarter-to-date",
+                  "Last Fiscal Quarter-to-date",
+                  "Next Fiscal Quarter",
+                  "This Fiscal Year",
+                  "Last Fiscal Year",
+                  "This Fiscal Year-to-date",
+                  "Last Fiscal Year-to-date",
+                  "Next Fiscal Year"
+                ],
+                "type": "string",
+                "description": "Predefined date range. Use if you want the report to cover a standard report date range; otherwise, use start_date and end_date to cover an explicit report date range."
+              },
+              "sort_order": {
+                "enum": [
+                  "ascend",
+                  "descend"
+                ],
+                "type": "string",
+                "description": "The sort order for rows (ascending or descending). Default is ascending."
+              },
+              "start_date": {
+                "type": "string",
+                "description": "Start date for the report period in YYYY-MM-DD format."
+              },
+              "vendor_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of vendor IDs to filter the report. If not provided, the report includes all vendors. Each ID should be the Vendor.Id value (e.g., ['1', '3'])."
+              },
+              "account_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of account IDs to filter the report. If not provided, the report includes all accounts. Each ID should be the Account.Id value from the Account object (e.g., ['1', '35', '82'])."
+              },
+              "account_type": {
+                "type": "string",
+                "description": "Account type from which to include transactions (e.g., 'Bank', 'Expense', 'Income')."
+              },
+              "customer_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of customer IDs to filter the report. If not provided, the report includes all customers. Each ID should be the Customer.Id value (e.g., ['1', '5'])."
+              },
+              "department_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of department IDs to filter the report. If not provided, the report includes all departments. Filters report contents to include information for specified departments if so configured in the company file."
+              },
+              "accounting_method": {
+                "enum": [
+                  "Cash",
+                  "Accrual"
+                ],
+                "type": "string",
+                "description": "The accounting method used in the report (Cash or Accrual)."
+              },
+              "source_account_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of source account IDs to filter the report. Each ID should be the Account.Id value for the source account."
+              },
+              "source_account_type": {
+                "type": "string",
+                "description": "Source account type for transaction filtering."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZOHO_BOOKS_LIST_ORGANIZATIONS": {
+          "toolkit": "ZOHO_BOOKS",
+          "tool_slug": "ZOHO_BOOKS_LIST_ORGANIZATIONS",
+          "description": "Tool to list all organizations for the authenticated user. Use when you need to obtain the organization_id for subsequent API calls.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "ZOHO_BOOKS_GET_BANK_ACCOUNT": {
+          "toolkit": "ZOHO_BOOKS",
+          "tool_slug": "ZOHO_BOOKS_GET_BANK_ACCOUNT",
+          "description": "Tool to fetch details of a specific bank account. Use when you need full metadata of one account by ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "MERCURY_MCP_GET_TRANSACTION_BY_ID"
+                "ZOHO_BOOKS_GET_BANK_ACCOUNT"
               ]
             }
           }
         },
-        "MERCURY_MCP_GET_TREASURY": {
-          "toolkit": "MERCURY_MCP",
-          "tool_slug": "MERCURY_MCP_GET_TREASURY",
-          "description": "\n    Retrieve a paginated list of all treasury accounts associated with the authenticated organizati...",
+        "ZOHO_BOOKS_LIST_BANK_TRANSACTIONS": {
+          "toolkit": "ZOHO_BOOKS",
+          "tool_slug": "ZOHO_BOOKS_LIST_BANK_TRANSACTIONS",
+          "description": "Tool to list bank transactions with optional filters. Use when you need to retrieve transactions for...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "MERCURY_MCP_GET_TREASURY"
+                "ZOHO_BOOKS_LIST_BANK_TRANSACTIONS"
               ]
             }
           }
         },
-        "MERCURY_MCP_GET_TREASURY_TRANSACTIONS": {
-          "toolkit": "MERCURY_MCP",
-          "tool_slug": "MERCURY_MCP_GET_TREASURY_TRANSACTIONS",
-          "description": "\n    Retrieve paginated treasury transactions for a specific treasury account.\n\n    \n  ",
+        "QUICKBOOKS_GET_REPORT_ACCOUNT_LIST": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_GET_REPORT_ACCOUNT_LIST",
+          "description": "Retrieve the AccountList report from QuickBooks showing a list of all accounts. This report displays...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "MERCURY_MCP_GET_TREASURY_TRANSACTIONS"
+                "QUICKBOOKS_GET_REPORT_ACCOUNT_LIST"
+              ]
+            }
+          }
+        },
+        "QUICKBOOKS_QUERY_ACCOUNT": {
+          "toolkit": "QUICKBOOKS",
+          "tool_slug": "QUICKBOOKS_QUERY_ACCOUNT",
+          "description": "Query Account entities in QuickBooks using SQL-like syntax. IMPORTANT: Queries the Account entity ON...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "QUICKBOOKS_QUERY_ACCOUNT"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:36:51.192Z",
-        "current_time_utc_epoch_seconds": 1786563411,
+        "current_time_utc": "2026-08-12T20:52:23.279Z",
+        "current_time_utc_epoch_seconds": 1786567943,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "lost",
+        "id": "gave",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"lost\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"gave\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
-        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
-        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+        "Follow these steps carefully to begin the task:",
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
       ],
       "success": true,
       "error": null
     },
     "error": null,
-    "log_id": "log_CP6TEuP1woZr"
+    "log_id": "log_4FbKb8MiwSio"
   }
 }

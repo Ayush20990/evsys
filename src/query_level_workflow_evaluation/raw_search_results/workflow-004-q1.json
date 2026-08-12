@@ -3,14 +3,25 @@
     "query_id": "workflow-004-q1",
     "workflow_id": 4,
     "workflow_task": "Publish approved carousel content from a Trello workflow to LinkedIn, add a first comment, update Trello status/logs, and adjust the Trello board workflow structure.",
-    "query": "publish post to LinkedIn",
-    "required_tools": [
-      "LINKEDIN_CREATE_LINKED_IN_POST"
+    "query": "post carousel content to LinkedIn and add a comment",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "LINKEDIN_CREATE_LINKED_IN_POST"
+        ],
+        "purpose": "publish the carousel post"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "LINKEDIN_CREATE_COMMENT_ON_POST"
+        ],
+        "purpose": "add the first comment"
+      }
     ],
     "supporting_tools": [
-      "LINKEDIN_CREATE_COMMENT_ON_POST"
+      "LINKEDIN_GET_POST_CONTENT"
     ],
-    "rationale": "An agent needs to create the primary LinkedIn post before it can add any comments to it.",
+    "rationale": "This query covers the LinkedIn publishing portion of the workflow, requiring both post creation and comment addition.",
     "candidate_tools": [
       "LINKEDIN_CREATE_COMMENT_ON_POST",
       "LINKEDIN_CREATE_LINKED_IN_POST",
@@ -25,32 +36,41 @@
     ]
   },
   "request": {
-    "query": "publish post to LinkedIn"
+    "query": "post carousel content to LinkedIn and add a comment"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "publish post to LinkedIn",
+          "use_case": "post carousel content to LinkedIn and add a comment",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required (if author URN unknown)] [Prerequisite]: Action using LINKEDIN_GET_MY_INFO (resolve authenticated member and derive the person author URN needed for posting).",
-            "[Optional (if posting as an organization/page)] [Prerequisite]: Action using LINKEDIN_GET_COMPANY_INFO (select an organization author URN you have permission to post as; otherwise continue as a person).",
-            "[Optional (if attaching an image)] [Prerequisite]: Action using LINKEDIN_REGISTER_IMAGE_UPLOAD (register upload to obtain an asset/image URN; upload bytes to the returned upload URL outside the toolkit).",
-            "[Optional (if the intent is a URL/article share)] [Step]: Action using LINKEDIN_CREATE_ARTICLE_OR_URL_SHARE (publish a share post with visibility instead of a text-only post).",
-            "[Required (before public/irreversible write)] [Prerequisite]: Action using LINKEDIN_CREATE_LINKED_IN_POST (assemble final text/media/visibility and obtain explicit user approval before submitting).",
-            "[Required] [Step]: Action using LINKEDIN_CREATE_LINKED_IN_POST (publish with selected author URN and optional asset URN(s); persist the durable post identifier from the response).",
-            "[Optional (for verification)] [Next Step]: Action using LINKEDIN_GET_POST_CONTENT (best-effort read-back using the stored post identifier; treat read failures as non-blocking if creation succeeded).",
-            "[Optional (if undo is required)] [Next Step]: Action using LINKEDIN_DELETE_POST (delete the created post using the stored durable post identifier).",
-            "[Required (if LINKEDIN_CREATE_LINKED_IN_POST returns HTTP 429)] [Fallback]: Action using LINKEDIN_CREATE_LINKED_IN_POST (honor Retry-After/backoff, reduce burst rate, then retry once)."
+            "[Optional (if posting identity unknown)] [Prerequisite]: Resolve author using LINKEDIN_GET_MY_INFO; if posting as an organization, best-effort confirm eligibility using LINKEDIN_GET_COMPANY_INFO.",
+            "[Required] [Prerequisite]: Get explicit user approval for final commentary (including mentions), visibility, and lifecycleState for LINKEDIN_CREATE_LINKED_IN_POST (default to DRAFT unless publish is explicitly approved).",
+            "[Optional (if images need conversion/normalization)] [Prerequisite]: Prepare per-image bytes plus MIME type using COMPOSIO_REMOTE_WORKBENCH (avoid assumptions about local files being present).",
+            "[Required] [Prerequisite]: For each image, start upload using LINKEDIN_INITIALIZE_IMAGE_UPLOAD, then PUT bytes to the returned upload URL via COMPOSIO_REMOTE_WORKBENCH and retain the returned media reference for attachment.",
+            "[Fallback (if LINKEDIN_INITIALIZE_IMAGE_UPLOAD fails or required fields mismatch)] [Prerequisite]: Use LINKEDIN_REGISTER_IMAGE_UPLOAD per image, PUT bytes to the returned upload URL via COMPOSIO_REMOTE_WORKBENCH, and retain the returned asset reference.",
+            "[Required] [Step]: Create the multi-image post using LINKEDIN_CREATE_LINKED_IN_POST (author/visibility/lifecycleState/commentary + images[] with required per-image fields such as name/mimetype and the attachable reference); store the returned post identifier; if attachments fail validation, retry as text-only (draft/publish per approval).",
+            "[Optional (for verification/debugging)] [Next Step]: Fetch the created entity using LINKEDIN_GET_POST_CONTENT (best-effort; lack of read permission may block retrieval).",
+            "[Optional (if user approves cleanup)] [Next Step]: Remove the created post using LINKEDIN_DELETE_POST."
           ],
           "known_pitfalls": [
-            "[LINKEDIN_GET_MY_INFO] Can return HTTP 429 with an application/day throttle (e.g., serviceErrorCode 101), blocking author URN derivation and therefore posting.",
-            "[LINKEDIN_GET_COMPANY_INFO] Organization/page lookup may return HTTP 403 when required org permissions are missing; org-authored posting can then fail validation.",
-            "[LINKEDIN_CREATE_LINKED_IN_POST] Commentary length beyond roughly 3000 characters can trigger HTTP 400 validation errors.",
-            "[LINKEDIN_CREATE_LINKED_IN_POST] Image attachment can fail with storage/download HTTP 404 when the image reference is not a valid tool-managed upload/asset; prefer the asset URN from LINKEDIN_REGISTER_IMAGE_UPLOAD.",
-            "[LINKEDIN_GET_POST_CONTENT] Verification reads can fail with HTTP 403 even immediately after a successful create; do not treat this as a publish failure."
+            "[LINKEDIN_GET_MY_INFO] Can return 429 (daily throttle); retries may not succeed until the service resets.",
+            "[LINKEDIN_GET_COMPANY_INFO] Can fail with 403 Forbidden when required organization-admin scopes are missing.",
+            "[LINKEDIN_CREATE_LINKED_IN_POST] Attachment validation is strict; non-resolvable images[].s3key or mismatched media references can surface as storage/download 404-style errors.",
+            "[LINKEDIN_CREATE_LINKED_IN_POST] Commentary may fail beyond ~3000 characters; can also return 422-style duplicate-content errors or 426-style version-not-active blocks.",
+            "[LINKEDIN_GET_POST_CONTENT] Can return 403 Forbidden even immediately after creation; treat verification as best-effort, not proof of failure."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Upload image bytes to a platform-provided upload URL (out-of-band PUT) and accept common success statuses.",
+              "code": "```python\nimport requests\nresp=requests.put(\"<upload_url>\",data=b\"<bytes>\",headers={\"Content-Type\":\"image/png\"},timeout=60)\nprint(resp.status_code)\nassert resp.status_code in (200,201,204)\nresp.raise_for_status()\n```"
+            },
+            {
+              "description": "Parse LINKEDIN_REGISTER_IMAGE_UPLOAD response to extract upload URL and asset reference robustly.",
+              "code": "```python\nd=resp.get(\"data\",{})\nm=(d.get(\"upload_mechanism\") or {}).get(\"com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest\",{})\nupload_url=d.get(\"upload_url\") or m.get(\"uploadUrl\")\nasset_ref=d.get(\"asset_urn\")\nassert upload_url and asset_ref\n```"
+            }
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
@@ -58,16 +78,16 @@
           ],
           "related_tool_slugs": [
             "LINKEDIN_GET_MY_INFO",
-            "LINKEDIN_REGISTER_IMAGE_UPLOAD",
+            "LINKEDIN_INITIALIZE_IMAGE_UPLOAD",
             "LINKEDIN_GET_POST_CONTENT",
+            "LINKEDIN_REGISTER_IMAGE_UPLOAD",
             "LINKEDIN_DELETE_POST",
-            "LINKEDIN_GET_COMPANY_INFO",
-            "LINKEDIN_CREATE_ARTICLE_OR_URL_SHARE"
+            "LINKEDIN_GET_COMPANY_INFO"
           ],
           "toolkits": [
             "linkedin"
           ],
-          "plan_id": "41154d2d8339407f84fc2b823e847831"
+          "plan_id": "56300aac72a44d8fbe03f579c138f353"
         }
       ],
       "toolkit_connection_statuses": [
@@ -367,47 +387,23 @@
           },
           "hasFullSchema": true
         },
-        "LINKEDIN_REGISTER_IMAGE_UPLOAD": {
+        "LINKEDIN_INITIALIZE_IMAGE_UPLOAD": {
           "toolkit": "LINKEDIN",
-          "tool_slug": "LINKEDIN_REGISTER_IMAGE_UPLOAD",
-          "description": "Tool to initialize a native LinkedIn image upload for feed shares and return a presigned upload URL plus the resulting digital media asset URN. Use when you need to upload an image to attach to a LinkedIn post. After calling this tool, upload the image bytes to the returned upload_url, then use the asset_urn in LINKEDIN_CREATE_LINKED_IN_POST.",
+          "tool_slug": "LINKEDIN_INITIALIZE_IMAGE_UPLOAD",
+          "description": "Tool to initialize an image upload to LinkedIn and return a presigned upload URL plus the resulting image URN. Use when you need to prepare an image upload for LinkedIn posts. After calling this tool, upload the image bytes to the returned upload_url via PUT request, then use the image URN in CREATE_LINKED_IN_POST action.",
           "input_schema": {
             "type": "object",
             "required": [
-              "owner_urn"
+              "owner"
             ],
             "properties": {
-              "recipe": {
-                "type": "string",
-                "default": "urn:li:digitalmediaRecipe:feedshare-image",
-                "examples": [
-                  "urn:li:digitalmediaRecipe:feedshare-image",
-                  "urn:li:digitalmediaRecipe:companyUpdate-article-image"
-                ],
-                "description": "The digital media recipe URN specifying the processing recipe for the image. Default is 'urn:li:digitalmediaRecipe:feedshare-image' for feed share images (works with a person or organization owner). Other recipes like 'companyUpdate-article-image' are for ads/campaign content and require an Ad Account or Organization owner, not a person - using them with a person owner returns 403 Forbidden."
-              },
-              "owner_urn": {
+              "owner": {
                 "type": "string",
                 "examples": [
-                  "urn:li:person:123456789",
+                  "urn:li:person:F6kGF1Uduq",
                   "urn:li:organization:987654321"
                 ],
-                "description": "URN of the owner entity that will own the uploaded image. Must be in the format 'urn:li:person:{id}' for personal posts or 'urn:li:organization:{id}' for organization posts. Use the GET_USER_INFO action to retrieve the person ID."
-              },
-              "supported_upload_mechanism": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "examples": [
-                  [
-                    "SYNCHRONOUS_UPLOAD"
-                  ],
-                  [
-                    "MULTIPART_UPLOAD"
-                  ]
-                ],
-                "description": "Array of supported upload mechanisms. If not specified, LinkedIn will return the default mechanism (typically SYNCHRONOUS_UPLOAD)."
+                "description": "Owner URN (person or organization) that will own the uploaded image. Must be in the format 'urn:li:person:{id}' for personal posts or 'urn:li:organization:{id}' for organization posts. Use the GET_MY_INFO action to retrieve the person ID."
               }
             }
           },
@@ -423,6 +419,20 @@
             "args": {
               "tool_slugs": [
                 "LINKEDIN_GET_POST_CONTENT"
+              ]
+            }
+          }
+        },
+        "LINKEDIN_REGISTER_IMAGE_UPLOAD": {
+          "toolkit": "LINKEDIN",
+          "tool_slug": "LINKEDIN_REGISTER_IMAGE_UPLOAD",
+          "description": "Tool to initialize a native LinkedIn image upload for feed shares and return a presigned upload URL ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "LINKEDIN_REGISTER_IMAGE_UPLOAD"
               ]
             }
           }
@@ -454,31 +464,17 @@
               ]
             }
           }
-        },
-        "LINKEDIN_CREATE_ARTICLE_OR_URL_SHARE": {
-          "toolkit": "LINKEDIN",
-          "tool_slug": "LINKEDIN_CREATE_ARTICLE_OR_URL_SHARE",
-          "description": "Tool to create an article or URL share on LinkedIn using the UGC Posts API. Use when you need to sha...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "LINKEDIN_CREATE_ARTICLE_OR_URL_SHARE"
-              ]
-            }
-          }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:35:38.127Z",
-        "current_time_utc_epoch_seconds": 1786563338,
+        "current_time_utc": "2026-08-12T20:51:22.762Z",
+        "current_time_utc_epoch_seconds": 1786567882,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "idea",
+        "id": "five",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"idea\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"five\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -488,6 +484,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_8fHXFZcTkrqF"
+    "log_id": "log_7XLH7YwyEZaL"
   }
 }

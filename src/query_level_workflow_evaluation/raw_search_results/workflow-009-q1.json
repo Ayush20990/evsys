@@ -3,12 +3,19 @@
     "query_id": "workflow-009-q1",
     "workflow_id": 9,
     "workflow_task": "Create multimedia travel marketing assets from scripts and stock/generative media, then deliver generated files by email and provide downloadable presentation content.",
-    "query": "search for marketing stock images",
-    "required_tools": [
-      "COMPOSIO_SEARCH_IMAGE"
+    "query": "search and generate stock image assets",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "COMPOSIO_SEARCH_IMAGE"
+        ],
+        "purpose": "search for stock images"
+      }
     ],
-    "supporting_tools": [],
-    "rationale": "The agent needs to find visual assets based on the travel marketing script.",
+    "supporting_tools": [
+      "GEMINI_GENERATE_VIDEOS"
+    ],
+    "rationale": "The workflow requires finding and creating visual media assets, which maps directly to image search.",
     "candidate_tools": [
       "COMPOSIO_SEARCH_IMAGE",
       "GEMINI_GENERATE_VIDEOS",
@@ -17,55 +24,54 @@
     ]
   },
   "request": {
-    "query": "search for marketing stock images"
+    "query": "search and generate stock image assets"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "search for marketing stock images",
+          "use_case": "search and generate stock image assets",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Prerequisite]: Confirm stock-library-only vs broader web sourcing, whether licensing/provenance must be checked, and define 1\u20133 query variants before calling PEXELS_SEARCH_PHOTOS or COMPOSIO_SEARCH_IMAGE.",
-            "[Required] [Step]: Search stock assets using PEXELS_SEARCH_PHOTOS (try query variants/orientation/size) and shortlist direct image file URLs from photo.src.original or photo.src.large2x.",
-            "[Optional (if keyword results miss the desired style)] [Step]: Browse discovery sets using PEXELS_CURATED_PHOTOS to expand candidates and shortlist photo.src.<size> URLs.",
-            "[Optional (if a specific stock asset is selected and you need full metadata/sizes)] [Next Step]: Retrieve details using PEXELS_GET_PHOTO and choose the best photo.src.<size> variant for delivery.",
-            "[Fallback (if PEXELS_SEARCH_PHOTOS is insufficient/unavailable/auth fails, or broader web sourcing is allowed)] [Fallback]: Use COMPOSIO_SEARCH_IMAGE per query variant; paginate for more results and dedupe by images_results[*].original while preferring higher original_width/original_height.",
-            "[Optional (if you must confirm usage terms/attribution for non-stock results)] [Step]: Inspect the source page using COMPOSIO_SEARCH_FETCH_URL_CONTENT from images_results[*].link to locate licensing/terms context."
+            "[Optional (if audience/angles are unclear)] [Prerequisite]: Research themes and keywords using COMPOSIO_SEARCH_TRENDS (inform angles before writing/generating).",
+            "[Required] [Prerequisite]: Draft the creative brief plus hooks/captions/CTAs/hashtags using COMPOSIO_SEARCH_VERCEL_AI_CHAT (align to target platforms, formats, and brand constraints).",
+            "[Required] [Step]: Generate one test static creative using GEMINI_GENERATE_IMAGE (confirm on-brand style before scaling; keep concurrency low).",
+            "[Optional (if multiple placements/angles are needed)] [Step]: Generate additional static variants using GEMINI_GENERATE_IMAGE (one-per-call or small batches for stability).",
+            "[Fallback (if GEMINI_GENERATE_IMAGE errors/timeouts recur)] [Fallback]: Retry GEMINI_GENERATE_IMAGE serially and/or reduce image_size until a valid output returns.",
+            "[Required] [Next Step]: Verify each image response includes a downloadable URL (often under data.image.s3url) and compile links per variant/platform.",
+            "[Optional (if video ads are needed)] [Step]: Start video generation using GEMINI_GENERATE_VIDEOS (store each returned operation_name per concept).",
+            "[Optional (if video was started)] [Next Step]: Poll for completion using GEMINI_WAIT_FOR_VIDEO (backoff) and capture the final downloadable URL (often data.video_file.url or data.video_file.s3url).",
+            "[Required] [Next Step]: Validate deliverables (dimensions/aspect/duration/safety + working links) and deliver the final package of chosen copy and asset URLs."
           ],
           "known_pitfalls": [
-            "[PEXELS_SEARCH_PHOTOS] photo.url is a provider page; use photo.src.* for direct image file URLs.",
-            "[PEXELS_SEARCH_PHOTOS] HTTP 401 Unauthorized typically indicates missing/invalid credentials; switch to COMPOSIO_SEARCH_IMAGE.",
-            "[PEXELS_SEARCH_PHOTOS] Large multi-query outputs may look truncated in previews; extract via per-item fields (photos[*].src.*).",
-            "[COMPOSIO_SEARCH_IMAGE] num is capped at 1\u2013100 per call; use pagination to collect more than 100 results.",
-            "[COMPOSIO_SEARCH_IMAGE] Batched results can nest under results[i].response.data.images_results; extract images_results[*].original and related resolution/license fields."
+            "[COMPOSIO_SEARCH_VERCEL_AI_CHAT] Provider routing may 400 if both \"temperature\" and \"top_p\" are set; set only one.",
+            "[COMPOSIO_SEARCH_VERCEL_AI_CHAT] Long copy/strategy can be truncated; split requests into smaller sections if output cuts off.",
+            "[GEMINI_GENERATE_IMAGE] aspect_ratio is a strict enum; invalid values can error with \"Invalid request data provided\"\u2014use supported ratios only.",
+            "[GEMINI_GENERATE_IMAGE] Download URLs (e.g., data.image.s3url) can be short-lived; persist/download promptly.",
+            "[GEMINI_GENERATE_VIDEOS] Including person_generation/personGeneration can trigger 400 INVALID_ARGUMENT; omit these fields."
           ],
           "reference_workbench_snippets": [
             {
-              "description": "Parse batched COMPOSIO_SEARCH_IMAGE payloads and keep direct image originals",
-              "code": "```python\nimport json,re\nobj=json.loads(BLOB)\nout=[]\nfor item in obj.get('results',[]):\n  data=((item.get('response') or {}).get('data') or {})\n  for im in (data.get('images_results') or []):\n    u=im.get('original')\n    if u and '?' not in u and re.search(r'\\.(jpe?g|png|webp)$',u,re.I):\n      out.append({'original':u,'link':im.get('link'),'source':im.get('source'),'w':im.get('original_width'),'h':im.get('original_height')})\nprint(out[:20])\n```"
-            },
-            {
-              "description": "Flatten a COMPOSIO_SEARCH_IMAGE response into review rows",
-              "code": "```python\nimport json\nobj=json.loads(BLOB)\ndata=((obj.get('results') or [{}])[0].get('response') or {}).get('data') or {}\nimgs=data.get('images_results') or []\nrows=[{'title':i.get('title'),'source':i.get('source'),'original':i.get('original'),'link':i.get('link'),'w':i.get('original_width'),'h':i.get('original_height'),'license':i.get('license_details_url')} for i in imgs]\nprint(rows[:10])\n```"
+              "description": "Extract a downloadable URL from a GEMINI_WAIT_FOR_VIDEO-style response when nested",
+              "code": "```python\ndef extract_url(resp):\n    d=(resp or {}).get('data',resp)\n    if not isinstance(d,dict):\n        return None\n    vf=d.get('video_file') or d.get('file') or {}\n    return d.get('url') or vf.get('url') or vf.get('s3url')\n```"
             }
           ],
-          "difficulty": "easy",
+          "difficulty": "medium",
           "primary_tool_slugs": [
-            "PEXELS_SEARCH_PHOTOS",
-            "COMPOSIO_SEARCH_IMAGE"
+            "GEMINI_GENERATE_IMAGE"
           ],
           "related_tool_slugs": [
-            "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
-            "PEXELS_GET_PHOTO",
-            "PEXELS_CURATED_PHOTOS"
+            "COMPOSIO_SEARCH_VERCEL_AI_CHAT",
+            "GEMINI_GENERATE_VIDEOS",
+            "GEMINI_WAIT_FOR_VIDEO",
+            "COMPOSIO_SEARCH_TRENDS"
           ],
           "toolkits": [
             "composio_search",
-            "pexels"
+            "gemini"
           ],
-          "plan_id": "c758e08f28d543e8b3a55fafacd1aa5e"
+          "plan_id": "9a04d2fe3d3148f0817cff5617192f48"
         }
       ],
       "toolkit_connection_statuses": [
@@ -77,239 +83,240 @@
           "status_message": "Connection is active and ready to use"
         },
         {
-          "toolkit": "pexels",
-          "has_active_connection": false,
-          "description": "Pexels offers a free API that provides access to a vast library of high-quality photos and videos, enabling seamless integration into applications and websites.",
-          "status_message": "No Active connection for toolkit=pexels. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"pexels\") to create a connection BEFORE executing any pexels tools."
+          "toolkit": "gemini",
+          "has_active_connection": true,
+          "description": "Comprehensive Gemini integration supporting Veo 3 video generation, Gemini Flash text generation (Nano Banana), chat completions, and multimodal AI capabilities via the Google Gemini API.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
         }
       ],
       "tool_schemas": {
-        "PEXELS_SEARCH_PHOTOS": {
-          "toolkit": "PEXELS",
-          "tool_slug": "PEXELS_SEARCH_PHOTOS",
-          "description": "Tool to search for photos on Pexels. Use when you need to retrieve photos by a search term and optional filters. Call after confirming you have a valid Pexels API key. Response image URLs are nested under `photo.src.<size>` (e.g., `photo.src.original`, `photo.src.landscape`, `photo.src.medium`); the top-level `url` field is not sufficient for accessing specific image sizes.",
+        "GEMINI_GENERATE_IMAGE": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_GENERATE_IMAGE",
+          "description": "Generates images from text prompts using Gemini models (Nano Banana). Supports models: 'gemini-2.5-flash-image' (GA stable, fast), 'gemini-3-pro-image-preview' (Nano Banana Pro - advanced with 4K resolution, thinking mode, up to 14 reference images), and 'gemini-2.0-flash-exp-image-generation' (2.0 Flash experimental). Returns one downloadable image per call, or a text-type entry in data.content when no image is produced. Always validate that an image was returned before treating the call as successful. Output formats are raster only (JPG/PNG/WebP); request PNG for transparency. Concurrent usage may trigger HTTP 429/RESOURCE_EXHAUSTED \u2014 keep concurrency \u22643 and use exponential backoff (1s\u21922s\u21924s, ~5 retries). NOTE NEVER EVER TRUE SYNC_TO_WORKBENCH IN RUBE_MULTI_EXECUTE_TOOL",
           "input_schema": {
             "type": "object",
             "required": [
-              "query"
+              "prompt"
             ],
             "properties": {
-              "page": {
-                "type": "integer",
-                "default": 1,
-                "minimum": 1,
-                "examples": [
-                  1
-                ],
-                "description": "Page number of results to retrieve, must be >= 1."
-              },
-              "size": {
+              "model": {
                 "enum": [
-                  "large",
-                  "medium",
-                  "small"
+                  "gemini-2.5-flash-image",
+                  "gemini-3-pro-image-preview",
+                  "gemini-2.0-flash-exp-image-generation"
                 ],
                 "type": "string",
-                "examples": [
-                  "medium"
-                ],
-                "description": "Filter by photo size."
+                "default": "gemini-3-pro-image-preview",
+                "description": "Model to use for image generation. Options: 'gemini-2.5-flash-image' (GA stable, fast), 'gemini-3-pro-image-preview' (advanced with 4K, thinking mode), 'gemini-2.0-flash-exp-image-generation' (2.0 Flash experimental)."
               },
-              "color": {
-                "type": "string",
-                "examples": [
-                  "#FF5733"
-                ],
-                "description": "Filter by photo color. Accepts standard color names or hex codes, e.g., 'red' or '#00ff00'."
-              },
-              "query": {
-                "type": "string",
-                "examples": [
-                  "Nature"
-                ],
-                "description": "Search term to find photos. Use specific, descriptive terms (e.g., 'plated chicken overhead shot' instead of 'chicken') to improve result relevance."
-              },
-              "locale": {
-                "type": "string",
-                "examples": [
-                  "en-US"
-                ],
-                "description": "Language locale for search results, e.g., 'en-US', 'pt-BR'."
-              },
-              "per_page": {
+              "top_k": {
                 "type": "integer",
-                "default": 15,
-                "maximum": 80,
-                "minimum": 1,
-                "examples": [
-                  15
-                ],
-                "description": "Number of results per page (1-80). Defaults to 15."
+                "description": "Top-k sampling parameter"
               },
-              "orientation": {
+              "top_p": {
+                "type": "number",
+                "description": "Nucleus sampling parameter (0.0 to 1.0)"
+              },
+              "prompt": {
+                "type": "string",
+                "description": "Text prompt for image generation Sensitive, trademarked, or explicit content triggers HTTP 400 (PROHIBITED_CONTENT or IMAGE_RECITATION) with no image returned \u2014 rephrase into neutral, policy-compliant language rather than retrying identical prompts."
+              },
+              "timeout": {
+                "type": "number",
+                "default": 300,
+                "description": "Request timeout in seconds. Default is 300 seconds (5 minutes). Increase for complex prompts or high-resolution images. Minimum 120 seconds, maximum 600 seconds."
+              },
+              "image_size": {
                 "enum": [
-                  "landscape",
-                  "portrait",
-                  "square"
+                  "1K",
+                  "2K",
+                  "4K"
                 ],
                 "type": "string",
-                "examples": [
-                  "landscape"
-                ],
-                "description": "Filter by photo orientation."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "COMPOSIO_SEARCH_IMAGE": {
-          "toolkit": "COMPOSIO_SEARCH",
-          "tool_slug": "COMPOSIO_SEARCH_IMAGE",
-          "description": "The ImageSearch class performs an image search using the Composio Image Search API, targeting image metadata and URLs (not binary data) via Google Images. Returns results under `results.images_results`; each entry exposes `original` (full resolution) and `thumbnail` (low resolution) URLs \u2014 verify URLs are publicly accessible before passing downstream. Check `license_details_url` per result before commercial reuse. The number of results is controlled by `num` (1\u2013100, default 20). For >100 images, paginate using `serpapi_pagination.next`. Rate limit: throttle to ~1\u20132 calls/second; apply exponential backoff on HTTP 429.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "query"
-            ],
-            "properties": {
-              "ijn": {
-                "type": "integer",
-                "minimum": 0,
-                "examples": [
-                  0,
-                  1,
-                  2,
-                  3
-                ],
-                "description": "Image page number for pagination. Starts at 0 (first page). Each page returns up to 100 results. Use incrementing values (0, 1, 2, ...) to retrieve additional pages."
+                "default": "1K",
+                "description": "Output resolution (only for 'gemini-3-pro-image-preview'). Options: 1K, 2K, 4K."
               },
-              "num": {
-                "type": "integer",
-                "default": 20,
-                "maximum": 100,
-                "minimum": 1,
-                "examples": [
-                  10,
-                  20,
-                  50
-                ],
-                "description": "Number of image results to return. Defaults to 20 if not specified. Google typically returns up to 100 results."
+              "temperature": {
+                "type": "number",
+                "description": "Controls randomness (0.0 to 2.0)"
               },
-              "query": {
+              "aspect_ratio": {
+                "enum": [
+                  "1:1",
+                  "2:3",
+                  "3:2",
+                  "3:4",
+                  "4:3",
+                  "4:5",
+                  "5:4",
+                  "9:16",
+                  "16:9",
+                  "21:9"
+                ],
                 "type": "string",
-                "examples": [
-                  "Apple"
-                ],
-                "description": "The search query for the Composio Image Search API, specifying the image topic."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "COMPOSIO_SEARCH_FETCH_URL_CONTENT": {
-          "toolkit": "COMPOSIO_SEARCH",
-          "tool_slug": "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
-          "description": "Fetch and extract clean, readable page text (markdown) from public web pages (HTML content) using the Exa API. Use when you need to retrieve actual content from search results or documentation links to extract setup steps, requirements, or citations. Only works with web page URLs - does not support direct links to images, PDFs, or other binary files.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "urls"
-            ],
-            "properties": {
-              "text": {
-                "type": "boolean",
-                "default": true,
-                "description": "Include extracted markdown text content from the page. Defaults to true."
+                "default": "1:1",
+                "description": "Aspect ratio for generated image. Not supported by 'gemini-2.0-flash-exp-image-generation' model. Accepted values: '1:1', '4:5', '16:9', '9:16'. Unsupported strings will fail or silently default to 1:1."
               },
-              "urls": {
+              "safety_settings": {
                 "type": "array",
                 "items": {
-                  "type": "string"
-                },
-                "examples": [
-                  [
-                    "https://example.com/article",
-                    "https://docs.python.org/"
-                  ]
-                ],
-                "description": "List of public URLs to web pages (HTML content) to fetch content from. URLs must be valid and publicly accessible. Do not use direct links to images (.jpg, .png, .gif), PDFs, or other binary files - use web page URLs only. Also accepts a single URL string."
-              },
-              "extras": {
-                "type": "object",
-                "description": "Additional content options like imageLinks or links counts (e.g., {'imageLinks': 3, 'links': 5}).",
-                "additionalProperties": {
-                  "type": "integer"
-                }
-              },
-              "summary": {
-                "anyOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "threshold"
+                  ],
+                  "properties": {
+                    "category": {
+                      "enum": [
+                        "HARM_CATEGORY_HARASSMENT",
+                        "HARM_CATEGORY_HATE_SPEECH",
+                        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "HARM_CATEGORY_DANGEROUS_CONTENT"
+                      ],
+                      "type": "string",
+                      "description": "The category of harmful content to filter"
+                    },
+                    "threshold": {
+                      "enum": [
+                        "BLOCK_NONE",
+                        "BLOCK_LOW_AND_ABOVE",
+                        "BLOCK_MEDIUM_AND_ABOVE",
+                        "BLOCK_ONLY_HIGH"
+                      ],
+                      "type": "string",
+                      "description": "The threshold for blocking content in this category"
                     }
                   }
-                ],
-                "description": "Include AI-generated summary of the page content. Can be boolean or object with query/schema options."
+                },
+                "description": "Safety filter settings. List of objects specifying content categories to filter and threshold levels. Each setting requires 'category' (HARM_CATEGORY_HARASSMENT, HARM_CATEGORY_HATE_SPEECH, HARM_CATEGORY_SEXUALLY_EXPLICIT, or HARM_CATEGORY_DANGEROUS_CONTENT) and 'threshold' (BLOCK_NONE, BLOCK_LOW_AND_ABOVE, BLOCK_MEDIUM_AND_ABOVE, or BLOCK_ONLY_HIGH)."
               },
-              "max_characters": {
+              "max_output_tokens": {
                 "type": "integer",
-                "description": "Maximum number of characters to extract from each page. Maps to text.maxCharacters in Exa API."
+                "description": "Maximum number of tokens to generate (max 32,768). For image generation, images consume tokens based on resolution: 1K/2K consume 1,120 tokens, 4K consumes 2,000 tokens. If set too low, the API may return MAX_TOKENS finish reason with no image. If not specified, the API uses its default which is sufficient for image generation."
+              },
+              "system_instruction": {
+                "type": "string",
+                "description": "System instruction to guide image generation behavior"
               }
             }
           },
           "hasFullSchema": true
         },
-        "PEXELS_GET_PHOTO": {
-          "toolkit": "PEXELS",
-          "tool_slug": "PEXELS_GET_PHOTO",
-          "description": "Tool to retrieve detailed information about a specific photo. Use when you have a valid photo ID to ...",
+        "GEMINI_GENERATE_VIDEOS": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_GENERATE_VIDEOS",
+          "description": "Generates videos from text prompts using Google's Veo models. Returns an operation_name for tracking; pass it verbatim (no edits) to GEMINI_WAIT_FOR_VIDEO or GEMINI_GET_VIDEOS_OPERATION. Jobs take 30\u2013180+ seconds; wait 10s before first poll, then poll every 10\u201330s (allow up to 12 min). Successful results include data.video_file.s3url \u2014 missing s3url means failure. If done=true but no video_file, check raiMediaFilteredReasons (safety block); revise prompt and regenerate. Text-only; cannot accept image inputs. Max ~3\u20135 concurrent jobs; 429 RESOURCE_EXHAUSTED requires exponential backoff. For retries, always start a fresh call \u2014 never reuse a failed operation_name.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "prompt"
+            ],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "description": "Seed value for reproducibility. Supported by the Veo 3.1 models."
+              },
+              "model": {
+                "enum": [
+                  "veo-3.1-lite-generate-preview"
+                ],
+                "type": "string",
+                "default": "veo-3.1-lite-generate-preview",
+                "description": "Video model. Only Veo 3.1 Lite ('veo-3.1-lite-generate-preview') is supported \u2014 you may omit this field. Any other value (e.g. the legacy 'veo-3.1-generate-preview' / 'veo-3.1-fast-generate-preview') is coerced to Lite rather than rejected, for backward compatibility."
+              },
+              "prompt": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Text prompt for Veo video generation. Must be a non-empty string describing the video to generate."
+              },
+              "resolution": {
+                "enum": [
+                  "720p"
+                ],
+                "type": "string",
+                "description": "Resolution for video generation.\n\nOnly 720p is offered. On Veo 3.1 Lite it is $0.05/s versus $0.08/s for\n1080p, and pinning it removes the 1080p-requires-8s duration constraint\nentirely (a common source of failed calls when a caller pairs 1080p with a\n4s/6s duration). 1080p is coerced to 720p rather than served (see\nGenerateVideosRequest.resolution)."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "16:9",
+                  "9:16"
+                ],
+                "type": "string",
+                "description": "Supported aspect ratios for video generation."
+              },
+              "negative_prompt": {
+                "type": "string",
+                "description": "Text describing content to avoid in the generated video (e.g., 'cartoon, drawing, low quality')."
+              },
+              "duration_seconds": {
+                "enum": [
+                  4,
+                  6,
+                  8
+                ],
+                "type": "integer",
+                "description": "Supported video durations in seconds (Veo 3.1: 4, 6, or 8)."
+              },
+              "person_generation": {
+                "enum": [
+                  "allow_all"
+                ],
+                "type": "string",
+                "description": "Person generation safety setting (Veo 3.1 supports only ALLOW_ALL)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GEMINI_WAIT_FOR_VIDEO": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_WAIT_FOR_VIDEO",
+          "description": "Polls a Veo video generation operation until completion, then downloads and returns the video file. ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "PEXELS_GET_PHOTO"
+                "GEMINI_WAIT_FOR_VIDEO"
               ]
             }
           }
         },
-        "PEXELS_CURATED_PHOTOS": {
-          "toolkit": "PEXELS",
-          "tool_slug": "PEXELS_CURATED_PHOTOS",
-          "description": "Tool to get real-time curated photos. Use when you need to fetch curated photos with pagination supp...",
+        "COMPOSIO_SEARCH_TRENDS": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_TRENDS",
+          "description": "Discover trending topics, search patterns, and popularity data. Analyzes search interest over time, ...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "PEXELS_CURATED_PHOTOS"
+                "COMPOSIO_SEARCH_TRENDS"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:36:38.373Z",
-        "current_time_utc_epoch_seconds": 1786563398,
+        "current_time_utc": "2026-08-12T20:52:17.168Z",
+        "current_time_utc_epoch_seconds": 1786567937,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "sale",
+        "id": "note",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"sale\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"note\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
-        "1) You may call COMPOSIO_MANAGE_CONNECTIONS: Some toolkits lack active connections",
+        "1) Connections active, proceed to next step",
         "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
       ],
       "success": true,
       "error": null
     },
     "error": null,
-    "log_id": "log_L2nWsYTAkpeq"
+    "log_id": "log_bfKuGk_3VQNv"
   }
 }

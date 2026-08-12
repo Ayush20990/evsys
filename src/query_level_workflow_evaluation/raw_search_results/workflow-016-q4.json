@@ -3,15 +3,20 @@
     "query_id": "workflow-016-q4",
     "workflow_id": 16,
     "workflow_task": "Audit analytics and search performance for a website, inspect and modify its source repository, create pull requests with SEO, tracking, caching, routing, and accessibility fixes, and investigate hosting/deployment state.",
-    "query": "check cloudflare dns records and zones for deployment",
-    "required_tools": [
-      "CLOUDFLARE_LIST_ZONES",
-      "CLOUDFLARE_LIST_DNS_RECORDS"
+    "query": "create pull request with website fixes",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_CREATE_A_PULL_REQUEST"
+        ],
+        "purpose": "create a new pull request"
+      }
     ],
     "supporting_tools": [
-      "CLOUDFLARE_LIST_ACCOUNTS"
+      "GITHUB_COMMIT_MULTIPLE_FILES",
+      "GITHUB_UPDATE_A_PULL_REQUEST"
     ],
-    "rationale": "Investigating hosting and deployment state requires checking Cloudflare zones and DNS configuration.",
+    "rationale": "Creates the pull request for SEO, tracking, caching, and accessibility modifications.",
     "candidate_tools": [
       "CLOUDFLARE_LIST_ACCOUNTS",
       "CLOUDFLARE_LIST_DNS_RECORDS",
@@ -41,552 +46,474 @@
     ]
   },
   "request": {
-    "query": "check cloudflare dns records and zones for deployment"
+    "query": "create pull request with website fixes"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "check cloudflare dns records and zones for deployment",
+          "use_case": "create pull request with website fixes",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required (if zone_identifier unknown)] [Prerequisite]: Find the zone using CLOUDFLARE_LIST_ZONES (match on domain; capture result[].id as zone_identifier; if auth error, retry with CLOUDFLARE_API_KEY_LIST_ZONES).",
-            "[Optional (to prevent duplicate/unsafe writes)] [Prerequisite]: Inventory existing records using CLOUDFLARE_LIST_DNS_RECORDS (paginate via result_info.total_pages; filter by type+name; capture record ids).",
-            "[Optional (if zone is missing and onboarding is needed)] [Prerequisite]: Get an account reference using CLOUDFLARE_LIST_ACCOUNTS then add the zone using CLOUDFLARE_CREATE_ZONE (stop if permission is missing and request reauthorization outside tool calls).",
-            "[Required (after confirming exact DNS changes)] [Step]: Create record(s) using CLOUDFLARE_CREATE_DNS_RECORD (requires zone_identifier; if auth fails, retry with CLOUDFLARE_API_KEY_CREATE_DNS_RECORD and store created record ids).",
-            "[Fallback (if create fails due to existing/conflicting record)] [Fallback]: Re-run CLOUDFLARE_LIST_DNS_RECORDS to locate the conflicting record id, then remediate via CLOUDFLARE_UPDATE_DNS_RECORD (or CLOUDFLARE_DELETE_DNS_RECORD only after explicit confirmation).",
-            "[Optional (verification)] [Next Step]: Re-list using CLOUDFLARE_LIST_DNS_RECORDS to confirm final state matches the requested changes.",
-            "[Optional (if record exists but needs changes/cleanup)] [Next Step]: Update or remove records using CLOUDFLARE_UPDATE_DNS_RECORD or CLOUDFLARE_DELETE_DNS_RECORD (delete only after confirmation)."
+            "[Required] [Prerequisite]: Validate base and head refs exist and are accessible using GITHUB_GET_A_BRANCH (repeat per ref; use owner-qualified head when applicable).",
+            "[Optional (if ref name is uncertain)] [Prerequisite]: Discover candidate branch names using GITHUB_LIST_BRANCHES (use to correct typos/format before write ops).",
+            "[Optional (to prevent no-diff/unrelated-history failures)] [Prerequisite]: Compare base vs head using GITHUB_COMPARE_TWO_COMMITS (proceed only if head is ahead / not identical).",
+            "[Optional (to avoid duplicate-PR failures)] [Prerequisite]: Check for an existing open PR for the same head/base using GITHUB_FIND_PULL_REQUESTS (keep query tightly repository-scoped).",
+            "[Required] [Step]: Get final confirmation, then create the pull request using GITHUB_CREATE_A_PULL_REQUEST (set base, head, title/body; draft if needed).",
+            "[Required] [Next Step]: Retrieve PR number/state and link using GITHUB_GET_A_PULL_REQUEST (record response.data.number and response.data.html_url).",
+            "[Optional (if metadata/state needs adjustment)] [Next Step]: Edit title/body/draft/base/closed state using GITHUB_UPDATE_A_PULL_REQUEST, then re-check using GITHUB_GET_A_PULL_REQUEST.",
+            "[Fallback (if creation fails with 422/403/404)] [Fallback]: Re-validate refs/access using GITHUB_GET_A_BRANCH (and GITHUB_LIST_BRANCHES if naming is unclear), then retry using GITHUB_CREATE_A_PULL_REQUEST."
           ],
           "known_pitfalls": [
-            "[CLOUDFLARE_LIST_ZONES] Auth failures can present as HTTP 403 with code 9109; retry with CLOUDFLARE_API_KEY_LIST_ZONES before assuming the zone is absent.",
-            "[CLOUDFLARE_LIST_DNS_RECORDS] May return error 10001 \"Unable to authenticate request\" with data.success=false even if the wrapper call indicates success; check data.success and errors.",
-            "[CLOUDFLARE_CREATE_DNS_RECORD] Validation gotcha: providing zone_id can fail because the schema requires zone_identifier.",
-            "[CLOUDFLARE_CREATE_DNS_RECORD] Common conflict errors: 81053 (same host exists) and 81058 (identical record exists) requiring update/delete flow.",
-            "[CLOUDFLARE_CREATE_DNS_RECORD] MX records require integer priority; otherwise error code 9100."
+            "[GITHUB_CREATE_A_PULL_REQUEST] HTTP 422 Validation Failed if base/head invalid/identical, no common history, or an open PR already exists; errors[].field may be \"head\" with code=\"invalid\"; can also fail with HTTP 403 due to access restrictions.",
+            "[GITHUB_CREATE_A_PULL_REQUEST] Create response payload can be very large/truncated; rely on response.data.number and response.data.html_url as canonical outputs.",
+            "[GITHUB_GET_A_PULL_REQUEST] Immediately after creation, mergeable may be null and mergeable_state may be \"unknown\"; rapid follow-up GETs can transiently 404.",
+            "[GITHUB_GET_A_BRANCH] May return HTTP 403 when access for an app is restricted; downstream PR create/read checks will fail until access is approved.",
+            "[GITHUB_FIND_PULL_REQUESTS] Unscoped searches can return an enormous result set and oversized responses; keep filters tight and expect minimal/optimized fields unless explicitly expanded."
           ],
           "reference_workbench_snippets": [
             {
-              "description": "Workbench sketch for MX creation payload/endpoint shape when troubleshooting priority validation",
-              "code": "```python\npayload={\"type\":\"MX\",\"name\":\"domain.tld\",\"content\":\"mail.domain.tld\",\"priority\":10,\"ttl\":1}\nendpoint=f\"/zones/{zone_identifier}/dns_records\"\n(payload,endpoint)\n```"
+              "description": "Filter and sort pull request list results by an actor field",
+              "code": "```python\nprs=response_data.get('pull_requests',[])\nactor='a_user'\nfiltered=[p for p in prs if p.get('user',{}).get('login')==actor]\nfiltered.sort(key=lambda p:p.get('created_at',''))\nrows=[(p.get('title'),p.get('created_at')) for p in filtered]\n```"
             }
           ],
-          "difficulty": "medium",
+          "difficulty": "easy",
           "primary_tool_slugs": [
-            "CLOUDFLARE_LIST_ZONES",
-            "CLOUDFLARE_LIST_DNS_RECORDS",
-            "CLOUDFLARE_CREATE_DNS_RECORD"
+            "GITHUB_CREATE_A_PULL_REQUEST"
           ],
           "related_tool_slugs": [
-            "CLOUDFLARE_API_KEY_LIST_ZONES",
-            "CLOUDFLARE_API_KEY_CREATE_DNS_RECORD",
-            "CLOUDFLARE_UPDATE_DNS_RECORD",
-            "CLOUDFLARE_DELETE_DNS_RECORD",
-            "CLOUDFLARE_CREATE_ZONE",
-            "CLOUDFLARE_LIST_ACCOUNTS"
+            "GITHUB_GET_A_BRANCH",
+            "GITHUB_FIND_PULL_REQUESTS",
+            "GITHUB_COMPARE_TWO_COMMITS",
+            "GITHUB_GET_A_PULL_REQUEST",
+            "GITHUB_UPDATE_A_PULL_REQUEST",
+            "GITHUB_LIST_BRANCHES"
           ],
           "toolkits": [
-            "cloudflare",
-            "cloudflare_api_key"
+            "github"
           ],
-          "plan_id": "b31dc563970e4ee291b6d3bbceef9e14"
+          "plan_id": "593b3939ce204832a3eb4d0fd92d4d7b"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "cloudflare",
+          "toolkit": "github",
           "has_active_connection": false,
-          "description": "Cloudflare is a global network designed to make everything you connect to the Internet secure, private, fast, and reliable.",
-          "status_message": "No Active connection for toolkit=cloudflare. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"cloudflare\") to create a connection BEFORE executing any cloudflare tools."
-        },
-        {
-          "toolkit": "cloudflare_api_key",
-          "has_active_connection": false,
-          "description": "Cloudflare provides a suite of services to enhance the security, performance, and reliability of websites and applications.",
-          "status_message": "No Active connection for toolkit=cloudflare_api_key. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"cloudflare_api_key\") to create a connection BEFORE executing any cloudflare_api_key tools."
+          "description": "GitHub is a code hosting platform for version control and collaboration, offering Git-based repository management, issue tracking, and continuous integration features",
+          "status_message": "No Active connection for toolkit=github. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"github\") to create a connection BEFORE executing any github tools."
         }
       ],
       "tool_schemas": {
-        "CLOUDFLARE_LIST_ZONES": {
-          "toolkit": "CLOUDFLARE",
-          "tool_slug": "CLOUDFLARE_LIST_ZONES",
-          "description": "Lists, searches, sorts, and filters zones in the authenticated account. Use `page`/`per_page` to paginate; check `result_info.total_pages` in the response to iterate all pages. Does not return DNS records \u2014 extract `zone_id` from results before passing to zone-scoped tools (DNS, firewall, etc.). Only zones delegated to Cloudflare nameservers appear; empty results indicate scope or delegation constraints, not errors.",
+        "GITHUB_CREATE_A_PULL_REQUEST": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_CREATE_A_PULL_REQUEST",
+          "description": "Creates a pull request in a GitHub repository, requiring existing `base` and `head` branches; `title` or `issue` must be provided.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "head",
+              "base"
+            ],
+            "properties": {
+              "base": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "develop"
+                ],
+                "description": "The name of the branch you want the changes pulled into. This must be an existing branch on the current (target) repository. You cannot submit a pull request to one repository that requests a merge to a base branch of another repository. "
+              },
+              "body": {
+                "type": "string",
+                "examples": [
+                  "This PR introduces a new feature that does X, Y, and Z.",
+                  "Fixes #42 by addressing the off-by-one error."
+                ],
+                "description": "The detailed description or contents of the pull request."
+              },
+              "head": {
+                "type": "string",
+                "examples": [
+                  "feature-branch",
+                  "octocat:my-feature-branch"
+                ],
+                "description": "The name of the branch where your changes are implemented. IMPORTANT: This branch must already exist in the repository (or fork) before calling this action. You must first create the branch and push commits to it (using git or the 'Create a reference' action), then create the PR. For cross-repository pull requests, namespace `head` with the source owner and branch, like `username:branch`."
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Spoon-Knife"
+                ],
+                "description": "The name of the repository, without the `.git` extension. This name is not case-sensitive."
+              },
+              "draft": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Indicates whether the pull request should be created as a draft. Draft pull requests cannot be merged until marked as ready for review."
+              },
+              "issue": {
+                "type": "integer",
+                "examples": [
+                  "123",
+                  "456"
+                ],
+                "description": "The number of an existing issue in the repository to convert into a pull request. If provided, the issue's title and body may be used for the pull request. Required if `title` is not specified."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat"
+                ],
+                "description": "The account owner of the repository. This name is not case-sensitive."
+              },
+              "title": {
+                "type": "string",
+                "examples": [
+                  "Amazing new feature",
+                  "Fix for critical bug #123"
+                ],
+                "description": "The title of the new pull request. Required unless `issue` is specified."
+              },
+              "head_repo": {
+                "type": "string",
+                "format": "repo.nwo",
+                "examples": [
+                  "octocat/my-forked-repo"
+                ],
+                "description": "The name of the repository (e.g., 'octocat/Hello-World') where the changes in the pull request were made. This field is required for cross-repository pull requests if both the source and target repositories are owned by the same organization but are different repositories."
+              },
+              "maintainer_can_modify": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Indicates whether maintainers of the upstream repository can modify the pull request. This is primarily relevant for pull requests originating from forks."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_BRANCH": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_BRANCH",
+          "description": "Retrieves detailed information for a specified branch within a GitHub repository.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "branch"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Hello-World"
+                ],
+                "description": "The name of the repository without the `.git` extension. The name is not case sensitive. "
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat"
+                ],
+                "description": "The account owner of the repository. The name is not case sensitive."
+              },
+              "branch": {
+                "type": "string",
+                "examples": [
+                  "main"
+                ],
+                "description": "The name of the branch. Cannot contain wildcard characters. To use wildcard characters in branch names, use [the GraphQL API](https://docs.github.com/graphql). If 'HEAD' is provided, it will be resolved to the repository's default branch."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_FIND_PULL_REQUESTS": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_FIND_PULL_REQUESTS",
+          "description": "Primary tool to find and search pull requests. Supports filtering by repository, author, state, labels, and merge status, and returns structured PR data for reliable use in workflows. GitHub search results are capped at ~1000 total items; narrow filters when totals approach this limit. `created_since`/`updated_since` filter on creation/update timestamps, not `merged_at`; apply merge-date filtering client-side.",
           "input_schema": {
             "type": "object",
             "properties": {
-              "name": {
-                "type": "string",
-                "maxLength": 253,
-                "description": "A domain name. Optional filter operators can be provided to extend and refine the search."
-              },
               "page": {
                 "type": "integer",
                 "default": 1,
-                "minimum": 1,
-                "description": "Page number of paginated results."
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Page number of results to fetch."
               },
-              "match": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "facebook/react",
+                  "microsoft/vscode",
+                  "octocat/Hello-World",
+                  "react"
+                ],
+                "description": "Filter by specific repository. Can be provided in 'owner/repo' format (e.g., 'facebook/react'), or as just the repo name when used with the owner parameter. When owner and repo are both provided and have the same value, they are combined as 'owner/repo'. When omitted along with owner, search scope is determined by for_authenticated_user flag. The repository must exist and be accessible with your token. Prefer 'owner/repo' format; bare repo name without the `owner` parameter causes invalid repository format errors."
+              },
+              "sort": {
                 "enum": [
-                  "all",
-                  "any"
+                  "comments",
+                  "reactions",
+                  "interactions",
+                  "created",
+                  "updated"
                 ],
                 "type": "string",
-                "default": "all",
-                "description": "Whether to match all search requirements or at least one (any)."
+                "default": "updated",
+                "examples": [
+                  "updated",
+                  "created",
+                  "comments"
+                ],
+                "description": "Field to sort results by. Set explicitly to 'updated' with `order=desc` when recency matters; default behavior may return best-match relevance ordering instead."
+              },
+              "label": {
+                "type": "string",
+                "examples": [
+                  "bug",
+                  "enhancement",
+                  "documentation",
+                  "good first issue"
+                ],
+                "description": "Filter by label name."
               },
               "order": {
                 "enum": [
-                  "name",
-                  "status",
-                  "account.id",
-                  "account.name",
-                  "plan.id"
+                  "desc",
+                  "asc"
                 ],
                 "type": "string",
-                "description": "Field to order zones by."
-              },
-              "status": {
-                "enum": [
-                  "initializing",
-                  "pending",
-                  "active",
-                  "moved"
+                "default": "desc",
+                "examples": [
+                  "desc",
+                  "asc"
                 ],
-                "type": "string",
-                "description": "A zone status"
+                "description": "Sort order (ascending or descending)."
               },
-              "account": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "description": "An account ID"
-                  },
-                  "name": {
-                    "type": "string",
-                    "maxLength": 253,
-                    "description": "An account Name. Optional filter operators can be provided to extend and refine the search"
-                  }
-                },
-                "description": "Filter zones by account ID and/or account name.",
-                "additionalProperties": false
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "facebook",
+                  "microsoft",
+                  "octocat"
+                ],
+                "description": "Filter by repository owner (user or organization). Can be used alone to search all repositories for an owner, or combined with repo parameter to specify owner and repo separately. When both owner and repo are provided, the search is scoped to 'owner/repo'. When omitted along with repo, search scope is determined by for_authenticated_user flag. The owner must exist and repositories must be accessible with your token."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "bug fix",
+                  "feature auth",
+                  "label:bug",
+                  "label:bug OR label:enhancement",
+                  "refactor api",
+                  null
+                ],
+                "description": "Optional search query for PR title, description, or commit messages. Supports GitHub search syntax including label filters (e.g., 'label:bug'), logical operators (AND, OR, NOT), and text search. If not provided, PRs will be listed based on other filter parameters. Type qualifiers (type:pr, is:pr, is:issue, type:issue) are automatically normalized. When using logical operators with qualifiers like labels, the query is automatically grouped for proper parsing. When omitting query, ensure at least one structured filter parameter is provided; passing no query and no filters may cause validation errors. Prefer dedicated parameters (`label`, `state`, `author`) over embedding qualifiers in the query string. Exact title matching is not supported; post-filter on title client-side if needed."
+              },
+              "state": {
+                "type": "string",
+                "default": "open",
+                "examples": [
+                  "open",
+                  "closed",
+                  "all"
+                ],
+                "description": "Filter by PR state: 'open', 'closed', or 'all'."
+              },
+              "author": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "defunkt"
+                ],
+                "description": "Filter by PR author username. Must be a valid GitHub username (alphanumeric characters and hyphens only, cannot start or end with hyphen). No dots or other special characters allowed."
+              },
+              "assignee": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "@me"
+                ],
+                "description": "Filter by PR assignee username. Use '@me' for current user. Must be a valid GitHub username (alphanumeric characters and hyphens only, cannot start or end with hyphen). No dots or other special characters allowed."
+              },
+              "language": {
+                "type": "string",
+                "examples": [
+                  "python",
+                  "javascript",
+                  "typescript",
+                  "go"
+                ],
+                "description": "Filter by programming language."
+              },
+              "mentions": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "@me"
+                ],
+                "description": "Filter by username mentioned in PR. Must be a valid GitHub username (alphanumeric characters and hyphens only, cannot start or end with hyphen). No dots or other special characters allowed."
               },
               "per_page": {
                 "type": "integer",
                 "default": 20,
-                "maximum": 50,
-                "minimum": 5,
-                "description": "Number of zones per page."
-              },
-              "direction": {
-                "enum": [
-                  "asc",
-                  "desc"
-                ],
-                "type": "string",
-                "description": "Direction to order zones."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "CLOUDFLARE_LIST_DNS_RECORDS": {
-          "toolkit": "CLOUDFLARE",
-          "tool_slug": "CLOUDFLARE_LIST_DNS_RECORDS",
-          "description": "Tool to list and search DNS records in a Cloudflare zone. Use when you need to find existing DNS record IDs for update or delete operations, especially after a \"record already exists\" error during creation. Returns matching records with their IDs, names, types, content, and other properties.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "zone_id"
-            ],
-            "properties": {
-              "name": {
-                "type": "string",
                 "examples": [
-                  "www.example.com"
+                  10,
+                  20,
+                  50
                 ],
-                "description": "Filter by exact DNS record name (FQDN). Use this to find records matching a specific hostname."
+                "description": "Number of results per page (maximum 100). GitHub caps total search results at ~1000 items; iterate `page` until results fewer than `per_page` are returned, and add `repo`, `label`, or date filters when totals approach 1000."
               },
-              "page": {
-                "type": "integer",
-                "minimum": 1,
-                "examples": [
-                  1
-                ],
-                "description": "Page number for pagination. Start at 1."
-              },
-              "type": {
-                "enum": [
-                  "A",
-                  "AAAA",
-                  "CAA",
-                  "CERT",
-                  "CNAME",
-                  "DNSKEY",
-                  "DS",
-                  "HTTPS",
-                  "LOC",
-                  "MX",
-                  "NAPTR",
-                  "NS",
-                  "PTR",
-                  "SMIMEA",
-                  "SRV",
-                  "SSHFP",
-                  "SVCB",
-                  "TLSA",
-                  "TXT",
-                  "URI"
-                ],
-                "type": "string",
-                "examples": [
-                  "A"
-                ],
-                "description": "Filter by DNS record type. Specify the exact record type to narrow results."
-              },
-              "match": {
-                "enum": [
-                  "all",
-                  "any"
-                ],
-                "type": "string",
-                "examples": [
-                  "all"
-                ],
-                "description": "Filter matching logic: 'all' requires all filters to match (AND logic), 'any' requires at least one filter to match (OR logic). Defaults to 'all'."
-              },
-              "content": {
-                "type": "string",
-                "examples": [
-                  "192.0.2.1"
-                ],
-                "description": "Filter by exact DNS record content/value. Use this to find records pointing to a specific IP or target."
-              },
-              "proxied": {
+              "is_merged": {
                 "type": "boolean",
                 "examples": [
-                  true
+                  true,
+                  false
                 ],
-                "description": "Filter by proxy status. Set to true for proxied records, false for DNS-only records."
+                "description": "Filter by merge status. True for merged PRs, False for unmerged, None for all."
               },
-              "zone_id": {
+              "base_branch": {
                 "type": "string",
                 "examples": [
-                  "023e105f4ecef8ad9ca31a8372d0c353"
+                  "main",
+                  "master",
+                  "develop",
+                  "staging"
                 ],
-                "description": "Zone identifier (UUID) to list DNS records from"
+                "description": "Filter by base branch name."
               },
-              "per_page": {
-                "type": "integer",
-                "maximum": 5000000,
-                "minimum": 1,
-                "examples": [
-                  100
-                ],
-                "description": "Number of records per page (1-5000000). Defaults to 100. Use lower values for faster responses."
-              },
-              "name_contains": {
+              "head_branch": {
                 "type": "string",
                 "examples": [
-                  "example"
+                  "feature/auth",
+                  "bugfix/login",
+                  "hotfix/critical"
                 ],
-                "description": "Filter by DNS record names containing this substring. Useful for partial matching."
+                "description": "Filter by head branch name."
               },
-              "comment_contains": {
+              "created_since": {
                 "type": "string",
                 "examples": [
-                  "production"
+                  "2024-01-01",
+                  "2024-01-01T00:00:00Z"
                 ],
-                "description": "Filter by comments containing this substring."
+                "description": "Filter PRs created after this date (ISO 8601 format). Provide as UTC ISO 8601 timestamp to avoid off-by-one-day errors at range boundaries. Does not filter on `merged_at`."
               },
-              "content_contains": {
+              "updated_since": {
                 "type": "string",
                 "examples": [
-                  "192.0.2"
+                  "2024-01-01",
+                  "2024-01-01T00:00:00Z"
                 ],
-                "description": "Filter by DNS record content containing this substring."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "CLOUDFLARE_CREATE_DNS_RECORD": {
-          "toolkit": "CLOUDFLARE",
-          "tool_slug": "CLOUDFLARE_CREATE_DNS_RECORD",
-          "description": "Tool to create a new DNS record within a specific zone. Requires write privileges and makes live changes to the zone. Use after obtaining the zone ID via CLOUDFLARE_LIST_ZONES to programmatically add DNS entries.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "zone_identifier",
-              "type",
-              "name",
-              "content"
-            ],
-            "properties": {
-              "ttl": {
-                "type": "integer",
-                "minimum": 1,
-                "examples": [
-                  3600
-                ],
-                "description": "Time to live in seconds; minimum 1. Use 1 for automatic TTL"
+                "description": "Filter PRs updated after this date (ISO 8601 format)."
               },
-              "data": {
-                "type": "object",
-                "examples": [
-                  {
-                    "port": 5060,
-                    "weight": 5,
-                    "service": "sip",
-                    "protocol": "tcp"
-                  }
-                ],
-                "description": "Additional data object for record types like SRV, LOC, or CAA",
-                "additionalProperties": true
-              },
-              "name": {
-                "type": "string",
-                "examples": [
-                  "www.example.com"
-                ],
-                "description": "DNS record name (e.g., example.com or www.example.com)"
-              },
-              "tags": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "examples": [
-                  [
-                    "api-generated",
-                    "test"
-                  ]
-                ],
-                "description": "List of tags to associate with the record"
-              },
-              "type": {
+              "response_detail": {
                 "enum": [
-                  "A",
-                  "AAAA",
-                  "CNAME",
-                  "MX",
-                  "TXT",
-                  "SRV",
-                  "LOC",
-                  "CAA"
+                  "minimal",
+                  "full"
                 ],
                 "type": "string",
+                "default": "minimal",
                 "examples": [
-                  "A"
+                  "minimal",
+                  "full"
                 ],
-                "description": "DNS record type"
+                "description": "Level of detail in the response. 'minimal' (default) returns an optimized response for AI agents. 'full' returns the complete GitHub API response."
               },
-              "comment": {
-                "type": "string",
-                "examples": [
-                  "Created via API"
-                ],
-                "description": "Human-readable comment for the DNS record"
-              },
-              "content": {
-                "type": "string",
-                "examples": [
-                  "192.0.2.1"
-                ],
-                "description": "DNS record content (e.g., IP for A records)"
-              },
-              "proxied": {
+              "for_authenticated_user": {
                 "type": "boolean",
+                "default": false,
                 "examples": [
-                  true
+                  true,
+                  false
                 ],
-                "description": "Whether the record is receiving Cloudflare performance and security benefits"
-              },
-              "priority": {
-                "type": "integer",
-                "minimum": 0,
-                "examples": [
-                  10
-                ],
-                "description": "Priority for MX, SRV, and URI records; required for those types"
-              },
-              "zone_identifier": {
-                "type": "string",
-                "examples": [
-                  "023e105f4ecef8ad9ca31a8372d0c353"
-                ],
-                "description": "Zone identifier (UUID) where the DNS record will be created"
+                "description": "Include private repositories accessible to the authenticated user in search results. When True without repo/owner, searches PRs involving you (author, assignee, mentions, commenter) across all accessible repos. When False without repo/owner, restricts to public repos only. When repo/owner is specified, this flag has no effect on scope. Set to True when searching private repositories; False searches all of GitHub and produces large noisy result sets."
               }
             }
           },
           "hasFullSchema": true
         },
-        "CLOUDFLARE_API_KEY_LIST_ZONES": {
-          "toolkit": "CLOUDFLARE_API_KEY",
-          "tool_slug": "CLOUDFLARE_API_KEY_LIST_ZONES",
-          "description": "Tool to list, search, sort, and filter Cloudflare zones. Use when you need to retrieve a paginated list of zones available to the authenticated user.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "examples": [
-                  "example.com"
-                ],
-                "maxLength": 253,
-                "description": "A domain name; supports the same operators as account.name."
-              },
-              "page": {
-                "type": "integer",
-                "default": 1,
-                "minimum": 1,
-                "description": "Page number (min: 1, default: 1)."
-              },
-              "match": {
-                "enum": [
-                  "any",
-                  "all"
-                ],
-                "type": "string",
-                "default": "all",
-                "description": "Whether to match any or all search requirements (default: all)."
-              },
-              "order": {
-                "enum": [
-                  "name",
-                  "status",
-                  "account.id",
-                  "account.name",
-                  "plan.id"
-                ],
-                "type": "string",
-                "description": "Field to order by."
-              },
-              "status": {
-                "enum": [
-                  "initializing",
-                  "pending",
-                  "active",
-                  "moved"
-                ],
-                "type": "string",
-                "description": "Filter by zone status."
-              },
-              "per_page": {
-                "type": "integer",
-                "default": 20,
-                "maximum": 50,
-                "minimum": 5,
-                "description": "Results per page (min: 5, max: 50, default: 20)."
-              },
-              "direction": {
-                "enum": [
-                  "asc",
-                  "desc"
-                ],
-                "type": "string",
-                "description": "Direction to order zones."
-              },
-              "account.id": {
-                "type": "string",
-                "examples": [
-                  "0123456789abcdef"
-                ],
-                "description": "Filter by an account ID."
-              },
-              "account.name": {
-                "type": "string",
-                "examples": [
-                  "MyAccount"
-                ],
-                "maxLength": 253,
-                "description": "Account name; supports operators: equal (default), not_equal, starts_with, ends_with, contains, starts_with_case_sensitive, ends_with_case_sensitive, contains_case_sensitive."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "CLOUDFLARE_API_KEY_CREATE_DNS_RECORD": {
-          "toolkit": "CLOUDFLARE_API_KEY",
-          "tool_slug": "CLOUDFLARE_API_KEY_CREATE_DNS_RECORD",
-          "description": "Tool to create a new DNS record in a Cloudflare zone. Use when you need to add a record (A, CNAME, T...",
+        "GITHUB_COMPARE_TWO_COMMITS": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_COMPARE_TWO_COMMITS",
+          "description": "Compares two commit points (commits, branches, tags, or SHAs) within a repository or across forks, u...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "CLOUDFLARE_API_KEY_CREATE_DNS_RECORD"
+                "GITHUB_COMPARE_TWO_COMMITS"
               ]
             }
           }
         },
-        "CLOUDFLARE_UPDATE_DNS_RECORD": {
-          "toolkit": "CLOUDFLARE",
-          "tool_slug": "CLOUDFLARE_UPDATE_DNS_RECORD",
-          "description": "Tool to update an existing DNS record within a specific zone. Use after confirming both zone and rec...",
+        "GITHUB_GET_A_PULL_REQUEST": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_PULL_REQUEST",
+          "description": "Retrieves a specific pull request from a GitHub repository using its owner, repository name, and pul...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "CLOUDFLARE_UPDATE_DNS_RECORD"
+                "GITHUB_GET_A_PULL_REQUEST"
               ]
             }
           }
         },
-        "CLOUDFLARE_DELETE_DNS_RECORD": {
-          "toolkit": "CLOUDFLARE",
-          "tool_slug": "CLOUDFLARE_DELETE_DNS_RECORD",
-          "description": "Tool to delete a DNS record within a specific zone. Deletion is immediate and irreversible. Use only...",
+        "GITHUB_UPDATE_A_PULL_REQUEST": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_UPDATE_A_PULL_REQUEST",
+          "description": "Updates an existing pull request, allowing changes to attributes like title, body, state, base branc...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "CLOUDFLARE_DELETE_DNS_RECORD"
+                "GITHUB_UPDATE_A_PULL_REQUEST"
               ]
             }
           }
         },
-        "CLOUDFLARE_CREATE_ZONE": {
-          "toolkit": "CLOUDFLARE",
-          "tool_slug": "CLOUDFLARE_CREATE_ZONE",
-          "description": "Creates a new DNS zone (domain) in Cloudflare. A zone represents a domain and its DNS records. Use t...",
+        "GITHUB_LIST_BRANCHES": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_BRANCHES",
+          "description": "List branches in a GitHub repository. Returns branch names, commit information, and protection statu...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "CLOUDFLARE_CREATE_ZONE"
-              ]
-            }
-          }
-        },
-        "CLOUDFLARE_LIST_ACCOUNTS": {
-          "toolkit": "CLOUDFLARE",
-          "tool_slug": "CLOUDFLARE_LIST_ACCOUNTS",
-          "description": "List all Cloudflare accounts you have ownership or verified access to. Retrieves a paginated list of...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "CLOUDFLARE_LIST_ACCOUNTS"
+                "GITHUB_LIST_BRANCHES"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:38:05.798Z",
-        "current_time_utc_epoch_seconds": 1786563485,
+        "current_time_utc": "2026-08-12T20:53:34.773Z",
+        "current_time_utc_epoch_seconds": 1786568014,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "wood",
+        "id": "down",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"wood\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"down\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -596,6 +523,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_8v8BQz073la1"
+    "log_id": "log_gAcJ_4avmzFK"
   }
 }

@@ -3,13 +3,18 @@
     "query_id": "workflow-002-q3",
     "workflow_id": 2,
     "workflow_task": "Retrieve upcoming Google Calendar meeting events and create or update Notion content containing a large structured dataset, with verification after writing.",
-    "query": "retrieve notion page content to verify written data",
-    "required_tools": [
-      "NOTION_RETRIEVE_PAGE",
-      "NOTION_GET_PAGE_MARKDOWN"
+    "query": "retrieve and verify Notion page markdown content",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "NOTION_GET_PAGE_MARKDOWN",
+          "NOTION_RETRIEVE_PAGE"
+        ],
+        "purpose": "read back the page content for verification"
+      }
     ],
     "supporting_tools": [],
-    "rationale": "Searches for tools to read back and verify the content that was just written to the Notion page.",
+    "rationale": "Covers the verification step after writing the data to Notion.",
     "candidate_tools": [
       "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
       "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
@@ -20,59 +25,51 @@
     ]
   },
   "request": {
-    "query": "retrieve notion page content to verify written data"
+    "query": "retrieve and verify Notion page markdown content"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "retrieve notion page content to verify written data",
+          "use_case": "retrieve and verify Notion page markdown content",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Optional (if target id or exact title unknown)] [Prerequisite]: Discover candidate pages/databases using NOTION_SEARCH_NOTION_PAGE (paginate with has_more/next_cursor; refine query and select the intended result).",
-            "[Optional (if search seems incomplete or you need an inventory)] [Prerequisite]: Enumerate accessible items using NOTION_FETCH_DATA (paginate with start_cursor) then choose a page vs database.",
-            "[Optional (if access/type/archived state unclear)] [Prerequisite]: Verify target metadata using NOTION_RETRIEVE_PAGE (confirm readable and not archived/in_trash).",
-            "[Optional (if target is a database or you need property mapping)] [Prerequisite]: Fetch schema using NOTION_FETCH_DATABASE (confirm property names/types before reading rows).",
-            "[Required] [Step]: Retrieve readable content using NOTION_GET_PAGE_MARKDOWN (consume response.data.markdown; if it references other page ids you must include, repeat NOTION_GET_PAGE_MARKDOWN for those pages).",
-            "[Optional (if markdown is very large or needs cleaning)] [Next Step]: Post-process the NOTION_GET_PAGE_MARKDOWN output (e.g., normalize formatting / extract sections) in a sandbox/workbench before downstream use.",
-            "[Optional (if target is a database or key info is stored as rows)] [Next Step]: Retrieve rows using NOTION_QUERY_DATABASE (page_size up to 100; paginate with start_cursor=next_cursor until has_more=false; optionally read a row\u2019s page via NOTION_GET_PAGE_MARKDOWN).",
-            "[Fallback (if markdown is empty/placeholder-heavy or structure is required)] [Fallback]: Traverse blocks using NOTION_FETCH_BLOCK_CONTENTS (paginate with start_cursor until has_more=false; use NOTION_FETCH_BLOCK_METADATA only when block types must be resolved)."
+            "[Optional (if page identifier is unknown)] [Prerequisite]: Locate the page using NOTION_SEARCH_NOTION_PAGE (paginate with has_more/next_cursor; select best match client-side).",
+            "[Optional (if access/readability is uncertain)] [Prerequisite]: Validate the page is accessible using NOTION_RETRIEVE_PAGE (fail fast on 403/404).",
+            "[Required] [Step]: Export markdown-friendly content using NOTION_GET_PAGE_MARKDOWN (capture markdown plus completeness signals like truncated/unknown_block_ids; treat empty markdown as suspicious).",
+            "[Optional (if truncated=true, unknown_block_ids non-empty, or markdown is empty)] [Next Step]: Inspect block types using NOTION_FETCH_BLOCK_METADATA, then fetch missing children using NOTION_FETCH_BLOCK_CONTENTS (paginate has_more/next_cursor) and merge/render client-side (Optional: COMPOSIO_REMOTE_WORKBENCH for large trees).",
+            "[Optional (if page properties are needed)] [Next Step]: Read metadata using NOTION_RETRIEVE_PAGE and expand paginated property values using NOTION_GET_PAGE_PROPERTY_ACTION.",
+            "[Fallback (if NOTION_GET_PAGE_MARKDOWN fails with 404/inaccessible)] [Fallback]: Diagnose using NOTION_RETRIEVE_PAGE; if needed, re-find an accessible page via NOTION_SEARCH_NOTION_PAGE and retry NOTION_GET_PAGE_MARKDOWN."
           ],
           "known_pitfalls": [
-            "[NOTION_SEARCH_NOTION_PAGE] Results can mix pages and databases and properties may be null or truncated/offloaded; null-check fields before extracting display values.",
-            "[NOTION_SEARCH_NOTION_PAGE] Can return a no-active-connection style error if the Notion integration is not authorized/active for the session.",
-            "[NOTION_RETRIEVE_PAGE] object_not_found/unauthorized usually means the item isn\u2019t shared with the integration or the identifier/type is wrong.",
-            "[NOTION_GET_PAGE_MARKDOWN] Can succeed but return empty/placeholder-heavy markdown (often embedded references); treat it as a rendered view, not a full structural export.",
-            "[NOTION_QUERY_DATABASE] page_size is capped at 100; next_cursor is opaque and in some cases replaying it into start_cursor can fail cursor-format validation\u2014prefer filtered/smaller queries when possible."
+            "[NOTION_GET_PAGE_MARKDOWN] 404 often indicates missing permissions/sharing for the integration, not only a wrong identifier.",
+            "[NOTION_GET_PAGE_MARKDOWN] Export may be incomplete (truncated=true or unknown_block_ids non-empty) or even return empty markdown; verify before trusting output.",
+            "[NOTION_GET_PAGE_MARKDOWN] Large markdown payloads may be clipped/offloaded by downstream consumers; don\u2019t assume previews contain the full text.",
+            "[NOTION_FETCH_BLOCK_METADATA] 403/404 can reflect inaccessible nested content; repeated calls may hit 429\u2014honor Retry-After.",
+            "[NOTION_GET_PAGE_PROPERTY_ACTION] Property items can be paginated; skipping pagination yields partial values."
           ],
           "reference_workbench_snippets": [
             {
-              "description": "Pagination loop for NOTION_QUERY_DATABASE using start_cursor/has_more/next_cursor.",
-              "code": "```python\nrows=[];c=None\nwhile True:\n a={\"database_id\":db,\"page_size\":100}\n if c: a[\"start_cursor\"]=c\n d=run_composio_tool(\"NOTION_QUERY_DATABASE\",a)[\"data\"]\n rows+=d.get(\"results\",[])\n if not d.get(\"has_more\"): break\n c=d.get(\"next_cursor\")\n```"
-            },
-            {
-              "description": "Robust title extraction from NOTION_SEARCH_NOTION_PAGE results with varying property keys.",
-              "code": "```python\ndef extract_title(o):\n p=o.get(\"properties\") or {}\n for v in p.values():\n  if isinstance(v,dict) and v.get(\"type\")==\"title\":\n   t=v.get(\"title\") or []\n   return \"\".join(x.get(\"plain_text\",\"\") for x in t if isinstance(x,dict))\n return \"\"\n```"
+              "description": "Basic Markdown rendering from blocks returned by NOTION_FETCH_BLOCK_CONTENTS using rich_text plain_text + annotations.",
+              "code": "```python\ndef rich_text_to_md(r):\n    o=[]\n    for it in r or []:\n        s=it.get('plain_text','')\n        a=it.get('annotations') or {}\n        if a.get('code'): s=f'`{s}`'\n        if a.get('italic'): s=f'*{s}*'\n        if a.get('bold'): s=f'**{s}**'\n        o.append(s)\n    return ''.join(o)\n\ndef block_to_md(b):\n    t=b.get('type','')\n    p=b.get(t) or {}\n    txt=rich_text_to_md(p.get('rich_text',[]))\n    m={'heading_1':'# ','heading_2':'## ','heading_3':'### ','bulleted_list_item':'- ','numbered_list_item':'1. ','quote':'> '}\n    if t in m: return (m[t]+txt).strip()\n    if t=='divider': return '---'\n    return txt\n\nmarkdown='\\n\\n'.join(filter(None,(block_to_md(b) for b in blocks)))\n```"
             }
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "NOTION_SEARCH_NOTION_PAGE",
             "NOTION_GET_PAGE_MARKDOWN"
           ],
           "related_tool_slugs": [
-            "NOTION_RETRIEVE_PAGE",
-            "NOTION_FETCH_DATA",
             "NOTION_FETCH_BLOCK_CONTENTS",
+            "NOTION_SEARCH_NOTION_PAGE",
+            "NOTION_RETRIEVE_PAGE",
             "NOTION_FETCH_BLOCK_METADATA",
-            "NOTION_FETCH_DATABASE",
-            "NOTION_QUERY_DATABASE"
+            "NOTION_GET_PAGE_PROPERTY_ACTION"
           ],
           "toolkits": [
             "notion"
           ],
-          "plan_id": "52c6a03481b94250bd1270d795ae95e8"
+          "plan_id": "b6d84b4c4d614039bbcc620597e8a969"
         }
       ],
       "toolkit_connection_statuses": [
@@ -84,6 +81,69 @@
         }
       ],
       "tool_schemas": {
+        "NOTION_GET_PAGE_MARKDOWN": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_GET_PAGE_MARKDOWN",
+          "description": "Retrieve a Notion page's full content rendered as Notion-flavored Markdown in a single API call. Use when you need the readable content of a page without recursive block-children fetching.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id"
+            ],
+            "properties": {
+              "page_id": {
+                "type": "string",
+                "examples": [
+                  "6c6a9b6c-12a4-4c3e-98e2-3c7a1e4f2d2a",
+                  "6c6a9b6c12a44c3e98e23c7a1e4f2d2a"
+                ],
+                "description": "The UUID of the Notion page to retrieve as markdown. Accepts both hyphenated (8-4-4-4-12) and unhyphenated (32 characters) UUID formats. This endpoint retrieves the full page content rendered as Notion-flavored Markdown in a single API call, avoiding the need for recursive block-children fetching. IMPORTANT: Only page IDs are accepted - database IDs will be rejected. To retrieve database content, use the 'Fetch Database' or 'Query Database' actions instead."
+              },
+              "include_transcript": {
+                "type": "boolean",
+                "description": "Set to true to include meeting note transcripts in the markdown response. Defaults to false if not specified."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_FETCH_BLOCK_CONTENTS": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_BLOCK_CONTENTS",
+          "description": "Retrieves a paginated list of direct, first-level child block objects along with contents for a given parent Notion block or page ID; use block IDs from the response for subsequent calls to access deeply nested content.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "block_id"
+            ],
+            "properties": {
+              "block_id": {
+                "type": "string",
+                "examples": [
+                  "c02fc1d3-db8b-45c5-a222-27595b15aea7"
+                ],
+                "description": "UUID of the parent Notion block or page whose children are to be fetched. Accepts both hyphenated (e.g., 'c02fc1d3-db8b-45c5-a222-27595b15aea7') and non-hyphenated (e.g., 'c02fc1d3db8b45c5a22227595b15aea7') UUID formats. Notion's API does not support special identifiers like 'root' or 'top-level' - you must always provide an actual page or block UUID. To discover valid page/block IDs, first use 'NOTION_SEARCH_NOTION_PAGE' to find pages or 'NOTION_QUERY_DATABASE' to query databases."
+              },
+              "page_size": {
+                "type": "integer",
+                "examples": [
+                  "25",
+                  "50",
+                  "100"
+                ],
+                "description": "The maximum number of child blocks to return in a single response. The actual number of results may be lower if there are fewer child blocks available or if the end of the list is reached. Maximum allowed value is 100. If unspecified, Notion's default page size will be used."
+              },
+              "start_cursor": {
+                "type": "string",
+                "examples": [
+                  "a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6"
+                ],
+                "description": "Pagination cursor from next_cursor in a previous API response. When paginating through results, pass the next_cursor value from the previous response here to fetch the next page. Must be a valid UUID format or cursor string returned by Notion's API. If omitted, returns the first page of results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
         "NOTION_SEARCH_NOTION_PAGE": {
           "toolkit": "NOTION",
           "tool_slug": "NOTION_SEARCH_NOTION_PAGE",
@@ -151,78 +211,16 @@
           },
           "hasFullSchema": true
         },
-        "NOTION_GET_PAGE_MARKDOWN": {
-          "toolkit": "NOTION",
-          "tool_slug": "NOTION_GET_PAGE_MARKDOWN",
-          "description": "Retrieve a Notion page's full content rendered as Notion-flavored Markdown in a single API call. Use when you need the readable content of a page without recursive block-children fetching.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "page_id"
-            ],
-            "properties": {
-              "page_id": {
-                "type": "string",
-                "examples": [
-                  "6c6a9b6c-12a4-4c3e-98e2-3c7a1e4f2d2a",
-                  "6c6a9b6c12a44c3e98e23c7a1e4f2d2a"
-                ],
-                "description": "The UUID of the Notion page to retrieve as markdown. Accepts both hyphenated (8-4-4-4-12) and unhyphenated (32 characters) UUID formats. This endpoint retrieves the full page content rendered as Notion-flavored Markdown in a single API call, avoiding the need for recursive block-children fetching. IMPORTANT: Only page IDs are accepted - database IDs will be rejected. To retrieve database content, use the 'Fetch Database' or 'Query Database' actions instead."
-              },
-              "include_transcript": {
-                "type": "boolean",
-                "description": "Set to true to include meeting note transcripts in the markdown response. Defaults to false if not specified."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
         "NOTION_RETRIEVE_PAGE": {
           "toolkit": "NOTION",
           "tool_slug": "NOTION_RETRIEVE_PAGE",
-          "description": "Retrieve a Notion page's properties/metadata (not block content) by page_id. Use when you have a page URL/ID and need to access its properties; for page content use block-children tools.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "page_id"
-            ],
-            "properties": {
-              "page_id": {
-                "type": "string",
-                "examples": [
-                  "6c6a9b6c-12a4-4c3e-98e2-3c7a1e4f2d2a",
-                  "6c6a9b6c12a44c3e98e23c7a1e4f2d2a"
-                ],
-                "description": "The UUID of the Notion page to retrieve. Accepts both hyphenated (8-4-4-4-12) and unhyphenated (32 characters) UUID formats. IMPORTANT: Must be a PAGE ID, not a database ID. If you have a database ID, use NOTION_FETCH_DATABASE instead. This endpoint returns page properties and metadata, not page content (use block-children tools for content). For pages with properties containing more than 25 references, use NOTION_GET_PAGE_PROPERTY_ACTION to retrieve complete property values."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "NOTION_FETCH_DATA": {
-          "toolkit": "NOTION",
-          "tool_slug": "NOTION_FETCH_DATA",
-          "description": "Fetches Notion items (pages and/or databases) from the Notion workspace, use this to get minimal dat...",
+          "description": "Retrieve a Notion page's properties/metadata (not block content) by page_id. Use when you have a pag...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "NOTION_FETCH_DATA"
-              ]
-            }
-          }
-        },
-        "NOTION_FETCH_BLOCK_CONTENTS": {
-          "toolkit": "NOTION",
-          "tool_slug": "NOTION_FETCH_BLOCK_CONTENTS",
-          "description": "Retrieves a paginated list of direct, first-level child block objects along with contents for a give...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "NOTION_FETCH_BLOCK_CONTENTS"
+                "NOTION_RETRIEVE_PAGE"
               ]
             }
           }
@@ -241,44 +239,30 @@
             }
           }
         },
-        "NOTION_FETCH_DATABASE": {
+        "NOTION_GET_PAGE_PROPERTY_ACTION": {
           "toolkit": "NOTION",
-          "tool_slug": "NOTION_FETCH_DATABASE",
-          "description": "Fetches a Notion database's structural metadata (properties, title, etc.) via its `database_id`, not...",
+          "tool_slug": "NOTION_GET_PAGE_PROPERTY_ACTION",
+          "description": "Call this to get a specific property from a Notion page when you have a valid `page_id` and `propert...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "NOTION_FETCH_DATABASE"
-              ]
-            }
-          }
-        },
-        "NOTION_QUERY_DATABASE": {
-          "toolkit": "NOTION",
-          "tool_slug": "NOTION_QUERY_DATABASE",
-          "description": "Queries a Notion database to retrieve pages (rows). In Notion, databases are collections where each ...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "NOTION_QUERY_DATABASE"
+                "NOTION_GET_PAGE_PROPERTY_ACTION"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:35:24.328Z",
-        "current_time_utc_epoch_seconds": 1786563324,
+        "current_time_utc": "2026-08-12T20:51:13.799Z",
+        "current_time_utc_epoch_seconds": 1786567873,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "fire",
+        "id": "year",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"fire\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"year\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -288,6 +272,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_cw0Bm9eh37gr"
+    "log_id": "log_w_wn6F4nHadt"
   }
 }

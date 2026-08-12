@@ -3,14 +3,20 @@
     "query_id": "workflow-021-q1",
     "workflow_id": 21,
     "workflow_task": "Read reference documents and a spreadsheet, discover fiscal-period logic from available workspace sources, update spreadsheet formulas, and create a summary worksheet.",
-    "query": "find reference documents and workspace files for fiscal period logic",
-    "required_tools": [
-      "GOOGLEDRIVE_FIND_FILE"
+    "query": "find reference documents and spreadsheet files in drive",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLEDRIVE_FIND_FILE"
+        ],
+        "purpose": "locate relevant files"
+      }
     ],
     "supporting_tools": [
-      "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT"
+      "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+      "GOOGLESHEETS_GET_SPREADSHEET_INFO"
     ],
-    "rationale": "An agent needs to locate the relevant workspace files and reference documents stored in Drive before reading their contents.",
+    "rationale": "Searches workspace files to identify the target reference documents and spreadsheets needed for the workflow.",
     "candidate_tools": [
       "GMAIL_FETCH_EMAILS",
       "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
@@ -22,52 +28,69 @@
     ]
   },
   "request": {
-    "query": "find reference documents and workspace files for fiscal period logic"
+    "query": "find reference documents and spreadsheet files in drive"
   },
   "response": {
     "data": {
       "results": [
         {
           "index": 1,
-          "use_case": "find reference documents and workspace files for fiscal period logic",
+          "use_case": "find reference documents and spreadsheet files in drive",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Optional (if a target folder is known but its identifier is unknown)] [Prerequisite]: Resolve the folder using GOOGLEDRIVE_FIND_FOLDER (get a folder_id to scope searches).",
-            "[Required] [Step]: Discover candidate files using GOOGLEDRIVE_FIND_FILE (search by name and fullText; optionally constrain by folder_id, mimeType, or shared-item filters; paginate with pageToken/nextPageToken).",
-            "[Required] [Next Step]: Triage matches using GOOGLEDRIVE_GET_FILE_METADATA (confirm mimeType, parent context, and sharing posture; decide Sheets read vs export/download).",
-            "[Required (if the candidate is a spreadsheet)] [Next Step]: Identify tabs using GOOGLESHEETS_GET_SHEET_NAMES (use returned names exactly when constructing A1 ranges, quoting as needed).",
-            "[Required (for quick validation/extraction)] [Next Step]: Read small bounded windows using GOOGLESHEETS_BATCH_GET (headers + limited row slices; keep ranges tight to confirm structure before wider reads).",
-            "[Required (if offline review is needed or the file is not a spreadsheet)] [Next Step]: Retrieve contents using GOOGLEDRIVE_DOWNLOAD_FILE (export to a usable format for review).",
-            "[Required] [Fallback]: If discovery is empty/noisy, enumerate likely containers with GOOGLEDRIVE_LIST_CHILDREN_V2, then rerun GOOGLEDRIVE_FIND_FILE with tighter keywords and re-check via GOOGLEDRIVE_GET_FILE_METADATA."
+            "[Required] [Step]: Discover candidate files using GOOGLEDRIVE_FIND_FILE (name/keyword search; filter by doc/spreadsheet mimeType when known; request minimal non-identifying fields incl. link; follow nextPageToken; de-duplicate by file id).",
+            "[Optional (if results are too broad or empty)] [Fallback]: Refine and retry discovery using GOOGLEDRIVE_FIND_FILE (adjust keywords; add constraints like parents/trashed/mimeType; fully iterate pagination again).",
+            "[Optional (if shared-drive coverage is uncertain)] [Prerequisite]: Enumerate shared drives using GOOGLEDRIVE_LIST_SHARED_DRIVES, then rerun GOOGLEDRIVE_FIND_FILE with shared-drive coverage.",
+            "[Optional (if spreadsheet-only narrowing is needed)] [Next Step]: Narrow spreadsheet candidates using GOOGLESHEETS_SEARCH_SPREADSHEETS (use supported query fields; follow next_page_token; de-duplicate by spreadsheet id).",
+            "[Required] [Next Step]: Disambiguate and rank matches using GOOGLEDRIVE_GET_FILE_METADATA and (for spreadsheets) GOOGLESHEETS_GET_SPREADSHEET_INFO (confirm type, recency, location, link, and basic structure before selecting).",
+            "[Optional (if selecting a specific tab/range)] [Prerequisite]: Enumerate tabs using GOOGLESHEETS_GET_SHEET_NAMES (capture exact tab names to avoid quoting/special-character issues).",
+            "[Required (if filenames are unreliable or content must be verified)] [Next Step]: Confirm contents using GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT (native docs) or GOOGLEDRIVE_DOWNLOAD_FILE (other types; inspect downloaded_file_content.s3url)."
           ],
           "known_pitfalls": [
-            "[GOOGLEDRIVE_FIND_FILE] Requires valid Drive query syntax; overly vague or name-only searches may return nothing\u2014use fullText and tighter constraints.",
-            "[GOOGLEDRIVE_FIND_FILE] 403 PERMISSION_DENIED with reason ACCESS_TOKEN_SCOPE_INSUFFICIENT indicates missing Drive scopes; re-authorization is required.",
-            "[GOOGLESHEETS_BATCH_GET] HTTP 400 \"Range exceeds grid limits\" when A1 ranges exceed sheet bounds; sample small windows first.",
-            "[GOOGLESHEETS_BATCH_GET] \"Sheet not found\" errors occur if you assume a default tab name; always derive names via GOOGLESHEETS_GET_SHEET_NAMES.",
-            "[GOOGLEDRIVE_DOWNLOAD_FILE] Content may be returned via a storage URL (not inline), and exported CSVs can include blank/unnamed columns or encoding artifacts."
+            "[GOOGLEDRIVE_FIND_FILE] nextPageToken pagination can hide relevant files; duplicate names are common\u2014treat file id as the unique identifier.",
+            "[GOOGLEDRIVE_FIND_FILE] results may include trashed=true unless filtered, surfacing deleted items unexpectedly.",
+            "[GOOGLEDRIVE_FIND_FILE] 403 PERMISSION_DENIED / ACCESS_TOKEN_SCOPE_INSUFFICIENT indicates missing Drive scopes\u2014re-auth with broader scopes before retrying.",
+            "[GOOGLESHEETS_SEARCH_SPREADSHEETS] unsupported query fields can trigger 400 errors; next_page_token may require full iteration to avoid missing matches.",
+            "[GOOGLEDRIVE_DOWNLOAD_FILE] content is returned via downloaded_file_content.s3url (not inline bytes), requiring a separate fetch to inspect."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract download URLs/metadata from a multi-result response object",
+              "code": "```python\nurls=[]\nfor r in resp.get('results',[]):\n    d=r['response']['data']\n    c=d.get('downloaded_file_content') or {}\n    urls.append({'id':d.get('id'),'mimeType':d.get('mimeType'),'s3url':c.get('s3url'),'export_applied':d.get('export_applied')})\nurls\n```"
+            },
+            {
+              "description": "Parse a Sheets values-style response object and iterate rows",
+              "code": "```python\nresult_data=file_data['results'][0]['response']['data']\nvalues=result_data['valueRanges'][0]['values']\nfor row in values:\n    process_row=row\n```"
+            }
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
             "GOOGLEDRIVE_FIND_FILE",
-            "GOOGLEDRIVE_GET_FILE_METADATA",
-            "GOOGLESHEETS_GET_SHEET_NAMES",
-            "GOOGLESHEETS_BATCH_GET"
+            "GOOGLESHEETS_SEARCH_SPREADSHEETS"
           ],
           "related_tool_slugs": [
-            "GOOGLEDRIVE_FIND_FOLDER",
-            "GOOGLEDRIVE_LIST_CHILDREN_V2",
+            "GOOGLEDRIVE_GET_FILE_METADATA",
+            "GOOGLEDRIVE_LIST_SHARED_DRIVES",
+            "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+            "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
             "GOOGLEDRIVE_DOWNLOAD_FILE",
-            "GOOGLESHEETS_VALUES_GET"
+            "GOOGLESHEETS_GET_SHEET_NAMES"
           ],
           "toolkits": [
+            "googledocs",
             "googledrive",
             "googlesheets"
           ],
-          "plan_id": "b8308992b3304f978fafc6c69f76a4b5"
+          "plan_id": "514f377154664e9fbdf8ca7cd343829e"
         }
       ],
       "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledocs",
+          "has_active_connection": false,
+          "description": "Google Docs is a cloud-based word processor with real-time collaboration, version history, and integration with other Google Workspace apps",
+          "status_message": "No Active connection for toolkit=googledocs. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledocs\") to create a connection BEFORE executing any googledocs tools."
+        },
         {
           "toolkit": "googledrive",
           "has_active_connection": false,
@@ -273,6 +296,90 @@
           },
           "hasFullSchema": true
         },
+        "GOOGLESHEETS_SEARCH_SPREADSHEETS": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+          "description": "Search for Google Spreadsheets using various filters including name, content, date ranges, and more.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Budget Report",
+                  "quarterly sales",
+                  "name contains 'Budget'",
+                  "fullText contains 'sales data'",
+                  "sharedWithMe = true"
+                ],
+                "description": "Search query to filter spreadsheets. Behavior depends on the 'search_type' parameter. For advanced searches, use Google Drive query syntax with fields like 'name contains', 'fullText contains', or boolean filters like 'sharedWithMe = true'. DO NOT use spreadsheet IDs as search terms. Leave empty to get all spreadsheets."
+              },
+              "order_by": {
+                "type": "string",
+                "default": "modifiedTime desc",
+                "description": "Sort order (comma-separated list for multi-field sorting). Valid fields: createdTime, folder, modifiedByMeTime, modifiedTime, name, name_natural, quotaBytesUsed, recency, sharedWithMeTime, starred, viewedByMeTime. Append ' desc' for descending order (default is ascending). Examples: 'modifiedTime desc', 'folder,name', 'starred,modifiedTime desc'."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Token for retrieving the next page of results. Use the 'next_page_token' value from a previous response to get subsequent pages. Leave empty to get the first page."
+              },
+              "max_results": {
+                "type": "integer",
+                "default": 10,
+                "maximum": 1000,
+                "minimum": 1,
+                "description": "Maximum number of spreadsheets to return (1-1000). Defaults to 10."
+              },
+              "search_type": {
+                "enum": [
+                  "name",
+                  "content",
+                  "both"
+                ],
+                "type": "string",
+                "default": "name",
+                "description": "How to search: 'name' searches filenames only (prefix matching from the START of filenames), 'content' uses fullText search which searches file content, name, description, and metadata (Google Drive API limitation: cannot search content exclusively without also matching filenames), 'both' explicitly searches both name OR content with an OR condition. Note: 'name' search only matches from the START of filenames (e.g., 'Budget' finds 'Budget 2024' but NOT 'Q1 Budget')."
+              },
+              "starred_only": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to return only starred spreadsheets. Defaults to False."
+              },
+              "created_after": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01T00:00:00Z",
+                  "2024-12-01T12:00:00-08:00"
+                ],
+                "description": "Return spreadsheets created after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
+              },
+              "modified_after": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01T00:00:00Z",
+                  "2024-12-01T12:00:00-08:00"
+                ],
+                "description": "Return spreadsheets modified after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
+              },
+              "shared_with_me": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to return only spreadsheets shared with the current user. Defaults to False."
+              },
+              "include_trashed": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include spreadsheets in trash. Defaults to False."
+              },
+              "include_shared_drives": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include spreadsheets from shared drives you have access to. Defaults to True."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
         "GOOGLEDRIVE_GET_FILE_METADATA": {
           "toolkit": "GOOGLEDRIVE",
           "tool_slug": "GOOGLEDRIVE_GET_FILE_METADATA",
@@ -311,199 +418,44 @@
           },
           "hasFullSchema": true
         },
-        "GOOGLESHEETS_GET_SHEET_NAMES": {
-          "toolkit": "GOOGLESHEETS",
-          "tool_slug": "GOOGLESHEETS_GET_SHEET_NAMES",
-          "description": "Lists all worksheet names from a specified Google Spreadsheet (which must exist), useful for discovering sheets before further operations.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "spreadsheet_id"
-            ],
-            "properties": {
-              "exclude_hidden": {
-                "type": "boolean",
-                "default": false,
-                "description": "When True, hidden sheets will be excluded from the results. When False (default), all sheets including hidden ones are returned. Hidden sheets are sheets that have been hidden via the 'Hide sheet' option in Google Sheets UI."
-              },
-              "spreadsheet_id": {
-                "type": "string",
-                "examples": [
-                  "1qpyC0XzvTcKT6EISywY_7H7D7No1tpxEXAMPLE_ID"
-                ],
-                "description": "The unique identifier of the Google Spreadsheet (alphanumeric string, typically 44 characters). Extract only the ID portion from URLs - do not include leading/trailing slashes, '/edit' suffixes, query parameters, or URL fragments. From 'https://docs.google.com/spreadsheets/d/1qpyC0XzvTcKT6EISywY/edit#gid=0', use only '1qpyC0XzvTcKT6EISywY'."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "GOOGLESHEETS_BATCH_GET": {
-          "toolkit": "GOOGLESHEETS",
-          "tool_slug": "GOOGLESHEETS_BATCH_GET",
-          "description": "Retrieves data from specified cell ranges in a Google Spreadsheet.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "spreadsheet_id"
-            ],
-            "properties": {
-              "ranges": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "examples": [
-                  "Sheet1",
-                  "Sheet1!A1:B2",
-                  "Sheet1!A1:Z10000",
-                  "Sheet1!1:2",
-                  "'My Sheet'!A1:Z500",
-                  "A1:B2"
-                ],
-                "description": "A list of cell ranges in A1 notation from which to retrieve data. If this list is omitted, empty, or contains only empty strings, all data from the first sheet of the spreadsheet will be fetched. Empty strings in the list are automatically filtered out. Supported formats: (1) Bare sheet name like 'Sheet1' to get all data from that sheet, (2) Sheet with range like 'Sheet1!A1:B2', (3) Just cell reference like 'A1:B2' (uses first sheet). For sheet names with spaces or special characters, enclose in single quotes (e.g., \"'My Sheet'\" or \"'My Sheet'!A1:B2\"). IMPORTANT: For large sheets, always use bounded ranges with explicit row limits (e.g., 'Sheet1!A1:Z10000' instead of 'Sheet1!A:Z'). Unbounded column ranges like 'A:Z' on sheets with >10,000 rows may cause timeouts or errors. If you need all data from a large sheet, fetch in chunks of 10,000 rows at a time."
-              },
-              "majorDimension": {
-                "enum": [
-                  "DIMENSION_UNSPECIFIED",
-                  "ROWS",
-                  "COLUMNS"
-                ],
-                "type": "string",
-                "description": "The major dimension for organizing data in results."
-              },
-              "spreadsheet_id": {
-                "type": "string",
-                "examples": [
-                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-                ],
-                "maxLength": 200,
-                "description": "The unique identifier of the Google Spreadsheet from which data will be retrieved. This is the ID found in the spreadsheet URL after /d/. You can provide either the spreadsheet ID directly or a full Google Sheets URL (the ID will be extracted automatically)."
-              },
-              "valueRenderOption": {
-                "enum": [
-                  "FORMATTED_VALUE",
-                  "UNFORMATTED_VALUE",
-                  "FORMULA"
-                ],
-                "type": "string",
-                "default": "FORMATTED_VALUE",
-                "description": "How values should be rendered in the output. FORMATTED_VALUE: Values are calculated and formatted (default). UNFORMATTED_VALUE: Values are calculated but not formatted. FORMULA: Values are not calculated; the formula is returned instead."
-              },
-              "dateTimeRenderOption": {
-                "enum": [
-                  "SERIAL_NUMBER",
-                  "FORMATTED_STRING"
-                ],
-                "type": "string",
-                "default": "SERIAL_NUMBER",
-                "description": "How dates and times should be rendered in the output. SERIAL_NUMBER: Dates are returned as serial numbers (default). FORMATTED_STRING: Dates returned as formatted strings."
-              },
-              "empty_strings_filtered": {
-                "type": "boolean",
-                "default": false,
-                "description": "Indicates whether empty strings were filtered from the response."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "GOOGLEDRIVE_FIND_FOLDER": {
+        "GOOGLEDRIVE_LIST_SHARED_DRIVES": {
           "toolkit": "GOOGLEDRIVE",
-          "tool_slug": "GOOGLEDRIVE_FIND_FOLDER",
-          "description": "Finds one page of Google Drive folders by name and optional parent. Use nextPageToken with page_token to retrieve additional pages.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "starred": {
-                "type": "boolean",
-                "description": "Set to true to search for folders that are starred, or false for those that are not."
-              },
-              "page_size": {
-                "type": "integer",
-                "default": 100,
-                "maximum": 1000,
-                "minimum": 1,
-                "description": "The maximum number of folders to return in this call (1-1000). This action returns one page per call; use the response's nextPageToken to retrieve additional pages."
-              },
-              "name_exact": {
-                "type": "string",
-                "examples": [
-                  "Project Alpha",
-                  "Q1 Financials",
-                  "Folder 8",
-                  "Report 2024"
-                ],
-                "description": "The exact name of the folder to search for as a string. This search is case-sensitive. Do not pass numbers - convert to string if needed."
-              },
-              "page_token": {
-                "type": "string",
-                "description": "Opaque token for the next page. Omit for the first page, then pass the previous response's nextPageToken unchanged to continue the same search."
-              },
-              "name_contains": {
-                "type": "string",
-                "examples": [
-                  "report",
-                  "meeting notes",
-                  "2024",
-                  "project"
-                ],
-                "description": "A substring to search for within folder names as a string. This search is case-insensitive."
-              },
-              "modified_after": {
-                "type": "string",
-                "examples": [
-                  "2023-08-01T00:00:00Z"
-                ],
-                "description": "Search for folders modified after a specific date and time. The timestamp must be in RFC 3339 format (e.g., '2023-01-15T10:00:00Z' or '2023-01-15T10:00:00.000Z')."
-              },
-              "parent_folder_id": {
-                "type": "string",
-                "examples": [
-                  "1aBcDeFgHiJkLmNoPqRsTuVwXyZ",
-                  "0B1234567890abcdefg"
-                ],
-                "description": "The ID of the parent folder to search within. Only folders directly inside this parent folder will be returned. You can find parent folder IDs by first searching for the parent folder by name. Supports folders in both My Drive and Shared Drives."
-              },
-              "name_not_contains": {
-                "type": "string",
-                "examples": [
-                  "archive",
-                  "old",
-                  "backup",
-                  "temp"
-                ],
-                "description": "A substring to exclude from folder names as a string. Folders with names containing this substring will not be returned. This search is case-insensitive."
-              },
-              "full_text_contains": {
-                "type": "string",
-                "examples": [
-                  "confidential project details",
-                  "keyword"
-                ],
-                "description": "A string to search for within the folder's name or description (NOT the content of files inside the folder). This search is case-insensitive. Note: Google Drive's fullText search on folders only matches the folder's own metadata, not files contained within."
-              },
-              "full_text_not_contains": {
-                "type": "string",
-                "examples": [
-                  "draft",
-                  "internal use only"
-                ],
-                "description": "A string to exclude from the folder's name or description (NOT the content of files inside the folder). This search is case-insensitive. Note: Google Drive's fullText search on folders only matches the folder's own metadata, not files contained within."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "GOOGLEDRIVE_LIST_CHILDREN_V2": {
-          "toolkit": "GOOGLEDRIVE",
-          "tool_slug": "GOOGLEDRIVE_LIST_CHILDREN_V2",
-          "description": "Tool to list a folder's children using Google Drive API v2. Use when you need to retrieve all files ...",
+          "tool_slug": "GOOGLEDRIVE_LIST_SHARED_DRIVES",
+          "description": "Tool to list the user's shared drives. Use when you need to get a list of all shared drives accessib...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GOOGLEDRIVE_LIST_CHILDREN_V2"
+                "GOOGLEDRIVE_LIST_SHARED_DRIVES"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_GET_SPREADSHEET_INFO": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+          "description": "Retrieves metadata for a Google Spreadsheet using its ID. By default, returns essential information ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_GET_SPREADSHEET_INFO"
+              ]
+            }
+          }
+        },
+        "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+          "description": "Retrieve a Google Doc by ID and return a best-effort plain-text rendering. Converts document structu...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT"
               ]
             }
           }
@@ -522,30 +474,30 @@
             }
           }
         },
-        "GOOGLESHEETS_VALUES_GET": {
+        "GOOGLESHEETS_GET_SHEET_NAMES": {
           "toolkit": "GOOGLESHEETS",
-          "tool_slug": "GOOGLESHEETS_VALUES_GET",
-          "description": "Returns a range of values from a spreadsheet. Use when you need to read data from specific cells or ...",
+          "tool_slug": "GOOGLESHEETS_GET_SHEET_NAMES",
+          "description": "Lists all worksheet names from a specified Google Spreadsheet (which must exist), useful for discove...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GOOGLESHEETS_VALUES_GET"
+                "GOOGLESHEETS_GET_SHEET_NAMES"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T19:38:49.633Z",
-        "current_time_utc_epoch_seconds": 1786563529,
+        "current_time_utc": "2026-08-12T20:54:44.428Z",
+        "current_time_utc_epoch_seconds": 1786568084,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "shoe",
+        "id": "deer",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"shoe\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"deer\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -555,6 +507,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_rTbLcpIWfamZ"
+    "log_id": "log_yu51PxOCTWvq"
   }
 }
