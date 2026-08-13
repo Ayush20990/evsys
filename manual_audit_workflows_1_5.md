@@ -43,8 +43,7 @@ to. No bugs found here.
 
 ## Three misses, checked against actual tool descriptions — not just names
 
-### `workflow-003-q2` "upload file to OneDrive" — genuine miss, not a gap
-
+### `workflow-003-q2` "upload file to OneDrive"
 Ground truth: `ONE_DRIVE_UPDATE_FILE_CONTENT`. Search returned `ONE_DRIVE_ONEDRIVE_UPLOAD_FILE` instead.
 
 The task text is explicit: *"upload the modified workbook back to the **same** OneDrive item."* That "same"
@@ -56,7 +55,7 @@ left alone it creates a second, differently-named file rather than touching the 
 with `conflict_behavior='replace'` explicitly set does it overwrite anything, with no stated guarantee the
 item ID/share-links survive the way the other tool promises. Confirmed genuine miss.
 
-### `workflow-004-q1` "get approved cards from Trello workflow" — genuine miss, not a gap
+### `workflow-004-q1` "get approved cards from Trello workflow"
 
 Ground truth: `TRELLO_GET_LISTS_CARDS_BY_ID_LIST`. Search returned
 `TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD_BY_FILTER` instead.
@@ -69,7 +68,7 @@ own description confirms it reads from a Trello *source list*, and its candidate
 list's cards) — a clear two-step, list-scoped pattern the returned tool structurally cannot perform. Confirmed
 genuine miss.
 
-### `workflow-005-q5` "write evidence-supported updates in Notion CRM records" — different issue, not resolved either way
+### `workflow-005-q5` "write evidence-supported updates in Notion CRM records"
 
 Ground truth: `NOTION_UPDATE_PAGE`. Search returned `NOTION_UPDATE_ROW_DATABASE` / `NOTION_UPSERT_ROW_DATABASE`.
 
