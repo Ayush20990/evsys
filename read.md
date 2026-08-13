@@ -91,7 +91,10 @@ validation outright.
 
 For every rejection reason with a real example, and a worked example of why a 2-tool query can score either
 100% or 50% depending on whether those tools are alternatives or a composition, see
-[`scoring_and_validation_reference.md`](scoring_and_validation_reference.md).
+[`scoring_and_validation_reference.md`](scoring_and_validation_reference.md). For a hand-checked audit of the
+scoring pipeline against raw API responses — confirming the arithmetic is correct and surfacing a few
+ground-truth cases that look too narrow — see
+[`manual_audit_workflows_1_5.md`](manual_audit_workflows_1_5.md).
 
 The baseline benchmark (`single_tool_evaluation.py`) uses a plainer setup: one specific target tool, one
 query built to retrieve it. `primary_hit` = target tool slug appears in $P$; `related_hit` = target appears
