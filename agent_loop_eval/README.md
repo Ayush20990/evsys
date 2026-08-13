@@ -14,19 +14,41 @@ script runs a real tool-calling loop instead: the model gets the task and two to
 searches for while genuinely trying to make progress is what gets recorded. Query count is emergent —
 no cap, no `ceil(pool_size / 2.5)` formula.
 
-## The headline: the two distributions don't match
+## The query-distribution difference — measured, but NOT yet explained
 
 Same 9 tasks, both methods:
 
 | | One-shot imagined | Agent-issued |
 |---|---:|---:|
-| Queries per task | 3.2 | **9.2** |
-| Words per query | 6.0 | **2.9** |
+| Queries per task | 3.2 | 9.2 |
+| Words per query | 6.0 | 2.9 |
 
-A working agent issues roughly **3x more queries, each about half as long**. The imagined queries are
-full sentences (`"check payment link capabilities and configuration"`); the real ones are keyword
-fragments (`"payment link"`, `"hubspot email"`). Scoring retrieval against sentence-style queries was
-measuring behaviour the agent doesn't exhibit. See `agent_vs_imagined.md` for the side-by-side.
+The loop issues ~3x more queries, each about half as long: keyword fragments (`"payment link"`,
+`"hubspot email"`) rather than sentences (`"check payment link capabilities and configuration"`).
+
+**Do not read this as "agents query in keywords."** The cause is unestablished, and at least one
+strong candidate is this harness rather than agent behaviour. Task 1 makes the problem obvious — from
+a task that says *"create a review-only automated confirmation email"* and *"create a disabled
+confirmation workflow"*, the agent searched `'email'`, `'workflow'`, `'custom object'`. Single generic
+words. That is severe context loss, not plausible agent behaviour.
+
+Three candidate causes, only one partially tested:
+
+1. **The prompt (untested, most likely).** `SYSTEM_PROMPT` says *"Search for ONE capability at a
+   time"* and `SEARCH_DECLARATION` says *"Issue one focused query describing the single capability you
+   need right now."* That is three separate instructions to atomise queries. Reporting the resulting
+   atomisation as a discovered property of agents would be circular.
+2. **Model tier (partially tested).** Terseness reproduced on both `gemini-3.5-flash-lite` and
+   `gemini-3.5-flash`, so it is not purely a cheapest-tier artifact. `gemini-3.1-pro-preview` could
+   not be tested — quota exhausted.
+3. **Genuine agent behaviour.** Possible, but not demonstrated by anything here.
+
+**Before citing these numbers**, rerun with neutral wording (drop "ONE capability at a time" and
+"one focused query") and with a frontier model. If terseness survives both, the finding stands; until
+then it does not. Everything else in this README is unaffected — the recall and derailment results
+depend on which queries were issued, not on why they were phrased that way.
+
+See `agent_vs_imagined.md` for the side-by-side.
 
 ## Results
 
@@ -111,8 +133,19 @@ undersampled. Connecting accounts recovers this on the read path, where failures
 | `traces/` | Full per-task traces (run 2) |
 | `run1_real_reads_unconnected/` | Run 1, kept for the comparison above |
 
+## Ground truth is never shown to the agent
+
+The model receives the task text and nothing else — `case.task` is the sole content of the opening
+message, and the system prompt names no tool, toolkit or vendor. Each use case's reference tool list
+(`case.tools`) is carried only on the trace object and written to `agent_queries.json`, both consumed
+*after* the run for offline scoring. Verified by inspection of the prompt-construction path; worth
+re-checking if that path is ever edited, since leakage there would silently invalidate every recall
+number here.
+
 ## Next
 
+- **Resolve the query-phrasing question above before quoting the distribution numbers.** Neutral
+  prompt wording plus a frontier model; that is the blocking item.
 - Complete the OAuth flow (auth configs exist; connected accounts are still 0) to get real read
   execution and genuine recovery queries.
 - Feed agent-issued queries back into the primary benchmark's scoring to measure retrieval against
