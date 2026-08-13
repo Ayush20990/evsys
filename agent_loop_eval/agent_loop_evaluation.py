@@ -67,6 +67,12 @@ REPORT_PATH = ROOT / "summary_report.md"
 
 READ_ONLY_TAG = "readOnlyHint"
 
+# A query that is just a tool slug the agent already saw in an earlier response is not
+# discovery -- search returns it by exact match, which tests lookup rather than
+# retrieval. Flagged so scoring can exclude it; in the first two runs these were 11% of
+# queries and inflated recall by 1-2 points.
+SLUG_QUERY = re.compile(r"^[A-Z][A-Z0-9]*(_[A-Z0-9]+){2,}$")
+
 
 class QuotaExhaustedError(RuntimeError):
     """Raised when the LLM provider's quota is gone; retrying only burns wall-clock."""
@@ -264,6 +270,7 @@ class AgentSession:
             "primary_tool_slugs": primary,
             "related_tool_slugs": related,
             "latency_sec": round(latency, 3),
+            "is_slug_lookup": bool(SLUG_QUERY.match(query.strip())),
         })
         print(f"    search: {query!r} -> {primary}")
         return {"primary_tool_slugs": primary, "related_tool_slugs": related,
@@ -293,6 +300,20 @@ class AgentSession:
                 print(f"    exec[real-failed] {tool_slug}: {repr(exc)[:90]}")
                 return {"successful": False, "data": None, "error": repr(exc)[:400]}
         meta = self.metadata.get(tool_slug) or {}
+        # Reject calls the real API would reject. This is a pure schema check against the
+        # tool's declared required parameters -- it never consults the ground truth, so it
+        # cannot leak the answer key. Without it the mock returns success for an argument-
+        # less call to a create endpoint, and the agent proceeds believing it created
+        # something.
+        required = (meta.get("input_parameters") or {}).get("required") or []
+        missing = [name for name in required if name not in arguments]
+        if missing:
+            record["mode"] = "mock-rejected"
+            record["error"] = f"missing required parameters: {missing}"
+            self.trace.executions.append(record)
+            print(f"    exec[mock-reject] {tool_slug}: missing {missing}")
+            return {"successful": False, "data": None,
+                    "error": f"Missing required parameters: {', '.join(missing)}"}
         mocked = mock_from_schema(meta.get("output_parameters") or {})
         if not isinstance(mocked, dict):
             mocked = {"result": mocked}
@@ -302,16 +323,18 @@ class AgentSession:
         return {"successful": True, "data": mocked.get("data", mocked), "error": None}
 
 
+# Deliberately says nothing about query length, granularity or phrasing. An earlier
+# version instructed the model to issue "one focused query" for "the single capability
+# you need right now"; the resulting keyword-fragment queries were then almost reported
+# as a discovered property of agent behaviour. Describe what the tool does, and let the
+# model choose how to phrase the search -- that choice is the thing being measured.
 SEARCH_DECLARATION = types.FunctionDeclaration(
     name="search_tools",
-    description=(
-        "Search the tool catalogue for tools that can perform a specific operation. "
-        "Issue one focused query describing the single capability you need right now."
-    ),
+    description="Search the tool catalogue for tools you could use.",
     parameters=types.Schema(
         type=types.Type.OBJECT,
         properties={"query": types.Schema(type=types.Type.STRING,
-                                          description="What capability you are looking for.")},
+                                          description="What you are looking for.")},
         required=["query"],
     ),
 )
@@ -334,12 +357,11 @@ SYSTEM_PROMPT = """You are an autonomous agent completing a real workplace task 
 application tools. You do not know in advance which tools exist.
 
 How to work:
-- You discover tools only by calling search_tools. Search for ONE capability at a time,
-  in the words you would naturally use to describe that capability.
+- You discover tools only by calling search_tools.
 - After each search, look at what came back, pick the tool that fits, and call execute_tool.
 - Use what each result actually gives you to decide your next move. If a call fails or
   returns nothing useful, adapt: search differently, or try another approach.
-- Work through the whole task step by step, including verification steps the task asks for.
+- Work through the whole task, including any verification the task asks for.
 - When the task is complete or you genuinely cannot proceed, reply with a short plain-text
   summary of what you did and stop calling tools.
 
