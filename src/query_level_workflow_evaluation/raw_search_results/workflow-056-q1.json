@@ -1,0 +1,428 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-056-q1",
+    "workflow_id": 56,
+    "workflow_task": "Clean up and enrich HubSpot CRM records by listing contacts and companies, matching contacts to companies, assigning segmentation values from job title and company industry, creating required CRM properties, updating contacts in bulk, creating associations, and attempting a later bulk import of companies and contacts.",
+    "query": "list contacts and companies from HubSpot CRM",
+    "intent": "Retrieve existing contact and company records from the HubSpot CRM to begin the data cleanup process.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "HUBSPOT_LIST_CONTACTS"
+        ],
+        "purpose": "list contacts"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "HUBSPOT_LIST_COMPANIES"
+        ],
+        "purpose": "list companies"
+      }
+    ],
+    "candidate_tools": [
+      "HUBSPOT_CREATE_COMPANIES",
+      "HUBSPOT_CREATE_CONTACTS",
+      "HUBSPOT_CREATE_OBJECT_ASSOCIATION",
+      "HUBSPOT_CREATE_PROPERTY_FOR_SPECIFIED_OBJECT_TYPE",
+      "HUBSPOT_LIST_ASSOCIATION_TYPES",
+      "HUBSPOT_LIST_COMPANIES",
+      "HUBSPOT_LIST_CONTACTS",
+      "HUBSPOT_LIST_CONTACT_PROPERTIES",
+      "HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE",
+      "HUBSPOT_UPDATE_BATCH_OF_OBJECTS_BY_IDOR_PROPERTY_VALUES",
+      "HUBSPOT_UPDATE_CONTACTS"
+    ]
+  },
+  "request": {
+    "query": "list contacts and companies from HubSpot CRM"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "list contacts and companies from HubSpot CRM",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if export property internal names are unknown)] [Prerequisite]: Inspect available fields using HUBSPOT_LIST_CONTACT_PROPERTIES and/or HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE (select a minimal, valid property set).",
+            "[Required] [Step]: List contacts using HUBSPOT_LIST_CONTACTS (request only needed properties; paginate via response.data.paging.next.after until next/after is absent or a user-approved cap).",
+            "[Required] [Step]: List companies using HUBSPOT_LIST_COMPANIES (request only needed properties; paginate via response.data.paging.next.after when present, stop when paging/next is absent or a user-approved cap).",
+            "[Optional (if contact\u2194company joins are needed)] [Next Step]: Fetch links in bulk using HUBSPOT_READ_ASSOCIATIONS_BATCH (join association IDs back onto contact/company rows; treat missing associations as empty).",
+            "[Optional (if you need consistent normalized rows for selected records)] [Next Step]: Re-fetch standardized fields using HUBSPOT_READ_BATCH_OF_CRM_OBJECTS_BY_ID_OR_PROPERTY_VALUES (batch hydrate by IDs/property values for clean export).",
+            "[Fallback (if full export is too large/slow or only a subset is needed)] [Fallback]: Use HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA or HUBSPOT_SEARCH_COMPANIES (apply filters; paginate with response.data.paging.next.after when present)."
+          ],
+          "known_pitfalls": [
+            "[HUBSPOT_LIST_COMPANIES] response.data.paging may be missing when results fit one page; treat paging as optional to avoid key errors.",
+            "[HUBSPOT_LIST_CONTACTS] HTTP 429 can occur during high-volume exports; honor Retry-After and back off to complete pagination reliably.",
+            "[HUBSPOT_LIST_CONTACTS] Property values can be null or non-string types; normalize defensively before CSV/JSON export.",
+            "[HUBSPOT_LIST_CONTACTS] Calls can fail with a \u201cno active connection\u201d style error if the integration is not authorized; authorize and retry.",
+            "[HUBSPOT_LIST_COMPANIES] Calls can fail with a \u201cno active connection\u201d style error if the integration is not authorized; authorize and retry."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Minimal cursor-pagination pattern for HUBSPOT_LIST_CONTACTS (adapt for companies).",
+              "code": "```python\nafter=None\nitems=[]\nwhile True:\n  r,_=run_composio_tool('HUBSPOT_LIST_CONTACTS',{'limit':100,'archived':False,**({} if not after else {'after':after})})\n  data=r.get('data') or {}\n  items+=data.get('results',[])\n  after=((data.get('paging') or {}).get('next') or {}).get('after')\n  if not after: break\n```"
+            },
+            {
+              "description": "Build company_id -> contact_id map from company results with embedded contact associations (if present).",
+              "code": "```python\ncontact_ids_by_company={c['id']:[x.get('id') for x in (((((c.get('associations') or {}).get('contacts')) or {}).get('results')) or []))] for c in companies}\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "HUBSPOT_LIST_CONTACTS",
+            "HUBSPOT_LIST_COMPANIES"
+          ],
+          "related_tool_slugs": [
+            "HUBSPOT_READ_ASSOCIATIONS_BATCH",
+            "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+            "HUBSPOT_SEARCH_COMPANIES",
+            "HUBSPOT_LIST_CONTACT_PROPERTIES",
+            "HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE",
+            "HUBSPOT_READ_BATCH_OF_CRM_OBJECTS_BY_ID_OR_PROPERTY_VALUES"
+          ],
+          "toolkits": [
+            "hubspot"
+          ],
+          "plan_id": "59f412c4d1954bc7ba3ad2953f9437e9"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "hubspot",
+          "has_active_connection": false,
+          "description": "HubSpot is an inbound marketing, sales, and customer service platform integrating CRM, email automation, and analytics to facilitate lead nurturing and seamless customer experiences",
+          "status_message": "No Active connection for toolkit=hubspot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"hubspot\") to create a connection BEFORE executing any hubspot tools."
+        }
+      ],
+      "tool_schemas": {
+        "HUBSPOT_LIST_CONTACTS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_LIST_CONTACTS",
+          "description": "Retrieves a paginated list of HubSpot contacts.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "examples": [
+                  "1234567890",
+                  "CMTYzNjQzNTM1Mg%3D%3D"
+                ],
+                "description": "Pagination token from `paging.next.after` of a previous response, used to fetch the subsequent page. Omit for the first page. Empty strings will be treated as None."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 10,
+                "maximum": 100,
+                "examples": [
+                  "10",
+                  "50",
+                  "100"
+                ],
+                "description": "Maximum number of contacts to return per page, controlling pagination size (default: 10)."
+              },
+              "archived": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "false",
+                  "true"
+                ],
+                "description": "Boolean flag to filter contacts by archived status: `true` returns only archived contacts; `false` (default) returns only active (non-archived) contacts."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "['email', 'firstname', 'lastname']",
+                  "['hs_object_id', 'company', 'website']"
+                ],
+                "description": "List of contact property internal names to include in the response (e.g., \"email\", \"firstname\"). If omitted, a default set of properties is returned."
+              },
+              "associations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "['companies', 'deals']",
+                  "['tickets', 'calls']"
+                ],
+                "description": "List of object types (e.g., \"companies\", \"deals\") for which to retrieve associated IDs with each contact."
+              },
+              "propertiesWithHistory": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "['lifecyclestage', 'hs_lead_status']",
+                  "['hubspot_owner_id']"
+                ],
+                "description": "List of property internal names for which to retrieve historical values (e.g., \"lifecyclestage\"). If no history exists for a property, only its current value is returned."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_LIST_COMPANIES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_LIST_COMPANIES",
+          "description": "Retrieves a paginated list of HubSpot companies.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "examples": [
+                  "1234567890",
+                  "CMTYzNjQzNTM1Mg%3D%3D"
+                ],
+                "description": "Pagination token from `paging.next.after` of a previous response, used to fetch the subsequent page. Omit for the first page."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 10,
+                "maximum": 100,
+                "examples": [
+                  "10",
+                  "50",
+                  "100"
+                ],
+                "description": "Maximum number of companies to return per page, controlling pagination size (default: 10)."
+              },
+              "archived": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "false",
+                  "true"
+                ],
+                "description": "Boolean flag to filter companies by archived status: `true` returns only archived companies; `false` (default) returns only active companies."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "name",
+                    "domain",
+                    "industry"
+                  ],
+                  [
+                    "phone",
+                    "city",
+                    "country"
+                  ]
+                ],
+                "description": "List of company property internal names to include in the response (e.g., 'name', 'domain'). If omitted, a default set of properties is returned."
+              },
+              "associations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "contacts",
+                    "deals"
+                  ],
+                  [
+                    "tickets",
+                    "products"
+                  ]
+                ],
+                "description": "List of object types (e.g., 'contacts', 'deals') for which to retrieve associated IDs with each company."
+              },
+              "propertiesWithHistory": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "industry",
+                    "annual_revenue"
+                  ],
+                  [
+                    "company_size"
+                  ]
+                ],
+                "description": "List of property internal names for which to retrieve historical values (e.g., 'industry'). If no history exists for a property, only its current value is returned."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_READ_ASSOCIATIONS_BATCH": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_ASSOCIATIONS_BATCH",
+          "description": "Tool to batch-read CRM associations (e.g., deals\u2192contacts, deals\u2192companies) for up to 1,000 source record IDs in one request. Use when you need to retrieve associated target IDs and association type metadata for multiple records efficiently, avoiding rate-limit issues from per-record GET calls.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "fromObjectType",
+              "toObjectType",
+              "inputs"
+            ],
+            "properties": {
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "examples": [
+                        "12345",
+                        "67890"
+                      ],
+                      "description": "Source record ID to retrieve associations for."
+                    },
+                    "after": {
+                      "type": "string",
+                      "examples": [
+                        "MTA"
+                      ],
+                      "description": "Per-source pagination cursor for retrieving next page of associations when a source has more than the page limit. Returned from previous response for this source record."
+                    }
+                  },
+                  "description": "Individual source record for batch association read."
+                },
+                "examples": [
+                  [
+                    {
+                      "id": "12345"
+                    },
+                    {
+                      "id": "67890",
+                      "after": "MTA"
+                    }
+                  ]
+                ],
+                "description": "List of source record IDs to retrieve associations for (max 1,000 per request). Each input can include an optional 'after' cursor for per-source pagination."
+              },
+              "toObjectType": {
+                "type": "string",
+                "examples": [
+                  "contacts",
+                  "companies",
+                  "deals",
+                  "0-1"
+                ],
+                "description": "Target object type for associations. Use standard names (e.g., 'contacts', 'companies', 'deals') or object type IDs (e.g., '0-1' for contacts). For custom objects, use their objectTypeId."
+              },
+              "fromObjectType": {
+                "type": "string",
+                "examples": [
+                  "deals",
+                  "contacts",
+                  "companies",
+                  "0-3"
+                ],
+                "description": "Source object type for associations. Use standard names (e.g., 'deals', 'contacts', 'companies', 'tickets') or object type IDs (e.g., '0-3' for deals). For custom objects, use their objectTypeId (e.g., '2-12345')."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+          "description": "Searches for HubSpot contacts using a text query, specific filter criteria (filters in a group are A...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_SEARCH_COMPANIES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_COMPANIES",
+          "description": "Searches for HubSpot companies using flexible criteria and filters.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_SEARCH_COMPANIES"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_LIST_CONTACT_PROPERTIES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_LIST_CONTACT_PROPERTIES",
+          "description": "Lists all contact properties in your HubSpot account, including custom properties you've created. Us...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_LIST_CONTACT_PROPERTIES"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE",
+          "description": "Retrieves definitions and metadata (not actual values) for properties of a specified HubSpot CRM obj...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_READ_BATCH_OF_CRM_OBJECTS_BY_ID_OR_PROPERTY_VALUES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_BATCH_OF_CRM_OBJECTS_BY_ID_OR_PROPERTY_VALUES",
+          "description": "Reads a batch of CRM objects of a specified `objectType` using their HubSpot IDs or unique property ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_READ_BATCH_OF_CRM_OBJECTS_BY_ID_OR_PROPERTY_VALUES"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:35:28.406Z",
+        "current_time_utc_epoch_seconds": 1786599328,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "flew",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"flew\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_Vxkv3zO8Zsyo"
+  }
+}

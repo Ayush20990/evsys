@@ -1,0 +1,333 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-075-q2",
+    "workflow_id": 75,
+    "workflow_task": "Fetch recent Slack conversation history and threaded replies from one or more conversations for downstream review or export.",
+    "query": "fetch slack threaded replies",
+    "intent": "Retrieve all threaded replies associated with specific Slack messages for complete conversation context.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION"
+        ],
+        "purpose": "fetch slack threaded replies"
+      }
+    ],
+    "candidate_tools": [
+      "SLACK_FETCH_CONVERSATION_HISTORY",
+      "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION"
+    ]
+  },
+  "request": {
+    "query": "fetch slack threaded replies"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "fetch slack threaded replies",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if conversation access is uncertain)] [Prerequisite]: Confirm the conversation is accessible using SLACKBOT_RETRIEVE_CONVERSATION_INFORMATION (avoid invalid/private conversation failures).",
+            "[Optional (if access errors indicate you are not a member)] [Prerequisite]: Join the conversation using SLACKBOT_JOIN_AN_EXISTING_CONVERSATION (reduce not-in-conversation errors).",
+            "[Optional (if the provided thread reference may be a reply or root is unknown)] [Prerequisite]: Locate the root message reference by scanning nearby messages using SLACKBOT_FETCH_CONVERSATION_HISTORY (ensure correct parent reference).",
+            "[Required] [Step]: Fetch the root plus replies using SLACKBOT_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION (iterate with response_metadata.next_cursor until exhausted; de-duplicate by messages[].ts).",
+            "[Optional (if you need to respond after reading)] [Next Step]: After explicit user confirmation, post an in-thread reply using SLACKBOT_SEND_MESSAGE (use the thread reference).",
+            "[Optional (if you need shareable references)] [Next Step]: Generate links for the root and key replies using SLACK_RETRIEVE_MESSAGE_PERMALINK_URL (for external sharing).",
+            "[Optional (if bot-context thread fetch fails or returns empty unexpectedly)] [Fallback]: Retry retrieval using SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION (same thread inputs, requires the non-bot connection)."
+          ],
+          "known_pitfalls": [
+            "[SLACKBOT_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION] messages[] includes the root message plus replies; exclude the first element if you only need replies.",
+            "[SLACKBOT_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION] Passing a reply reference instead of the root can trigger thread_not_found/message_not_found; ensure the parent/root reference is used.",
+            "[SLACKBOT_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION] Pagination can be small (often ~15\u201316 messages per page); rely on response_metadata.next_cursor/has_more rather than counts.",
+            "[SLACKBOT_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION] reply_count/reply_users may exceed fetched replies (deleted or permission-limited), so a successful call may still show only the root.",
+            "[SLACKBOT_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION] Readable content may live in blocks/rich_text with partial text; reconstruct from blocks when msg.text is empty."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract readable text when message content is stored in blocks/rich_text",
+              "code": "```python\ndef extract_text(msg):\n    if isinstance(msg, dict) and msg.get('text'):\n        return msg['text']\n    out=[]\n    for b in msg.get('blocks', []) or []:\n        for el in (b.get('elements') or []):\n            for sec in (el.get('elements') or []):\n                for leaf in (sec.get('elements') or []):\n                    t=leaf.get('text')\n                    if t:\n                        out.append(t)\n    return ''.join(out).strip()\n```"
+            },
+            {
+              "description": "Extract thread message arrays from saved tool outputs",
+              "code": "```python\ndef extract_threads(results):\n    out=[]\n    for r in results:\n        if r.get('tool_slug')=='SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION' and r.get('response',{}).get('successful'):\n            out.append(r['response']['data']['messages'])\n    return out\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "SLACKBOT_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION"
+          ],
+          "related_tool_slugs": [
+            "SLACKBOT_FETCH_CONVERSATION_HISTORY",
+            "SLACKBOT_RETRIEVE_CONVERSATION_INFORMATION",
+            "SLACKBOT_JOIN_AN_EXISTING_CONVERSATION",
+            "SLACKBOT_SEND_MESSAGE",
+            "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION",
+            "SLACK_RETRIEVE_MESSAGE_PERMALINK_URL"
+          ],
+          "toolkits": [
+            "slack",
+            "slackbot"
+          ],
+          "plan_id": "c9ab7fbf5a6a4143a8d6946f6a720666"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "slack",
+          "has_active_connection": false,
+          "description": "Slack is a channel-based messaging platform. With Slack, people can work together more effectively, connect all their software tools and services, and find the information they need to do their best work - all within a secure, enterprise-grade enviro",
+          "status_message": "No Active connection for toolkit=slack. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"slack\") to create a connection BEFORE executing any slack tools."
+        },
+        {
+          "toolkit": "slackbot",
+          "has_active_connection": false,
+          "description": "Slackbot gives agents workspace-wide read access to a Slack workspace on behalf of the installing user - search messages and files, browse channel and thread history, and look up users and channels - while continuing to post and react as the bot. Inc",
+          "status_message": "No Active connection for toolkit=slackbot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"slackbot\") to create a connection BEFORE executing any slackbot tools."
+        }
+      ],
+      "tool_schemas": {
+        "SLACKBOT_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION": {
+          "toolkit": "SLACKBOT",
+          "tool_slug": "SLACKBOT_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION",
+          "description": "Retrieves replies to a specific parent message in a Slack conversation, using the channel ID and the parent message's timestamp (`ts`). Note: The parent message in the response contains metadata (reply_count, reply_users, latest_reply) that indicates expected thread activity. If the returned messages array contains fewer replies than reply_count indicates, check: (1) has_more=true means pagination is needed, (2) recently posted replies may have timing delays, (3) some replies may be filtered by permissions or deleted. The composio_execution_message field will warn about any detected mismatches.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "ts": {
+                "type": "string",
+                "examples": [
+                  "1234567890.123456"
+                ],
+                "description": "Timestamp of the parent message in the thread. Must be an existing message. If no replies, only the parent message itself is returned. Must be the exact full timestamp string of the root/parent message \u2014 not a reply's ts, a truncated value, a permalink, or an integer; these silently return wrong results."
+              },
+              "limit": {
+                "type": "integer",
+                "examples": [
+                  100
+                ],
+                "description": "Maximum number of messages to return. Fewer may be returned even if more are available."
+              },
+              "cursor": {
+                "type": "string",
+                "examples": [
+                  "dXNlcjpVMEc5V0ZYTlo="
+                ],
+                "description": "Pagination cursor from `response_metadata.next_cursor` of a previous response to get subsequent pages. If omitted, fetches the first page."
+              },
+              "latest": {
+                "type": "string",
+                "examples": [
+                  "1678886400.000000"
+                ],
+                "description": "Latest message timestamp in the time range to include results."
+              },
+              "oldest": {
+                "type": "string",
+                "examples": [
+                  "1678836000.000000"
+                ],
+                "description": "Oldest message timestamp in the time range to include results. Must be a UTC-based Slack ts string; incorrect timezone conversion or rounding can produce empty result windows."
+              },
+              "channel": {
+                "type": "string",
+                "examples": [
+                  "C0123456789"
+                ],
+                "description": "ID of the conversation (channel, direct message, etc.) to fetch the thread from. Must be a channel ID, not a channel name. Token must have membership in private channels or DMs, otherwise returns empty results or `not_in_channel`/`channel_not_found`."
+              },
+              "inclusive": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Whether to include messages with `latest` or `oldest` timestamps in results. Effective only if `latest` or `oldest` is specified."
+              },
+              "include_all_metadata": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Return all metadata associated with messages in the thread. When true, includes additional metadata fields that may be present on messages."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACKBOT_FETCH_CONVERSATION_HISTORY": {
+          "toolkit": "SLACKBOT",
+          "tool_slug": "SLACKBOT_FETCH_CONVERSATION_HISTORY",
+          "description": "Fetches a chronological list of messages and events from a specified Slack conversation, accessible by the authenticated user/bot, with options for pagination and time range filtering. IMPORTANT LIMITATION: This action only returns messages from the main channel timeline. Threaded replies are NOT returned by this endpoint. To retrieve threaded replies, use the SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION action (conversations.replies API) instead. The oldest/latest timestamp filters work reliably for filtering the main channel timeline, but cannot be used to retrieve individual threaded replies - even if you know the exact reply timestamp, setting oldest=latest to that timestamp will return an empty messages array. To get threaded replies: 1. Use this action to get parent messages (which include thread_ts, reply_count, latest_reply fields) 2. Use SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION with the parent's thread_ts to fetch all replies in that thread",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "channel"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 100,
+                "maximum": 1000,
+                "minimum": 1,
+                "examples": [
+                  "100",
+                  "200"
+                ],
+                "description": "Maximum number of messages to request in this single Slack API call (1-1000). Defaults to 100. Slack may return fewer than requested, especially for non-Marketplace apps where Slack can cap each page at 15 messages. This action does not internally paginate; use response_metadata.next_cursor in the cursor parameter of a follow-up call to fetch more messages."
+              },
+              "cursor": {
+                "type": "string",
+                "examples": [
+                  "dXNlcjpVMDYxTkZUVDA="
+                ],
+                "description": "Pagination cursor from `response_metadata.next_cursor` of a previous response. Omit this for the first page; pass the returned cursor in a follow-up call to fetch the next page."
+              },
+              "latest": {
+                "type": "string",
+                "examples": [
+                  "1609459200.000000"
+                ],
+                "description": "End of the time range of messages to include in results. Accepts a Unix timestamp or a Slack timestamp (e.g., '1234567890.000000'). NOTE: This filter only applies to main channel messages, not threaded replies. Use SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION to retrieve replies."
+              },
+              "oldest": {
+                "type": "string",
+                "examples": [
+                  "1609372800.000000"
+                ],
+                "description": "Start of the time range of messages to include in results. Accepts a Unix timestamp or a Slack timestamp (e.g., '1234567890.000000'). NOTE: This filter only applies to main channel messages, not threaded replies. Use SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION to retrieve replies."
+              },
+              "channel": {
+                "type": "string",
+                "examples": [
+                  "C1234567890",
+                  "G0123456789",
+                  "D0123456789"
+                ],
+                "description": "The ID of the public channel, private channel, direct message, or multi-person direct message to fetch history from."
+              },
+              "inclusive": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "When true, includes messages at the exact 'oldest' or 'latest' boundary timestamps in results. When false (default), excludes boundary messages. Only applies when 'oldest' or 'latest' is specified."
+              },
+              "include_all_metadata": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Return all metadata associated with messages in the conversation history. When true, includes additional metadata fields that may be present on messages."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACKBOT_RETRIEVE_CONVERSATION_INFORMATION": {
+          "toolkit": "SLACKBOT",
+          "tool_slug": "SLACKBOT_RETRIEVE_CONVERSATION_INFORMATION",
+          "description": "Retrieves metadata for a Slack conversation by ID (e.g., name, purpose, creation date, with options for member count/locale), excluding message content. The `channel` parameter is effectively required. Private channels, DMs, or channels where the app lacks membership may return restricted data; check `is_archived` and `is_member` fields in the response to diagnose access issues. Bulk lookups may trigger HTTP 429 rate limiting; honor the `Retry-After` response header.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "channel": {
+                "type": "string",
+                "examples": [
+                  "C1234567890",
+                  "D0G9QPYHR",
+                  "G01234567"
+                ],
+                "description": "The ID of the conversation (channel, direct message, or multi-person direct message) to retrieve information for. Effectively required \u2014 omitting this parameter yields no useful data despite being marked optional."
+              },
+              "include_locale": {
+                "type": "boolean",
+                "description": "If true, the response will include the locale setting for the conversation. Defaults to false."
+              },
+              "include_num_members": {
+                "type": "boolean",
+                "description": "If true, the response will include the number of members in the conversation. Defaults to false."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACKBOT_JOIN_AN_EXISTING_CONVERSATION": {
+          "toolkit": "SLACKBOT",
+          "tool_slug": "SLACKBOT_JOIN_AN_EXISTING_CONVERSATION",
+          "description": "Joins an existing Slack conversation (public channel, private channel, or multi-person direct messag...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACKBOT_JOIN_AN_EXISTING_CONVERSATION"
+              ]
+            }
+          }
+        },
+        "SLACKBOT_SEND_MESSAGE": {
+          "toolkit": "SLACKBOT",
+          "tool_slug": "SLACKBOT_SEND_MESSAGE",
+          "description": "Posts a message to a Slack channel, DM, or private group. Provide exactly one visible content mode: ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACKBOT_SEND_MESSAGE"
+              ]
+            }
+          }
+        },
+        "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION",
+          "description": "Retrieves replies to a specific parent message in a Slack conversation, using the channel ID and the...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION"
+              ]
+            }
+          }
+        },
+        "SLACK_RETRIEVE_MESSAGE_PERMALINK_URL": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_RETRIEVE_MESSAGE_PERMALINK_URL",
+          "description": "Retrieves a permalink URL for a specific message in a Slack channel or conversation; the permalink r...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_RETRIEVE_MESSAGE_PERMALINK_URL"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:37:30.314Z",
+        "current_time_utc_epoch_seconds": 1786599450,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "call",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"call\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_WVtDePZpbfkF"
+  }
+}

@@ -1,0 +1,278 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-090-q2",
+    "workflow_id": 90,
+    "workflow_task": "Create and refine a Google Slides presentation by inspecting existing slides and layouts, adding styled slides, inserting an image, and verifying the rendered result.",
+    "query": "add styled slides insert image and render presentation",
+    "intent": "this query searches for capabilities to create new slides with custom formatting, add images, and export or render the presentation for visual verification",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE"
+        ],
+        "purpose": "add styled slides and insert images"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLESLIDES_GET_PAGE_THUMBNAIL2"
+        ],
+        "purpose": "generate a rendered thumbnail of the slide for verification"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLEDRIVE_UPLOAD_FILE",
+      "GOOGLESLIDES_GET_PAGE_THUMBNAIL2",
+      "GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE",
+      "GOOGLESLIDES_PRESENTATIONS_GET",
+      "GOOGLESLIDES_PRESENTATIONS_PAGES_GET"
+    ]
+  },
+  "request": {
+    "query": "add styled slides insert image and render presentation"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "add styled slides insert image and render presentation",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if you need a branded starting point)] [Prerequisite]: Duplicate a template using GOOGLESLIDES_PRESENTATIONS_COPY_FROM_TEMPLATE (capture new presentationId).",
+            "[Optional (if generating many text-heavy slides from Markdown)] [Step]: Create-and-populate slides using GOOGLESLIDES_CREATE_SLIDES_MARKDOWN (split slides with '---'; retain returned presentation_id/presentationId for follow-up edits).",
+            "[Optional (if slide order, layouts/masters, or IDs are unknown)] [Prerequisite]: Inspect deck structure using GOOGLESLIDES_PRESENTATIONS_GET (use a narrow fields mask to collect slides(objectId) and needed layout/master refs).",
+            "[Optional (if targeting specific elements or confirming a slide\u2019s layout)] [Prerequisite]: Fetch page-only details using GOOGLESLIDES_PRESENTATIONS_PAGES_GET (read slideProperties.* and pageElements[].objectId).",
+            "[Optional (if you need custom visuals)] [Prerequisite]: Generate image assets using GEMINI_GENERATE_IMAGE (retain URL for later insertion).",
+            "[Required] [Step]: Apply all mutations using GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE (create slides/shapes, insertText, updateTextStyle/updateParagraphStyle, insert images; send either markdown_text OR requests per call; split large change-sets into multiple calls).",
+            "[Optional (if slide order must be corrected after inserts)] [Step]: Reposition slides using GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE (updateSlidesPosition in a follow-up call).",
+            "[Optional (for verification)] [Next Step]: Confirm slide count/order and key objectIds using GOOGLESLIDES_PRESENTATIONS_GET (fields=\"slides(objectId)\").",
+            "[Optional (for visual QA)] [Next Step]: Spot-check layout using GOOGLESLIDES_GET_PAGE_THUMBNAIL2 (use a slide pageObjectId; review data.contentUrl)."
+          ],
+          "known_pitfalls": [
+            "[GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE] 400 INVALID_ARGUMENT when createSlide.objectId is too short (observed length must be >=5); retries may create duplicates unless removed with deleteObject.",
+            "[GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE] Provide either 'requests' OR 'markdown_text' per call; combining both is rejected\u2014split into multiple calls.",
+            "[GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE] 400 INVALID_ARGUMENT if createSlide.slideLayoutReference.layoutId doesn\u2019t exist in the current master (layout/master mismatch).",
+            "[GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE] Request ordering matters when mixing deleteObject/create/update; markdown expansions can push requestCount into the hundreds and make responses huge/truncated.",
+            "[GOOGLESLIDES_PRESENTATIONS_GET] 403 PERMISSION_DENIED / ACCESS_TOKEN_SCOPE_INSUFFICIENT can occur; unconstrained fields may return very large responses\u2014use a tight fields mask."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Rewrite too-short objectIds before GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE to avoid 400 INVALID_ARGUMENT",
+              "code": "```python\nimport json\n\ndef rewrite_ids(reqs,mapping):\n    s=json.dumps(reqs)\n    for a,b in mapping.items():\n        s=s.replace(a,b)\n    return json.loads(s)\n\nmapping={'\"s05\"':'\"sl_05\"','\"s05_\"':'\"sl_05_\"'}\nreqs=rewrite_ids(reqs,mapping)\n```"
+            },
+            {
+              "description": "Extract a few early-slide text style signals from a saved GOOGLESLIDES_PRESENTATIONS_GET response",
+              "code": "```python\nimport json\np=json.load(open(\"slides_get.json\"))\npres=p[\"results\"][0][\"response\"][\"data\"]\nfor s in pres[\"slides\"][:5]:\n  for pe in s.get(\"pageElements\",[]):\n    for te in pe.get(\"shape\",{}).get(\"text\",{}).get(\"textElements\",[]):\n      tr=te.get(\"textRun\",{})\n      if tr.get(\"content\",\"\").strip():\n        st=tr.get(\"style\",{})\n        print(tr[\"content\"].strip()[:60], st.get(\"fontFamily\"), st.get(\"fontSize\"), st.get(\"bold\"))\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE"
+          ],
+          "related_tool_slugs": [
+            "GOOGLESLIDES_PRESENTATIONS_GET",
+            "GOOGLESLIDES_PRESENTATIONS_PAGES_GET",
+            "GOOGLESLIDES_CREATE_SLIDES_MARKDOWN",
+            "GOOGLESLIDES_PRESENTATIONS_COPY_FROM_TEMPLATE",
+            "GOOGLESLIDES_GET_PAGE_THUMBNAIL2",
+            "GEMINI_GENERATE_IMAGE"
+          ],
+          "toolkits": [
+            "gemini",
+            "googleslides"
+          ],
+          "plan_id": "c90cfd6bfe24458f90e673feee049cd0"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "gemini",
+          "has_active_connection": true,
+          "description": "Comprehensive Gemini integration supporting Veo 3 video generation, Gemini Flash text generation (Nano Banana), chat completions, and multimodal AI capabilities via the Google Gemini API.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        },
+        {
+          "toolkit": "googleslides",
+          "has_active_connection": false,
+          "description": "Google Slides is a cloud-based presentation editor with real-time collaboration, template gallery, and integration with other Google Workspace apps",
+          "status_message": "No Active connection for toolkit=googleslides. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googleslides\") to create a connection BEFORE executing any googleslides tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE": {
+          "toolkit": "GOOGLESLIDES",
+          "tool_slug": "GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE",
+          "description": "Update Google Slides presentations using markdown content or raw API text. Supports professional themes, auto-formatting, and multiple slide types (title, bullet, table, quote, image, two-column).",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "presentationId"
+            ],
+            "properties": {
+              "requests": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "List of update requests, each a dict with one of these valid Slides API request types:\n\n**Common requests:** createSlide, createShape, createTable, createImage, insertText, updateTextStyle, updateShapeProperties, updatePageProperties, updateParagraphStyle, deleteObject, updateTableCellProperties, updateTableColumnProperties, replaceAllText\n\n**IMPORTANT:** To update slide backgrounds, use `updatePageProperties` (NOT `updateSlideProperties`). The field `pageBackgroundFill` exists in PageProperties, not SlideProperties.\n\nRequired if markdown_text is not provided."
+              },
+              "writeControl": {
+                "type": "object",
+                "properties": {
+                  "requiredRevisionId": {
+                    "type": "string",
+                    "description": "The revision ID the updates must be applied to. If set, the batchUpdate will only succeed if the presentation's current revision ID matches this value."
+                  }
+                },
+                "description": "Options that control how write requests are executed.",
+                "additionalProperties": false
+              },
+              "markdown_text": {
+                "type": "string",
+                "description": "Markdown content to add as new slides to an existing presentation. Separate slides with '\\n---\\n'. Each slide auto-detects its type from content. Slide types: title ('# Title\\nSubtitle'), bullets ('-'/'+'/'*'), tables (markdown tables), quotes ('> text'), images ('![alt](URL)'), two-column ('|||' separator), plain text. Add 'Theme: <name>' as the first line to apply a theme. Available themes: default, corporate_blue, modern_dark, professional_gray, creative_purple, warm_orange, forest_green, minimal_beige. Font sizes auto-scale based on content length (28pt down to 8pt). Supports **bold**, emoji, and auto-centering of tables. Images must be publicly accessible URLs (PNG/JPEG/GIF, <50MB)."
+              },
+              "presentationId": {
+                "type": "string",
+                "description": "The ID of the presentation to apply the updates to."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESLIDES_PRESENTATIONS_GET": {
+          "toolkit": "GOOGLESLIDES",
+          "tool_slug": "GOOGLESLIDES_PRESENTATIONS_GET",
+          "description": "Tool to retrieve the latest version of a presentation. Use after obtaining the presentation ID.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "type": "string",
+                "examples": [
+                  "presentationId,title,slides",
+                  "slides(objectId,pageElements(objectId,shape(text)))"
+                ],
+                "description": "Comma-separated selector specifying which fields to include in a partial response. Nested fields use parentheses that must be properly balanced. Top-level fields: presentationId, title, locale, revisionId, pageSize, slides, masters, layouts, notesMaster. For slides/masters/layouts, valid Page fields: objectId, pageType, pageElements, pageProperties, revisionId. For pageElements, valid fields: objectId, size, transform, title, description, shape, image, video, line, table, wordArt, elementGroup, sheetsChart, speakerSpotlight. For shape, valid fields: shapeType, text, shapeProperties, placeholder. Note: 'autofit' is under shapeProperties, not directly under shape. Use shape(shapeProperties(autofit)), not shape(autofit). Examples: 'presentationId,title', 'slides(objectId,pageElements(objectId,size))', 'slides(objectId,pageElements(objectId,shape(shapeType,text,shapeProperties(autofit))))'"
+              },
+              "presentationId": {
+                "type": "string",
+                "examples": [
+                  "1a2B3c4D5eF6gH7iJ8kL"
+                ],
+                "description": "The ID of the presentation to retrieve. Either presentation_id or presentation_name must be provided."
+              },
+              "presentationName": {
+                "type": "string",
+                "examples": [
+                  "Q4 Sales Report",
+                  "Monthly Meeting Slides"
+                ],
+                "description": "The name of the presentation to search for and retrieve. If provided, the action will search Google Drive for a presentation with this name. Either presentation_id or presentation_name must be provided."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESLIDES_PRESENTATIONS_PAGES_GET": {
+          "toolkit": "GOOGLESLIDES",
+          "tool_slug": "GOOGLESLIDES_PRESENTATIONS_PAGES_GET",
+          "description": "Tool to get the latest version of a specific page in a presentation. Use when you need to inspect slide, layout, master, or notes page details.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "presentationId",
+              "pageObjectId"
+            ],
+            "properties": {
+              "pageObjectId": {
+                "type": "string",
+                "description": "The object ID of the page to retrieve."
+              },
+              "presentationId": {
+                "type": "string",
+                "description": "The ID of the presentation from which to fetch the page."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESLIDES_CREATE_SLIDES_MARKDOWN": {
+          "toolkit": "GOOGLESLIDES",
+          "tool_slug": "GOOGLESLIDES_CREATE_SLIDES_MARKDOWN",
+          "description": "Creates a new Google Slides presentation from Markdown text. Automatically splits content into slide...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESLIDES_CREATE_SLIDES_MARKDOWN"
+              ]
+            }
+          }
+        },
+        "GOOGLESLIDES_PRESENTATIONS_COPY_FROM_TEMPLATE": {
+          "toolkit": "GOOGLESLIDES",
+          "tool_slug": "GOOGLESLIDES_PRESENTATIONS_COPY_FROM_TEMPLATE",
+          "description": "Tool to create a new Google Slides presentation by duplicating an existing template deck via Drive f...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESLIDES_PRESENTATIONS_COPY_FROM_TEMPLATE"
+              ]
+            }
+          }
+        },
+        "GOOGLESLIDES_GET_PAGE_THUMBNAIL2": {
+          "toolkit": "GOOGLESLIDES",
+          "tool_slug": "GOOGLESLIDES_GET_PAGE_THUMBNAIL2",
+          "description": "Tool to generate a thumbnail of the latest version of a specified page. Use when you need a preview ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESLIDES_GET_PAGE_THUMBNAIL2"
+              ]
+            }
+          }
+        },
+        "GEMINI_GENERATE_IMAGE": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_GENERATE_IMAGE",
+          "description": "Generates images from text prompts using Gemini models (Nano Banana). Supports models: 'gemini-2.5-f...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GEMINI_GENERATE_IMAGE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:39:07.418Z",
+        "current_time_utc_epoch_seconds": 1786599547,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "gone",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"gone\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) You may call COMPOSIO_MANAGE_CONNECTIONS: Some toolkits lack active connections",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_jfhwJ9ZBLt6k"
+  }
+}

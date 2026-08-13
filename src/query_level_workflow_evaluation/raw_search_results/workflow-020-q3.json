@@ -1,0 +1,398 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-020-q3",
+    "workflow_id": 20,
+    "workflow_task": "Maintain and reconcile CRM, portal, billing, and project documentation across Google Docs, Google Sheets, Zoho CRM, Google Drive, and QuickBooks while verifying live system fields and updating records.",
+    "query": "read and extract client project status from Google Docs and Google Sheets",
+    "intent": "Access project documentation stored in Google Drive spreadsheets and documents to verify current project deliverables and timelines.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT"
+        ],
+        "purpose": "read and extract client project status from a Google Document"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLESHEETS_VALUES_GET"
+        ],
+        "purpose": "read project status values from a Google Sheet"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+      "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+      "GOOGLEDOCS_INSERT_TEXT_ACTION",
+      "GOOGLEDOCS_REPLACE_ALL_TEXT",
+      "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "GOOGLESHEETS_PROXY_EXECUTE",
+      "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+      "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+      "GOOGLESHEETS_UPSERT_ROWS",
+      "GOOGLESHEETS_VALUES_GET",
+      "GOOGLESHEETS_VALUES_UPDATE",
+      "QUICKBOOKS_PROXY_EXECUTE",
+      "ZOHO_GET_MODULE_FIELDS",
+      "ZOHO_PROXY_EXECUTE"
+    ]
+  },
+  "request": {
+    "query": "read and extract client project status from Google Docs and Google Sheets"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "read and extract client project status from Google Docs and Google Sheets",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if spreadsheet identifier unknown)] [Prerequisite]: Discover candidate spreadsheets using GOOGLESHEETS_SEARCH_SPREADSHEETS (paginate with next_page_token until exhausted; broaden query if empty).",
+            "[Fallback] [Prerequisite]: If search is empty/ambiguous, locate the file using GOOGLEDRIVE_FIND_FILE then confirm it is a native spreadsheet via GOOGLEDRIVE_GET_FILE_METADATA (use returned identifier).",
+            "[Required] [Prerequisite]: Validate access and inspect workbook structure using GOOGLESHEETS_GET_SPREADSHEET_INFO (confirm it exists; note tabs and overall size).",
+            "[Optional (if tab titles are unclear or must be exact)] [Prerequisite]: Fetch exact tab names using GOOGLESHEETS_GET_SHEET_NAMES (reuse titles exactly in A1 ranges; quote names with spaces).",
+            "[Required] [Step]: Read a small bounded preview using GOOGLESHEETS_VALUES_GET (single range) or GOOGLESHEETS_BATCH_GET (multi-range) to confirm the correct tab, headers, and where the data table starts.",
+            "[Required] [Next Step]: Read the needed bounded A1 range(s) using GOOGLESHEETS_VALUES_GET (single) or GOOGLESHEETS_BATCH_GET (multiple) and map outputs by returned ranges; optionally use COMPOSIO_REMOTE_WORKBENCH to reshape large/ragged results."
+          ],
+          "known_pitfalls": [
+            "[GOOGLESHEETS_SEARCH_SPREADSHEETS] Requires pagination via next_page_token; narrow name-only queries can return zero\u2014retry with broader query/search_type.",
+            "[GOOGLESHEETS_GET_SPREADSHEET_INFO] 403 PERMISSION_DENIED with reason ACCESS_TOKEN_SCOPE_INSUFFICIENT indicates missing OAuth scopes; heavy formatting can bloat/truncate metadata.",
+            "[GOOGLESHEETS_BATCH_GET] ranges must be a non-empty list; incorrect tab titles can hard-fail (e.g., sheet-not-found); A1 sheet names with spaces/special chars need quoting.",
+            "[GOOGLESHEETS_VALUES_GET] Returned rows are ragged and omit trailing blanks; formulas/dates may appear as strings or numeric serials\u2014don\u2019t assume typed rectangular tables.",
+            "[GOOGLESHEETS_VALUES_GET] Large reads may return as an offloaded/large-payload response; keep ranges bounded and be prepared to handle non-inline results."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract the first table (header + rows) from a batch-get style response object.",
+              "code": "```python\nvals=x['results'][0]['response']['data']['valueRanges'][0].get('values',[])\nheaders=vals[0] if vals else []\nrows=vals[1:] if len(vals)>1 else []\n```"
+            },
+            {
+              "description": "Iterate multi-range valueRanges and show up to 10 non-empty rows per range.",
+              "code": "```python\nvrs=x['results'][0]['response']['data']['valueRanges']\nfor vr in vrs:\n  shown=0\n  for row in vr.get('values',[]):\n    row=[str(c).strip() for c in row if str(c).strip()]\n    if row: shown+=1\n    if shown>=10: break\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+            "GOOGLESHEETS_BATCH_GET",
+            "GOOGLESHEETS_VALUES_GET"
+          ],
+          "related_tool_slugs": [
+            "GOOGLESHEETS_GET_SHEET_NAMES",
+            "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+            "GOOGLEDRIVE_FIND_FILE",
+            "GOOGLEDRIVE_GET_FILE_METADATA"
+          ],
+          "toolkits": [
+            "googledrive",
+            "googlesheets"
+          ],
+          "plan_id": "1fb5d652d08b4d839b9a5c600ed5ebc1"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledrive",
+          "has_active_connection": false,
+          "description": "Google Drive is a cloud storage solution for uploading, sharing, and collaborating on files across devices, with robust search and offline access. Special usecases: Sharing google sheets/docs or any G-Suite files with specific emails.",
+          "status_message": "No Active connection for toolkit=googledrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledrive\") to create a connection BEFORE executing any googledrive tools."
+        },
+        {
+          "toolkit": "googlesheets",
+          "has_active_connection": false,
+          "description": "Google Sheets is a cloud-based spreadsheet tool enabling real-time collaboration, data analysis, and integration with other Google Workspace apps. STRICT RATE LIMITS apply - max 60 reads/minute and 60 writes/minute. Exceeding this causes errors.",
+          "status_message": "No Active connection for toolkit=googlesheets. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesheets\") to create a connection BEFORE executing any googlesheets tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLESHEETS_GET_SPREADSHEET_INFO": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+          "description": "Retrieves metadata for a Google Spreadsheet using its ID. By default, returns essential information (ID, title, sheet properties) to avoid payload size issues. Use the fields parameter for comprehensive metadata or specific fields.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "type": "string",
+                "examples": [
+                  "sheets.properties(sheetId,title)",
+                  "properties.title,sheets.properties",
+                  "spreadsheetId,properties.title,sheets.properties(sheetId,title,index)"
+                ],
+                "description": "Optional. Field mask specifying which fields to return. Uses Google's field mask syntax (comma-separated, dot-notation for nested fields). If not specified, a default mask returning common fields (spreadsheet ID, title, sheet properties) is applied to avoid payload size issues. For full metadata, use '*' (not recommended for large spreadsheets). When set, includeGridData is ignored. Examples: 'sheets.properties(sheetId,title)', 'properties.title,sheets.properties.sheetId'."
+              },
+              "ranges": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "Sheet1!A1:D5"
+                  ],
+                  [
+                    "Sheet1!A1:B10",
+                    "Sheet2!C1:E20"
+                  ]
+                ],
+                "description": "Optional. The ranges to retrieve from the spreadsheet, specified using A1 notation (e.g., 'Sheet1!A1:D5', 'Sheet2!A1:C4'). Multiple ranges can be requested simultaneously. If not specified, metadata for the entire spreadsheet is returned without grid data."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                  "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
+                ],
+                "minLength": 1,
+                "description": "Required. The Google Sheets spreadsheet ID or full URL. Accepts either the ID alone (e.g., '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms') or a full Google Sheets URL (e.g., 'https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit'). The ID will be automatically extracted from URLs. Note: Published/embedded URLs (containing '/d/e/2PACX-...') are not supported."
+              },
+              "include_grid_data": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Optional. If true, grid data will be returned. This parameter is ignored if a field mask was set in the request. When false or not specified, only metadata is returned without cell values."
+              },
+              "exclude_tables_in_banded_ranges": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Optional. If true, tables within banded ranges will be omitted from the response. Default is false when not specified."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_BATCH_GET": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_BATCH_GET",
+          "description": "Retrieves data from specified cell ranges in a Google Spreadsheet.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id"
+            ],
+            "properties": {
+              "ranges": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "Sheet1",
+                  "Sheet1!A1:B2",
+                  "Sheet1!A1:Z10000",
+                  "Sheet1!1:2",
+                  "'My Sheet'!A1:Z500",
+                  "A1:B2"
+                ],
+                "description": "A list of cell ranges in A1 notation from which to retrieve data. If this list is omitted, empty, or contains only empty strings, all data from the first sheet of the spreadsheet will be fetched. Empty strings in the list are automatically filtered out. Supported formats: (1) Bare sheet name like 'Sheet1' to get all data from that sheet, (2) Sheet with range like 'Sheet1!A1:B2', (3) Just cell reference like 'A1:B2' (uses first sheet). For sheet names with spaces or special characters, enclose in single quotes (e.g., \"'My Sheet'\" or \"'My Sheet'!A1:B2\"). IMPORTANT: For large sheets, always use bounded ranges with explicit row limits (e.g., 'Sheet1!A1:Z10000' instead of 'Sheet1!A:Z'). Unbounded column ranges like 'A:Z' on sheets with >10,000 rows may cause timeouts or errors. If you need all data from a large sheet, fetch in chunks of 10,000 rows at a time."
+              },
+              "majorDimension": {
+                "enum": [
+                  "DIMENSION_UNSPECIFIED",
+                  "ROWS",
+                  "COLUMNS"
+                ],
+                "type": "string",
+                "description": "The major dimension for organizing data in results."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "maxLength": 200,
+                "description": "The unique identifier of the Google Spreadsheet from which data will be retrieved. This is the ID found in the spreadsheet URL after /d/. You can provide either the spreadsheet ID directly or a full Google Sheets URL (the ID will be extracted automatically)."
+              },
+              "valueRenderOption": {
+                "enum": [
+                  "FORMATTED_VALUE",
+                  "UNFORMATTED_VALUE",
+                  "FORMULA"
+                ],
+                "type": "string",
+                "default": "FORMATTED_VALUE",
+                "description": "How values should be rendered in the output. FORMATTED_VALUE: Values are calculated and formatted (default). UNFORMATTED_VALUE: Values are calculated but not formatted. FORMULA: Values are not calculated; the formula is returned instead."
+              },
+              "dateTimeRenderOption": {
+                "enum": [
+                  "SERIAL_NUMBER",
+                  "FORMATTED_STRING"
+                ],
+                "type": "string",
+                "default": "SERIAL_NUMBER",
+                "description": "How dates and times should be rendered in the output. SERIAL_NUMBER: Dates are returned as serial numbers (default). FORMATTED_STRING: Dates returned as formatted strings."
+              },
+              "empty_strings_filtered": {
+                "type": "boolean",
+                "default": false,
+                "description": "Indicates whether empty strings were filtered from the response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_VALUES_GET": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_VALUES_GET",
+          "description": "Returns a range of values from a spreadsheet. Use when you need to read data from specific cells or ranges in a Google Sheet.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id",
+              "range"
+            ],
+            "properties": {
+              "range": {
+                "type": "string",
+                "examples": [
+                  "Sheet1!A1:B3",
+                  "'My Sheet'!A1:D5",
+                  "'Feuille 1'!A1:C10",
+                  "A1:D5",
+                  "Sheet1!A:A"
+                ],
+                "description": "The A1 notation or R1C1 notation of the range to retrieve values from. If the sheet name contains spaces or special characters, wrap the sheet name in single quotes (e.g., \"'My Sheet'!A1:B2\"). Without single quotes, the API will return a 400 error for sheet names with spaces. Examples: 'Sheet1!A1:B3', \"'Sheet With Spaces'!A1:D5\", 'A1:D5' (no sheet name uses first visible sheet), 'Sheet1!A:A' (entire column), 'SheetName' (entire sheet)."
+              },
+              "end_row": {
+                "type": "integer",
+                "description": "1-based row number to stop reading at (inclusive). Use with start_row for pagination to avoid large response errors. Example: start_row=501, end_row=1000 fetches rows 501-1000."
+              },
+              "start_row": {
+                "type": "integer",
+                "description": "1-based row number to start reading from (inclusive). Use with end_row for pagination to avoid large response errors. Example: start_row=1, end_row=500 fetches the first 500 rows."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "description": "The unique identifier of the Google Spreadsheet from which to retrieve values. This is the long alphanumeric string found in the spreadsheet URL between '/d/' and '/edit' (e.g., '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms'). WARNING: Do NOT use the spreadsheet name or title (e.g., 'My Sales Report'); you must use the actual ID from the URL."
+              },
+              "major_dimension": {
+                "enum": [
+                  "DIMENSION_UNSPECIFIED",
+                  "ROWS",
+                  "COLUMNS"
+                ],
+                "type": "string",
+                "description": "The major dimension for results."
+              },
+              "value_render_option": {
+                "enum": [
+                  "FORMATTED_VALUE",
+                  "UNFORMATTED_VALUE",
+                  "FORMULA"
+                ],
+                "type": "string",
+                "default": "FORMATTED_VALUE",
+                "description": "How values should be rendered in the output. FORMATTED_VALUE: Values are calculated and formatted (default). UNFORMATTED_VALUE: Values are calculated but not formatted. FORMULA: Values are not calculated; the formula is returned instead."
+              },
+              "date_time_render_option": {
+                "enum": [
+                  "SERIAL_NUMBER",
+                  "FORMATTED_STRING"
+                ],
+                "type": "string",
+                "default": "SERIAL_NUMBER",
+                "description": "How dates, times, and durations should be represented in the output. SERIAL_NUMBER: Dates are returned as serial numbers (default). FORMATTED_STRING: Dates returned as formatted strings."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_GET_SHEET_NAMES": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_GET_SHEET_NAMES",
+          "description": "Lists all worksheet names from a specified Google Spreadsheet (which must exist), useful for discovering sheets before further operations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id"
+            ],
+            "properties": {
+              "exclude_hidden": {
+                "type": "boolean",
+                "default": false,
+                "description": "When True, hidden sheets will be excluded from the results. When False (default), all sheets including hidden ones are returned. Hidden sheets are sheets that have been hidden via the 'Hide sheet' option in Google Sheets UI."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1qpyC0XzvTcKT6EISywY_7H7D7No1tpxEXAMPLE_ID"
+                ],
+                "description": "The unique identifier of the Google Spreadsheet (alphanumeric string, typically 44 characters). Extract only the ID portion from URLs - do not include leading/trailing slashes, '/edit' suffixes, query parameters, or URL fragments. From 'https://docs.google.com/spreadsheets/d/1qpyC0XzvTcKT6EISywY/edit#gid=0', use only '1qpyC0XzvTcKT6EISywY'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_SEARCH_SPREADSHEETS": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+          "description": "Search for Google Spreadsheets using various filters including name, content, date ranges, and more.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_SEARCH_SPREADSHEETS"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_FIND_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_FIND_FILE",
+          "description": "The comprehensive Google Drive search tool that handles all file and folder discovery needs. Use thi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_FIND_FILE"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_GET_FILE_METADATA": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_GET_FILE_METADATA",
+          "description": "Tool to get a file's metadata by ID. Use to verify `mimeType`, `parents`, and `trashed` status befor...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_GET_FILE_METADATA"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:30:17.934Z",
+        "current_time_utc_epoch_seconds": 1786599017,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "pick",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"pick\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_8awjBuH3l1_l"
+  }
+}

@@ -1,0 +1,318 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-032-q1",
+    "workflow_id": 32,
+    "workflow_task": "The session covered multiple unrelated workflows: public web research, financial-product research, real-estate listing checks, browser QA for a web prototype, attempted Discord role updates, GitHub repository inspection setup, and retail beverage catalog research.",
+    "query": "search the public web for financial product details and real estate listings",
+    "intent": "This query searches public websites to gather information on financial products and real estate listings.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "COMPOSIO_SEARCH_WEB"
+        ],
+        "purpose": "search public web for financial product details"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "BROWSER_TOOL_CREATE_TASK"
+        ],
+        "purpose": "navigate and extract real estate listings"
+      }
+    ],
+    "candidate_tools": [
+      "BROWSER_TOOL_CREATE_TASK",
+      "BROWSER_TOOL_WATCH_TASK",
+      "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+      "COMPOSIO_SEARCH_GROQ_CHAT",
+      "COMPOSIO_SEARCH_SHOPPING",
+      "COMPOSIO_SEARCH_WEB",
+      "DISCORD_PROXY_EXECUTE"
+    ]
+  },
+  "request": {
+    "query": "search the public web for financial product details and real estate listings"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search the public web for financial product details and real estate listings",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Normalize and disambiguate the instrument identifier using COMPOSIO_SEARCH_WEB (confirm intended listing and an exchange-qualified variant before quoting).",
+            "[Required] [Step]: Retrieve the latest quote/snapshot using COMPOSIO_SEARCH_FINANCE (prefer results.summary.extracted_price; treat results={} or suggestion-only output as no-data; capture any currency/exchange/date metadata present).",
+            "[Fallback (if COMPOSIO_SEARCH_FINANCE returns empty/ambiguous results)] [Fallback]: Re-map the identifier using COMPOSIO_SEARCH_WEB and retry COMPOSIO_SEARCH_FINANCE once; if still empty, use COMPOSIO_SEARCH_FETCH_URL_CONTENT on a credible quote page to extract the displayed price and any \u201cas-of/last\u201d wording.",
+            "[Optional (if you must cite/verify a primary source or web-extracted value)] [Next Step]: Validate key numeric fields using COMPOSIO_SEARCH_FETCH_URL_CONTENT (ensure the number and its label appear together in extracted text; tighten max_characters if needed).",
+            "[Optional (if narrative/catalyst context is requested)] [Next Step]: Pull related coverage using COMPOSIO_SEARCH_NEWS (if empty, broaden keywords and retry once).",
+            "[Optional (if multi-instrument aggregation or large graph/table parsing is needed)] [Step]: Use COMPOSIO_REMOTE_WORKBENCH to parse results.graph/tables and compute derived outputs (guard against empty/partial series before aggregation)."
+          ],
+          "known_pitfalls": [
+            "[COMPOSIO_SEARCH_FINANCE] Can return successful=true but results may be {} or a message without a usable quote; treat as a miss rather than reporting a price.",
+            "[COMPOSIO_SEARCH_FINANCE] Snapshot fields are under results.summary while time series is results.graph; mixing them can misreport a historical point as \u201ccurrent\u201d.",
+            "[COMPOSIO_SEARCH_FINANCE] results.summary.price may be currency-formatted text; prefer results.summary.extracted_price for numeric use and sanity-check results.summary.date for staleness.",
+            "[COMPOSIO_SEARCH_WEB] Call can fail validation if the query string is omitted; also observed HTTP 502s\u2014retry with backoff and reduced concurrency when scaling queries.",
+            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] status can be success but extracted text may be interstitial/noisy or truncated by max_characters; confirm the target number is present before using."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Guard against empty price frames and handle MultiIndex columns when extracting Close series (useful for computing signals).",
+              "code": "```python\nimport pandas as pd\n\ndef extract_close(df, tickers):\n    if isinstance(df.columns, pd.MultiIndex):\n        close = df[\"Close\"][tickers]\n    else:\n        close = df[[\"Close\"]].copy()\n        close.columns = tickers\n    close = close.dropna()\n    if close.shape[0] == 0:\n        raise ValueError(\"No usable price rows after dropna\")\n    return close\n```"
+            },
+            {
+              "description": "Safely extract numeric quotes from multi-instrument COMPOSIO_SEARCH_FINANCE responses (prefers results.summary.extracted_price).",
+              "code": "```python\ndef extract_quotes(multi_exec_resp):\n    out = []\n    for r in (multi_exec_resp.get('results') or []):\n        d = ((r.get('response') or {}).get('data') or {})\n        res = d.get('results') or {}\n        summ = (res.get('summary') or {})\n        out.append({'tool_index': r.get('index'), 'instrument': summ.get('stock') or summ.get('title'), 'extracted_price': summ.get('extracted_price')})\n    return out\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "COMPOSIO_SEARCH_FINANCE"
+          ],
+          "related_tool_slugs": [
+            "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+            "COMPOSIO_SEARCH_NEWS",
+            "COMPOSIO_SEARCH_WEB"
+          ],
+          "toolkits": [
+            "composio_search"
+          ],
+          "plan_id": "ea68060cc5fd42e28714ea02427b86f4"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "composio_search",
+          "has_active_connection": true,
+          "description": "Composio Search provides comprehensive web search across travel (flights, hotels, events), e-commerce (Amazon, Walmart, shopping), financial markets, news, academic research, images, and location services.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        }
+      ],
+      "tool_schemas": {
+        "COMPOSIO_SEARCH_FINANCE": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_FINANCE",
+          "description": "Get real-time stock prices, market data, financial news, and company information with historical analysis. Retrieves stock quotes, market indices, cryptocurrency prices, exchange rates, and financial news. Supports discrete time windows (1D, 5D, 1M, 6M, YTD, 1Y, 5Y, MAX) for historical analysis. Returns numeric time-series graph data, summary information, and key events (6M+ windows only). Always verify finance_results_state in the response \u2014 HTTP 200 with status='Success' can still return empty data. Derived indicators (MACD, moving averages) are not included and must be computed from returned price series. Examples: query=\"AAPL:NASDAQ\" + window=\"1Y\" for Apple's 1-year chart query=\"GOOGL:NASDAQ\" + window=\"6M\" + hl=\"en\" for Alphabet with news events query=\"WMT:NYSE\" + window=\"MAX\" for Walmart's full history query=\"BTC-USD\" for Bitcoin query=\"EUR-USD\" for Euro/USD rate",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "hl": {
+                "type": "string",
+                "examples": [
+                  "en",
+                  "es",
+                  "fr",
+                  "de",
+                  "ja",
+                  "ko",
+                  "zh"
+                ],
+                "description": "Language code for financial interface and data (ISO 639-1). Defaults to English if unset; set explicitly for non-English locales."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "AAPL:NASDAQ",
+                  "GOOGL:NASDAQ",
+                  ".DJI:INDEXDJX",
+                  ".INX:INDEXSP",
+                  "BTC-USD",
+                  "ETH-USD",
+                  "EUR-USD",
+                  "SPY"
+                ],
+                "description": "Financial search query. Supported formats: (1) Stocks: 'SYMBOL:EXCHANGE' (e.g., 'AAPL:NASDAQ', 'WMT:NYSE') or just 'SYMBOL' for major US stocks. (2) Indices: '.DJI:INDEXDJX' (Dow Jones), '.INX:INDEXSP' (S&P 500), '.IXIC:INDEXNASDAQ' (NASDAQ Composite) - common names like 'Dow Jones', 'S&P 500', 'NASDAQ' are auto-converted. (3) Cryptocurrencies: 'SYMBOL-USD' format (e.g., 'BTC-USD', 'ETH-USD'). (4) Currency pairs: 'BASE-QUOTE' format (e.g., 'EUR-USD', 'GBP-USD'). (5) ETFs: ticker symbol (e.g., 'SPY', 'QQQ'). Use exact ticker formats only \u2014 natural-language names or ambiguous strings cause empty results even on success. Currency pairs require hyphens (EUR-USD not EUR/USD). Crypto must use SYMBOL-USD format; bare symbols may return wrong instrument type. Commodities (e.g., GOLD) may not resolve; use ETF proxies (e.g., GLD) instead."
+              },
+              "window": {
+                "type": "string",
+                "examples": [
+                  "1D",
+                  "5D",
+                  "1M",
+                  "6M",
+                  "YTD",
+                  "1Y",
+                  "5Y",
+                  "MAX"
+                ],
+                "description": "Time range for financial charts and data. Controls the historical period displayed. Only the listed discrete values are accepted; arbitrary values are unsupported. Key events (earnings, dividends, splits) are only returned for windows of 6M or longer."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_FETCH_URL_CONTENT": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+          "description": "Fetch and extract clean, readable page text (markdown) from public web pages (HTML content) using the Exa API. Use when you need to retrieve actual content from search results or documentation links to extract setup steps, requirements, or citations. Only works with web page URLs - does not support direct links to images, PDFs, or other binary files.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "urls"
+            ],
+            "properties": {
+              "text": {
+                "type": "boolean",
+                "default": true,
+                "description": "Include extracted markdown text content from the page. Defaults to true."
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "https://example.com/article",
+                    "https://docs.python.org/"
+                  ]
+                ],
+                "description": "List of public URLs to web pages (HTML content) to fetch content from. URLs must be valid and publicly accessible. Do not use direct links to images (.jpg, .png, .gif), PDFs, or other binary files - use web page URLs only. Also accepts a single URL string."
+              },
+              "extras": {
+                "type": "object",
+                "description": "Additional content options like imageLinks or links counts (e.g., {'imageLinks': 3, 'links': 5}).",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "summary": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Include AI-generated summary of the page content. Can be boolean or object with query/schema options."
+              },
+              "max_characters": {
+                "type": "integer",
+                "description": "Maximum number of characters to extract from each page. Maps to text.maxCharacters in Exa API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_NEWS": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_NEWS",
+          "description": "Search for the latest news articles and current events with smart filtering. Searches news-oriented sources only (not blogs, docs, or company pages). Results nest under `data.results.news_results`; a 200 response with empty `news_results` or `news_results_state: 'Fully empty'` means no results \u2014 broaden query or `when` window. Auto-correction (`showing_results_for`) can silently redirect queries; verify returned articles match intended topic. Only first page returned by default; follow `pagination.next` for more pages. Supports 100+ languages and countries. Use advanced operators like 'site:' for publisher filtering directly in your query. Examples: query=\"artificial intelligence\" + when=\"w\" for past week's AI news query=\"climate change\" + gl=\"us\" + hl=\"en\" for US climate news query=\"business news\" + when=\"d\" for today's business news query=\"site:bbc.com tesla\" + when=\"d\" for today's BBC Tesla news",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "gl": {
+                "type": "string",
+                "examples": [
+                  "us",
+                  "uk",
+                  "ca",
+                  "au",
+                  "de",
+                  "fr",
+                  "jp",
+                  "in",
+                  "br",
+                  "mx"
+                ],
+                "description": "Country code for news region (ISO 3166-1 alpha-2). Determines which country's news sources to prioritize."
+              },
+              "hl": {
+                "type": "string",
+                "examples": [
+                  "en",
+                  "es",
+                  "fr",
+                  "de",
+                  "pt",
+                  "it",
+                  "ja",
+                  "ko",
+                  "zh-cn",
+                  "zh-tw",
+                  "ar",
+                  "hi",
+                  "ru"
+                ],
+                "description": "Language code for news interface and results. Most languages use ISO 639-1 codes (e.g., 'en', 'es'). Chinese requires regional variants: 'zh-cn' (Simplified) or 'zh-tw' (Traditional). Standalone 'zh' is normalized to 'zh-cn'."
+              },
+              "when": {
+                "type": "string",
+                "examples": [
+                  "d",
+                  "w",
+                  "m",
+                  "y"
+                ],
+                "description": "Time filter for news articles. 'd' = past day, 'w' = past week, 'm' = past month, 'y' = past year. These are coarse UTC-based buckets with no finer granularity; filter `published_at` client-side for precise ranges. Combining narrow queries with strict `when` filters frequently returns zero results; broaden either before concluding no data exists."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "artificial intelligence",
+                  "climate change",
+                  "site:bbc.com technology",
+                  "when:7d startup funding",
+                  "Tesla stock market",
+                  "COVID-19 vaccine news"
+                ],
+                "description": "Search query for news articles. Supports advanced operators like 'site:', 'when:', etc. Cannot be used with topic_token, publication_token, or story_token."
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0,
+                  10,
+                  20,
+                  30
+                ],
+                "description": "Result offset for pagination. Each page typically contains 10 results. Use multiples of 10 (0, 10, 20, 30, ...) to navigate pages. Stop paginating when a page returns no new results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_WEB": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_WEB",
+          "description": "Perform a web search using the Exa API. Returns a nested structure: narrative summary under results....",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "COMPOSIO_SEARCH_WEB"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:31:53.921Z",
+        "current_time_utc_epoch_seconds": 1786599113,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "bend",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"bend\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) Connections active, proceed to next step",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_FlxkjIagi6nE"
+  }
+}

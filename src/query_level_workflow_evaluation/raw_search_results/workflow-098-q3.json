@@ -1,0 +1,414 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-098-q3",
+    "workflow_id": 98,
+    "workflow_task": "Analyze owned social media, paid ads, and website attribution performance across YouTube, Instagram, Facebook Page, Meta Ads, and GA4 for a recent multi-month reporting window.",
+    "query": "pull Google Analytics 4 website traffic and attribution data for the reporting window",
+    "intent": "Retrieve website session, conversion, and attribution data from GA4.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLE_ANALYTICS_RUN_PIVOT_REPORT"
+        ],
+        "purpose": "pull Google Analytics 4 website traffic and attribution data"
+      }
+    ],
+    "candidate_tools": [
+      "FACEBOOK_LIST_MANAGED_PAGES",
+      "GOOGLE_ANALYTICS_RUN_PIVOT_REPORT",
+      "INSTAGRAM_GET_IG_MEDIA_INSIGHTS",
+      "INSTAGRAM_GET_IG_USER_MEDIA",
+      "INSTAGRAM_GET_USER_INFO",
+      "INSTAGRAM_GET_USER_INSIGHTS",
+      "METAADS_GET_AD_ACCOUNTS",
+      "METAADS_GET_INSIGHTS",
+      "YOUTUBE_GET_CHANNEL_STATISTICS",
+      "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+      "YOUTUBE_LIST_CHANNEL_VIDEOS"
+    ]
+  },
+  "request": {
+    "query": "pull Google Analytics 4 website traffic and attribution data for the reporting window"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "pull Google Analytics 4 website traffic and attribution data for the reporting window",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if analytics account unknown)] [Prerequisite]: Discover accessible accounts using GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA (follow nextPageToken; omit pageToken when absent).",
+            "[Optional (if property resource unknown)] [Prerequisite]: Enumerate candidate properties using GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED (use an account-scoped parent/ancestor filter; paginate as needed).",
+            "[Optional (if multiple candidates could match the site)] [Prerequisite]: Confirm site\u2194property using GOOGLE_ANALYTICS_LIST_DATA_STREAMS (match web stream host/URI; normalize protocol/trailing slash).",
+            "[Optional (if dimensions/metrics/filters are uncertain or validation errors occur)] [Prerequisite]: Validate available fields using GOOGLE_ANALYTICS_GET_METADATA and pre-check combinations using GOOGLE_ANALYTICS_CHECK_COMPATIBILITY.",
+            "[Required] [Step]: Run a short-window sanity check using GOOGLE_ANALYTICS_RUN_REPORT (low limit, stable fields) to confirm access and non-empty rows.",
+            "[Required] [Step]: Pull totals plus a time trend using GOOGLE_ANALYTICS_RUN_REPORT (stable orderBys; include a date-like dimension; optionally compare two windows via multiple dateRanges and group by the implicit dateRange dimension).",
+            "[Required] [Step]: Pull top breakdowns using GOOGLE_ANALYTICS_RUN_REPORT (acquisition/content/device/location cuts); page with offset/limit until rowCount covered or top-N satisfied.",
+            "[Optional (if multiple standard cuts are needed)] [Next Step]: Bundle a small set of reports using GOOGLE_ANALYTICS_BATCH_RUN_REPORTS (\u22645 requests) and merge/format client-side (optional COMPOSIO_REMOTE_WORKBENCH).",
+            "[Fallback (if reports error or return no data)] [Fallback]: Re-verify property/stream via GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED and GOOGLE_ANALYTICS_LIST_DATA_STREAMS, re-check fields via GOOGLE_ANALYTICS_GET_METADATA/GOOGLE_ANALYTICS_CHECK_COMPATIBILITY, then retry a simpler GOOGLE_ANALYTICS_RUN_REPORT (fewer dimensions/metrics) to detect filter mismatches."
+          ],
+          "known_pitfalls": [
+            "[GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA] 403 PERMISSION_DENIED with reason ACCESS_TOKEN_SCOPE_INSUFFICIENT indicates missing OAuth scopes; may also return an empty list when nothing is accessible.",
+            "[GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED] 400 INVALID_ARGUMENT if the account-scoped filter is missing/malformed; paginate via nextPageToken to avoid missing the target property.",
+            "[GOOGLE_ANALYTICS_BATCH_RUN_REPORTS] Requests >5 can fail validation; successful payloads are nested under data.reports[] and each report can independently return rows=[].",
+            "[GOOGLE_ANALYTICS_RUN_REPORT] metricValues[*].value are strings; cast using metricHeaders[*].type (and handle compact date-like strings when formatting).",
+            "[GOOGLE_ANALYTICS_RUN_REPORT] rowCount can exceed returned rows and no-data responses may have rows=[] and/or missing totals metricValues; null-check before indexing and use offset/limit for full coverage."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Cast GOOGLE_ANALYTICS_RUN_REPORT metricValues using metricHeaders types when converting rows to dicts.",
+              "code": "```python\ndef parse_ga4_row(row,dim_headers,metric_headers):\n  out={}\n  for i,h in enumerate(dim_headers): out[h['name']]=row['dimensionValues'][i]['value']\n  for i,h in enumerate(metric_headers):\n    v=row['metricValues'][i]['value'];t=h.get('type')\n    out[h['name']]=int(v) if t=='TYPE_INTEGER' else float(v) if t in ('TYPE_FLOAT','TYPE_SECONDS') else v\n  return out\n```"
+            },
+            {
+              "description": "Flatten GOOGLE_ANALYTICS_BATCH_RUN_REPORTS response (iterate data.reports[*]) into records.",
+              "code": "```python\nout=[]\nfor rep in resp.get('data',{}).get('reports',[]) or []:\n  dims=[h['name'] for h in rep.get('dimensionHeaders',[])]\n  mets=[h['name'] for h in rep.get('metricHeaders',[])]\n  for r in rep.get('rows',[]) or []:\n    rec={dims[i]:r['dimensionValues'][i]['value'] for i in range(len(dims))}\n    rec.update({mets[i]:r['metricValues'][i]['value'] for i in range(len(mets))})\n    out.append(rec)\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "GOOGLE_ANALYTICS_RUN_REPORT"
+          ],
+          "related_tool_slugs": [
+            "GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA",
+            "GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED",
+            "GOOGLE_ANALYTICS_LIST_DATA_STREAMS",
+            "GOOGLE_ANALYTICS_GET_METADATA",
+            "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY",
+            "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS"
+          ],
+          "toolkits": [
+            "google_analytics"
+          ],
+          "plan_id": "6b5baf461713477b92c1e0a0631c5cea"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "google_analytics",
+          "has_active_connection": false,
+          "description": "Google Analytics tracks and reports website traffic, user behavior, and conversion data, enabling marketers to optimize online performance and customer journeys",
+          "status_message": "No Active connection for toolkit=google_analytics. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"google_analytics\") to create a connection BEFORE executing any google_analytics tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLE_ANALYTICS_RUN_REPORT": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_RUN_REPORT",
+          "description": "Tool to run a customized GA4 data report. Use when you need event data after specifying dimensions, metrics, and date ranges. IMPORTANT - DIMENSION/METRIC COMPATIBILITY: The Google Analytics Data API has strict compatibility rules between dimensions and metrics. Not all combinations are valid. If you receive a 400 error with a message about incompatible dimensions/metrics, use the GOOGLE_ANALYTICS_CHECK_COMPATIBILITY action first to validate your dimension/metric combinations before running reports. Common incompatibilities include: - Demographic dimensions (userAgeBracket, userGender) with session-scoped dimensions/filters (sessionCampaignName, sessionSource) - Certain user-scoped dimensions with event-scoped metrics For complex queries, consider starting with simpler dimension/metric combinations or use CHECK_COMPATIBILITY to pre-validate your request.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "property"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  1000
+                ],
+                "description": "Optional. Number of rows to return. Must be between 1 and 250000."
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0
+                ],
+                "description": "Optional. 0-based start row for pagination. Must be >= 0."
+              },
+              "metrics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "name": "activeUsers"
+                  },
+                  {
+                    "name": "sessions"
+                  },
+                  {
+                    "name": "screenPageViews"
+                  }
+                ],
+                "description": "Optional. The metrics to request and display. Maximum 10 metrics per request. Each metric MUST be an object with a required non-empty 'name' field. Common valid metric names: activeUsers, totalUsers, newUsers, sessions, engagedSessions, screenPageViews, eventCount, conversions, userEngagementDuration, engagementRate, bounceRate, averageSessionDuration, sessionsPerUser, screenPageViewsPerSession, purchaseRevenue, totalRevenue, transactions, ecommercePurchases, publisherAdClicks, publisherAdImpressions, totalAdRevenue. Custom metrics use format 'customEvent:parameter_name'. CRITICAL: 'averageEngagementTime' is NOT a valid metric - use 'userEngagementDuration' or 'averageSessionDuration' instead. 'exits' is NOT a valid metric in GA4."
+              },
+              "orderBys": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "desc": true,
+                    "metric": {
+                      "metricName": "activeUsers"
+                    }
+                  },
+                  {
+                    "desc": false,
+                    "dimension": {
+                      "orderType": "ALPHANUMERIC",
+                      "dimensionName": "country"
+                    }
+                  }
+                ],
+                "description": "Optional. Specify how rows are ordered. Each OrderBy object must have 'desc' (boolean) at the top level and exactly one of: 'metric' (with 'metricName' string), 'dimension' (with 'dimensionName' or 'name' string and optional 'orderType': 'ALPHANUMERIC', 'CASE_INSENSITIVE_ALPHANUMERIC', or 'NUMERIC'), or 'pivot'. Note: For dimension ordering, you can use either 'dimensionName' or 'name' field - both are accepted and normalized. Example for metric ordering: {'desc': true, 'metric': {'metricName': 'activeUsers'}}. Example for dimension ordering: {'desc': false, 'dimension': {'dimensionName': 'country', 'orderType': 'ALPHANUMERIC'}}."
+              },
+              "property": {
+                "type": "string",
+                "examples": [
+                  "properties/123456789"
+                ],
+                "description": "Required. The property resource on which to run the report. Format: properties/{property_id} where property_id must be a numeric ID (e.g., 'properties/123456789')."
+              },
+              "cohortSpec": {
+                "type": "object",
+                "description": "Optional. Cohort specification. Requires requesting the cohort dimension.",
+                "additionalProperties": true
+              },
+              "dateRanges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "endDate": "2023-01-31",
+                    "startDate": "2023-01-01"
+                  }
+                ],
+                "minItems": 1,
+                "description": "The date ranges to read. Required for standard reports. Each range MUST be an object with required 'startDate' and 'endDate' fields (both must be non-empty). Dates can be in YYYY-MM-DD format or special values like 'today', 'yesterday', '7daysAgo', '30daysAgo'. IMPORTANT: For cohort requests (when cohortSpec is provided), dateRanges must be omitted."
+              },
+              "dimensions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "name": "city"
+                  },
+                  {
+                    "name": "date"
+                  },
+                  {
+                    "name": "deviceCategory"
+                  }
+                ],
+                "description": "Optional. The dimensions to request and display. Maximum 9 dimensions per request. Each dimension MUST be an object with a required non-empty 'name' field. Common valid dimension names: date, dateHour, dateHourMinute, year, month, week, day, dayOfWeek, hour, city, cityId, country, countryId, continent, continentId, region, subContinent, deviceCategory, browser, operatingSystem, platform, platformDeviceCategory, screenResolution, sessionSource, sessionMedium, sessionSourceMedium, sessionCampaignName, sessionDefaultChannelGroup, firstUserSource, firstUserMedium, firstUserCampaignName, firstUserDefaultChannelGroup, pagePath, pagePathPlusQueryString, pageTitle, landingPage, hostname, eventName, streamName, userAgeBracket, userGender, language, newVsReturning. Custom dimensions: 'customEvent:parameter_name' or 'customUser:parameter_name'. 'dateRange' is NOT a valid dimension \u2014 use date dimensions (date, dateHour, year, month, etc.) instead. 'exits' is NOT a valid dimension in GA4. COMPATIBILITY: Not all dimensions can be combined with each other or with certain metrics/filters. If you receive a compatibility error, use GOOGLE_ANALYTICS_CHECK_COMPATIBILITY to validate combinations, or see https://developers.google.com/analytics/devguides/reporting/data/v1/compatibility"
+              },
+              "comparisons": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Optional. The comparison configuration. Adds a comparison column to the response."
+              },
+              "currencyCode": {
+                "type": "string",
+                "examples": [
+                  "USD"
+                ],
+                "description": "Optional. The currency code to apply, in ISO 4217 format. Defaults to property currency."
+              },
+              "metricFilter": {
+                "type": "object",
+                "description": "Optional. Filter expression to restrict rows by metric values. Applied after aggregation. IMPORTANT: Only use metric field names here (e.g., 'activeUsers', 'sessions', 'ecommercePurchases', 'purchaseRevenue'). Do NOT use dimension names in metricFilter - if you need to filter by a dimension (e.g., 'country', 'city', 'pagePath'), use dimensionFilter instead. The action validates that only metric names are used in metricFilter and will reject dimension names with a clear error. Structure: {'filter': {'fieldName': '<metric_name>', 'numericFilter': {'operation': 'GREATER_THAN', 'value': {'int64Value': '0'}}}} or use 'andGroup'/'orGroup' for multiple conditions.",
+                "additionalProperties": true
+              },
+              "keepEmptyRows": {
+                "type": "boolean",
+                "description": "Optional. If true, rows with all zero metrics will be returned; otherwise omitted."
+              },
+              "dimensionFilter": {
+                "type": "object",
+                "description": "Optional. Filter expression to restrict rows by dimension values. IMPORTANT: Only use dimension field names here (e.g., 'country', 'city', 'date', 'deviceCategory', 'pagePath'). Do NOT use metric names in dimensionFilter - if you need to filter by a metric (e.g., 'activeUsers', 'sessions', 'ecommercePurchases'), use metricFilter instead. Structure: {'filter': {'fieldName': '<dimension_name>', 'stringFilter': {...}}} or use 'andGroup'/'orGroup' for multiple conditions. COMPATIBILITY WARNING: Dimension filters must be compatible with the dimensions in your request. For example, filtering on 'sessionCampaignName' while using demographic dimensions (userAgeBracket, userGender) will fail. The filter field creates an implicit dimension that must be compatible with all other dimensions and metrics. Use GOOGLE_ANALYTICS_CHECK_COMPATIBILITY to verify your filter dimensions work with your requested dimensions/metrics.",
+                "additionalProperties": true
+              },
+              "metricAggregations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "TOTAL"
+                ],
+                "description": "Optional. Aggregation types to include over metrics, e.g., 'TOTAL', 'MINIMUM', 'MAXIMUM'."
+              },
+              "returnPropertyQuota": {
+                "type": "boolean",
+                "description": "Optional. If true, include the property's current quota state in the response."
+              },
+              "removed_dimensions_internal": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Internal field to store filtered dimension names for execution message. Not sent to API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_LIST_ACCOUNTS_V1_BETA",
+          "description": "Tool to list all Google Analytics accounts accessible by the caller using v1beta API. Use when you need to enumerate accounts. Note that these accounts might not have GA properties yet. Soft-deleted accounts are excluded by default.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "pageSize": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "examples": [
+                  50,
+                  100
+                ],
+                "description": "The maximum number of resources to return. The service may return fewer than this value, even if there are additional pages. If unspecified, at most 50 resources will be returned. The maximum value is 200; higher values will be coerced to the maximum."
+              },
+              "pageToken": {
+                "type": "string",
+                "examples": [
+                  "token123"
+                ],
+                "description": "A page token, received from a previous `ListAccounts` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListAccounts` must match the call that provided the page token."
+              },
+              "showDeleted": {
+                "type": "boolean",
+                "description": "Whether to include soft-deleted (ie: 'trashed') Accounts in the results. Accounts can be inspected to determine whether they are deleted or not. Defaults to false (soft-deleted accounts are excluded)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_LIST_PROPERTIES_FILTERED",
+          "description": "Tool to list GA4 properties based on filter criteria. Use when you need to find properties under a specific parent account or with specific firebase projects. Supports pagination and including soft-deleted properties.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "filter"
+            ],
+            "properties": {
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "parent:accounts/123456789",
+                  "ancestor:accounts/123456789"
+                ],
+                "description": "Required. Expression for filtering the results. Fields eligible for filtering: `parent:` (resource name of parent account/property), `ancestor:` (resource name of parent account), or `firebase_project:` (id or number of linked firebase project). Examples: 'parent:accounts/123' (account with id 123), 'parent:properties/123' (property with id 123), 'ancestor:accounts/123' (account with id 123), 'firebase_project:project-id' (firebase project with id project-id), 'firebase_project:123' (firebase project with number 123)."
+              },
+              "pageSize": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "examples": [
+                  50
+                ],
+                "description": "Optional. Maximum number of properties to return (1-200). Default is 50."
+              },
+              "pageToken": {
+                "type": "string",
+                "examples": [
+                  "token123"
+                ],
+                "description": "Optional. Token from previous ListProperties call to retrieve the next page."
+              },
+              "showDeleted": {
+                "type": "boolean",
+                "description": "Optional. Whether to include soft-deleted (trashed) properties. Default is false."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLE_ANALYTICS_LIST_DATA_STREAMS": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_LIST_DATA_STREAMS",
+          "description": "Tool to list DataStreams on a property. Use when you need to retrieve data stream configurations for...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLE_ANALYTICS_LIST_DATA_STREAMS"
+              ]
+            }
+          }
+        },
+        "GOOGLE_ANALYTICS_GET_METADATA": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_GET_METADATA",
+          "description": "Tool to get metadata for dimensions, metrics, and comparisons for a GA4 property. Use to discover av...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLE_ANALYTICS_GET_METADATA"
+              ]
+            }
+          }
+        },
+        "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY",
+          "description": "Tool to list dimensions and metrics compatible with a GA4 report request. Use when you need to valid...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY"
+              ]
+            }
+          }
+        },
+        "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS",
+          "description": "Tool to return multiple analytics data reports in a batch. Use when you need to fetch multiple repor...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:40:04.351Z",
+        "current_time_utc_epoch_seconds": 1786599604,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "hill",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"hill\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_r2zJmJYFTaAC"
+  }
+}

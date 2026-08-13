@@ -1,0 +1,215 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-082-q3",
+    "workflow_id": 82,
+    "workflow_task": "Manage and clean up Outlook inbox messages by finding matches from senders, subject patterns, unread status, and folder locations; move matched emails into target folders, move unwanted emails to Deleted Items, create and remove temporary rules, and cluster remaining unread emails for triage.",
+    "query": "create and remove temporary outlook rules",
+    "intent": "Automate email sorting or cleanup by creating temporary rules and deleting them afterwards.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "OUTLOOK_CREATE_MAIL_FOLDER_MESSAGE_RULE"
+        ],
+        "purpose": "Create temporary email rules"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "OUTLOOK_DELETE_EMAIL_RULE"
+        ],
+        "purpose": "Remove temporary email rules"
+      }
+    ],
+    "candidate_tools": [
+      "OUTLOOK_BATCH_MOVE_MESSAGES",
+      "OUTLOOK_CREATE_MAIL_FOLDER_MESSAGE_RULE",
+      "OUTLOOK_DELETE_EMAIL_RULE",
+      "OUTLOOK_DELETE_MESSAGE",
+      "OUTLOOK_GET_MESSAGE",
+      "OUTLOOK_LIST_CHILD_MAIL_FOLDERS",
+      "OUTLOOK_LIST_EMAIL_RULES",
+      "OUTLOOK_LIST_MAIL_FOLDERS",
+      "OUTLOOK_LIST_MAIL_FOLDER_MESSAGES",
+      "OUTLOOK_MOVE_MESSAGE",
+      "OUTLOOK_MOVE_MESSAGE_FROM_FOLDER",
+      "OUTLOOK_QUERY_EMAILS",
+      "OUTLOOK_SEARCH_MESSAGES"
+    ]
+  },
+  "request": {
+    "query": "create and remove temporary outlook rules"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create and remove temporary outlook rules",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Retrieve all message rules using OUTLOOK_LIST_EMAIL_RULES (page through results; capture each rule id plus a short conditions/actions summary).",
+            "[Optional (if rules may exist under a different mailbox/folder context)] [Prerequisite]: Confirm the correct context using OUTLOOK_LIST_MAIL_FOLDERS before selecting rule ids.",
+            "[Optional (if any id might be stale or ambiguous)] [Prerequisite]: Validate the selected rule still exists using OUTLOOK_GET_INBOX_MESSAGE_RULE (confirm the exact id to act on).",
+            "[Required] [Prerequisite]: Obtain explicit user confirmation using OUTLOOK_LIST_EMAIL_RULES details (id + summarized conditions/actions) before irreversible changes.",
+            "[Fallback (if a reversible change is preferred)] [Fallback]: Disable the selected rule(s) using OUTLOOK_UPDATE_EMAIL_RULE (set isEnabled=false) instead of deleting.",
+            "[Required] [Step]: Delete the approved rule(s) using OUTLOOK_DELETE_EMAIL_RULE (iterate per rule id and record per-rule outcome).",
+            "[Optional (for verification/audit)] [Next Step]: Re-run OUTLOOK_LIST_EMAIL_RULES to confirm the selected rule(s) are removed/disabled."
+          ],
+          "known_pitfalls": [
+            "[OUTLOOK_DELETE_EMAIL_RULE] Success may return response.data as an empty object ({}); confirm via OUTLOOK_LIST_EMAIL_RULES rather than the delete payload.",
+            "[OUTLOOK_DELETE_EMAIL_RULE] Can surface embedded per-rule \"ErrorMessageRuleNotFound\" even when the wrapper indicates success; verify via OUTLOOK_LIST_EMAIL_RULES (or OUTLOOK_GET_INBOX_MESSAGE_RULE when available).",
+            "[OUTLOOK_LIST_EMAIL_RULES] Some broad rules may show minimal/empty conditions; review actions (and any stop-processing behavior) before deciding to delete.",
+            "[OUTLOOK_GET_INBOX_MESSAGE_RULE] Not-found or unavailability typically means the rule id is wrong/stale or the rule is from a different mailbox/folder context; fall back to OUTLOOK_LIST_EMAIL_RULES-driven selection.",
+            "[COMPOSIO_REMOTE_WORKBENCH] Previously saved remote outputs may be unavailable (file-not-found); re-fetch live rule data before executing deletes."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "List current rules and delete only those whose IDs are in a precomputed set (no reliance on saved outputs).",
+              "code": "```python\nres,_=run_composio_tool('OUTLOOK_LIST_EMAIL_RULES',{'top':100,'skip':0})\nrules=((res or {}).get('data') or {}).get('value') or []\ntarget_ids=set([])\nfor r in rules:\n    rid=r.get('id')\n    if rid in target_ids:\n        run_composio_tool('OUTLOOK_DELETE_EMAIL_RULE',{'rule_id':rid})\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "OUTLOOK_LIST_EMAIL_RULES",
+            "OUTLOOK_DELETE_EMAIL_RULE"
+          ],
+          "related_tool_slugs": [
+            "OUTLOOK_GET_INBOX_MESSAGE_RULE",
+            "OUTLOOK_LIST_MAIL_FOLDERS",
+            "OUTLOOK_UPDATE_EMAIL_RULE"
+          ],
+          "toolkits": [
+            "outlook"
+          ],
+          "plan_id": "346080c4baf340bc83e5e5f9254da005"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "outlook",
+          "has_active_connection": false,
+          "description": "Outlook is Microsoft's email and calendaring platform integrating contacts and scheduling, enabling users to manage communications and events in a unified workspace",
+          "status_message": "No Active connection for toolkit=outlook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"outlook\") to create a connection BEFORE executing any outlook tools."
+        }
+      ],
+      "tool_schemas": {
+        "OUTLOOK_LIST_EMAIL_RULES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_EMAIL_RULES",
+          "description": "List all email rules from inbox. No server-side filtering is supported; all rule narrowing must be done client-side after retrieval. Each rule includes a `sequence` field defining execution order and may include a `stopProcessingRules` flag affecting downstream rule execution.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "maximum": 999,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50,
+                  100
+                ],
+                "description": "Number of rules to retrieve. Default is 100. Setting this too low may return an incomplete rule set; use 100 or higher to ensure all rules are retrieved."
+              },
+              "skip": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0,
+                  10,
+                  20
+                ],
+                "description": "Number of rules to skip before returning results. Use with 'top' for offset-based pagination."
+              },
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "43f0c14d-bca8-421f-b762-c3d8dd75be1f",
+                  "user@example.com"
+                ],
+                "description": "The user ID or principal name (email) to list email rules for. Required for S2S (app-only) authentication. If not provided, uses the authenticated user context (/me)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_DELETE_EMAIL_RULE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_DELETE_EMAIL_RULE",
+          "description": "Delete an email rule permanently; deletion is irreversible. Confirm rule details with the user before executing. Removing a rule may alter the firing order and stop-processing behavior of remaining rules.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "rule_id"
+            ],
+            "properties": {
+              "rule_id": {
+                "type": "string",
+                "examples": [
+                  "AAMkAGExampleRuleIdPlaceholder000000000000000000000000000000000000000000000000000000000000000000000=="
+                ],
+                "description": "ID of the email rule to delete."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com",
+                  "43f0c14d-bca8-421f-b762-c3d8dd75be1f"
+                ],
+                "description": "The unique identifier of the user. Can use 'me' shortcut for /me/ path or actual user ID for /users/{user_id}/ path. Required for S2S (app-only) authentication."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_LIST_MAIL_FOLDERS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_MAIL_FOLDERS",
+          "description": "Tool to list a user's top-level mail folders. Use when you need folders like Inbox, Drafts, Sent Ite...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_LIST_MAIL_FOLDERS"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_UPDATE_EMAIL_RULE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_UPDATE_EMAIL_RULE",
+          "description": "Update an existing email rule",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_UPDATE_EMAIL_RULE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:38:26.884Z",
+        "current_time_utc_epoch_seconds": 1786599506,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "dish",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"dish\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_kfBOwZCjvl8_"
+  }
+}

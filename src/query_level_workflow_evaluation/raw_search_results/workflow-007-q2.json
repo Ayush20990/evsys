@@ -49,22 +49,44 @@
         {
           "index": 1,
           "use_case": "get calendar events",
-          "execution_guidance": "Found 7 tools for this query. Look at the schemas to know how to use them.",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if the target day is relative or timezone is unclear)] [Prerequisite]: Anchor a consistent local day window using GOOGLECALENDAR_GET_CURRENT_DATE_TIME (derive explicit, non-empty time_min/time_max).",
+            "[Optional (if calendars to include/exclude are unknown)] [Prerequisite]: Discover calendar_ids using GOOGLECALENDAR_LIST_CALENDARS (choose which calendars to query).",
+            "[Optional (if day boundaries must match a specific calendar\u2019s timezone)] [Prerequisite]: Fetch calendar metadata using GOOGLECALENDAR_GET_CALENDAR (confirm timezone before finalizing time_min/time_max).",
+            "[Required] [Step]: List events for the window using GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS (start with response_detail='minimal'; interpret both data.summary_view and data.events; check data.calendars_queried and data.errors_by_calendar before concluding empty).",
+            "[Optional (if you must identify one exact event or need full fields)] [Next Step]: Disambiguate within the same window using GOOGLECALENDAR_FIND_EVENT, then confirm full details using GOOGLECALENDAR_EVENTS_GET (use returned identifiers).",
+            "[Fallback (if aggregated output is empty/incomplete or you only want one calendar)] [Fallback]: Re-run the same window using GOOGLECALENDAR_EVENTS_LIST for a chosen calendar_id (follow nextPageToken until exhausted)."
+          ],
+          "known_pitfalls": [
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] Can fail with 403 PERMISSION_DENIED / ACCESS_TOKEN_SCOPE_INSUFFICIENT when required OAuth scopes are missing.",
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] All-day events may use date-only start/end and end can be the next day; treat end as exclusive when determining day membership.",
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] Validation may fail if required bounds are missing; ensure both time_min and time_max are provided and non-empty before retrying.",
+            "[GOOGLECALENDAR_EVENTS_LIST] Using q filtering can return items=[] even when the time window contains events\u2014retry without q before concluding there are none.",
+            "[GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS] response_detail='full' can be large/truncated; keep listings minimal and hydrate selected items via GOOGLECALENDAR_EVENTS_GET."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse unified event results from GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+              "code": "```python\nimport json,sys\nj=json.load(sys.stdin)\ndata=j[\"results\"][0][\"response\"][\"data\"]\nprint(len(data.get(\"events\",[])),len(data.get(\"summary_view\",[])))\n```"
+            }
+          ],
+          "difficulty": "easy",
           "primary_tool_slugs": [
-            "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
-            "GOOGLECALENDAR_EVENTS_GET"
+            "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS"
           ],
           "related_tool_slugs": [
             "GOOGLECALENDAR_LIST_CALENDARS",
-            "GOOGLECALENDAR_FIND_EVENT",
+            "GOOGLECALENDAR_GET_CALENDAR",
             "GOOGLECALENDAR_EVENTS_LIST",
-            "GMAIL_FETCH_EMAILS",
-            "GMAIL_SEARCH_PEOPLE"
+            "GOOGLECALENDAR_EVENTS_GET",
+            "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+            "GOOGLECALENDAR_FIND_EVENT"
           ],
           "toolkits": [
-            "googlecalendar",
-            "gmail"
-          ]
+            "googlecalendar"
+          ],
+          "plan_id": "8bd239281e76496f9864d536c46e4d5b"
         }
       ],
       "toolkit_connection_statuses": [
@@ -73,12 +95,6 @@
           "has_active_connection": false,
           "description": "Google Calendar is a time management tool providing scheduling features, event reminders, and integration with email and other apps for streamlined organization",
           "status_message": "No Active connection for toolkit=googlecalendar. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlecalendar\") to create a connection BEFORE executing any googlecalendar tools."
-        },
-        {
-          "toolkit": "gmail",
-          "has_active_connection": false,
-          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
-          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
         }
       ],
       "tool_schemas": {
@@ -155,51 +171,6 @@
           },
           "hasFullSchema": true
         },
-        "GOOGLECALENDAR_EVENTS_GET": {
-          "toolkit": "GOOGLECALENDAR",
-          "tool_slug": "GOOGLECALENDAR_EVENTS_GET",
-          "description": "Retrieves a SINGLE event by its unique event_id (REQUIRED). This action does NOT list or search events - it fetches ONE specific event when you already know its ID. If you want to list events within a time range, search for events, or filter by criteria like time_min/time_max, use GOOGLECALENDAR_EVENTS_LIST instead.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "event_id"
-            ],
-            "properties": {
-              "event_id": {
-                "type": "string",
-                "examples": [
-                  "0a9160c4c367855d09a84f8d4350bda2"
-                ],
-                "description": "REQUIRED. The unique identifier of the specific event to retrieve. You must already know this ID (e.g., from a previous EVENTS_LIST call or event creation response). This action fetches ONE event by ID - it cannot list or search events. To find events by time range or search criteria, use GOOGLECALENDAR_EVENTS_LIST instead."
-              },
-              "time_zone": {
-                "type": "string",
-                "examples": [
-                  "America/New_York",
-                  "Europe/London",
-                  "Asia/Tokyo"
-                ],
-                "description": "Time zone used in the response. If not specified, the calendar's time zone is used."
-              },
-              "calendar_id": {
-                "type": "string",
-                "default": "primary",
-                "examples": [
-                  "primary",
-                  "user@example.com",
-                  "c_classroomb9676db5@group.calendar.google.com"
-                ],
-                "description": "Identifier of the Google Calendar (e.g., email address, specific ID, or 'primary' for the authenticated user's main calendar) from which to retrieve the event."
-              },
-              "max_attendees": {
-                "type": "integer",
-                "minimum": 1,
-                "description": "Maximum number of attendees to include in the response. If there are more than the specified number, only the participant is returned."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
         "GOOGLECALENDAR_LIST_CALENDARS": {
           "toolkit": "GOOGLECALENDAR",
           "tool_slug": "GOOGLECALENDAR_LIST_CALENDARS",
@@ -262,19 +233,26 @@
           },
           "hasFullSchema": true
         },
-        "GOOGLECALENDAR_FIND_EVENT": {
+        "GOOGLECALENDAR_GET_CALENDAR": {
           "toolkit": "GOOGLECALENDAR",
-          "tool_slug": "GOOGLECALENDAR_FIND_EVENT",
-          "description": "Finds events in a specified Google Calendar using text query, time ranges (event start/end, last mod...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "GOOGLECALENDAR_FIND_EVENT"
-              ]
+          "tool_slug": "GOOGLECALENDAR_GET_CALENDAR",
+          "description": "Retrieves a specific Google Calendar, identified by `calendar_id`, to which the authenticated user has access. Response includes `timeZone` (IANA format, e.g., 'America/Los_Angeles') \u2014 use it directly when constructing `timeMin`/`timeMax` in other tools to avoid DST errors. An empty `defaultReminders` list is valid (no defaults configured). Insufficient `accessRole` may omit fields like `defaultReminders` and `colorId`.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "calendar_id": {
+                "type": "string",
+                "default": "primary",
+                "examples": [
+                  "primary",
+                  "user@example.com",
+                  "en.usa#holiday@group.v.calendar.google.com"
+                ],
+                "description": "Identifier of the Google Calendar to retrieve. Must be 'primary' (the default) for the user's main calendar, or an email-like identifier (e.g., 'user@example.com' or 'en.usa#holiday@group.v.calendar.google.com'). IMPORTANT: Calendar display names/titles (e.g., 'Work', 'Vacation') are NOT valid identifiers and will result in errors. To find a calendar's ID, use the LIST_CALENDARS action which returns the 'id' field for each calendar."
+              }
             }
-          }
+          },
+          "hasFullSchema": true
         },
         "GOOGLECALENDAR_EVENTS_LIST": {
           "toolkit": "GOOGLECALENDAR",
@@ -290,53 +268,67 @@
             }
           }
         },
-        "GMAIL_FETCH_EMAILS": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_FETCH_EMAILS",
-          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optiona...",
+        "GOOGLECALENDAR_EVENTS_GET": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_EVENTS_GET",
+          "description": "Retrieves a SINGLE event by its unique event_id (REQUIRED). This action does NOT list or search even...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_FETCH_EMAILS"
+                "GOOGLECALENDAR_EVENTS_GET"
               ]
             }
           }
         },
-        "GMAIL_SEARCH_PEOPLE": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_SEARCH_PEOPLE",
-          "description": "Searches contacts by matching the query against names, nicknames, emails, phone numbers, and organiz...",
+        "GOOGLECALENDAR_GET_CURRENT_DATE_TIME": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+          "description": "Gets the current date and time, allowing for a specific timezone offset. Call this tool first before...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_SEARCH_PEOPLE"
+                "GOOGLECALENDAR_GET_CURRENT_DATE_TIME"
+              ]
+            }
+          }
+        },
+        "GOOGLECALENDAR_FIND_EVENT": {
+          "toolkit": "GOOGLECALENDAR",
+          "tool_slug": "GOOGLECALENDAR_FIND_EVENT",
+          "description": "Finds events in a specified Google Calendar using text query, time ranges (event start/end, last mod...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLECALENDAR_FIND_EVENT"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T21:31:09.904Z",
-        "current_time_utc_epoch_seconds": 1786570269,
+        "current_time_utc": "2026-08-13T05:28:10.064Z",
+        "current_time_utc_epoch_seconds": 1786598890,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "rice",
+        "id": "tone",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"rice\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"tone\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
-        "Follow these steps carefully to begin the task:",
-        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
       ],
       "success": true,
       "error": null
     },
     "error": null,
-    "log_id": "log__I0fxdgadbAo"
+    "log_id": "log_2_85iMB3S3Hw"
   }
 }

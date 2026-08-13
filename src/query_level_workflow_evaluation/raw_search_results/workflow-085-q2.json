@@ -1,0 +1,419 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-085-q2",
+    "workflow_id": 85,
+    "workflow_task": "Investigate and patch a codebase hosted on GitHub, commit changes to a target branch, document the change, and merge that branch into the destination branch after approval.",
+    "query": "git commit push changes",
+    "intent": "Commit the code modifications and push them to the remote target branch on GitHub.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_CREATE_A_COMMIT"
+        ],
+        "purpose": "commit code modifications"
+      }
+    ],
+    "candidate_tools": [
+      "GITHUB_CREATE_A_COMMIT",
+      "GITHUB_CREATE_A_TREE",
+      "GITHUB_GET_A_COMMIT",
+      "GITHUB_GET_A_REFERENCE",
+      "GITHUB_GET_REPOSITORY_CONTENT",
+      "GITHUB_MERGE_A_BRANCH",
+      "GITHUB_SEARCH_CODE",
+      "GITHUB_UPDATE_A_REFERENCE",
+      "_1PASSWORD_LIST_VAULTS"
+    ]
+  },
+  "request": {
+    "query": "git commit push changes"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "git commit push changes",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Confirm the target repository exists and you have write access using GITHUB_GET_A_REPOSITORY (fail fast before any writes).",
+            "[Optional (if the target branch is unknown)] [Prerequisite]: Enumerate candidate branches using GITHUB_LIST_BRANCHES (avoid default-branch mismatches).",
+            "[Required] [Prerequisite]: Fetch the target branch head commit anchor using GITHUB_GET_A_BRANCH (use data.commit.sha; handle 404 as missing branch/uninitialized).",
+            "[Optional (if pushing into a new branch)] [Step]: Create the branch ref from the base SHA using GITHUB_CREATE_A_REFERENCE (ref must be refs/heads/<branch>).",
+            "[Required] [Step]: (User confirmation required) Recreate/push commit history using GITHUB_COMMIT_MULTIPLE_FILES (replay oldest\u2192newest across calls; each call must include at least one upsert or delete with full contents inline).",
+            "[Optional (if bulk commit is blocked or branch is effectively uninitialized)] [Fallback]: Seed a minimal first commit using GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS, then re-run GITHUB_GET_A_BRANCH and continue with GITHUB_COMMIT_MULTIPLE_FILES.",
+            "[Optional (for verification)] [Next Step]: Re-fetch the branch head using GITHUB_GET_A_BRANCH and confirm data.commit.sha advanced (and the branch exists if created)."
+          ],
+          "known_pitfalls": [
+            "[GITHUB_GET_A_REPOSITORY] 404 or insufficient permissions will cause all write calls to fail; responses can be large\u2014extract only fields needed to validate access.",
+            "[GITHUB_GET_A_BRANCH] Head commit SHA is at data.commit.sha; branch lookup can 404 when the branch does not exist (sometimes also when the repo has no initial commit).",
+            "[GITHUB_CREATE_A_REFERENCE] ref must be fully qualified as refs/heads/<branch> or branch creation fails.",
+            "[GITHUB_COMMIT_MULTIPLE_FILES] Validation error if upserts and deletes are both empty; commits may fail if you provide file paths without supplying full file contents inline.",
+            "[GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS] Useful to create the first commit in an empty repository to unblock later multi-file commits."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GITHUB_COMMIT_MULTIPLE_FILES"
+          ],
+          "related_tool_slugs": [
+            "GITHUB_GET_A_REPOSITORY",
+            "GITHUB_GET_A_BRANCH",
+            "GITHUB_CREATE_A_REFERENCE",
+            "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+            "GITHUB_LIST_BRANCHES"
+          ],
+          "toolkits": [
+            "github"
+          ],
+          "plan_id": "58475b2c3794461a98e3c13ef394348f"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "github",
+          "has_active_connection": false,
+          "description": "GitHub is a code hosting platform for version control and collaboration, offering Git-based repository management, issue tracking, and continuous integration features",
+          "status_message": "No Active connection for toolkit=github. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"github\") to create a connection BEFORE executing any github tools."
+        }
+      ],
+      "tool_schemas": {
+        "GITHUB_COMMIT_MULTIPLE_FILES": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_COMMIT_MULTIPLE_FILES",
+          "description": "Tool to atomically create, update, or delete multiple files in a GitHub repository as a single commit. Uses Git Data APIs to avoid SHA mismatch conflicts that occur with the Contents API when multiple files are modified in parallel. Use when you need to make multi-file changes reliably. BRANCH CREATION: When committing to a new branch (e.g., 'fix/my-fix' or 'feature/new-feature'), you MUST provide 'base_branch' (typically 'main' or 'master') to create the branch from. If the branch already exists, base_branch is not needed. This action handles race conditions automatically: if the branch is updated by another commit between fetching the HEAD and updating the reference (resulting in a 422 'not a fast forward' error), the action will retry by refetching the HEAD and rebasing changes. Use max_retries to control this behavior.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "branch",
+              "message"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "hello-world",
+                  "my-project"
+                ],
+                "description": "Repository name (without .git extension)"
+              },
+              "force": {
+                "type": "boolean",
+                "default": false,
+                "description": "Force update the branch reference. WARNING: Use with caution as this can overwrite commits. Only use this when you intentionally want to overwrite the branch history."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "my-organization"
+                ],
+                "description": "Repository owner (username or organization name)"
+              },
+              "author": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "email"
+                ],
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "examples": [
+                      "2024-01-15T10:30:00Z"
+                    ],
+                    "description": "ISO 8601 timestamp for the commit (optional, defaults to current time)"
+                  },
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "John Doe",
+                      "Jane Smith"
+                    ],
+                    "description": "Name of the author or committer"
+                  },
+                  "email": {
+                    "type": "string",
+                    "examples": [
+                      "john@example.com",
+                      "jane@example.com"
+                    ],
+                    "description": "Email address of the author or committer"
+                  }
+                },
+                "description": "Git author or committer information.",
+                "additionalProperties": false
+              },
+              "branch": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "develop",
+                  "feature/new-feature"
+                ],
+                "description": "Target branch name to commit to. If this branch doesn't exist, you MUST provide 'base_branch' to create it. For new feature branches (e.g., 'fix/my-fix', 'feature/new-feature'), always set base_branch='main' (or your default branch)."
+              },
+              "deletes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "old-file.txt",
+                    "deprecated/module.py"
+                  ]
+                ],
+                "description": "List of file paths to delete from the repository. Files must exist in the repository; attempting to delete non-existent files will result in an error. Ensure paths are exact with no leading/trailing whitespace."
+              },
+              "message": {
+                "type": "string",
+                "examples": [
+                  "Add new features",
+                  "Update documentation",
+                  "Fix bugs in authentication"
+                ],
+                "description": "Commit message describing the changes"
+              },
+              "upserts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "content"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "examples": [
+                        "src/main.py",
+                        "README.md",
+                        "docs/guide.md"
+                      ],
+                      "description": "File path in the repository (e.g., 'src/main.py' or 'docs/readme.md')"
+                    },
+                    "content": {
+                      "type": "string",
+                      "examples": [
+                        "print('Hello, World!')",
+                        "# My Project\n\nWelcome!"
+                      ],
+                      "description": "File content as a string"
+                    },
+                    "encoding": {
+                      "enum": [
+                        "utf-8",
+                        "base64"
+                      ],
+                      "type": "string",
+                      "default": "utf-8",
+                      "examples": [
+                        "utf-8",
+                        "base64"
+                      ],
+                      "description": "Content encoding: 'utf-8' for text files or 'base64' for binary files"
+                    }
+                  },
+                  "description": "Represents a file to create or update."
+                },
+                "examples": [
+                  [
+                    {
+                      "path": "README.md",
+                      "content": "# Hello",
+                      "encoding": "utf-8"
+                    }
+                  ]
+                ],
+                "description": "List of files to create or update. Each entry requires path, content, and optional encoding (utf-8 or base64)"
+              },
+              "committer": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "email"
+                ],
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "examples": [
+                      "2024-01-15T10:30:00Z"
+                    ],
+                    "description": "ISO 8601 timestamp for the commit (optional, defaults to current time)"
+                  },
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "John Doe",
+                      "Jane Smith"
+                    ],
+                    "description": "Name of the author or committer"
+                  },
+                  "email": {
+                    "type": "string",
+                    "examples": [
+                      "john@example.com",
+                      "jane@example.com"
+                    ],
+                    "description": "Email address of the author or committer"
+                  }
+                },
+                "description": "Git author or committer information.",
+                "additionalProperties": false
+              },
+              "base_branch": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "master",
+                  "develop"
+                ],
+                "description": "REQUIRED when committing to a new branch that doesn't exist yet. Specifies the existing branch to create the new branch from (e.g., 'main' or 'master'). Not needed if 'branch' already exists in the repository."
+              },
+              "max_retries": {
+                "type": "integer",
+                "default": 3,
+                "maximum": 10,
+                "minimum": 0,
+                "description": "Maximum number of retries when encountering race conditions (422 'not a fast forward' errors). The action will refetch the HEAD and rebase changes on each retry. Set to 0 to disable retries."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_REPOSITORY": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_REPOSITORY",
+          "description": "Retrieves detailed information about an existing and accessible GitHub repository.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Hello-World",
+                  "kubernetes"
+                ],
+                "minLength": 1,
+                "description": "The name of the repository, without the `.git` extension. This field is case-insensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "kubernetes"
+                ],
+                "minLength": 1,
+                "description": "The username of the account that owns the repository. This field is case-insensitive."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_BRANCH": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_BRANCH",
+          "description": "Retrieves detailed information for a specified branch within a GitHub repository.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "branch"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Hello-World"
+                ],
+                "description": "The name of the repository without the `.git` extension. The name is not case sensitive. "
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat"
+                ],
+                "description": "The account owner of the repository. The name is not case sensitive."
+              },
+              "branch": {
+                "type": "string",
+                "examples": [
+                  "main"
+                ],
+                "description": "The name of the branch. Cannot contain wildcard characters. To use wildcard characters in branch names, use [the GraphQL API](https://docs.github.com/graphql). If 'HEAD' is provided, it will be resolved to the repository's default branch."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_CREATE_A_REFERENCE": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_CREATE_A_REFERENCE",
+          "description": "Creates a NEW Git reference (branch or tag) in a repository. IMPORTANT: This action ONLY creates NEW...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_CREATE_A_REFERENCE"
+              ]
+            }
+          }
+        },
+        "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+          "description": "Creates a new file or updates an existing file in a GitHub repository; SHA can be provided to valida...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS"
+              ]
+            }
+          }
+        },
+        "GITHUB_LIST_BRANCHES": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_BRANCHES",
+          "description": "List branches in a GitHub repository. Returns branch names, commit information, and protection statu...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_LIST_BRANCHES"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:38:49.044Z",
+        "current_time_utc_epoch_seconds": 1786599529,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "does",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"does\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_op_u8P-zse6e"
+  }
+}

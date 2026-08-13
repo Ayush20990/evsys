@@ -1,0 +1,502 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-044-q2",
+    "workflow_id": 44,
+    "workflow_task": "Browse a Bitbucket repository directory tree and retrieve selected repository file contents.",
+    "query": "get repository file contents",
+    "intent": "Fetch the text or source code contents of specific files selected from the Bitbucket repository.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "BITBUCKET_BROWSE_REPOSITORY_PATH",
+          "BITBUCKET_GET_FILE_FROM_REPOSITORY"
+        ],
+        "purpose": "get repository file contents"
+      }
+    ],
+    "candidate_tools": [
+      "BITBUCKET_BROWSE_REPOSITORY_PATH",
+      "BITBUCKET_GET_FILE_FROM_REPOSITORY",
+      "BITBUCKET_GET_REPOSITORY",
+      "BITBUCKET_LIST_REPOSITORY_PATHS"
+    ]
+  },
+  "request": {
+    "query": "get repository file contents"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "get repository file contents",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "=== BITBUCKET WORKFLOW ===",
+            "[Optional (if workspace is unknown)] [Prerequisite]: Discover/select workspace using BITBUCKET_GET_USER_WORKSPACES (reuse the returned workspace identifier).",
+            "[Required] [Prerequisite]: Confirm repository metadata + default ref using BITBUCKET_GET_REPOSITORY (use response.data.mainbranch.name; don\u2019t assume a branch).",
+            "[Optional (if a non-default ref/commit is needed or ref is uncertain)] [Prerequisite]: Enumerate/select target ref using BITBUCKET_LIST_BRANCHES (use the chosen ref consistently).",
+            "[Optional (if only keywords are known, not an exact path)] [Prerequisite]: Narrow candidate locations using BITBUCKET_GET_WORKSPACES_SEARCH_CODE (treat results as hints, then validate).",
+            "[Required] [Prerequisite]: Validate exact case-sensitive path and file-vs-directory using BITBUCKET_BROWSE_REPOSITORY_PATH (start at root if needed; follow response.data.next until absent).",
+            "[Required] [Step]: Fetch file content using BITBUCKET_GET_FILE_FROM_REPOSITORY (use validated path + chosen ref; read content from response.data.data).",
+            "[Optional (if starting from a directory or fetching multiple files)] [Next Step]: Enumerate entries using BITBUCKET_LIST_REPOSITORY_PATHS (follow response.data.next until absent), then fetch each file via BITBUCKET_GET_FILE_FROM_REPOSITORY.",
+            "[Fallback (if fetch fails or content is unexpected)] [Fallback]: Re-browse root/parent using BITBUCKET_BROWSE_REPOSITORY_PATH to correct ref/path/case, then retry BITBUCKET_GET_FILE_FROM_REPOSITORY.",
+            "=== GITHUB WORKFLOW ===",
+            "[Optional (if access or default ref is uncertain)] [Prerequisite]: Confirm repository visibility/default ref using GITHUB_GET_A_REPOSITORY and, if a non-default ref is needed, enumerate options using GITHUB_LIST_BRANCHES.",
+            "[Required] [Step]: Fetch the target path at the chosen ref using GITHUB_GET_REPOSITORY_CONTENT (may return a file object or a directory listing).",
+            "[Required] [Next Step]: If a file object is returned, decode response.data.content.content using response.data.content.encoding and retain the returned sha/version; if a directory listing is returned, choose a concrete child file path and re-run GITHUB_GET_REPOSITORY_CONTENT.",
+            "[Optional (if path is unknown, 404 occurs, or casing is unclear)] [Next Step]: Discover candidate paths using GITHUB_SEARCH_CODE and/or GITHUB_GET_A_TREE (avoid recursive unless necessary), then re-run GITHUB_GET_REPOSITORY_CONTENT for the exact file path.",
+            "[Fallback (if content is large/truncated, binary, or decoding is inconvenient)] [Fallback]: Retrieve bytes/text via GITHUB_GET_RAW_REPOSITORY_CONTENT for the concrete file path; if the response is an offloaded/temporary link, download it promptly in your execution environment."
+          ],
+          "known_pitfalls": [
+            "=== BITBUCKET PITFALLS ===",
+            "[BITBUCKET_GET_USER_WORKSPACES] Guessing a workspace identifier can 404; prefer the identifier returned by the tool.",
+            "[BITBUCKET_GET_REPOSITORY] Default branch may not match assumptions; use response.data.mainbranch.name to avoid ref-related Not Found errors.",
+            "[BITBUCKET_GET_FILE_FROM_REPOSITORY] May return status_code=200 but response.successful=false; trust response.successful/error over HTTP status alone.",
+            "[BITBUCKET_GET_FILE_FROM_REPOSITORY] Content is in response.data.data and may appear truncated in previews/logs; treat it as a raw string (often UTF-8).",
+            "[BITBUCKET_LIST_REPOSITORY_PATHS] Can return Bad Request when the provided path is a file (not a directory); confirm via BITBUCKET_BROWSE_REPOSITORY_PATH first.",
+            "=== GITHUB PITFALLS ===",
+            "[GITHUB_GET_A_REPOSITORY] 403 Forbidden can occur due to access restrictions within an organization even with valid credentials.",
+            "[GITHUB_GET_REPOSITORY_CONTENT] Response is polymorphic (directory list vs file object); missing paths commonly 404, and empty repositories can return 409.",
+            "[GITHUB_GET_REPOSITORY_CONTENT] Base64 payloads may be newline-wrapped and in rare cases appear double-encoded; decoding may require whitespace normalization/padding repair and an extra decode attempt.",
+            "[GITHUB_SEARCH_CODE] The query parameter must be named q; invalid formats can raise 422, and valid searches can still return zero results (fall back to GITHUB_GET_A_TREE).",
+            "[GITHUB_GET_RAW_REPOSITORY_CONTENT] Works only for concrete file paths (directories fail) and may return a time-limited download link; expired links can surface as HTTP 400 or signature-related download errors."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract file blob length + stable digest from BITBUCKET_GET_FILE_FROM_REPOSITORY without printing content",
+              "code": "```python\nimport sys,json,hashlib\nr=json.load(sys.stdin)\nrow=r['results'][0]['response']['data']\ndata=(row.get('data') or '').encode()\nprint(len(data))\nprint(hashlib.sha256(data).hexdigest())\n```"
+            },
+            {
+              "description": "Count successful BITBUCKET_BROWSE_REPOSITORY_PATH results without echoing listings",
+              "code": "```python\nimport sys,json\nj=json.load(sys.stdin)\nrows=j.get('results',[])\nok=[x for x in rows if x.get('tool_slug')=='BITBUCKET_BROWSE_REPOSITORY_PATH' and x.get('response',{}).get('successful')]\nprint(len(ok))\n```"
+            }
+          ],
+          "primary_tool_slugs": [
+            "BITBUCKET_GET_FILE_FROM_REPOSITORY",
+            "BITBUCKET_BROWSE_REPOSITORY_PATH",
+            "GITHUB_GET_REPOSITORY_CONTENT"
+          ],
+          "related_tool_slugs": [
+            "BITBUCKET_GET_REPOSITORY",
+            "BITBUCKET_LIST_BRANCHES",
+            "BITBUCKET_LIST_REPOSITORY_PATHS",
+            "BITBUCKET_GET_WORKSPACES_SEARCH_CODE",
+            "BITBUCKET_GET_USER_WORKSPACES",
+            "GITHUB_GET_A_TREE",
+            "GITHUB_SEARCH_CODE",
+            "GITHUB_GET_A_REPOSITORY",
+            "GITHUB_LIST_BRANCHES",
+            "GITHUB_GET_RAW_REPOSITORY_CONTENT"
+          ],
+          "toolkits": [
+            "bitbucket",
+            "github"
+          ],
+          "plan_id": "628e1d6d4b524a309c8d13d0f5142202,6e7d59333afe45bfbe0e290c44a1fbb2"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "bitbucket",
+          "has_active_connection": false,
+          "description": "Bitbucket is a Git-based code hosting and collaboration platform supporting private and public repositories, enabling teams to manage and review code through pull requests and integrations",
+          "status_message": "No Active connection for toolkit=bitbucket. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"bitbucket\") to create a connection BEFORE executing any bitbucket tools."
+        },
+        {
+          "toolkit": "github",
+          "has_active_connection": false,
+          "description": "GitHub is a code hosting platform for version control and collaboration, offering Git-based repository management, issue tracking, and continuous integration features",
+          "status_message": "No Active connection for toolkit=github. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"github\") to create a connection BEFORE executing any github tools."
+        }
+      ],
+      "tool_schemas": {
+        "BITBUCKET_GET_FILE_FROM_REPOSITORY": {
+          "toolkit": "BITBUCKET",
+          "tool_slug": "BITBUCKET_GET_FILE_FROM_REPOSITORY",
+          "description": "Retrieves a specific file's content from a Bitbucket repository at a given commit (hash, branch, or tag), failing if the file path is invalid for that commit.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "workspace",
+              "repo_slug",
+              "commit",
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "examples": [
+                  "src/main.py",
+                  "docs/README.md"
+                ],
+                "description": "Full path to the file within the repository (e.g., 'src/main.py')."
+              },
+              "commit": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "develop",
+                  "a1b2c3d4"
+                ],
+                "description": "Commit hash, branch name (fetches latest), or tag for the file version."
+              },
+              "repo_slug": {
+                "type": "string",
+                "examples": [
+                  "repo-name"
+                ],
+                "description": "Repository slug or UUID (typically URL-formatted name)."
+              },
+              "workspace": {
+                "type": "string",
+                "examples": [
+                  "workspace123"
+                ],
+                "description": "Workspace ID or UUID (often username or team name) containing the repository."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "BITBUCKET_BROWSE_REPOSITORY_PATH": {
+          "toolkit": "BITBUCKET",
+          "tool_slug": "BITBUCKET_BROWSE_REPOSITORY_PATH",
+          "description": "Tool to retrieve content for a file path or browse directory contents at a specified revision in a Bitbucket repository. Use when you need flexible access to repository content - returns raw file data for files or paginated directory listings for directories.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "workspace",
+              "repo_slug"
+            ],
+            "properties": {
+              "q": {
+                "type": "string",
+                "examples": [
+                  "path~\"test\"",
+                  "type=\"commit_file\""
+                ],
+                "description": "Filter query string using Bitbucket's REST API filtering syntax to narrow results. Only applicable when browsing directories."
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  1,
+                  2,
+                  5
+                ],
+                "description": "Page number for paginated results (starts from 1). Only applicable when browsing directories."
+              },
+              "path": {
+                "type": "string",
+                "default": "",
+                "examples": [
+                  "README.md",
+                  "src/main.py",
+                  "src",
+                  "docs",
+                  ""
+                ],
+                "description": "File or directory path within the repository to browse. Use empty string for root directory."
+              },
+              "sort": {
+                "type": "string",
+                "examples": [
+                  "path",
+                  "-path",
+                  "type"
+                ],
+                "description": "Field name for sorting results. Prefix with '-' for descending order. Only applicable when browsing directories."
+              },
+              "commit": {
+                "type": "string",
+                "default": "master",
+                "examples": [
+                  "master",
+                  "main",
+                  "develop",
+                  "a1b2c3d4",
+                  "v1.0.0"
+                ],
+                "description": "Commit hash, branch name, or tag to browse from. Defaults to 'master' if not specified."
+              },
+              "format": {
+                "type": "string",
+                "examples": [
+                  "meta"
+                ],
+                "description": "Response format. Use 'meta' to return metadata as JSON instead of raw file contents when browsing a file."
+              },
+              "pagelen": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50,
+                  100
+                ],
+                "description": "Number of entries per page (1-100). Only applicable when browsing directories. Controls pagination size."
+              },
+              "max_depth": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Maximum depth for breadth-first recursive directory traversal. Only applicable when path is a directory. Large values may cause timeouts."
+              },
+              "repo_slug": {
+                "type": "string",
+                "examples": [
+                  "my-repo",
+                  "atlassian-rest"
+                ],
+                "description": "Repository slug or UUID (typically URL-formatted name)."
+              },
+              "workspace": {
+                "type": "string",
+                "examples": [
+                  "my-workspace",
+                  "atlassian"
+                ],
+                "description": "Workspace ID or UUID (often username or team name) containing the repository."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_REPOSITORY_CONTENT": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_REPOSITORY_CONTENT",
+          "description": "Retrieves a file's Base64 encoded content or lists a directory's contents from a GitHub repository.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "path"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "feat/godlocal-dev",
+                  "develop",
+                  "v1.2.0",
+                  "c8bca7c6a66f490c70b29cf3ac3d64070049ea73"
+                ],
+                "description": "The name of the commit, branch, or tag to read from. Use this parameter to specify which branch (e.g., 'feat/godlocal-dev', 'main', 'develop'), tag (e.g., 'v1.2.0'), or commit SHA you want to access. If not provided, the repository's default branch will be used. Note: Branch names should be passed here, NOT in the path parameter."
+              },
+              "path": {
+                "type": "string",
+                "examples": [
+                  "README.md",
+                  "src/main.js",
+                  "docs",
+                  ""
+                ],
+                "description": "Required. Path to file or directory in the repository. Empty string ('') retrieves root directory contents. Leading slashes auto-stripped. CRITICAL: Do NOT pass branch names here (e.g., 'feat/godlocal-dev', 'main'). Branch names belong in the `ref` parameter. Path should be file/directory path only (e.g., 'src/main.js', 'README.md'), NOT prefixed with branch name (use 'src/main.js' not 'main/src/main.js'). File paths must include extension (e.g., 'README.md', not 'README'). For common files (README, LICENSE, CHANGELOG) without extensions, action auto-tries common extensions (.md, .txt, .rst). Paths are case-sensitive. On 404 errors, list parent directory to verify exact path/casing."
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Spoon-Knife"
+                ],
+                "description": "Required. The name of the repository, without the `.git` extension. This name is not case sensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "octocat/Hello-World"
+                ],
+                "description": "Required. The account owner of the repository. This name is not case sensitive. Can also accept full repository path in format 'owner/repo' - the repo part will be extracted automatically."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "BITBUCKET_GET_REPOSITORY": {
+          "toolkit": "BITBUCKET",
+          "tool_slug": "BITBUCKET_GET_REPOSITORY",
+          "description": "Retrieves detailed information about a specific repository in a Bitbucket workspace. Use when you need to get repository metadata, settings, or details.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "workspace",
+              "repo_slug"
+            ],
+            "properties": {
+              "repo_slug": {
+                "type": "string",
+                "examples": [
+                  "my-repo",
+                  "project-name"
+                ],
+                "description": "The repository slug (URL-friendly identifier) for the repository to retrieve."
+              },
+              "workspace": {
+                "type": "string",
+                "examples": [
+                  "my-workspace",
+                  "{workspace-uuid}"
+                ],
+                "description": "The workspace slug or UUID. This identifies the Bitbucket workspace that owns the repository."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "BITBUCKET_LIST_BRANCHES": {
+          "toolkit": "BITBUCKET",
+          "tool_slug": "BITBUCKET_LIST_BRANCHES",
+          "description": "Lists branches in a Bitbucket repository with optional server-side filtering by name pattern (BBQL) ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BITBUCKET_LIST_BRANCHES"
+              ]
+            }
+          }
+        },
+        "BITBUCKET_LIST_REPOSITORY_PATHS": {
+          "toolkit": "BITBUCKET",
+          "tool_slug": "BITBUCKET_LIST_REPOSITORY_PATHS",
+          "description": "Lists file and directory entries under a repository path at a given revision, with optional breadth-...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BITBUCKET_LIST_REPOSITORY_PATHS"
+              ]
+            }
+          }
+        },
+        "BITBUCKET_GET_WORKSPACES_SEARCH_CODE": {
+          "toolkit": "BITBUCKET",
+          "tool_slug": "BITBUCKET_GET_WORKSPACES_SEARCH_CODE",
+          "description": "Tool to search for code in the repositories of the specified workspace. Use when you need to find sp...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BITBUCKET_GET_WORKSPACES_SEARCH_CODE"
+              ]
+            }
+          }
+        },
+        "BITBUCKET_GET_USER_WORKSPACES": {
+          "toolkit": "BITBUCKET",
+          "tool_slug": "BITBUCKET_GET_USER_WORKSPACES",
+          "description": "Tool to retrieve all workspaces accessible to the authenticated user. Use when you need to list work...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "BITBUCKET_GET_USER_WORKSPACES"
+              ]
+            }
+          }
+        },
+        "GITHUB_GET_A_TREE": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_TREE",
+          "description": "Browse and list all files/directories in a GitHub repository. Efficiently retrieves the complete rep...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_A_TREE"
+              ]
+            }
+          }
+        },
+        "GITHUB_SEARCH_CODE": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_SEARCH_CODE",
+          "description": "Searches code file contents and paths on the default branch of GitHub repositories using a query str...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_SEARCH_CODE"
+              ]
+            }
+          }
+        },
+        "GITHUB_GET_A_REPOSITORY": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_REPOSITORY",
+          "description": "Retrieves detailed information about an existing and accessible GitHub repository.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_A_REPOSITORY"
+              ]
+            }
+          }
+        },
+        "GITHUB_LIST_BRANCHES": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_BRANCHES",
+          "description": "List branches in a GitHub repository. Returns branch names, commit information, and protection statu...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_LIST_BRANCHES"
+              ]
+            }
+          }
+        },
+        "GITHUB_GET_RAW_REPOSITORY_CONTENT": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_RAW_REPOSITORY_CONTENT",
+          "description": "Tool to fetch raw file content from a GitHub repository. Returns raw bytes in whatever format the fi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_RAW_REPOSITORY_CONTENT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:33:45.816Z",
+        "current_time_utc_epoch_seconds": 1786599225,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "meat",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"meat\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_l7xKrslWxRdN"
+  }
+}

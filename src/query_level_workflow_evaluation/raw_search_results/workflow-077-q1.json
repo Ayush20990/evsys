@@ -1,0 +1,755 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-077-q1",
+    "workflow_id": 77,
+    "workflow_task": "Audit a Google Ads client account under a manager account, research targeting and keywords, then build and verify a new search campaign with budget, targeting, keywords, ads, and assets.",
+    "query": "audit google ads client account performance and targeting",
+    "intent": "Retrieve and analyze existing performance data, targeting settings, and keywords from a specified Google Ads client account under a manager account.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLEADS_SEARCH_STREAM_GAQL"
+        ],
+        "purpose": "Retrieve performance data and campaign metrics using GAQL"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLEADS_SEARCH_STREAM_GAQL"
+    ]
+  },
+  "request": {
+    "query": "audit google ads client account performance and targeting"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "audit google ads client account performance and targeting",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite (if ads customer context unknown)]: Enumerate accessible customers using GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS (pick the ads account to review).",
+            "[Required] [Step]: Pull campaigns, budgets, status, and recent spend/performance using GOOGLEADS_SEARCH_STREAM_GAQL (start with a small SELECT; include keyword/search-term cost cut if looking for waste).",
+            "[Required] [Step]: Pull measurement/landing-page signals using GOOGLEADS_SEARCH_STREAM_GAQL (tracking-related settings plus final URLs/assets to spot URL hygiene issues).",
+            "[Required] [Step]: Pull conversion action setup using GOOGLEADS_SEARCH_STREAM_GAQL (exclude removed; confirm which actions count as primary).",
+            "[Required] [Step]: Pull targeting controls using GOOGLEADS_SEARCH_STREAM_GAQL (locations, languages, and negatives; summarize gaps by campaign).",
+            "[Required] [Step]: Validate on-site key events using GOOGLE_ANALYTICS_RUN_REPORT (check that expected commerce events are present and attributable via the reporting identifier in use).",
+            "[Optional (if cross-product linkage must be confirmed)] [Next Step]: Verify Ads\u2194Analytics linking using GOOGLE_ANALYTICS_LIST_GOOGLE_ADS_LINKS (ensure it corresponds to the audited ads account).",
+            "[Optional (if user approves applying recommendations)] [Next Step]: Apply limited status/budget changes using GOOGLEADS_MUTATE_CAMPAIGNS and/or GOOGLEADS_MUTATE_AD_GROUPS (validate-only first), then re-query with GOOGLEADS_SEARCH_STREAM_GAQL to verify.",
+            "[Required] [Fallback]: If GOOGLEADS_SEARCH_STREAM_GAQL returns HTTP 400 INVALID_ARGUMENT (e.g., queryError=UNRECOGNIZED_FIELD), retry with fewer fields/segments and add back incrementally to isolate the failing selection."
+          ],
+          "known_pitfalls": [
+            "[GOOGLEADS_SEARCH_STREAM_GAQL] HTTP 400 INVALID_ARGUMENT with queryError=UNRECOGNIZED_FIELD can occur on unsupported fields; minimize SELECT and re-expand.",
+            "[GOOGLEADS_SEARCH_STREAM_GAQL] Conversion-action reads can be misleading if removed entities are included; filter them out.",
+            "[GOOGLEADS_SEARCH_STREAM_GAQL] Some metric/segment combinations fail even when fields exist; simplify grouping when a query errors.",
+            "[GOOGLEADS_SEARCH_STREAM_GAQL] searchStream payloads may omit a results array (only metadata present); treat as empty output and avoid indexing.",
+            "[GOOGLE_ANALYTICS_LIST_GOOGLE_ADS_LINKS] Link listings may point to a different ads account than the one audited; compare explicitly before relying on cross-tool conclusions."
+          ],
+          "difficulty": "hard",
+          "primary_tool_slugs": [
+            "GOOGLEADS_SEARCH_STREAM_GAQL",
+            "GOOGLE_ANALYTICS_RUN_REPORT"
+          ],
+          "related_tool_slugs": [
+            "GOOGLEADS_MUTATE_CAMPAIGNS",
+            "GOOGLEADS_MUTATE_AD_GROUPS",
+            "GOOGLEADS_GET_CAMPAIGN_BY_ID",
+            "GOOGLE_ANALYTICS_LIST_GOOGLE_ADS_LINKS",
+            "GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS"
+          ],
+          "toolkits": [
+            "google_analytics",
+            "googleads"
+          ],
+          "plan_id": "0b8b14488959465db6dbd080f41014f3"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "google_analytics",
+          "has_active_connection": false,
+          "description": "Google Analytics tracks and reports website traffic, user behavior, and conversion data, enabling marketers to optimize online performance and customer journeys",
+          "status_message": "No Active connection for toolkit=google_analytics. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"google_analytics\") to create a connection BEFORE executing any google_analytics tools."
+        },
+        {
+          "toolkit": "googleads",
+          "has_active_connection": false,
+          "description": "Google Ads, is an online advertising platform developed by Google, where advertisers bid to display brief advertisements, service offerings, product listings, and videos to web users.",
+          "status_message": "No Active connection for toolkit=googleads. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googleads\") to create a connection BEFORE executing any googleads tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLEADS_SEARCH_STREAM_GAQL": {
+          "toolkit": "GOOGLEADS",
+          "tool_slug": "GOOGLEADS_SEARCH_STREAM_GAQL",
+          "description": "Execute a Google Ads Query Language (GAQL) query and stream all results in a single response. This method is more efficient than paginated search for bulk data retrieval of campaigns, ad groups, and performance metrics (clicks, impressions, cost). Use this action when you need the entire result set without pagination. Results are returned as a single response containing all matching rows.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "SELECT campaign.name, campaign.id, metrics.clicks, metrics.impressions, metrics.cost_micros FROM campaign LIMIT 50"
+                ],
+                "description": "The Google Ads Query Language (GAQL) query string. Must follow SELECT ... FROM ... WHERE ... format. Example: SELECT campaign.name, campaign.id, metrics.impressions FROM campaign WHERE campaign.status = 'ENABLED'"
+              },
+              "customer_id": {
+                "type": "string",
+                "description": "Target Google Ads customer ID for this tool call; hyphens and spaces are stripped. For MCC workflows, pass the child/sub-account ID. Defaults to the connection customer_id."
+              },
+              "summary_row_setting": {
+                "enum": [
+                  "UNSPECIFIED",
+                  "NO_SUMMARY_ROW",
+                  "SUMMARY_ROW_ONLY",
+                  "SUMMARY_ROW_WITH_RESULTS"
+                ],
+                "type": "string",
+                "examples": [
+                  "UNSPECIFIED",
+                  "NO_SUMMARY_ROW",
+                  "SUMMARY_ROW_WITH_RESULTS"
+                ],
+                "description": "Whether to include a summary row with aggregated metrics. Valid values are 'UNSPECIFIED', 'NO_SUMMARY_ROW', 'SUMMARY_ROW_ONLY', and 'SUMMARY_ROW_WITH_RESULTS'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLE_ANALYTICS_RUN_REPORT": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_RUN_REPORT",
+          "description": "Tool to run a customized GA4 data report. Use when you need event data after specifying dimensions, metrics, and date ranges. IMPORTANT - DIMENSION/METRIC COMPATIBILITY: The Google Analytics Data API has strict compatibility rules between dimensions and metrics. Not all combinations are valid. If you receive a 400 error with a message about incompatible dimensions/metrics, use the GOOGLE_ANALYTICS_CHECK_COMPATIBILITY action first to validate your dimension/metric combinations before running reports. Common incompatibilities include: - Demographic dimensions (userAgeBracket, userGender) with session-scoped dimensions/filters (sessionCampaignName, sessionSource) - Certain user-scoped dimensions with event-scoped metrics For complex queries, consider starting with simpler dimension/metric combinations or use CHECK_COMPATIBILITY to pre-validate your request.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "property"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  1000
+                ],
+                "description": "Optional. Number of rows to return. Must be between 1 and 250000."
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0
+                ],
+                "description": "Optional. 0-based start row for pagination. Must be >= 0."
+              },
+              "metrics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "name": "activeUsers"
+                  },
+                  {
+                    "name": "sessions"
+                  },
+                  {
+                    "name": "screenPageViews"
+                  }
+                ],
+                "description": "Optional. The metrics to request and display. Maximum 10 metrics per request. Each metric MUST be an object with a required non-empty 'name' field. Common valid metric names: activeUsers, totalUsers, newUsers, sessions, engagedSessions, screenPageViews, eventCount, conversions, userEngagementDuration, engagementRate, bounceRate, averageSessionDuration, sessionsPerUser, screenPageViewsPerSession, purchaseRevenue, totalRevenue, transactions, ecommercePurchases, publisherAdClicks, publisherAdImpressions, totalAdRevenue. Custom metrics use format 'customEvent:parameter_name'. CRITICAL: 'averageEngagementTime' is NOT a valid metric - use 'userEngagementDuration' or 'averageSessionDuration' instead. 'exits' is NOT a valid metric in GA4."
+              },
+              "orderBys": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "desc": true,
+                    "metric": {
+                      "metricName": "activeUsers"
+                    }
+                  },
+                  {
+                    "desc": false,
+                    "dimension": {
+                      "orderType": "ALPHANUMERIC",
+                      "dimensionName": "country"
+                    }
+                  }
+                ],
+                "description": "Optional. Specify how rows are ordered. Each OrderBy object must have 'desc' (boolean) at the top level and exactly one of: 'metric' (with 'metricName' string), 'dimension' (with 'dimensionName' or 'name' string and optional 'orderType': 'ALPHANUMERIC', 'CASE_INSENSITIVE_ALPHANUMERIC', or 'NUMERIC'), or 'pivot'. Note: For dimension ordering, you can use either 'dimensionName' or 'name' field - both are accepted and normalized. Example for metric ordering: {'desc': true, 'metric': {'metricName': 'activeUsers'}}. Example for dimension ordering: {'desc': false, 'dimension': {'dimensionName': 'country', 'orderType': 'ALPHANUMERIC'}}."
+              },
+              "property": {
+                "type": "string",
+                "examples": [
+                  "properties/123456789"
+                ],
+                "description": "Required. The property resource on which to run the report. Format: properties/{property_id} where property_id must be a numeric ID (e.g., 'properties/123456789')."
+              },
+              "cohortSpec": {
+                "type": "object",
+                "description": "Optional. Cohort specification. Requires requesting the cohort dimension.",
+                "additionalProperties": true
+              },
+              "dateRanges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "endDate": "2023-01-31",
+                    "startDate": "2023-01-01"
+                  }
+                ],
+                "minItems": 1,
+                "description": "The date ranges to read. Required for standard reports. Each range MUST be an object with required 'startDate' and 'endDate' fields (both must be non-empty). Dates can be in YYYY-MM-DD format or special values like 'today', 'yesterday', '7daysAgo', '30daysAgo'. IMPORTANT: For cohort requests (when cohortSpec is provided), dateRanges must be omitted."
+              },
+              "dimensions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "name": "city"
+                  },
+                  {
+                    "name": "date"
+                  },
+                  {
+                    "name": "deviceCategory"
+                  }
+                ],
+                "description": "Optional. The dimensions to request and display. Maximum 9 dimensions per request. Each dimension MUST be an object with a required non-empty 'name' field. Common valid dimension names: date, dateHour, dateHourMinute, year, month, week, day, dayOfWeek, hour, city, cityId, country, countryId, continent, continentId, region, subContinent, deviceCategory, browser, operatingSystem, platform, platformDeviceCategory, screenResolution, sessionSource, sessionMedium, sessionSourceMedium, sessionCampaignName, sessionDefaultChannelGroup, firstUserSource, firstUserMedium, firstUserCampaignName, firstUserDefaultChannelGroup, pagePath, pagePathPlusQueryString, pageTitle, landingPage, hostname, eventName, streamName, userAgeBracket, userGender, language, newVsReturning. Custom dimensions: 'customEvent:parameter_name' or 'customUser:parameter_name'. 'dateRange' is NOT a valid dimension \u2014 use date dimensions (date, dateHour, year, month, etc.) instead. 'exits' is NOT a valid dimension in GA4. COMPATIBILITY: Not all dimensions can be combined with each other or with certain metrics/filters. If you receive a compatibility error, use GOOGLE_ANALYTICS_CHECK_COMPATIBILITY to validate combinations, or see https://developers.google.com/analytics/devguides/reporting/data/v1/compatibility"
+              },
+              "comparisons": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Optional. The comparison configuration. Adds a comparison column to the response."
+              },
+              "currencyCode": {
+                "type": "string",
+                "examples": [
+                  "USD"
+                ],
+                "description": "Optional. The currency code to apply, in ISO 4217 format. Defaults to property currency."
+              },
+              "metricFilter": {
+                "type": "object",
+                "description": "Optional. Filter expression to restrict rows by metric values. Applied after aggregation. IMPORTANT: Only use metric field names here (e.g., 'activeUsers', 'sessions', 'ecommercePurchases', 'purchaseRevenue'). Do NOT use dimension names in metricFilter - if you need to filter by a dimension (e.g., 'country', 'city', 'pagePath'), use dimensionFilter instead. The action validates that only metric names are used in metricFilter and will reject dimension names with a clear error. Structure: {'filter': {'fieldName': '<metric_name>', 'numericFilter': {'operation': 'GREATER_THAN', 'value': {'int64Value': '0'}}}} or use 'andGroup'/'orGroup' for multiple conditions.",
+                "additionalProperties": true
+              },
+              "keepEmptyRows": {
+                "type": "boolean",
+                "description": "Optional. If true, rows with all zero metrics will be returned; otherwise omitted."
+              },
+              "dimensionFilter": {
+                "type": "object",
+                "description": "Optional. Filter expression to restrict rows by dimension values. IMPORTANT: Only use dimension field names here (e.g., 'country', 'city', 'date', 'deviceCategory', 'pagePath'). Do NOT use metric names in dimensionFilter - if you need to filter by a metric (e.g., 'activeUsers', 'sessions', 'ecommercePurchases'), use metricFilter instead. Structure: {'filter': {'fieldName': '<dimension_name>', 'stringFilter': {...}}} or use 'andGroup'/'orGroup' for multiple conditions. COMPATIBILITY WARNING: Dimension filters must be compatible with the dimensions in your request. For example, filtering on 'sessionCampaignName' while using demographic dimensions (userAgeBracket, userGender) will fail. The filter field creates an implicit dimension that must be compatible with all other dimensions and metrics. Use GOOGLE_ANALYTICS_CHECK_COMPATIBILITY to verify your filter dimensions work with your requested dimensions/metrics.",
+                "additionalProperties": true
+              },
+              "metricAggregations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "TOTAL"
+                ],
+                "description": "Optional. Aggregation types to include over metrics, e.g., 'TOTAL', 'MINIMUM', 'MAXIMUM'."
+              },
+              "returnPropertyQuota": {
+                "type": "boolean",
+                "description": "Optional. If true, include the property's current quota state in the response."
+              },
+              "removed_dimensions_internal": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Internal field to store filtered dimension names for execution message. Not sent to API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEADS_MUTATE_CAMPAIGNS": {
+          "toolkit": "GOOGLEADS",
+          "tool_slug": "GOOGLEADS_MUTATE_CAMPAIGNS",
+          "description": "Create, update, or remove Google Ads campaigns in batch. Supports multiple operations (create, update, remove) in a single request. Use when managing campaign lifecycle, applying bulk changes, or automating campaign management workflows. This action is irreversible for remove operations \u2014 deleted campaigns cannot be recovered. Plan accordingly and consider using validate_only=true to test changes before applying them.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "operations"
+            ],
+            "properties": {
+              "operations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "operation_type"
+                  ],
+                  "properties": {
+                    "create": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "Name of the campaign. Must be unique within the customer account. Required for create."
+                        },
+                        "status": {
+                          "enum": [
+                            "unspecified",
+                            "unknown",
+                            "enabled",
+                            "paused",
+                            "removed"
+                          ],
+                          "type": "string",
+                          "description": "Status of the campaign."
+                        },
+                        "manual_cpc": {
+                          "type": "object",
+                          "description": "Manual CPC bidding strategy. Provide an empty object {} to use manual CPC without a bidding strategy.",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "end_date_time": {
+                          "type": "string",
+                          "description": "End date and time of the campaign in the customer's timezone, formatted as 'YYYY-MM-DD HH:MM:SS'. Use '23:59:59' for daily granularity."
+                        },
+                        "resource_name": {
+                          "type": "string",
+                          "description": "Resource name of the campaign for update operations. Format: customers/{customer_id}/campaigns/{campaign_id}. For account-owned resources, use the same customer ID as the tool call's customer_id; in MCC workflows, this is the child/sub-account ID."
+                        },
+                        "campaign_budget": {
+                          "type": "string",
+                          "description": "Resource name of an existing campaign budget to associate with the campaign, e.g. 'customers/{customer_id}/campaignBudgets/{budget_id}'. For account-owned resources, use the same customer ID as the tool call's customer_id; in MCC workflows, this is the child/sub-account ID. Required for create. The budget AMOUNT is NOT set here: it lives on the separate CampaignBudget resource (campaignBudgets:mutate), which must be created first. The Google Ads `campaign` resource has no inline daily-budget field."
+                        },
+                        "start_date_time": {
+                          "type": "string",
+                          "description": "Start date and time of the campaign in the customer's timezone, formatted as 'YYYY-MM-DD HH:MM:SS'. Use '00:00:00' for daily granularity."
+                        },
+                        "bidding_strategy": {
+                          "type": "string",
+                          "description": "Resource name of the portfolio bidding strategy to use. Format: customers/{customer_id}/biddingStrategies/{bidding_strategy_id}. For account-owned resources, use the same customer ID as the tool call's customer_id; in MCC workflows, this is the child/sub-account ID. Mutually exclusive with inline standard bidding strategy fields such as manual_cpc."
+                        },
+                        "final_url_suffix": {
+                          "type": "string",
+                          "description": "Suffix appended to landing page URLs served with parallel tracking. Use for adding tracking parameters (e.g., 'gclid={gclid}&campaign={campaignid}')."
+                        },
+                        "network_settings": {
+                          "type": "object",
+                          "properties": {
+                            "target_youtube": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served on YouTube."
+                            },
+                            "target_google_search": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served with google.com search results."
+                            },
+                            "target_search_network": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served on the Google Search Partners Network (requires target_google_search to be true)."
+                            },
+                            "target_content_network": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served on specified placements in the Google Display Network."
+                            },
+                            "target_google_tv_network": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served on the Google TV network."
+                            },
+                            "target_partner_search_network": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served on the partner network. Only available for select partner accounts."
+                            }
+                          },
+                          "description": "Network settings for the campaign controlling where ads are served.",
+                          "additionalProperties": false
+                        },
+                        "tracking_url_template": {
+                          "type": "string",
+                          "description": "The URL template for constructing a tracking URL. Use ValueTrack parameters like {lpurl} for the landing page URL."
+                        },
+                        "url_custom_parameters": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "description": "The key of the custom parameter. Max 16 bytes."
+                              },
+                              "value": {
+                                "type": "string",
+                                "description": "The value of the custom parameter. Max 200 bytes."
+                              }
+                            },
+                            "description": "A custom parameter tag for tracking URLs."
+                          },
+                          "description": "Custom parameter tags for substitution in tracking_url_template, final_urls, or mobile_final_urls. Max 8 parameters, key max 16 bytes, value max 200 bytes."
+                        },
+                        "geo_target_type_setting": {
+                          "type": "object",
+                          "properties": {
+                            "negative_geo_target_type": {
+                              "enum": [
+                                "UNSPECIFIED",
+                                "UNKNOWN",
+                                "PRESENCE_OR_INTEREST",
+                                "PRESENCE"
+                              ],
+                              "type": "string",
+                              "description": "Negative geo target type for geotargeting."
+                            },
+                            "positive_geo_target_type": {
+                              "enum": [
+                                "UNSPECIFIED",
+                                "UNKNOWN",
+                                "PRESENCE_OR_INTEREST",
+                                "SEARCH_INTEREST",
+                                "PRESENCE"
+                              ],
+                              "type": "string",
+                              "description": "Positive geo target type for geotargeting."
+                            }
+                          },
+                          "description": "Settings for ads geotargeting.",
+                          "additionalProperties": false
+                        },
+                        "advertising_channel_type": {
+                          "enum": [
+                            "unspecified",
+                            "unknown",
+                            "search",
+                            "display",
+                            "shopping",
+                            "video",
+                            "multi_channel",
+                            "local",
+                            "smart",
+                            "video_reach"
+                          ],
+                          "type": "string",
+                          "description": "Type of advertising channel for the campaign."
+                        },
+                        "contains_eu_political_advertising": {
+                          "enum": [
+                            "UNSPECIFIED",
+                            "UNKNOWN",
+                            "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
+                            "CONTAINS_EU_POLITICAL_ADVERTISING"
+                          ],
+                          "type": "string",
+                          "description": "EU political advertising status."
+                        }
+                      },
+                      "description": "Campaign data for create or update operations.",
+                      "additionalProperties": false
+                    },
+                    "remove": {
+                      "type": "string",
+                      "description": "Resource name of the campaign to remove. For account-owned resources, use the same customer ID as the tool call's customer_id; in MCC workflows, this is the child/sub-account ID. Required when operation_type is 'remove'."
+                    },
+                    "update": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "Name of the campaign. Must be unique within the customer account. Required for create."
+                        },
+                        "status": {
+                          "enum": [
+                            "unspecified",
+                            "unknown",
+                            "enabled",
+                            "paused",
+                            "removed"
+                          ],
+                          "type": "string",
+                          "description": "Status of the campaign."
+                        },
+                        "manual_cpc": {
+                          "type": "object",
+                          "description": "Manual CPC bidding strategy. Provide an empty object {} to use manual CPC without a bidding strategy.",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "end_date_time": {
+                          "type": "string",
+                          "description": "End date and time of the campaign in the customer's timezone, formatted as 'YYYY-MM-DD HH:MM:SS'. Use '23:59:59' for daily granularity."
+                        },
+                        "resource_name": {
+                          "type": "string",
+                          "description": "Resource name of the campaign for update operations. Format: customers/{customer_id}/campaigns/{campaign_id}. For account-owned resources, use the same customer ID as the tool call's customer_id; in MCC workflows, this is the child/sub-account ID."
+                        },
+                        "campaign_budget": {
+                          "type": "string",
+                          "description": "Resource name of an existing campaign budget to associate with the campaign, e.g. 'customers/{customer_id}/campaignBudgets/{budget_id}'. For account-owned resources, use the same customer ID as the tool call's customer_id; in MCC workflows, this is the child/sub-account ID. Required for create. The budget AMOUNT is NOT set here: it lives on the separate CampaignBudget resource (campaignBudgets:mutate), which must be created first. The Google Ads `campaign` resource has no inline daily-budget field."
+                        },
+                        "start_date_time": {
+                          "type": "string",
+                          "description": "Start date and time of the campaign in the customer's timezone, formatted as 'YYYY-MM-DD HH:MM:SS'. Use '00:00:00' for daily granularity."
+                        },
+                        "bidding_strategy": {
+                          "type": "string",
+                          "description": "Resource name of the portfolio bidding strategy to use. Format: customers/{customer_id}/biddingStrategies/{bidding_strategy_id}. For account-owned resources, use the same customer ID as the tool call's customer_id; in MCC workflows, this is the child/sub-account ID. Mutually exclusive with inline standard bidding strategy fields such as manual_cpc."
+                        },
+                        "final_url_suffix": {
+                          "type": "string",
+                          "description": "Suffix appended to landing page URLs served with parallel tracking. Use for adding tracking parameters (e.g., 'gclid={gclid}&campaign={campaignid}')."
+                        },
+                        "network_settings": {
+                          "type": "object",
+                          "properties": {
+                            "target_youtube": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served on YouTube."
+                            },
+                            "target_google_search": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served with google.com search results."
+                            },
+                            "target_search_network": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served on the Google Search Partners Network (requires target_google_search to be true)."
+                            },
+                            "target_content_network": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served on specified placements in the Google Display Network."
+                            },
+                            "target_google_tv_network": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served on the Google TV network."
+                            },
+                            "target_partner_search_network": {
+                              "type": "boolean",
+                              "description": "Whether ads will be served on the partner network. Only available for select partner accounts."
+                            }
+                          },
+                          "description": "Network settings for the campaign controlling where ads are served.",
+                          "additionalProperties": false
+                        },
+                        "tracking_url_template": {
+                          "type": "string",
+                          "description": "The URL template for constructing a tracking URL. Use ValueTrack parameters like {lpurl} for the landing page URL."
+                        },
+                        "url_custom_parameters": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "key",
+                              "value"
+                            ],
+                            "properties": {
+                              "key": {
+                                "type": "string",
+                                "description": "The key of the custom parameter. Max 16 bytes."
+                              },
+                              "value": {
+                                "type": "string",
+                                "description": "The value of the custom parameter. Max 200 bytes."
+                              }
+                            },
+                            "description": "A custom parameter tag for tracking URLs."
+                          },
+                          "description": "Custom parameter tags for substitution in tracking_url_template, final_urls, or mobile_final_urls. Max 8 parameters, key max 16 bytes, value max 200 bytes."
+                        },
+                        "geo_target_type_setting": {
+                          "type": "object",
+                          "properties": {
+                            "negative_geo_target_type": {
+                              "enum": [
+                                "UNSPECIFIED",
+                                "UNKNOWN",
+                                "PRESENCE_OR_INTEREST",
+                                "PRESENCE"
+                              ],
+                              "type": "string",
+                              "description": "Negative geo target type for geotargeting."
+                            },
+                            "positive_geo_target_type": {
+                              "enum": [
+                                "UNSPECIFIED",
+                                "UNKNOWN",
+                                "PRESENCE_OR_INTEREST",
+                                "SEARCH_INTEREST",
+                                "PRESENCE"
+                              ],
+                              "type": "string",
+                              "description": "Positive geo target type for geotargeting."
+                            }
+                          },
+                          "description": "Settings for ads geotargeting.",
+                          "additionalProperties": false
+                        },
+                        "advertising_channel_type": {
+                          "enum": [
+                            "unspecified",
+                            "unknown",
+                            "search",
+                            "display",
+                            "shopping",
+                            "video",
+                            "multi_channel",
+                            "local",
+                            "smart",
+                            "video_reach"
+                          ],
+                          "type": "string",
+                          "description": "Type of advertising channel for the campaign."
+                        },
+                        "contains_eu_political_advertising": {
+                          "enum": [
+                            "UNSPECIFIED",
+                            "UNKNOWN",
+                            "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
+                            "CONTAINS_EU_POLITICAL_ADVERTISING"
+                          ],
+                          "type": "string",
+                          "description": "EU political advertising status."
+                        }
+                      },
+                      "description": "Campaign data for create or update operations.",
+                      "additionalProperties": false
+                    },
+                    "operation_type": {
+                      "enum": [
+                        "create",
+                        "update",
+                        "remove"
+                      ],
+                      "type": "string",
+                      "description": "Type of operation: create, update, or remove."
+                    }
+                  },
+                  "description": "A single campaign operation (create, update, or remove)."
+                },
+                "minItems": 1,
+                "description": "List of campaign operations to perform. Each operation can be create, update, or remove. At least one operation is required."
+              },
+              "customer_id": {
+                "type": "string",
+                "description": "Target Google Ads customer ID for this tool call; hyphens and spaces are stripped. For MCC workflows, pass the child/sub-account ID. Defaults to the connection customer_id."
+              },
+              "validate_only": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, validates the request without executing. Useful for testing before making actual changes."
+              },
+              "partial_failure": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, valid operations succeed even if others fail. Partial failures will be reported in the response."
+              },
+              "response_content_type": {
+                "type": "string",
+                "default": "RESOURCE_NAME_ONLY",
+                "description": "Whether to return full resource or just resource name. Options: 'RESOURCE_NAME_ONLY' or 'MUTABLE_RESOURCE'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEADS_MUTATE_AD_GROUPS": {
+          "toolkit": "GOOGLEADS",
+          "tool_slug": "GOOGLEADS_MUTATE_AD_GROUPS",
+          "description": "Create, update, or remove ad groups within Google Ads campaigns. Supports batch operations with mult...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEADS_MUTATE_AD_GROUPS"
+              ]
+            }
+          }
+        },
+        "GOOGLEADS_GET_CAMPAIGN_BY_ID": {
+          "toolkit": "GOOGLEADS",
+          "tool_slug": "GOOGLEADS_GET_CAMPAIGN_BY_ID",
+          "description": "GetCampaignById Tool returns details of a campaign in Google Ads. Requires an active Google Ads OAut...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEADS_GET_CAMPAIGN_BY_ID"
+              ]
+            }
+          }
+        },
+        "GOOGLE_ANALYTICS_LIST_GOOGLE_ADS_LINKS": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_LIST_GOOGLE_ADS_LINKS",
+          "description": "Tool to list GoogleAdsLinks on a property. Use when you need to retrieve Google Ads account links co...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLE_ANALYTICS_LIST_GOOGLE_ADS_LINKS"
+              ]
+            }
+          }
+        },
+        "GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS": {
+          "toolkit": "GOOGLEADS",
+          "tool_slug": "GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS",
+          "description": "List Google Ads customer resource names directly accessible to the authenticated user. Use this to d...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:37:47.125Z",
+        "current_time_utc_epoch_seconds": 1786599467,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "nose",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"nose\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_U835kUooCvh_"
+  }
+}

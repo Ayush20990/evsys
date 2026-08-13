@@ -1,0 +1,697 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-012-q4",
+    "workflow_id": 12,
+    "workflow_task": "Retrieve Trello card comments, update Trello cards, and perform broader project-management and automation-maintenance operations across task boards, email, chat, and an automation platform.",
+    "query": "send email and chat messages",
+    "intent": "Communicate updates and handle notifications through email and chat platforms.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GMAIL_FETCH_EMAILS"
+        ],
+        "purpose": "Handle email communications"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "SLACK_SEARCH_MESSAGES"
+        ],
+        "purpose": "Handle chat communications"
+      }
+    ],
+    "candidate_tools": [
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+      "SLACK_LIST_ALL_USERS",
+      "SLACK_SEARCH_MESSAGES",
+      "TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD",
+      "TRELLO_GET_BOARDS_ACTIONS_BY_ID_BOARD",
+      "TRELLO_GET_CARDS_ACTIONS_BY_ID_CARD",
+      "TRELLO_GET_CARDS_BY_ID_CARD",
+      "TRELLO_GET_SEARCH",
+      "TRELLO_UPDATE_CARDS_BY_ID_CARD",
+      "TRELLO_UPDATE_CARDS_CLOSED_BY_ID_CARD"
+    ]
+  },
+  "request": {
+    "query": "send email and chat messages"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "send email and chat messages",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "Required [Prerequisite]: Confirm intent and content before calling OUTLOOK_SEND_EMAIL and MICROSOFT_TEAMS_TEAMS_POST_CHAT_MESSAGE (both are irreversible writes).",
+            "Optional (if email deliverability is uncertain) [Prerequisite]: Check recipient constraints using OUTLOOK_GET_MAIL_TIPS (avoid known blocks before sending).",
+            "Optional (if chat target is unknown) [Prerequisite]: Resolve participants using MICROSOFT_TEAMS_LIST_USERS, then create or reuse a chat using MICROSOFT_TEAMS_TEAMS_CREATE_CHAT (store returned chat identifier).",
+            "Required [Step]: Send the email using OUTLOOK_SEND_EMAIL (use the supported \"to\" field; set is_html when body is HTML).",
+            "Required [Step]: Post the chat message using MICROSOFT_TEAMS_TEAMS_POST_CHAT_MESSAGE (ensure non-empty content; set content_type to match text vs HTML).",
+            "Optional (if review/approval is needed) [Fallback]: Create a draft using OUTLOOK_CREATE_DRAFT, then send it using OUTLOOK_SEND_DRAFT instead of sending immediately."
+          ],
+          "known_pitfalls": [
+            "[OUTLOOK_SEND_EMAIL] May return HTTP 202 with an empty body; treat 202 as accepted/success rather than expecting a message payload.",
+            "[OUTLOOK_SEND_EMAIL] Uses the parameter name \"to\"; relying on alternate field names can fail or drop recipients.",
+            "[MICROSOFT_TEAMS_TEAMS_POST_CHAT_MESSAGE] content must be non-empty and content_type must match the format (text vs html) or rendering will be incorrect.",
+            "[MICROSOFT_TEAMS_TEAMS_POST_CHAT_MESSAGE] webUrl/deep link may be null in the response; don\u2019t depend on it for navigation."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "OUTLOOK_SEND_EMAIL",
+            "MICROSOFT_TEAMS_TEAMS_POST_CHAT_MESSAGE"
+          ],
+          "related_tool_slugs": [
+            "MICROSOFT_TEAMS_LIST_USERS",
+            "OUTLOOK_CREATE_DRAFT",
+            "OUTLOOK_SEND_DRAFT",
+            "MICROSOFT_TEAMS_TEAMS_CREATE_CHAT",
+            "OUTLOOK_GET_MAIL_TIPS"
+          ],
+          "toolkits": [
+            "microsoft_teams",
+            "outlook"
+          ],
+          "plan_id": "84cb174de8824f9a8a092056ab33df44"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "microsoft_teams",
+          "has_active_connection": false,
+          "description": "Microsoft Teams integrates chat, video meetings, and file storage within Microsoft 365, providing virtual collaboration and communication for distributed teams",
+          "status_message": "No Active connection for toolkit=microsoft_teams. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"microsoft_teams\") to create a connection BEFORE executing any microsoft_teams tools."
+        },
+        {
+          "toolkit": "outlook",
+          "has_active_connection": false,
+          "description": "Outlook is Microsoft's email and calendaring platform integrating contacts and scheduling, enabling users to manage communications and events in a unified workspace",
+          "status_message": "No Active connection for toolkit=outlook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"outlook\") to create a connection BEFORE executing any outlook tools."
+        }
+      ],
+      "tool_schemas": {
+        "OUTLOOK_SEND_EMAIL": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEND_EMAIL",
+          "description": "Sends an email with subject, body, recipients, and optional attachments via Microsoft Graph API. Supports comma-separated email addresses in the to_email field for multiple recipients. Accepts either a single file or a list of files as attachments. Attachments require a non-empty file with valid name and mimetype.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "subject",
+              "body",
+              "to"
+            ],
+            "properties": {
+              "to": {
+                "type": "string",
+                "examples": [
+                  "recipient@example.com",
+                  "john.doe@company.com",
+                  "alice@example.com, bob@example.com"
+                ],
+                "description": "The primary recipient's email address(es). You can provide a single email or multiple emails separated by commas. Valid email addresses will be extracted from strings containing extra text. Format: name@domain.com"
+              },
+              "body": {
+                "type": "string",
+                "examples": [
+                  "Hello team, please find the attached report.",
+                  "<h1>Project Phoenix</h1><p>Initial proposal attached.</p>"
+                ],
+                "description": "The content of the email body as a plain string (plain text or HTML based on `is_html`). Do not pass structured objects; provide only the raw text/HTML content."
+              },
+              "is_html": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Specifies if the email body is HTML; `True` for HTML, `False` for plain text."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Project Update",
+                  "Important Announcement"
+                ],
+                "maxLength": 255,
+                "minLength": 1,
+                "description": "The subject line of the email."
+              },
+              "to_name": {
+                "type": "string",
+                "examples": [
+                  "Valued Customer",
+                  "John Doe"
+                ],
+                "description": "The display name of the primary recipient."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "specific.user@example.com"
+                ],
+                "description": "The user's email address or the alias 'me' to represent the authenticated user."
+              },
+              "cc_emails": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "jane.doe@example.com",
+                    "cc.recipient@example.com"
+                  ],
+                  [
+                    "team@company.com"
+                  ]
+                ],
+                "description": "List of email addresses for CC recipients. Each email should be a separate string in the array. Do NOT pass comma-separated values as a single string."
+              },
+              "attachment": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "title": "FileUploadable",
+                    "required": [
+                      "name",
+                      "mimetype",
+                      "s3key"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "examples": [
+                          "document.pdf",
+                          "image.jpg",
+                          "report.docx"
+                        ],
+                        "description": "The filename that will be used when uploading the file to the destination service"
+                      },
+                      "s3key": {
+                        "type": "string",
+                        "title": "S3Key",
+                        "examples": [
+                          "47563/gmail/GET_ATTACHMENT/response/12345"
+                        ],
+                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                      },
+                      "mimetype": {
+                        "type": "string",
+                        "title": "Mimetype",
+                        "examples": [
+                          "application/pdf",
+                          "image/jpeg",
+                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        ],
+                        "description": "The MIME type of the file"
+                      }
+                    },
+                    "file_uploadable": true
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "title": "FileUploadable",
+                      "required": [
+                        "name",
+                        "mimetype",
+                        "s3key"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "title": "Name",
+                          "examples": [
+                            "document.pdf",
+                            "image.jpg",
+                            "report.docx"
+                          ],
+                          "description": "The filename that will be used when uploading the file to the destination service"
+                        },
+                        "s3key": {
+                          "type": "string",
+                          "title": "S3Key",
+                          "examples": [
+                            "47563/gmail/GET_ATTACHMENT/response/12345"
+                          ],
+                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                        },
+                        "mimetype": {
+                          "type": "string",
+                          "title": "Mimetype",
+                          "examples": [
+                            "application/pdf",
+                            "image/jpeg",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ],
+                          "description": "The MIME type of the file"
+                        }
+                      },
+                      "file_uploadable": true
+                    }
+                  }
+                ],
+                "description": "File(s) to attach. Accepts a single file or a list of files."
+              },
+              "bcc_emails": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "manager@example.com",
+                    "supervisor@example.com"
+                  ],
+                  [
+                    "hr@company.com"
+                  ]
+                ],
+                "description": "List of email addresses for BCC recipients. Each email should be a separate string in the array. Do NOT pass comma-separated values as a single string."
+              },
+              "from_address": {
+                "type": "string",
+                "examples": [
+                  "shared.mailbox@contoso.com",
+                  "alias@example.com"
+                ],
+                "description": "Optional From address to set on the message (send as/on behalf). Provide a single email address. Requires appropriate mailbox permissions."
+              },
+              "save_to_sent_items": {
+                "type": "boolean",
+                "default": true,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Indicates if the email should be saved in 'Sent Items'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "MICROSOFT_TEAMS_TEAMS_POST_CHAT_MESSAGE": {
+          "toolkit": "MICROSOFT_TEAMS",
+          "tool_slug": "MICROSOFT_TEAMS_TEAMS_POST_CHAT_MESSAGE",
+          "description": "Sends a non-empty message (text or HTML) to a specified, existing Microsoft Teams chat; content must be valid HTML if `content_type` is 'html'.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "chat_id",
+              "content"
+            ],
+            "properties": {
+              "locale": {
+                "type": "string",
+                "const": "en-us",
+                "description": "Locale of the chat message. Microsoft Teams currently documents this as client-set and always 'en-us'; only 'en-us' is supported."
+              },
+              "chat_id": {
+                "type": "string",
+                "examples": [
+                  "19:meeting_NTg0NTQ2YjctMDJkNi00M2U3LWFkNmQtN2U4MDVmYjE0MDc5@thread.v2"
+                ],
+                "description": "Unique identifier for the Microsoft Teams chat to receive the message."
+              },
+              "content": {
+                "type": "string",
+                "examples": [
+                  "Hello world!",
+                  "<h1>Hello</h1><p>This is a test message with HTML.</p>"
+                ],
+                "description": "Message content, either plain text or HTML (see `content_type`)."
+              },
+              "subject": {
+                "type": "string",
+                "description": "The subject of the chat message, in plaintext."
+              },
+              "mentions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "description": "Index of an entity being mentioned in the specified chatMessage. Matches the {index} value in the corresponding <at id=\"{index}\"> tag in the message body."
+                    },
+                    "mentioned": {
+                      "type": "object",
+                      "properties": {
+                        "tag": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "description": "Unique identifier for the identity or actor."
+                            },
+                            "tenantId": {
+                              "type": "string",
+                              "description": "Unique identity of the tenant."
+                            },
+                            "displayName": {
+                              "type": "string",
+                              "description": "The display name of the identity."
+                            }
+                          },
+                          "description": "If present, represents a tag @mentioned in a message.",
+                          "additionalProperties": false
+                        },
+                        "user": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "description": "Unique identifier for the identity or actor."
+                            },
+                            "tenantId": {
+                              "type": "string",
+                              "description": "Unique identity of the tenant."
+                            },
+                            "displayName": {
+                              "type": "string",
+                              "description": "The display name of the identity."
+                            }
+                          },
+                          "description": "If present, represents a user @mentioned in a message.",
+                          "additionalProperties": false
+                        },
+                        "device": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "description": "Unique identifier for the identity or actor."
+                            },
+                            "tenantId": {
+                              "type": "string",
+                              "description": "Unique identity of the tenant."
+                            },
+                            "displayName": {
+                              "type": "string",
+                              "description": "The display name of the identity."
+                            }
+                          },
+                          "description": "Not used because it's not supported to @mention devices.",
+                          "additionalProperties": false
+                        },
+                        "application": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "description": "Unique identifier for the identity or actor."
+                            },
+                            "tenantId": {
+                              "type": "string",
+                              "description": "Unique identity of the tenant."
+                            },
+                            "displayName": {
+                              "type": "string",
+                              "description": "The display name of the identity."
+                            }
+                          },
+                          "description": "If present, represents an application (for example, bot) @mentioned in a message.",
+                          "additionalProperties": false
+                        },
+                        "conversation": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "description": "ID of the conversation."
+                            },
+                            "displayName": {
+                              "type": "string",
+                              "description": "Display name of the conversation."
+                            },
+                            "conversationIdentityType": {
+                              "type": "string",
+                              "description": "Type of conversation. Possible values are: team, channel, chat, unknownFutureValue."
+                            }
+                          },
+                          "description": "If present, represents a conversation (for example, team, channel, or chat) @mentioned in a message.",
+                          "additionalProperties": false
+                        }
+                      },
+                      "description": "The entity (user, application, team, channel, or chat) that was @mentioned.",
+                      "additionalProperties": false
+                    },
+                    "mentionText": {
+                      "type": "string",
+                      "description": "String used to represent the mention. For example, a user's display name, a team name."
+                    }
+                  }
+                },
+                "description": "List of entities mentioned in the chat message. Supported entities are: user, bot, team, channel, chat, and tag."
+              },
+              "importance": {
+                "enum": [
+                  "normal",
+                  "high",
+                  "urgent"
+                ],
+                "type": "string",
+                "description": "The importance of the chat message. Possible values: 'normal', 'high', 'urgent'. Defaults to 'normal' if not specified."
+              },
+              "attachments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Read-only. The unique ID of the attachment."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "The name of the attachment."
+                    },
+                    "content": {
+                      "type": "string",
+                      "description": "The content of the attachment. If the attachment is a rich card, set the property to the rich card object. This property and contentUrl are mutually exclusive."
+                    },
+                    "contentUrl": {
+                      "type": "string",
+                      "description": "The URL for the content of the attachment. Mutually exclusive with content."
+                    },
+                    "teamsAppId": {
+                      "type": "string",
+                      "description": "The ID of the Teams app that is associated with the attachment. The property is used to attribute a Teams message card to the specified app."
+                    },
+                    "contentType": {
+                      "type": "string",
+                      "description": "The media type of the content attachment. It can have the following values: reference, file, forwardedMessageReference, or specialized content types like application/vnd.microsoft.card.codesnippet."
+                    },
+                    "thumbnailUrl": {
+                      "type": "string",
+                      "description": "The URL to a thumbnail image that the channel can use if it supports using an alternative, smaller form of content or contentUrl."
+                    }
+                  }
+                },
+                "description": "References to attached objects like files, tabs, meetings, or cards."
+              },
+              "content_type": {
+                "enum": [
+                  "text",
+                  "html"
+                ],
+                "type": "string",
+                "default": "text",
+                "examples": [
+                  "text",
+                  "html"
+                ],
+                "description": "Content format: 'text' (plain) or 'html'."
+              },
+              "hostedContents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Read-only. Represents the chat message hosted content identifier."
+                    },
+                    "contentType": {
+                      "type": "string",
+                      "description": "Write-only. When posting new chat message hosted content, represents the type of content, such as image/png."
+                    },
+                    "contentBytes": {
+                      "type": "string",
+                      "description": "Write-only. When posting new chat message hosted content, represents the bytes of the payload. These are represented as a base64Encoded string."
+                    },
+                    "microsoft_graph_temporary_id": {
+                      "type": "string",
+                      "description": "Write-only. Represents the temporaryId for the hosted content while posting a message to refer to the hosted content in chatMessage resource being sent."
+                    }
+                  }
+                },
+                "description": "Content in a message hosted by Microsoft Teams - for example, inline images or code snippets."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "MICROSOFT_TEAMS_LIST_USERS": {
+          "toolkit": "MICROSOFT_TEAMS",
+          "tool_slug": "MICROSOFT_TEAMS_LIST_USERS",
+          "description": "Tool to list all users in the organization. Use when you need to retrieve directory users with filtering, pagination, and field selection.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "maximum": 999,
+                "minimum": 1,
+                "examples": [
+                  50,
+                  200
+                ],
+                "description": "Maximum number of users to return per page (1-999). Default is 100. For pages beyond the first, pass the `next_page_token` from the response back as `page_token`. Note: Some tenants have restrictive page size policies that may reject explicit $top values. If such an error occurs, the request will be retried without $top."
+              },
+              "count": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "When true, include @odata.count in the response by sending $count=true. Microsoft Graph requires ConsistencyLevel: eventual for this advanced directory query."
+              },
+              "expand": {
+                "type": "string",
+                "examples": [
+                  "manager"
+                ],
+                "description": "OData expand related entities (e.g., manager)."
+              },
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "startswith(displayName,'John')"
+                ],
+                "description": "OData filter to refine results by property values (e.g., startswith(displayName,'A'))."
+              },
+              "search": {
+                "type": "string",
+                "examples": [
+                  "\"displayName:John\"",
+                  "\"mail:contoso.com\""
+                ],
+                "description": "OData search query for advanced text search across user properties. Requires ConsistencyLevel: eventual header. Use double quotes for phrases (e.g., \"displayName:John\"). Not available in Azure AD B2C tenants."
+              },
+              "select": {
+                "type": "string",
+                "examples": [
+                  "id,displayName,mail"
+                ],
+                "description": "Comma-separated list of user properties to include (e.g., id,displayName,mail)."
+              },
+              "orderby": {
+                "type": "string",
+                "examples": [
+                  "displayName asc",
+                  "mail desc"
+                ],
+                "description": "OData orderby clause to sort results (e.g., displayName desc). When combined with $filter, advanced query capabilities (ConsistencyLevel: eventual header and $count=true) may be required and will be added automatically if needed."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; filter/sort/search params need not be repeated \u2014 the token carries them."
+              },
+              "consistencyLevel": {
+                "type": "string",
+                "examples": [
+                  "eventual"
+                ],
+                "description": "Set to 'eventual' when using advanced queries with $count or $search."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_CREATE_DRAFT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_CREATE_DRAFT",
+          "description": "Creates a new Outlook email draft with subject, body, recipients, and an optional attachment. This a...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_CREATE_DRAFT"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_SEND_DRAFT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEND_DRAFT",
+          "description": "Tool to send an existing draft message. Use after creating a draft when you want to deliver it to re...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_SEND_DRAFT"
+              ]
+            }
+          }
+        },
+        "MICROSOFT_TEAMS_TEAMS_CREATE_CHAT": {
+          "toolkit": "MICROSOFT_TEAMS",
+          "tool_slug": "MICROSOFT_TEAMS_TEAMS_CREATE_CHAT",
+          "description": "Creates a new chat; if a 'oneOnOne' chat with the specified members already exists, its details are ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MICROSOFT_TEAMS_TEAMS_CREATE_CHAT"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_GET_MAIL_TIPS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_GET_MAIL_TIPS",
+          "description": "Tool to retrieve mail tips such as automatic replies and mailbox full status. Use when you need to c...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_GET_MAIL_TIPS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:29:00.534Z",
+        "current_time_utc_epoch_seconds": 1786598940,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "clay",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"clay\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_PrqGbwROltCS"
+  }
+}

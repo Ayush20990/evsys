@@ -1,0 +1,725 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-097-q5",
+    "workflow_id": 97,
+    "workflow_task": "Manage Pipedrive CRM records: find deals and contacts, update deal participants and primary contacts, log notes and activities, schedule follow-ups, inspect deal and organization custom fields, and bulk reclassify deals across pipeline stages based on contract timing data.",
+    "query": "schedule follow-up tasks in Pipedrive",
+    "intent": "Create scheduled follow-up activities and reminders for contacts or deals.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "PIPEDRIVE_ADD_AN_ACTIVITY"
+        ],
+        "purpose": "Schedule follow-up activities"
+      }
+    ],
+    "candidate_tools": [
+      "PIPEDRIVE_ADD_AN_ACTIVITY",
+      "PIPEDRIVE_ADD_DEAL_PARTICIPANT",
+      "PIPEDRIVE_ADD_NOTE",
+      "PIPEDRIVE_GET_ALL_DEAL_FIELDS",
+      "PIPEDRIVE_GET_ALL_ORGANIZATIONS",
+      "PIPEDRIVE_GET_ALL_ORGANIZATION_FIELDS",
+      "PIPEDRIVE_GET_ALL_PIPELINES",
+      "PIPEDRIVE_GET_ALL_STAGES",
+      "PIPEDRIVE_GET_DEAL",
+      "PIPEDRIVE_GET_DEALS_IN_A_PIPELINE",
+      "PIPEDRIVE_GET_DEALS_IN_A_STAGE",
+      "PIPEDRIVE_GET_DETAILS_OF_AN_ORGANIZATION",
+      "PIPEDRIVE_LIST_DEAL_ACTIVITIES",
+      "PIPEDRIVE_LIST_PARTICIPANTS_OF_A_DEAL",
+      "PIPEDRIVE_SEARCH_DEALS",
+      "PIPEDRIVE_SEARCH_PERSONS",
+      "PIPEDRIVE_UPDATE_AN_ORGANIZATION",
+      "PIPEDRIVE_UPDATE_DEAL",
+      "PIPEDRIVE_UPDATE_ORGANIZATION"
+    ]
+  },
+  "request": {
+    "query": "schedule follow-up tasks in Pipedrive"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "schedule follow-up tasks in Pipedrive",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: List assigned activities using PIPEDRIVE_GET_ALL_ACTIVITIES_ASSIGNED_TO_A_PARTICULAR_USER, then filter client-side by owner, activity kind, completion state, and a due-date window.",
+            "[Required] [Step]: Paginate through results using PIPEDRIVE_GET_ALL_ACTIVITIES_ASSIGNED_TO_A_PARTICULAR_USER until the API indicates no more pages; accumulate matching activity IDs.",
+            "[Required] [Step]: For each candidate, fetch full details using PIPEDRIVE_GET_ACTIVITY (confirm current status, links to related records, and fields needed for write-back).",
+            "[Optional (if more context is needed to write the note or schedule follow-up)] [Prerequisite]: Enrich with related record context using PIPEDRIVE_GET_DEAL and recent changes using PIPEDRIVE_GET_DEAL_UPDATES.",
+            "[Required] [Step]: Update the activity using PIPEDRIVE_UPDATE_ACTIVITY (e.g., mark done and store outcome text or other edits).",
+            "[Required] [Step]: Attach a log entry using PIPEDRIVE_ADD_NOTE (link it to the appropriate related record referenced by the activity).",
+            "[Required] [Next Step]: Create a follow-up activity using PIPEDRIVE_ADD_AN_ACTIVITY; if important fields don\u2019t persist on create, enforce them with PIPEDRIVE_UPDATE_ACTIVITY.",
+            "[Optional (if the primary updater rejects the payload or semantics differ)] [Fallback]: Retry the update using PIPEDRIVE_UPDATE_AN_ACTIVITY with the same intended field changes."
+          ],
+          "known_pitfalls": [
+            "[PIPEDRIVE_GET_DEAL_UPDATES] Response shape may be a dict with a nested data list; assuming a top-level list can trigger type/attribute errors during parsing.",
+            "[PIPEDRIVE_ADD_AN_ACTIVITY] HTTP 400 can occur when participant objects include an unexpected boolean flag for the primary participant; simplify payload or adjust field naming.",
+            "[PIPEDRIVE_ADD_AN_ACTIVITY] Transient HTTP 500 may occur even after fixing validation issues; retry with a minimal payload (e.g., rely on a single related entity link) to reduce failure surface.",
+            "[PIPEDRIVE_ADD_AN_ACTIVITY] Some properties set at creation time may not persist; follow with PIPEDRIVE_UPDATE_ACTIVITY to enforce critical fields."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Normalize a PIPEDRIVE_GET_DEAL_UPDATES payload into a list of update objects",
+              "code": "```python\nraw=response\ndata=raw.get('data',raw) if isinstance(raw,dict) else raw\nupdates=(data.get('data') or []) if isinstance(data,dict) else (data if isinstance(data,list) else [])\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "PIPEDRIVE_GET_ACTIVITY",
+            "PIPEDRIVE_UPDATE_ACTIVITY",
+            "PIPEDRIVE_ADD_AN_ACTIVITY"
+          ],
+          "related_tool_slugs": [
+            "PIPEDRIVE_GET_ALL_ACTIVITIES_ASSIGNED_TO_A_PARTICULAR_USER",
+            "PIPEDRIVE_GET_DEAL",
+            "PIPEDRIVE_GET_DEAL_UPDATES",
+            "PIPEDRIVE_UPDATE_AN_ACTIVITY",
+            "PIPEDRIVE_ADD_NOTE"
+          ],
+          "toolkits": [
+            "pipedrive"
+          ],
+          "plan_id": "be2adaa7960c4e86b01bd7203a195ee9"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "pipedrive",
+          "has_active_connection": false,
+          "description": "Pipedrive is a sales management tool built around pipeline visualization, lead tracking, activity reminders, and automation to keep deals progressing",
+          "status_message": "No Active connection for toolkit=pipedrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"pipedrive\") to create a connection BEFORE executing any pipedrive tools."
+        }
+      ],
+      "tool_schemas": {
+        "PIPEDRIVE_GET_ACTIVITY": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_GET_ACTIVITY",
+          "description": "Returns the details of a specific activity.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "The ID of the activity"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "PIPEDRIVE_UPDATE_ACTIVITY": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_UPDATE_ACTIVITY",
+          "description": "Tool to update an existing activity in Pipedrive including scheduling, assignments, descriptions, and participants. Use when you need to modify any properties of an activity such as subject, due date/time, status, or associated entities.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer",
+                "examples": [
+                  1,
+                  2,
+                  100
+                ],
+                "description": "The unique identifier of the activity to update",
+                "exclusiveMinimum": 0
+              },
+              "busy": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Calendar availability flag (true=busy, false=available)"
+              },
+              "done": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Completion status indicator (true=completed, false=not completed)"
+              },
+              "note": {
+                "type": "string",
+                "examples": [
+                  "Remember to prepare slides",
+                  "Follow up on previous discussion"
+                ],
+                "description": "Internal activity comments/notes"
+              },
+              "type": {
+                "type": "string",
+                "examples": [
+                  "call",
+                  "meeting",
+                  "task",
+                  "deadline",
+                  "email",
+                  "lunch"
+                ],
+                "description": "The activity category/type (e.g., 'call', 'meeting', 'task')"
+              },
+              "org_id": {
+                "type": "integer",
+                "examples": [
+                  987,
+                  135
+                ],
+                "description": "Associated organization identifier"
+              },
+              "deal_id": {
+                "type": "integer",
+                "examples": [
+                  789,
+                  101112
+                ],
+                "description": "Associated deal identifier"
+              },
+              "lead_id": {
+                "type": "string",
+                "examples": [
+                  "8a674260-dfd0-11f0-90a6-6118ff270bea"
+                ],
+                "description": "Associated lead identifier (UUID format)"
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Call with John",
+                  "Meeting about Q4 goals"
+                ],
+                "description": "The activity's title/subject"
+              },
+              "due_date": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "examples": [
+                  "2024-12-25",
+                  "2025-01-15"
+                ],
+                "description": "Activity date in YYYY-MM-DD format"
+              },
+              "due_time": {
+                "type": "string",
+                "pattern": "^\\d{2}:\\d{2}$",
+                "examples": [
+                  "09:30",
+                  "14:00",
+                  "16:45"
+                ],
+                "description": "Activity time in HH:MM format"
+              },
+              "duration": {
+                "type": "string",
+                "pattern": "^\\d{2}:\\d{2}$",
+                "examples": [
+                  "00:30",
+                  "01:00",
+                  "02:15"
+                ],
+                "description": "Activity length in HH:MM format"
+              },
+              "location": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "title": "LocationObject",
+                    "properties": {
+                      "route": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Route",
+                        "default": null,
+                        "description": "Street name"
+                      },
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Value",
+                        "default": null,
+                        "description": "Full address string"
+                      },
+                      "country": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Country",
+                        "default": null,
+                        "description": "Country name"
+                      },
+                      "locality": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Locality",
+                        "default": null,
+                        "description": "City or locality"
+                      },
+                      "subpremise": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Subpremise",
+                        "default": null,
+                        "description": "Apartment, suite, or unit number"
+                      },
+                      "postal_code": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Postal Code",
+                        "default": null,
+                        "description": "Postal or ZIP code"
+                      },
+                      "sublocality": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Sublocality",
+                        "default": null,
+                        "description": "Sublocality or neighborhood"
+                      },
+                      "street_number": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Street Number",
+                        "default": null,
+                        "description": "Street number"
+                      },
+                      "admin_area_level_1": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Admin Area Level 1",
+                        "default": null,
+                        "description": "State or province"
+                      },
+                      "admin_area_level_2": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "title": "Admin Area Level 2",
+                        "default": null,
+                        "description": "County or district"
+                      }
+                    },
+                    "description": "Location object with address fields for API v2"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "examples": [
+                  "123 Main St, New York, NY 10001"
+                ],
+                "description": "Geographic information with address fields or simple string address"
+              },
+              "owner_id": {
+                "type": "integer",
+                "examples": [
+                  123,
+                  456
+                ],
+                "description": "User ID assigned to the activity"
+              },
+              "priority": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Importance level of the activity"
+              },
+              "attendees": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Name of the attendee"
+                    },
+                    "status": {
+                      "enum": [
+                        "accepted",
+                        "declined",
+                        "tentative",
+                        "needs_action"
+                      ],
+                      "type": "string",
+                      "description": "Response status of the attendee"
+                    },
+                    "user_id": {
+                      "type": "integer",
+                      "description": "User ID if the attendee is an internal user"
+                    },
+                    "person_id": {
+                      "type": "integer",
+                      "description": "Person ID if the attendee is a contact"
+                    },
+                    "email_address": {
+                      "type": "string",
+                      "description": "Email address of the attendee"
+                    }
+                  },
+                  "description": "Attendee object for meeting attendees"
+                },
+                "description": "External and internal meeting participants with email, name, and status"
+              },
+              "person_id": {
+                "type": "integer",
+                "examples": [
+                  321,
+                  654
+                ],
+                "description": "Primary participant identifier"
+              },
+              "project_id": {
+                "type": "integer",
+                "examples": [
+                  246,
+                  369
+                ],
+                "description": "Associated project identifier"
+              },
+              "participants": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "person_id"
+                  ],
+                  "properties": {
+                    "primary": {
+                      "type": "boolean",
+                      "description": "Whether this is the primary participant"
+                    },
+                    "person_id": {
+                      "type": "integer",
+                      "description": "Person ID of the participant"
+                    }
+                  },
+                  "description": "Participant object for activity participants"
+                },
+                "description": "Multiple person associations for the activity"
+              },
+              "public_description": {
+                "type": "string",
+                "examples": [
+                  "Quarterly business review meeting"
+                ],
+                "description": "Calendar-synced event details visible in external calendars"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "PIPEDRIVE_ADD_AN_ACTIVITY": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_ADD_AN_ACTIVITY",
+          "description": "New activity added. Response includes `more_activities_scheduled_in_context` to show if more are planned with the same entity. See tutorial on adding activities [here](https://pipedrive.readme.io/docs/adding-an-activity).",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "subject",
+              "type"
+            ],
+            "properties": {
+              "done": {
+                "type": "integer",
+                "description": "Whether the activity is done (0 = not done, 1 = done)"
+              },
+              "note": {
+                "type": "string",
+                "description": "Note/description of the activity"
+              },
+              "type": {
+                "type": "string",
+                "description": "The type of the activity (matches ActivityTypes.key_string)"
+              },
+              "org_id": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "description": "ID of the linked organization"
+              },
+              "deal_id": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "description": "ID of the linked deal (integer or numeric string)"
+              },
+              "lead_id": {
+                "type": "string",
+                "description": "ID of the linked lead (UUID string)"
+              },
+              "subject": {
+                "type": "string",
+                "description": "The subject/title of the activity"
+              },
+              "user_id": {
+                "type": "integer",
+                "description": "ID of the user who owns the activity"
+              },
+              "due_date": {
+                "type": "string",
+                "format": "date",
+                "description": "Due date of the activity (YYYY-MM-DD)"
+              },
+              "due_time": {
+                "type": "string",
+                "description": "Due time of the activity (HH:MM)"
+              },
+              "duration": {
+                "type": "string",
+                "description": "Duration of the activity (e.g., 00:30)"
+              },
+              "location": {
+                "type": "string",
+                "description": "Location/address of the activity"
+              },
+              "attendees": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Attendees of the activity (contacts or external emails)"
+              },
+              "busy_flag": {
+                "type": "boolean",
+                "description": "Whether the activity marks the assignee as busy"
+              },
+              "person_id": {
+                "type": "integer",
+                "description": "ID of the linked person"
+              },
+              "project_id": {
+                "type": "integer",
+                "description": "ID of the linked project"
+              },
+              "participants": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Participants of the activity"
+              },
+              "public_description": {
+                "type": "string",
+                "description": "Public description synced to external calendar"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "PIPEDRIVE_GET_ALL_ACTIVITIES_ASSIGNED_TO_A_PARTICULAR_USER": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_GET_ALL_ACTIVITIES_ASSIGNED_TO_A_PARTICULAR_USER",
+          "description": "Returns all activities assigned to a particular user.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "done": {
+                "type": "integer",
+                "description": "Whether the activity is done or not. 0 = Not done, 1 = Done. If omitted returns both done and not done activities. "
+              },
+              "type": {
+                "type": "string",
+                "description": "The type of the activity, can be one type or multiple types separated by a comma. This is in correlation with the `key_string` parameter of ActivityTypes. "
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Number of activities to return per page (defaults to 100 if not specified)"
+              },
+              "start": {
+                "type": "integer",
+                "description": "For pagination, the position that represents the first result for the page "
+              },
+              "fields": {
+                "type": "string",
+                "description": "CLIENT-SIDE FILTERING: Comma-separated list of activity fields to include in the final response. Note: The Pipedrive API does not support native field selection - all fields are still fetched from the API, but the response is filtered before returning to reduce token usage in your application. This does not reduce API bandwidth or Pipedrive API costs. Common fields: id, subject, due_date, due_time, done, type, user_id, person_id, deal_id, org_id, note, add_time, update_time. "
+              },
+              "user_id": {
+                "type": "integer",
+                "description": "The ID of the user whose activities will be fetched. If omitted, the user associated with the API token will be used. If 0, activities for all company users will be fetched based on the permission sets. "
+              },
+              "end_date": {
+                "type": "string",
+                "description": "Use the activity due date where you wish to stop fetching activities from. Insert due date in YYYY-MM-DD format. "
+              },
+              "filter_id": {
+                "type": "integer",
+                "description": "The ID of the filter to use (will narrow down results if used together with `user_id` parameter) "
+              },
+              "start_date": {
+                "type": "string",
+                "description": "Use the activity due date where you wish to begin fetching activities from. Insert due date in YYYY-MM-DD format. "
+              },
+              "response_detail": {
+                "enum": [
+                  "minimal",
+                  "full"
+                ],
+                "type": "string",
+                "default": "minimal",
+                "description": "Level of detail in the response. 'minimal' (default) excludes related_objects (deals, persons, organizations, users) to reduce token usage. 'full' includes the complete API response with all related_objects. Note: The API always returns related_objects \u2014 'minimal' filters them out client-side."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "PIPEDRIVE_GET_DEAL": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_GET_DEAL",
+          "description": "Tool to get details of a specific deal in Pipedrive. Use when you need to retrieve comprehensive inf...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "PIPEDRIVE_GET_DEAL"
+              ]
+            }
+          }
+        },
+        "PIPEDRIVE_GET_DEAL_UPDATES": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_GET_DEAL_UPDATES",
+          "description": "Lists updates about a deal in chronological order. Use when you need to track deal changes, monitor ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "PIPEDRIVE_GET_DEAL_UPDATES"
+              ]
+            }
+          }
+        },
+        "PIPEDRIVE_UPDATE_AN_ACTIVITY": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_UPDATE_AN_ACTIVITY",
+          "description": "Updates an activity. Includes `more_activities_scheduled_in_context` property in response's `additio...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "PIPEDRIVE_UPDATE_AN_ACTIVITY"
+              ]
+            }
+          }
+        },
+        "PIPEDRIVE_ADD_NOTE": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_ADD_NOTE",
+          "description": "Tool to add a note to a deal, person, organization, lead, or project in Pipedrive. Use when you need...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "PIPEDRIVE_ADD_NOTE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:39:54.095Z",
+        "current_time_utc_epoch_seconds": 1786599594,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "done",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"done\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_PKp1UUIHy1qV"
+  }
+}

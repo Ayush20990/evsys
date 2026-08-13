@@ -1,0 +1,581 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-060-q2",
+    "workflow_id": 60,
+    "workflow_task": "Manage lead data in Google Sheets: read existing tabs, append and correct lead rows, enrich contacts, detect duplicate email addresses, highlight duplicate rows, and attempt to prepare leads for import into an Instantly campaign.",
+    "query": "detect duplicate email addresses and highlight rows in Google Sheets",
+    "intent": "Identify duplicate email entries within the lead data and apply visual formatting to highlight those rows.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLESHEETS_FORMAT_CELL"
+        ],
+        "purpose": "highlight duplicate rows"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_FORMAT_CELL",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+      "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
+      "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+      "GOOGLESHEETS_VALUES_GET",
+      "GOOGLESHEETS_VALUES_UPDATE",
+      "HUNTER_DOMAIN_SEARCH",
+      "HUNTER_EMAIL_FINDER"
+    ]
+  },
+  "request": {
+    "query": "detect duplicate email addresses and highlight rows in Google Sheets"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "detect duplicate email addresses and highlight rows in Google Sheets",
+          "execution_guidance": "Found 8 tools for this query. Look at the schemas to know how to use them.",
+          "primary_tool_slugs": [
+            "GOOGLESHEETS_UPSERT_ROWS",
+            "GIGASHEET_DELETE_DATASET_HANDLE_DEDUPLICATE_ROWS",
+            "GIGASHEET_COUNT_DATASET_DEDUPLICATE_ROWS"
+          ],
+          "related_tool_slugs": [
+            "GOOGLESHEETS_VALUES_GET",
+            "GIGASHEET_GET_DATASET_HANDLE_COLUMNS",
+            "GIGASHEET_POST_DATASET_HANDLE_EXPORT",
+            "GMAIL_FETCH_EMAILS",
+            "GMAIL_SEARCH_PEOPLE"
+          ],
+          "toolkits": [
+            "googlesheets",
+            "gigasheet",
+            "gmail"
+          ]
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googlesheets",
+          "has_active_connection": false,
+          "description": "Google Sheets is a cloud-based spreadsheet tool enabling real-time collaboration, data analysis, and integration with other Google Workspace apps. STRICT RATE LIMITS apply - max 60 reads/minute and 60 writes/minute. Exceeding this causes errors.",
+          "status_message": "No Active connection for toolkit=googlesheets. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesheets\") to create a connection BEFORE executing any googlesheets tools."
+        },
+        {
+          "toolkit": "gigasheet",
+          "has_active_connection": false,
+          "description": "Gigasheet is a big data automation platform that offers a spreadsheet-like interface for analyzing and managing large datasets, enabling users to automate tasks, integrate with various data sources, and streamline data workflows.",
+          "status_message": "No Active connection for toolkit=gigasheet. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gigasheet\") to create a connection BEFORE executing any gigasheet tools."
+        },
+        {
+          "toolkit": "gmail",
+          "has_active_connection": false,
+          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
+          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLESHEETS_UPSERT_ROWS": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_UPSERT_ROWS",
+          "description": "Upsert rows - update existing rows by key, append new ones. Automatically handles column mapping and partial updates. Use for: CRM syncs (match Lead ID), transaction imports (match Transaction ID), inventory updates (match SKU), calendar syncs (match Event ID). Features: - Auto-adds missing columns to sheet - Partial column updates (only update Phone + Status, preserve other columns) - Column order doesn't matter (auto-maps by header name) - Prevents duplicates by matching key column Example inputs: - Contact update: keyColumn='Email', headers=['Email','Phone','Status'], data=[['john@ex.com','555-0101','Active']] - Inventory sync: keyColumn='SKU', headers=['SKU','Stock','Price'], data=[['WIDGET-001',50,9.99],['GADGET-002',30,19.99]] - CRM lead update: keyColumn='Lead ID', headers=['Lead ID','Score','Status'], data=[['L-12345',85,'Hot']] - Partial update: keyColumn='Email', headers=['Email','Phone'] (only updates Phone, preserves Name/Address/etc)",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheetId",
+              "sheetName",
+              "rows"
+            ],
+            "properties": {
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "examples": [
+                  [
+                    [
+                      "john@example.com",
+                      "555-0101",
+                      "Active"
+                    ],
+                    [
+                      "jane@example.com",
+                      "555-0102",
+                      "Pending"
+                    ]
+                  ],
+                  [
+                    [
+                      "WIDGET-001",
+                      50,
+                      9.99
+                    ],
+                    [
+                      "GADGET-002",
+                      30,
+                      19.99
+                    ]
+                  ],
+                  [
+                    [
+                      "L-12345",
+                      "John Doe",
+                      85
+                    ]
+                  ]
+                ],
+                "minItems": 1,
+                "description": "2D array of data rows to upsert. IMPORTANT: If 'headers' is NOT provided, the FIRST row is treated as column headers and remaining rows as data - so you need at least 2 rows (1 header + 1 data). If 'headers' IS provided separately, then ALL rows in this array are treated as data rows. Each row should have the same number of values as headers. If a row has MORE values than headers: with strict_mode=true (default), an error is returned showing which rows are affected; with strict_mode=false, extra values are silently truncated. If a row has FEWER values than headers, an error is returned during execution. Cell values can be strings, numbers, booleans, or null. Example with headers provided: headers=['Email','Status'], rows=[['john@ex.com','Active']] (1 data row). Example without headers: rows=[['Email','Status'],['john@ex.com','Active']] (row 1 = headers, row 2 = data)."
+              },
+              "headers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "Email",
+                    "Phone",
+                    "Status"
+                  ],
+                  [
+                    "Lead ID",
+                    "Name",
+                    "Score"
+                  ],
+                  [
+                    "SKU",
+                    "Stock",
+                    "Price"
+                  ]
+                ],
+                "description": "List of column names for the data. These will be matched against sheet headers. If a column doesn't exist in the sheet, it will be added automatically. Order doesn't need to match sheet order. Can be auto-derived from the first row in 'rows' if not provided. Example inputs: ['Email', 'Phone', 'Status'] for contact updates, ['Lead ID', 'Name', 'Score'] for CRM, ['SKU', 'Stock', 'Price'] for inventory."
+              },
+              "keyColumn": {
+                "type": "string",
+                "examples": [
+                  "Email",
+                  "ID",
+                  "SKU",
+                  "Lead ID",
+                  "Transaction Number"
+                ],
+                "description": "The column NAME (header text) to use as unique identifier for matching rows. Must be an actual header name from the sheet (e.g., 'Email', 'Lead ID', 'SKU'), NOT a column letter (e.g., 'A', 'B', 'C'). If you provide a column letter like 'A', it will be automatically converted to the header name at that column position. If neither 'key_column' nor 'key_column_index' is provided, defaults to the first column (index 0)."
+              },
+              "sheetName": {
+                "type": "string",
+                "examples": [
+                  "Leads",
+                  "Transactions",
+                  "Inventory",
+                  "Sheet1",
+                  "\u5de5\u4f5c\u88681"
+                ],
+                "description": "The name of the sheet/tab within the spreadsheet. Note: Google Sheets creates default sheets with localized names based on account language (e.g., 'Sheet1' for English, '\u5de5\u4f5c\u88681' for Chinese, 'Hoja1' for Spanish, 'Feuille1' for French, 'Planilha1' for Portuguese, '\u041b\u0438\u0441\u04421' for Russian). If you specify a common default name and the sheet is not found, the action will automatically use the first sheet if only one exists."
+              },
+              "strictMode": {
+                "type": "boolean",
+                "default": true,
+                "description": "Controls how rows with mismatched column counts are handled. When True (default), an error is returned if any row has more values than headers - the error message shows exactly which rows are affected and what values would need to be removed. When False, extra values are silently truncated to match the header count. Set to False only if you explicitly want automatic truncation of extra values."
+              },
+              "tableStart": {
+                "type": "string",
+                "default": "A1",
+                "examples": [
+                  "A1",
+                  "C5",
+                  "D10"
+                ],
+                "description": "Cell where the table starts (where headers are located). Defaults to 'A1'. Use this if your table is offset (e.g., 'C5', 'D10')."
+              },
+              "spreadsheetId": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "description": "The ID of the spreadsheet. Must be a non-empty string, typically a 44-character alphanumeric string found in the spreadsheet URL."
+              },
+              "key_column_index": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "examples": [
+                  0,
+                  1,
+                  2
+                ],
+                "description": "The 0-based column index to use as unique identifier for matching rows. Alternative to 'key_column' - will be converted to column name using headers. If neither 'key_column' nor 'key_column_index' is provided, defaults to 0 (first column). Example: 0 for first column, 1 for second column."
+              },
+              "normalization_message": {
+                "type": "string",
+                "description": "Internal field to track input normalization (e.g., row truncation). Not part of API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GIGASHEET_DELETE_DATASET_HANDLE_DEDUPLICATE_ROWS": {
+          "toolkit": "GIGASHEET",
+          "tool_slug": "GIGASHEET_DELETE_DATASET_HANDLE_DEDUPLICATE_ROWS",
+          "description": "Tool to delete duplicated rows from a Gigasheet dataset based on specified columns and sort model. Use when you need to remove duplicate entries identified by matching values in one or more columns. When multiple rows have identical values in the specified columns, the sort model determines which row to keep (if not specified, default sheet row order is used). Optionally apply a filter to deduplicate only a subset of rows.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "handle",
+              "columns"
+            ],
+            "properties": {
+              "handle": {
+                "type": "string",
+                "examples": [
+                  "749ff5b7_878c_41cc_9cd0_5092d345cd46"
+                ],
+                "description": "Unique identifier (handle) of the dataset. This is typically returned by file upload actions or can be found in the Gigasheet web app URL. Format: lowercase letters a-f, numbers, and underscores (e.g., 'a5f49fe7_dde2_45b3_96d9_1338ebf21904')."
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "A"
+                  ],
+                  [
+                    "A",
+                    "B"
+                  ],
+                  [
+                    "CustomerName",
+                    "Email"
+                  ]
+                ],
+                "minItems": 1,
+                "description": "List of column identifiers used for deduplication. Deduplication is performed based on unique tuples of values from the given columns. Column identifiers are typically column letters (e.g., 'A', 'B') or column names."
+              },
+              "sortModel": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "colId",
+                    "sort"
+                  ],
+                  "properties": {
+                    "sort": {
+                      "type": "string",
+                      "examples": [
+                        "asc",
+                        "desc"
+                      ],
+                      "description": "Sort direction for this column. Must be either 'asc' for ascending or 'desc' for descending order."
+                    },
+                    "colId": {
+                      "type": "string",
+                      "examples": [
+                        "A",
+                        "B",
+                        "CustomerName"
+                      ],
+                      "description": "Column identifier to sort by. This is typically the column letter (e.g., 'A', 'B', 'C') or column name."
+                    },
+                    "pivotFieldGroupId": {
+                      "type": "string",
+                      "examples": [
+                        "pivot_group_1"
+                      ],
+                      "description": "Optional identifier for pivot field group. Used when sorting pivot table columns."
+                    }
+                  },
+                  "description": "Individual sort specification for a column."
+                },
+                "examples": [
+                  [
+                    {
+                      "sort": "asc",
+                      "colId": "A"
+                    }
+                  ]
+                ],
+                "description": "Sorts to use when deduplicating. If not provided, default sheet row order will be used. When multiple rows have the same values in the specified columns, the sort model determines which row to keep."
+              },
+              "filterModel": {
+                "type": "object",
+                "examples": [
+                  {
+                    "_cnf_": [
+                      [
+                        {
+                          "type": "containsAny",
+                          "colId": "B",
+                          "filter": [
+                            "test"
+                          ],
+                          "filterType": "text"
+                        }
+                      ]
+                    ]
+                  }
+                ],
+                "description": "Filter model to use when deduplicating. Only rows matching this filter will be deduplicated. All other rows will remain. This is an arbitrary JSON object that follows the Gigasheet Filter Model schema.",
+                "additionalProperties": true
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GIGASHEET_COUNT_DATASET_DEDUPLICATE_ROWS": {
+          "toolkit": "GIGASHEET",
+          "tool_slug": "GIGASHEET_COUNT_DATASET_DEDUPLICATE_ROWS",
+          "description": "Tool to count how many duplicates will be removed and how many rows remain when deduplicating. Use when you need to preview the impact of a deduplication operation before executing it, or to understand the number of duplicate rows in a dataset based on specific column combinations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "handle"
+            ],
+            "properties": {
+              "handle": {
+                "type": "string",
+                "examples": [
+                  "f46c012a_194f_47e5_a639_8ad8d290e491"
+                ],
+                "description": "Unique identifier (handle) of the dataset to analyze for duplicates. Format: lowercase letters a-f, numbers, and underscores (e.g., 'f46c012a_194f_47e5_a639_8ad8d290e491')."
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "B",
+                    "C"
+                  ],
+                  [
+                    "Email",
+                    "Phone"
+                  ],
+                  [
+                    "ID"
+                  ]
+                ],
+                "description": "List of column IDs used for deduplication. Deduplication is performed based on unique tuples of values from the given columns. If not provided, all columns are used for comparison."
+              },
+              "sortModel": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sort": {
+                      "type": "string",
+                      "description": "Sort direction: 'asc' for ascending or 'desc' for descending."
+                    },
+                    "colId": {
+                      "type": "string",
+                      "description": "Column identifier to sort by."
+                    },
+                    "pivotFieldGroupId": {
+                      "type": "string",
+                      "description": "Pivot field group identifier for pivot mode sorting."
+                    }
+                  },
+                  "description": "Sort specification for ordering results during deduplication."
+                },
+                "description": "Sorts to use when deduplicating. If not provided, default sheet row order will be used. This determines which duplicate rows are kept when multiple rows have the same values in the specified columns."
+              },
+              "filterModel": {
+                "type": "object",
+                "examples": [
+                  {
+                    "Status": {
+                      "type": "equals",
+                      "filter": "Active"
+                    }
+                  },
+                  {
+                    "Amount": {
+                      "type": "greaterThan",
+                      "filter": 100
+                    }
+                  }
+                ],
+                "description": "Filter model to use when deduplicating. Only rows matching this filter will be deduplicated. All other rows will remain. Each key is a column name, and the value defines the filter condition.",
+                "additionalProperties": true
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_VALUES_GET": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_VALUES_GET",
+          "description": "Returns a range of values from a spreadsheet. Use when you need to read data from specific cells or ranges in a Google Sheet.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id",
+              "range"
+            ],
+            "properties": {
+              "range": {
+                "type": "string",
+                "examples": [
+                  "Sheet1!A1:B3",
+                  "'My Sheet'!A1:D5",
+                  "'Feuille 1'!A1:C10",
+                  "A1:D5",
+                  "Sheet1!A:A"
+                ],
+                "description": "The A1 notation or R1C1 notation of the range to retrieve values from. If the sheet name contains spaces or special characters, wrap the sheet name in single quotes (e.g., \"'My Sheet'!A1:B2\"). Without single quotes, the API will return a 400 error for sheet names with spaces. Examples: 'Sheet1!A1:B3', \"'Sheet With Spaces'!A1:D5\", 'A1:D5' (no sheet name uses first visible sheet), 'Sheet1!A:A' (entire column), 'SheetName' (entire sheet)."
+              },
+              "end_row": {
+                "type": "integer",
+                "description": "1-based row number to stop reading at (inclusive). Use with start_row for pagination to avoid large response errors. Example: start_row=501, end_row=1000 fetches rows 501-1000."
+              },
+              "start_row": {
+                "type": "integer",
+                "description": "1-based row number to start reading from (inclusive). Use with end_row for pagination to avoid large response errors. Example: start_row=1, end_row=500 fetches the first 500 rows."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "description": "The unique identifier of the Google Spreadsheet from which to retrieve values. This is the long alphanumeric string found in the spreadsheet URL between '/d/' and '/edit' (e.g., '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms'). WARNING: Do NOT use the spreadsheet name or title (e.g., 'My Sales Report'); you must use the actual ID from the URL."
+              },
+              "major_dimension": {
+                "enum": [
+                  "DIMENSION_UNSPECIFIED",
+                  "ROWS",
+                  "COLUMNS"
+                ],
+                "type": "string",
+                "description": "The major dimension for results."
+              },
+              "value_render_option": {
+                "enum": [
+                  "FORMATTED_VALUE",
+                  "UNFORMATTED_VALUE",
+                  "FORMULA"
+                ],
+                "type": "string",
+                "default": "FORMATTED_VALUE",
+                "description": "How values should be rendered in the output. FORMATTED_VALUE: Values are calculated and formatted (default). UNFORMATTED_VALUE: Values are calculated but not formatted. FORMULA: Values are not calculated; the formula is returned instead."
+              },
+              "date_time_render_option": {
+                "enum": [
+                  "SERIAL_NUMBER",
+                  "FORMATTED_STRING"
+                ],
+                "type": "string",
+                "default": "SERIAL_NUMBER",
+                "description": "How dates, times, and durations should be represented in the output. SERIAL_NUMBER: Dates are returned as serial numbers (default). FORMATTED_STRING: Dates returned as formatted strings."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GIGASHEET_GET_DATASET_HANDLE_COLUMNS": {
+          "toolkit": "GIGASHEET",
+          "tool_slug": "GIGASHEET_GET_DATASET_HANDLE_COLUMNS",
+          "description": "Tool to list all column metadata (IDs, names, types) for a dataset. Use after obtaining a dataset ha...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GIGASHEET_GET_DATASET_HANDLE_COLUMNS"
+              ]
+            }
+          }
+        },
+        "GIGASHEET_POST_DATASET_HANDLE_EXPORT": {
+          "toolkit": "GIGASHEET",
+          "tool_slug": "GIGASHEET_POST_DATASET_HANDLE_EXPORT",
+          "description": "Initiates an asynchronous export job for a Gigasheet dataset. Returns an export job handle that can ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GIGASHEET_POST_DATASET_HANDLE_EXPORT"
+              ]
+            }
+          }
+        },
+        "GMAIL_FETCH_EMAILS": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_FETCH_EMAILS",
+          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optiona...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_FETCH_EMAILS"
+              ]
+            }
+          }
+        },
+        "GMAIL_SEARCH_PEOPLE": {
+          "toolkit": "GMAIL",
+          "tool_slug": "GMAIL_SEARCH_PEOPLE",
+          "description": "Searches contacts by matching the query against names, nicknames, emails, phone numbers, and organiz...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GMAIL_SEARCH_PEOPLE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:36:07.707Z",
+        "current_time_utc_epoch_seconds": 1786599367,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "give",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"give\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "Follow these steps carefully to begin the task:",
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active"
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_SvfINB43IPrT"
+  }
+}

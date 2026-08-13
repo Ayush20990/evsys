@@ -1,0 +1,449 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-057-q2",
+    "workflow_id": 57,
+    "workflow_task": "Create short dog-themed videos, analyze channel and trend performance, upload and manage YouTube Shorts, and inspect Instagram posting context.",
+    "query": "analyze channel and trend performance",
+    "intent": "Analyze performance metrics for the channel and current market trends.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "YOUTUBE_LIST_CHANNEL_VIDEOS",
+          "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+          "YOUTUBE_SEARCH_YOU_TUBE"
+        ],
+        "purpose": "Analyze channel videos and search trends"
+      }
+    ],
+    "candidate_tools": [
+      "GEMINI_GENERATE_IMAGE",
+      "GEMINI_GENERATE_VIDEOS",
+      "INSTAGRAM_GET_IG_USER_MEDIA",
+      "YOUTUBE_DELETE_VIDEO",
+      "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+      "YOUTUBE_LIST_CHANNEL_VIDEOS",
+      "YOUTUBE_MULTIPART_UPLOAD_VIDEO",
+      "YOUTUBE_SEARCH_YOU_TUBE",
+      "YOUTUBE_UPDATE_VIDEO"
+    ]
+  },
+  "request": {
+    "query": "analyze channel and trend performance"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "analyze channel and trend performance",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "Required Prerequisite: Define scope (topics/keywords, regions, sources, time window) to drive COMPOSIO_SEARCH_WEB/COMPOSIO_SEARCH_NEWS and optional COMPOSIO_SEARCH_TRENDS.",
+            "Required Step 1: Collect qualitative context using COMPOSIO_SEARCH_WEB and COMPOSIO_SEARCH_NEWS (key events + representative headlines/links).",
+            "Optional (if you need quantitative interest-over-time) Step 2: Collect baseline signals using COMPOSIO_SEARCH_TRENDS (for peaks/averages comparisons).",
+            "Optional (for academic/long-horizon context) Step 3: Enrich background using COMPOSIO_SEARCH_SCHOLAR (definitions, prior studies, methods).",
+            "Optional (if snippets are insufficient for citations) Step 4: Pull readable article text for top URLs using COMPOSIO_SEARCH_FETCH_URL_CONTENT.",
+            "Required Step 5: Condense all outputs into a compact structured evidence summary (peaks, timelines, themes, 3\u20138 citations) in code or Optional COMPOSIO_REMOTE_WORKBENCH.",
+            "Required Step 6: Generate a structured analyst report using COMPOSIO_SEARCH_GROQ_CHAT (audience/tone + sections like findings/risks/recommendations + tables).",
+            "Optional Fallback (if COMPOSIO_SEARCH_GROQ_CHAT fails/underperforms) Step 6b: Generate the report using COMPOSIO_SEARCH_VERCEL_AI_CHAT.",
+            "Required Next Step: Verify report content is non-empty (extract from the chat response), then convert Markdown/text to PDF using TEXT_TO_PDF_CONVERT_TEXT_TO_PDF and return response.data.file.s3url."
+          ],
+          "known_pitfalls": [
+            "[COMPOSIO_SEARCH_TRENDS] Metrics are nested at response.data.results.interest_over_time.averages and response.data.results.interest_over_time.timeline_data; mis-parsing skews peaks/averages.",
+            "[COMPOSIO_SEARCH_NEWS] Results may appear truncated in-line (e.g., 'TRUNCATED FOR ANALYSIS'); rely on the full returned payload when extracting news_results.",
+            "[COMPOSIO_SEARCH_GROQ_CHAT] Extract report from response.data.choices[0].message.content; wrong field selection can yield empty text and an invalid PDF.",
+            "[TEXT_TO_PDF_CONVERT_TEXT_TO_PDF] Shareable link is in response.data.file.s3url (not a top-level URL); images aren\u2019t embedded from plain markdown.",
+            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] Full-text responses can be very long; limit to a few URLs and excerpt/segment before sending to COMPOSIO_SEARCH_GROQ_CHAT."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract nested interest_over_time fields from a multi-tool aggregated result object",
+              "code": "```python\nr=file_data['results'];tr=r[0]['response']['data']['results'];i=tr['interest_over_time'];aver=i['averages'];ts=i['timeline_data']\n```"
+            }
+          ],
+          "difficulty": "hard",
+          "primary_tool_slugs": [
+            "COMPOSIO_SEARCH_WEB",
+            "COMPOSIO_SEARCH_NEWS",
+            "COMPOSIO_SEARCH_GROQ_CHAT",
+            "TEXT_TO_PDF_CONVERT_TEXT_TO_PDF"
+          ],
+          "related_tool_slugs": [
+            "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+            "COMPOSIO_SEARCH_TRENDS",
+            "COMPOSIO_SEARCH_SCHOLAR",
+            "COMPOSIO_SEARCH_VERCEL_AI_CHAT"
+          ],
+          "toolkits": [
+            "composio_search",
+            "text_to_pdf"
+          ],
+          "plan_id": "d601fb4613424600ade73c7e53d9304d"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "composio_search",
+          "has_active_connection": true,
+          "description": "Composio Search provides comprehensive web search across travel (flights, hotels, events), e-commerce (Amazon, Walmart, shopping), financial markets, news, academic research, images, and location services.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        },
+        {
+          "toolkit": "text_to_pdf",
+          "has_active_connection": true,
+          "description": "Convert text to PDF",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        }
+      ],
+      "tool_schemas": {
+        "COMPOSIO_SEARCH_WEB": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_WEB",
+          "description": "Perform a web search using the Exa API. Returns a nested structure: narrative summary under results.answer, sources under results.citations (and optionally results.organic_results). Prioritize results.citations as primary evidence over results.answer, which can be vague. Only indexes publicly available content \u2014 no paywalled, login-gated, or private content. No date filters enforced; include recency terms in query and verify dates in snippets manually. Throttle to ~1\u20132 requests/second; bursty queries trigger HTTP 429. Large responses may be stored remotely \u2014 use structure_info to locate results.answer and results.citations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Coffee"
+                ],
+                "description": "The search query for the Composio Exa API. Must be non-empty; using any other parameter name (e.g., 'q') causes an invalid-request error. Include qualifiers (year, region, platform, intent) for better results \u2014 broad queries return generic content; excessive site: or quoted-term filters can return zero results. Add disambiguating terms (city, role, domain) when searching for people or organizations with common names."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_NEWS": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_NEWS",
+          "description": "Search for the latest news articles and current events with smart filtering. Searches news-oriented sources only (not blogs, docs, or company pages). Results nest under `data.results.news_results`; a 200 response with empty `news_results` or `news_results_state: 'Fully empty'` means no results \u2014 broaden query or `when` window. Auto-correction (`showing_results_for`) can silently redirect queries; verify returned articles match intended topic. Only first page returned by default; follow `pagination.next` for more pages. Supports 100+ languages and countries. Use advanced operators like 'site:' for publisher filtering directly in your query. Examples: query=\"artificial intelligence\" + when=\"w\" for past week's AI news query=\"climate change\" + gl=\"us\" + hl=\"en\" for US climate news query=\"business news\" + when=\"d\" for today's business news query=\"site:bbc.com tesla\" + when=\"d\" for today's BBC Tesla news",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "gl": {
+                "type": "string",
+                "examples": [
+                  "us",
+                  "uk",
+                  "ca",
+                  "au",
+                  "de",
+                  "fr",
+                  "jp",
+                  "in",
+                  "br",
+                  "mx"
+                ],
+                "description": "Country code for news region (ISO 3166-1 alpha-2). Determines which country's news sources to prioritize."
+              },
+              "hl": {
+                "type": "string",
+                "examples": [
+                  "en",
+                  "es",
+                  "fr",
+                  "de",
+                  "pt",
+                  "it",
+                  "ja",
+                  "ko",
+                  "zh-cn",
+                  "zh-tw",
+                  "ar",
+                  "hi",
+                  "ru"
+                ],
+                "description": "Language code for news interface and results. Most languages use ISO 639-1 codes (e.g., 'en', 'es'). Chinese requires regional variants: 'zh-cn' (Simplified) or 'zh-tw' (Traditional). Standalone 'zh' is normalized to 'zh-cn'."
+              },
+              "when": {
+                "type": "string",
+                "examples": [
+                  "d",
+                  "w",
+                  "m",
+                  "y"
+                ],
+                "description": "Time filter for news articles. 'd' = past day, 'w' = past week, 'm' = past month, 'y' = past year. These are coarse UTC-based buckets with no finer granularity; filter `published_at` client-side for precise ranges. Combining narrow queries with strict `when` filters frequently returns zero results; broaden either before concluding no data exists."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "artificial intelligence",
+                  "climate change",
+                  "site:bbc.com technology",
+                  "when:7d startup funding",
+                  "Tesla stock market",
+                  "COVID-19 vaccine news"
+                ],
+                "description": "Search query for news articles. Supports advanced operators like 'site:', 'when:', etc. Cannot be used with topic_token, publication_token, or story_token."
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0,
+                  10,
+                  20,
+                  30
+                ],
+                "description": "Result offset for pagination. Each page typically contains 10 results. Use multiples of 10 (0, 10, 20, 30, ...) to navigate pages. Stop paginating when a page returns no new results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_GROQ_CHAT": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_GROQ_CHAT",
+          "description": "Execute fast LLM inference using Groq's optimized hardware and API. Groq provides ultra-fast inference for open-source models including LLaMA 3, Mixtral, and Gemma via OpenAI-compatible chat completions API. Use cases: real-time chat, content generation, Q&A, code generation, summarization, translation. For structured JSON output, instruct the model explicitly to return valid JSON with no markdown code fences or prose; validate with json.loads \u2014 batches of 150+ items are prone to malformed JSON. Strip triple-backtick wrappers from code/JSON outputs before parsing. Always validate that the response contains at least one choice with non-empty message.content before downstream use. On HTTP 429 or 5xx errors, use exponential backoff with a small retry cap; limit concurrency to ~3 concurrent calls. Model-reported character/word counts are approximate \u2014 verify independently when strict limits matter.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "messages"
+            ],
+            "properties": {
+              "model": {
+                "enum": [
+                  "llama-3.3-70b-versatile",
+                  "llama-3.1-8b-instant",
+                  "llama-3.2-1b-preview",
+                  "llama-3.2-3b-preview",
+                  "llama-3.2-11b-text-preview",
+                  "llama-3.2-90b-text-preview",
+                  "mixtral-8x7b-32768",
+                  "gemma2-9b-it",
+                  "gemma-7b-it",
+                  "openai/gpt-oss-120b",
+                  "groq/compound"
+                ],
+                "type": "string",
+                "default": "llama-3.3-70b-versatile",
+                "examples": [
+                  "llama-3.3-70b-versatile",
+                  "llama-3.1-8b-instant",
+                  "mixtral-8x7b-32768"
+                ],
+                "description": "The Groq model to use for inference. Different models offer different capabilities, speeds, and context windows."
+              },
+              "top_p": {
+                "type": "number",
+                "default": 1,
+                "examples": [
+                  0.9,
+                  1
+                ],
+                "description": "Nucleus sampling parameter. Controls diversity by considering only the top P probability mass. Range: 0.0 to 1.0."
+              },
+              "stream": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  false,
+                  true
+                ],
+                "description": "Whether to stream the response back incrementally or return it all at once."
+              },
+              "messages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "role",
+                    "content"
+                  ],
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "examples": [
+                        "user",
+                        "system",
+                        "assistant"
+                      ],
+                      "description": "The role of the message sender (system, user, or assistant)"
+                    },
+                    "content": {
+                      "type": "string",
+                      "examples": [
+                        "What is the capital of France?"
+                      ],
+                      "description": "The content of the message"
+                    }
+                  }
+                },
+                "examples": [
+                  [
+                    {
+                      "role": "system",
+                      "content": "You are a helpful assistant."
+                    },
+                    {
+                      "role": "user",
+                      "content": "Explain quantum computing in simple terms"
+                    }
+                  ]
+                ],
+                "description": "An array of message objects that form the conversation history. Each message must have a role (system, user, or assistant) and content. Place persona and system instructions in a role:'system' message; keep system messages concise to avoid crowding out user content. Pre-summarize lengthy inputs into short bullets to stay within the model's context window and avoid silent truncation."
+              },
+              "max_tokens": {
+                "type": "integer",
+                "examples": [
+                  100,
+                  500,
+                  2000
+                ],
+                "description": "The maximum number of tokens to generate in the response. If not specified, the model will generate up to its natural stopping point. For large outputs, set this high enough and check finish_reason in the response; if finish_reason is 'length', the output was truncated \u2014 generate large content in section-level chunks and stitch results."
+              },
+              "temperature": {
+                "type": "number",
+                "default": 1,
+                "examples": [
+                  0.7,
+                  1,
+                  1.5
+                ],
+                "description": "Controls randomness in the output. Lower values (e.g., 0.2) make output more focused and deterministic, while higher values (e.g., 1.5) make it more creative and random. Range: 0.0 to 2.0. For structured, analytic, or predictive tasks use 0.5\u20130.8; high values produce inconsistent patterns."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TEXT_TO_PDF_CONVERT_TEXT_TO_PDF": {
+          "toolkit": "TEXT_TO_PDF",
+          "tool_slug": "TEXT_TO_PDF_CONVERT_TEXT_TO_PDF",
+          "description": "Convert plain text or Markdown content into a downloadable PDF document. Supports Unicode characters, special symbols, and Markdown formatting including headers, lists, code blocks, links, and emphasis. Images require publicly accessible URLs to render. The response includes the generated PDF file, filename, and MIME type.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "file_type",
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "The text content to convert to PDF. For 'txt' format, text is rendered as-is. For 'markdown' format, Markdown syntax will be parsed and styled. Must contain the complete, final content inline \u2014 document IDs, URLs, or external references are not accepted. Empty or placeholder text produces a nearly blank PDF. Malformed Markdown (unclosed lists, improperly nested headings, mixed HTML) degrades PDF structure; normalize before conversion."
+              },
+              "file_type": {
+                "enum": [
+                  "txt",
+                  "markdown"
+                ],
+                "type": "string",
+                "description": "The format of the input text. Use 'txt' for plain text (preserves whitespace and formatting) or 'markdown' for Markdown-formatted text (supports headers, lists, bold, links, etc.) Only `'txt'` and `'markdown'` are accepted; any other value causes failure. Mismatching format to content (e.g., passing Markdown as `'txt'`) degrades headings, lists, and tables in output."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_FETCH_URL_CONTENT": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+          "description": "Fetch and extract clean, readable page text (markdown) from public web pages (HTML content) using the Exa API. Use when you need to retrieve actual content from search results or documentation links to extract setup steps, requirements, or citations. Only works with web page URLs - does not support direct links to images, PDFs, or other binary files.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "urls"
+            ],
+            "properties": {
+              "text": {
+                "type": "boolean",
+                "default": true,
+                "description": "Include extracted markdown text content from the page. Defaults to true."
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "https://example.com/article",
+                    "https://docs.python.org/"
+                  ]
+                ],
+                "description": "List of public URLs to web pages (HTML content) to fetch content from. URLs must be valid and publicly accessible. Do not use direct links to images (.jpg, .png, .gif), PDFs, or other binary files - use web page URLs only. Also accepts a single URL string."
+              },
+              "extras": {
+                "type": "object",
+                "description": "Additional content options like imageLinks or links counts (e.g., {'imageLinks': 3, 'links': 5}).",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "summary": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Include AI-generated summary of the page content. Can be boolean or object with query/schema options."
+              },
+              "max_characters": {
+                "type": "integer",
+                "description": "Maximum number of characters to extract from each page. Maps to text.maxCharacters in Exa API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_TRENDS": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_TRENDS",
+          "description": "Discover trending topics, search patterns, and popularity data. Analyzes search interest over time, ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "COMPOSIO_SEARCH_TRENDS"
+              ]
+            }
+          }
+        },
+        "COMPOSIO_SEARCH_SCHOLAR": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_SCHOLAR",
+          "description": "Scholar API scrapes Google Scholar search results via SERP API, returning academic papers and schola...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "COMPOSIO_SEARCH_SCHOLAR"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:35:43.160Z",
+        "current_time_utc_epoch_seconds": 1786599343,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "thin",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"thin\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) Connections active, proceed to next step",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_ub-ok0zRKsOD"
+  }
+}

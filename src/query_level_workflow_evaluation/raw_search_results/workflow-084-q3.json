@@ -1,0 +1,476 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-084-q3",
+    "workflow_id": 84,
+    "workflow_task": "Use GitHub to inspect accessible repositories and branches, fetch repository files, update multiple repository files, create a public static preview repository, enable GitHub Pages, and commit generated content/configuration files.",
+    "query": "create public repository and enable GitHub Pages",
+    "intent": "Create a new public static preview repository and enable GitHub Pages on it.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_CREATE_AN_ORGANIZATION_REPOSITORY"
+        ],
+        "purpose": "create a public repository"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_CREATE_OR_UPDATE_GITHUB_PAGES_SITE",
+          "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+          "GITHUB_COMMIT_MULTIPLE_FILES"
+        ],
+        "purpose": "enable GitHub Pages and commit content/configuration files"
+      }
+    ],
+    "candidate_tools": [
+      "GITHUB_COMMIT_MULTIPLE_FILES",
+      "GITHUB_CREATE_AN_ORGANIZATION_REPOSITORY",
+      "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+      "GITHUB_CREATE_OR_UPDATE_GITHUB_PAGES_SITE",
+      "GITHUB_GET_A_BRANCH",
+      "GITHUB_GET_A_TREE",
+      "GITHUB_GET_RAW_REPOSITORY_CONTENT",
+      "GITHUB_LIST_BRANCHES",
+      "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+      "GITHUB_SEARCH_CODE"
+    ]
+  },
+  "request": {
+    "query": "create public repository and enable GitHub Pages"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create public repository and enable GitHub Pages",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if target repository is unknown or avoiding overwrite)] [Prerequisite]: Discover/confirm the repository using GITHUB_GET_A_REPOSITORY (or scan via GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER; treat not-found as create-needed).",
+            "[Required (public impact)] [Step]: Get confirmation, then create the repository using GITHUB_CREATE_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER (set visibility/settings appropriate for publishing).",
+            "[Required] [Step]: Add site entry content and assets using GITHUB_COMMIT_MULTIPLE_FILES (commit to the intended publishing branch; create the branch on first commit if needed).",
+            "[Fallback (if bulk commit is unsuitable or a small update fails)] [Fallback]: Create/update a single file using GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS (provide latest sha when updating).",
+            "[Optional (if validating publish source before enabling)] [Prerequisite]: Confirm the publishing branch/path contains the entry file using GITHUB_GET_A_TREE.",
+            "[Required] [Next Step]: Enable/configure static hosting using GITHUB_CREATE_OR_UPDATE_GITHUB_PAGES_SITE (set source_branch and a valid source_path).",
+            "[Optional (if a build identifier is available and readiness is required)] [Next Step]: Check the build status using GITHUB_GET_GITHUB_PAGES_BUILD."
+          ],
+          "known_pitfalls": [
+            "[GITHUB_GET_A_REPOSITORY] 404 Not Found can mean the repository does not exist or is not accessible; confirm before treating as fatal.",
+            "[GITHUB_CREATE_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER] HTTP 422 can occur if the repository name already exists for the account; recover by fetching and continuing with commits/config.",
+            "[GITHUB_CREATE_OR_UPDATE_GITHUB_PAGES_SITE] source_path must be exactly \"/\" or \"/docs\"; other values may return \"Invalid request data provided\".",
+            "[GITHUB_CREATE_OR_UPDATE_GITHUB_PAGES_SITE] The response may include an html_url while status is null right after enablement; HTTPS enforcement may 404 until a certificate exists\u2014retry later or omit enforcement initially.",
+            "[GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS] 409 conflict occurs when updating with a stale sha; refetch the latest sha before retrying."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GITHUB_CREATE_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER",
+            "GITHUB_CREATE_OR_UPDATE_GITHUB_PAGES_SITE"
+          ],
+          "related_tool_slugs": [
+            "GITHUB_GET_A_REPOSITORY",
+            "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+            "GITHUB_GET_A_TREE",
+            "GITHUB_COMMIT_MULTIPLE_FILES",
+            "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+            "GITHUB_GET_GITHUB_PAGES_BUILD"
+          ],
+          "toolkits": [
+            "github"
+          ],
+          "plan_id": "21e32b875bcb45fa8864ab6447d9928e"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "github",
+          "has_active_connection": false,
+          "description": "GitHub is a code hosting platform for version control and collaboration, offering Git-based repository management, issue tracking, and continuous integration features",
+          "status_message": "No Active connection for toolkit=github. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"github\") to create a connection BEFORE executing any github tools."
+        }
+      ],
+      "tool_schemas": {
+        "GITHUB_CREATE_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_CREATE_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER",
+          "description": "Creates a new repository for the authenticated user, optionally within an organization if `team_id` is specified.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "my-new-repo",
+                  "hello-world"
+                ],
+                "description": "The name of the repository. Must be unique within your account. Will be used in the repository URL (github.com/username/repo-name). Can only contain alphanumeric characters, hyphens, underscores, and periods."
+              },
+              "private": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether the repository is private (true) or public (false)."
+              },
+              "team_id": {
+                "type": "integer",
+                "examples": [
+                  12345
+                ],
+                "description": "The ID of the team to be granted access. Only valid if creating in an organization."
+              },
+              "has_wiki": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether the wiki is enabled."
+              },
+              "homepage": {
+                "type": "string",
+                "examples": [
+                  "https://example.com/my-new-repo"
+                ],
+                "description": "A URL with more information about the repository."
+              },
+              "auto_init": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to initialize the repository with a README."
+              },
+              "has_issues": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether issues are enabled."
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "This is a project about X.",
+                  "My personal blog."
+                ],
+                "description": "A short description of the repository."
+              },
+              "is_template": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether this repository is a template repository."
+              },
+              "has_projects": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether projects are enabled."
+              },
+              "has_downloads": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether downloads are enabled (deprecated by GitHub and may not be configurable)."
+              },
+              "has_discussions": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether discussions are enabled."
+              },
+              "allow_auto_merge": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to allow auto-merge on pull requests."
+              },
+              "license_template": {
+                "type": "string",
+                "examples": [
+                  "mit",
+                  "apache-2.0",
+                  "gpl-3.0"
+                ],
+                "description": "SPDX license key identifier (lowercase). Examples: 'mit', 'apache-2.0', 'gpl-3.0'. Must be one of the GitHub-supported licenses."
+              },
+              "allow_merge_commit": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to allow merging pull requests with a merge commit."
+              },
+              "allow_rebase_merge": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to allow rebase-merging pull requests."
+              },
+              "allow_squash_merge": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to allow squash-merging pull requests."
+              },
+              "gitignore_template": {
+                "type": "string",
+                "examples": [
+                  "Python",
+                  "Node",
+                  "Ruby"
+                ],
+                "description": "Desired .gitignore template (e.g., 'Python', 'Node')."
+              },
+              "merge_commit_title": {
+                "enum": [
+                  "PR_TITLE",
+                  "MERGE_MESSAGE"
+                ],
+                "type": "string",
+                "examples": [
+                  "PR_TITLE",
+                  "MERGE_MESSAGE"
+                ],
+                "description": "The default title for a merge commit. `PR_TITLE` uses the pull request's title. `MERGE_MESSAGE` uses a classic title like 'Merge pull request #123 from branch-name'. Required when `merge_commit_message` is set. Valid combinations: (PR_TITLE, PR_BODY), (PR_TITLE, BLANK), (MERGE_MESSAGE, PR_TITLE)."
+              },
+              "merge_commit_message": {
+                "enum": [
+                  "PR_BODY",
+                  "PR_TITLE",
+                  "BLANK"
+                ],
+                "type": "string",
+                "examples": [
+                  "PR_BODY",
+                  "PR_TITLE",
+                  "BLANK"
+                ],
+                "description": "The default message for a merge commit. `PR_BODY` uses the pull request's body. `PR_TITLE` uses the pull request's title. `BLANK` results in a blank commit message. Valid combinations with merge_commit_title: (PR_TITLE, PR_BODY), (PR_TITLE, BLANK), (MERGE_MESSAGE, PR_TITLE)."
+              },
+              "delete_branch_on_merge": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to automatically delete head branches when pull requests are merged."
+              },
+              "squash_merge_commit_title": {
+                "enum": [
+                  "PR_TITLE",
+                  "COMMIT_OR_PR_TITLE"
+                ],
+                "type": "string",
+                "examples": [
+                  "PR_TITLE",
+                  "COMMIT_OR_PR_TITLE"
+                ],
+                "description": "The default title for a squash merge commit. `PR_TITLE` uses the pull request's title. `COMMIT_OR_PR_TITLE` uses the commit's title (if only one commit) or the pull request's title (if multiple commits)."
+              },
+              "squash_merge_commit_message": {
+                "enum": [
+                  "PR_BODY",
+                  "COMMIT_MESSAGES",
+                  "BLANK"
+                ],
+                "type": "string",
+                "examples": [
+                  "PR_BODY",
+                  "COMMIT_MESSAGES",
+                  "BLANK"
+                ],
+                "description": "The default message for a squash merge commit. `PR_BODY` uses the pull request's body. `COMMIT_MESSAGES` uses the branch's commit messages. `BLANK` results in a blank commit message."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_CREATE_OR_UPDATE_GITHUB_PAGES_SITE": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_CREATE_OR_UPDATE_GITHUB_PAGES_SITE",
+          "description": "Tool to enable or update GitHub Pages configuration for a repository. Use when setting up GitHub Pages for static site deployment or modifying Pages settings like custom domains and HTTPS enforcement.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Hello-World",
+                  "docs-site"
+                ],
+                "description": "The name of the repository without the .git extension. Not case-sensitive."
+              },
+              "cname": {
+                "type": "string",
+                "examples": [
+                  "www.example.com",
+                  "docs.example.com"
+                ],
+                "description": "Custom domain for the Pages site (e.g., 'example.com'). Set to null to remove custom domain. Only used during updates."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "github"
+                ],
+                "description": "The account owner of the repository (username or organization). Not case-sensitive."
+              },
+              "build_type": {
+                "enum": [
+                  "legacy",
+                  "workflow"
+                ],
+                "type": "string",
+                "default": "legacy",
+                "examples": [
+                  "legacy",
+                  "workflow"
+                ],
+                "description": "Build process type: 'legacy' for traditional GitHub Pages build from a branch, 'workflow' for GitHub Actions. When 'workflow', source_branch and source_path are ignored."
+              },
+              "source_path": {
+                "enum": [
+                  "/",
+                  "/docs"
+                ],
+                "type": "string",
+                "default": "/",
+                "examples": [
+                  "/",
+                  "/docs"
+                ],
+                "description": "The directory path within source_branch containing the site files: '/' for root or '/docs' for docs folder. Ignored if build_type is 'workflow'."
+              },
+              "source_branch": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "gh-pages",
+                  "master"
+                ],
+                "description": "The repository branch to use for GitHub Pages source (e.g., 'main', 'gh-pages'). Required if build_type is 'legacy'. Ignored if build_type is 'workflow'."
+              },
+              "https_enforced": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Whether to enforce HTTPS for the Pages site. Only used during updates."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_REPOSITORY": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_REPOSITORY",
+          "description": "Retrieves detailed information about an existing and accessible GitHub repository.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Hello-World",
+                  "kubernetes"
+                ],
+                "minLength": 1,
+                "description": "The name of the repository, without the `.git` extension. This field is case-insensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "kubernetes"
+                ],
+                "minLength": 1,
+                "description": "The username of the account that owns the repository. This field is case-insensitive."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+          "description": "Lists repositories for the authenticated user; using 'type' with 'visibility' or 'affiliation' API p...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER"
+              ]
+            }
+          }
+        },
+        "GITHUB_GET_A_TREE": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_TREE",
+          "description": "Browse and list all files/directories in a GitHub repository. Efficiently retrieves the complete rep...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_A_TREE"
+              ]
+            }
+          }
+        },
+        "GITHUB_COMMIT_MULTIPLE_FILES": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_COMMIT_MULTIPLE_FILES",
+          "description": "Tool to atomically create, update, or delete multiple files in a GitHub repository as a single commi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_COMMIT_MULTIPLE_FILES"
+              ]
+            }
+          }
+        },
+        "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+          "description": "Creates a new file or updates an existing file in a GitHub repository; SHA can be provided to valida...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS"
+              ]
+            }
+          }
+        },
+        "GITHUB_GET_GITHUB_PAGES_BUILD": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_GITHUB_PAGES_BUILD",
+          "description": "Retrieves detailed information about a specific GitHub Pages build for a repository, which must have...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_GITHUB_PAGES_BUILD"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:38:43.888Z",
+        "current_time_utc_epoch_seconds": 1786599523,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "gone",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"gone\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_-k79tOBCN_KC"
+  }
+}

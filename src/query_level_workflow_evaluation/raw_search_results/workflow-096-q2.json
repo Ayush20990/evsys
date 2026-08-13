@@ -1,0 +1,443 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-096-q2",
+    "workflow_id": 96,
+    "workflow_task": "Implement several sequential feature-track boundaries in a GitHub repository, commit each boundary separately, run smoke tests after each commit, then verify the final branch head and check-run status.",
+    "query": "verify git branch head and check run status",
+    "intent": "Verify the final branch head status and check the status of completed check-runs.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_GET_A_COMMIT"
+        ],
+        "purpose": "verify git branch head"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_LIST_CHECK_RUNS_FOR_A_REF"
+        ],
+        "purpose": "check run status"
+      }
+    ],
+    "candidate_tools": [
+      "GITHUB_COMMIT_MULTIPLE_FILES",
+      "GITHUB_GET_A_COMMIT",
+      "GITHUB_GET_A_TREE",
+      "GITHUB_GET_RAW_REPOSITORY_CONTENT",
+      "GITHUB_LIST_CHECK_RUNS_FOR_A_REF"
+    ]
+  },
+  "request": {
+    "query": "verify git branch head and check run status"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "verify git branch head and check run status",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if the ref might be invalid/ambiguous)] [Prerequisite]: Resolve/validate the target revision using GITHUB_GET_A_COMMIT (avoid querying checks for a missing or foreign ref).",
+            "[Required] [Step]: Enumerate check runs for the revision using GITHUB_LIST_CHECK_RUNS_FOR_A_REF (read response.data.total_count and response.data.check_runs; capture id, name, status, conclusion, and web URL fields; if any status is not \"completed\", re-call until stable; if total_count=0 with no error, treat as \u201cno reported check runs\u201d).",
+            "[Optional (if a run is failing/in_progress or you need full output)] [Next Step]: Fetch the selected run using GITHUB_GET_CHECK_RUN (inspect output title/summary/text and linked metadata).",
+            "[Optional (if annotations_count > 0 and you need file/line context)] [Next Step]: Retrieve annotations using GITHUB_LIST_CHECK_RUN_ANNOTATIONS (review path/line/message when available).",
+            "[Optional (if check run details/annotations are insufficient for troubleshooting)] [Fallback]: Trace related CI execution via GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY \u2192 GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN \u2192 GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN (map errors back to failing job/step)."
+          ],
+          "known_pitfalls": [
+            "[GITHUB_LIST_CHECK_RUNS_FOR_A_REF] HTTP 422 when the ref/SHA is not present in the repository context; payloads can be very large and may be truncated\u2014extract only key fields.",
+            "[GITHUB_GET_A_COMMIT] HTTP 422 when the commit SHA is invalid for the repository.",
+            "[GITHUB_LIST_CHECK_RUNS_FOR_A_REF] response.data.check_runs may be empty (total_count can be 0) even for a valid ref; interpret as \u201cno reported checks\u201d unless an error is returned.",
+            "[GITHUB_LIST_CHECK_RUNS_FOR_A_REF] In-progress runs may have conclusion null/None; rely on status to distinguish running vs completed.",
+            "[GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN] Requires job_id (not check_run_id); downloaded logs may include escaped newlines (\"\\\\n\") requiring splitting before scanning error lines."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract key fields from a GITHUB_LIST_CHECK_RUNS_FOR_A_REF response object",
+              "code": "```python\ndata=resp[\"data\"];runs=data.get(\"check_runs\",[])\nsummary=[(r.get(\"name\"),r.get(\"status\"),r.get(\"conclusion\"),r.get(\"html_url\"),r.get(\"id\")) for r in runs]\nlen(summary),summary[:5]\n```"
+            },
+            {
+              "description": "Parse downloaded job log payloads that may contain escaped newlines (\"\\\\n\") and extract nearby failure lines",
+              "code": "```python\nlog_text=str(job_logs)\nlines=log_text.split('\\\\n')\nkeys=['##[error]','exit code','failed','error']\nout=[]\nfor i,l in enumerate(lines):\n    if any(k in l.lower() for k in keys):\n        out=lines[max(0,i-3):i+10];break\n'\\n'.join(out[:80])\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GITHUB_LIST_CHECK_RUNS_FOR_A_REF"
+          ],
+          "related_tool_slugs": [
+            "GITHUB_GET_A_COMMIT",
+            "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY",
+            "GITHUB_GET_CHECK_RUN",
+            "GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN",
+            "GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN",
+            "GITHUB_LIST_CHECK_RUN_ANNOTATIONS"
+          ],
+          "toolkits": [
+            "github"
+          ],
+          "plan_id": "61c5309252a84578be74016aa9bc0b92"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "github",
+          "has_active_connection": false,
+          "description": "GitHub is a code hosting platform for version control and collaboration, offering Git-based repository management, issue tracking, and continuous integration features",
+          "status_message": "No Active connection for toolkit=github. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"github\") to create a connection BEFORE executing any github tools."
+        }
+      ],
+      "tool_schemas": {
+        "GITHUB_LIST_CHECK_RUNS_FOR_A_REF": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_CHECK_RUNS_FOR_A_REF",
+          "description": "List GitHub check runs for a commit SHA, branch, or tag to assess CI status and conclusions. Use when you need reliable CI pass/fail signals beyond commit metadata.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "ref"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "develop",
+                  "v1.0.0",
+                  "d6fde92930d4715a2b49857d24b940956b26d2d3"
+                ],
+                "description": "The git reference - can be a commit SHA, branch name, or tag name."
+              },
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Page number of results to fetch."
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "hello-world",
+                  "vscode"
+                ],
+                "description": "The name of the repository without .git extension. Case-insensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "microsoft"
+                ],
+                "description": "The account owner of the repository (username or organization name). Case-insensitive."
+              },
+              "app_id": {
+                "type": "integer",
+                "examples": [
+                  12345
+                ],
+                "description": "Filter by GitHub App identifier."
+              },
+              "filter": {
+                "type": "string",
+                "default": "latest",
+                "examples": [
+                  "latest",
+                  "all"
+                ],
+                "description": "Filter by completion timestamp: 'latest' returns the most recent check runs, 'all' returns all check runs."
+              },
+              "status": {
+                "type": "string",
+                "examples": [
+                  "queued",
+                  "in_progress",
+                  "completed"
+                ],
+                "description": "Filter by check run status: queued, in_progress, or completed."
+              },
+              "per_page": {
+                "type": "integer",
+                "default": 30,
+                "examples": [
+                  10,
+                  30,
+                  100
+                ],
+                "description": "Number of results per page, maximum 100."
+              },
+              "check_name": {
+                "type": "string",
+                "examples": [
+                  "build",
+                  "test",
+                  "lint"
+                ],
+                "description": "Filters results to check runs with the specified name."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_COMMIT": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_COMMIT",
+          "description": "Retrieves a specific commit from a repository by its owner, name, and a valid commit reference (SHA, branch, or tag), supporting pagination for large diffs.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "ref"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "heads/develop",
+                  "tags/v1.0.0",
+                  "007a47250555ae82606ac2cb00f8f731976059a5"
+                ],
+                "description": "The commit reference. Can be a commit SHA (e.g., '`sha`'), a branch name (e.g., 'heads/`BRANCH_NAME`' or simply '`BRANCH_NAME`'), or a tag name (e.g., 'tags/`TAG_NAME`'). For more information, see \"[Git References](https://git-scm.com/book/en/v2/Git-Internals-Git-References)\" in the Git documentation."
+              },
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "description": "Page number for paginating the commit's diff if it's too large. For more information, see \"[Using pagination in the REST API](https://docs.github.com/rest/using-the-rest-api/using-pagination-in-the-rest-api).\""
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Spoon-Knife",
+                  "linguist"
+                ],
+                "description": "The name of the repository, without the `.git` extension. This field is not case-sensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "github"
+                ],
+                "description": "The username or organization name that owns the repository. This field is not case-sensitive."
+              },
+              "per_page": {
+                "type": "integer",
+                "default": 30,
+                "description": "Number of results per page when paginating the commit's diff (max 100). For more information, see \"[Using pagination in the REST API](https://docs.github.com/rest/using-the-rest-api/using-pagination-in-the-rest-api).\""
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY",
+          "description": "Lists workflow runs for a repository, allowing filtering by actor, branch, event, status, creation date, check suite ID, or head SHA; the repository must exist and be accessible.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "examples": [
+                  "1",
+                  "2"
+                ],
+                "description": "Page number of the results to fetch."
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Spoon-Knife"
+                ],
+                "description": "The name of the repository, without the `.git` extension (not case-sensitive)."
+              },
+              "actor": {
+                "type": "string",
+                "examples": [
+                  "octocat"
+                ],
+                "description": "Filter by the actor's login (e.g., the user who triggered the `push`)."
+              },
+              "event": {
+                "type": "string",
+                "examples": [
+                  "push",
+                  "pull_request",
+                  "issue"
+                ],
+                "description": "Filter by the event that triggered the workflow (e.g., `push`, `pull_request`)."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat"
+                ],
+                "description": "The account owner of the repository (not case-sensitive)."
+              },
+              "branch": {
+                "type": "string",
+                "examples": [
+                  "main",
+                  "develop"
+                ],
+                "description": "Filter by branch name (e.g., `main` or the branch that triggered the `push`)."
+              },
+              "status": {
+                "enum": [
+                  "completed",
+                  "action_required",
+                  "cancelled",
+                  "failure",
+                  "neutral",
+                  "skipped",
+                  "stale",
+                  "success",
+                  "timed_out",
+                  "in_progress",
+                  "queued",
+                  "requested",
+                  "waiting",
+                  "pending"
+                ],
+                "type": "string",
+                "examples": [
+                  "completed",
+                  "in_progress",
+                  "queued"
+                ],
+                "description": "Filter by `status` or `conclusion` (e.g., `success`, `in_progress`). Note: Only GitHub Actions can set `waiting`, `pending`, or `requested`."
+              },
+              "created": {
+                "type": "string",
+                "examples": [
+                  "2023-01-15",
+                  ">=2023-01-01T10:00:00Z",
+                  "2023-01-01..2023-01-31"
+                ],
+                "description": "Filter by creation date or date-time range (ISO8601 format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ). Supports operators like `>`, `<`, `>=`, `<=`, and `..` for ranges."
+              },
+              "head_sha": {
+                "type": "string",
+                "examples": [
+                  "abcdef1234567890deadbeefabcdef1234567890"
+                ],
+                "description": "Filter to include only runs associated with the specified `head_sha` (commit SHA at the head of the branch)."
+              },
+              "per_page": {
+                "type": "integer",
+                "default": 30,
+                "examples": [
+                  "30",
+                  "50",
+                  "100"
+                ],
+                "description": "Number of results per page (maximum 100)."
+              },
+              "check_suite_id": {
+                "type": "integer",
+                "examples": [
+                  "123456789"
+                ],
+                "description": "Filter by a specific `check_suite_id`."
+              },
+              "exclude_pull_requests": {
+                "type": "boolean",
+                "examples": [
+                  "true"
+                ],
+                "description": "Set to `true` to exclude workflow runs triggered by pull request events. Omit or leave as null to include all runs."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_CHECK_RUN": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_CHECK_RUN",
+          "description": "Retrieves detailed information for a specific check run within a GitHub repository.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_CHECK_RUN"
+              ]
+            }
+          }
+        },
+        "GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN",
+          "description": "Lists jobs for a specific workflow run in a GitHub repository.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN"
+              ]
+            }
+          }
+        },
+        "GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN",
+          "description": "Downloads logs for a specific job in a GitHub Actions workflow run, contingent on the repository's e...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN"
+              ]
+            }
+          }
+        },
+        "GITHUB_LIST_CHECK_RUN_ANNOTATIONS": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_CHECK_RUN_ANNOTATIONS",
+          "description": "Lists annotations for a specific check run in a GitHub repository, detailing issues like errors or w...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_LIST_CHECK_RUN_ANNOTATIONS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:39:39.524Z",
+        "current_time_utc_epoch_seconds": 1786599579,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "pond",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"pond\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_045NuSRW3TZI"
+  }
+}

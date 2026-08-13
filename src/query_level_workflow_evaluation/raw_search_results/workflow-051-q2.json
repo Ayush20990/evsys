@@ -1,0 +1,320 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-051-q2",
+    "workflow_id": 51,
+    "workflow_task": "Fetch and annotate support-thread evidence, retrieve attachment download links, and later verify an Instagram DM tool fix using Instagram reads/sends plus Metabase, Datadog, and spreadsheet evidence.",
+    "query": "verify Instagram DM tool fix using reads and sends",
+    "intent": "Test and confirm the Instagram direct message functionality using read and send operations.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "INSTAGRAM_GET_CONVERSATION",
+          "INSTAGRAM_GET_PAGE_CONVERSATIONS",
+          "INSTAGRAM_LIST_ALL_CONVERSATIONS"
+        ],
+        "purpose": "Read Instagram conversations"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "INSTAGRAM_LIST_ALL_MESSAGES"
+        ],
+        "purpose": "Read Instagram messages"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "INSTAGRAM_SEND_TEXT_MESSAGE"
+        ],
+        "purpose": "Send Instagram text messages"
+      }
+    ],
+    "candidate_tools": [
+      "DATADOG_LIST_LOG_INDEXES",
+      "DATADOG_SEARCH_LOGS",
+      "GOOGLESHEETS_BATCH_GET",
+      "INSTAGRAM_GET_CONVERSATION",
+      "INSTAGRAM_GET_PAGE_CONVERSATIONS",
+      "INSTAGRAM_LIST_ALL_CONVERSATIONS",
+      "INSTAGRAM_LIST_ALL_MESSAGES",
+      "INSTAGRAM_SEND_TEXT_MESSAGE",
+      "METABASE_POST_API_DATASET",
+      "PLAIN_RUN_GRAPHQL_QUERY"
+    ]
+  },
+  "request": {
+    "query": "verify Instagram DM tool fix using reads and sends"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "verify Instagram DM tool fix using reads and sends",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: List DM threads using INSTAGRAM_LIST_ALL_CONVERSATIONS (choose a conversation_id; if collecting more, paginate only with response.data.paging.cursors.after from this same response).",
+            "[Required] [Step]: Fetch recent items for the chosen thread using INSTAGRAM_LIST_ALL_MESSAGES (parse response.data.data; tolerate empty message text for attachment-only items; identify the latest inbound sender to derive recipient_id).",
+            "[Fallback (if thread listing is empty/restricted or a conversation_id is unusable)] [Fallback]: Enumerate threads using INSTAGRAM_GET_PAGE_CONVERSATIONS, pick another conversation_id, then retry INSTAGRAM_LIST_ALL_MESSAGES.",
+            "[Optional (if participant/recipient mapping is ambiguous)] [Prerequisite]: Confirm the non-self participant using INSTAGRAM_GET_CONVERSATION (use participants.data to validate recipient_id before replying).",
+            "[Optional (if repeated send failures or eligibility is unclear)] [Prerequisite]: Check messaging configuration using INSTAGRAM_GET_MESSENGER_PROFILE (ensure required ig_user_id is supplied).",
+            "[Required] [Prerequisite]: Get explicit approval of the exact outbound text (or image intent) and the final recipient_id; dedupe by conversation_id/recipient_id to avoid double-sends.",
+            "[Required] [Step]: Send exactly one reply using INSTAGRAM_SEND_TEXT_MESSAGE (or INSTAGRAM_SEND_IMAGE only if explicitly approved); stop on closed-window/ownership errors.",
+            "[Optional (for verification)] [Next Step]: Re-run INSTAGRAM_LIST_ALL_MESSAGES to confirm the outbound message appears in the thread.",
+            "[Optional (only with approval to change read state)] [Next Step]: Mark the thread as seen using INSTAGRAM_MARK_SEEN."
+          ],
+          "known_pitfalls": [
+            "[INSTAGRAM_LIST_ALL_CONVERSATIONS] Conversation list is nested under response.data.data; auth failures may surface as 403 IGApiException code=10 or OAuthException code=1.",
+            "[INSTAGRAM_LIST_ALL_CONVERSATIONS] Reusing response.data.paging.cursors.after from a different endpoint/response chain can trigger 500 OAuthException code=1.",
+            "[INSTAGRAM_LIST_ALL_MESSAGES] Some conversation_id values fail with HTTP 400 code=100 subcode=33 (unsupported/unavailable); switch to another thread ID.",
+            "[INSTAGRAM_LIST_ALL_MESSAGES] response.data.paging.next may be a long tokenized link; avoid logging/storing it and persist only paging.cursors.after.",
+            "[INSTAGRAM_SEND_TEXT_MESSAGE] Wrong recipient_id can fail with 400 code=100 subcode=2534014; 403 subcode=2534022 (messaging window) and 400 subcode=2534037 (not thread owner) are non-retryable in the same run."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract recipient_id from the latest inbound sender",
+              "code": "```python\ndef latest_inbound_sender(conversation_id,self_id):\n  res,_=run_composio_tool(\"INSTAGRAM_LIST_ALL_MESSAGES\",{\"conversation_id\":conversation_id,\"limit\":20})\n  msgs=((res or {}).get(\"data\") or {}).get(\"data\") or []\n  msgs=sorted(msgs,key=lambda m:(m.get(\"created_time\") or \"\"),reverse=True)\n  m=next((x for x in msgs if ((x.get(\"from\") or {}).get(\"id\")) and ((x.get(\"from\") or {}).get(\"id\")!=self_id)),None)\n  return ((m or {}).get(\"from\") or {}).get(\"id\")\n```"
+            },
+            {
+              "description": "Detect whether latest inbound is newer than latest outbound",
+              "code": "```python\ndef is_unreplied(messages,self_id):\n  li=lo=None\n  for m in sorted(messages,key=lambda x:x.get(\"created_time\") or \"\",reverse=True):\n    fid=(m.get(\"from\") or {}).get(\"id\")\n    if fid==self_id and lo is None: lo=m\n    if fid and fid!=self_id and li is None: li=m\n  return bool(li and (not lo or (li.get(\"created_time\") or \"\")>(lo.get(\"created_time\") or \"\")))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "INSTAGRAM_LIST_ALL_CONVERSATIONS",
+            "INSTAGRAM_LIST_ALL_MESSAGES",
+            "INSTAGRAM_SEND_TEXT_MESSAGE"
+          ],
+          "related_tool_slugs": [
+            "INSTAGRAM_GET_CONVERSATION",
+            "INSTAGRAM_GET_PAGE_CONVERSATIONS",
+            "INSTAGRAM_GET_MESSENGER_PROFILE",
+            "INSTAGRAM_MARK_SEEN",
+            "INSTAGRAM_SEND_IMAGE"
+          ],
+          "toolkits": [
+            "instagram"
+          ],
+          "plan_id": "266f226484fb43dcb421e602179355c2"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "instagram",
+          "has_active_connection": false,
+          "description": "Instagram is a social media platform for sharing photos, videos, and stories. Only supports Instagram Business and Creator accounts, not Instagram Personal accounts.",
+          "status_message": "No Active connection for toolkit=instagram. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"instagram\") to create a connection BEFORE executing any instagram tools."
+        }
+      ],
+      "tool_schemas": {
+        "INSTAGRAM_LIST_ALL_CONVERSATIONS": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_LIST_ALL_CONVERSATIONS",
+          "description": "List all Instagram DM conversations for the authenticated user. Requires a Business/Creator account with messaging permissions; personal accounts return empty results. Response conversations are nested under `data.data` \u2014 accessing top-level `data` as the final list returns zero items. An empty `data` list is a valid non-error outcome meaning no conversations exist in scope.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "description": "Cursor for pagination Obtain from `paging.cursors.after` in the response; absence of `paging.cursors.after` or `paging.next` signals end-of-results."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 200,
+                "minimum": 1,
+                "description": "Maximum number of conversations to return."
+              },
+              "user_id": {
+                "type": "string",
+                "description": "Optional Instagram-scoped user ID (IGSID) to find the conversation with a specific person."
+              },
+              "platform": {
+                "type": "string",
+                "const": "instagram",
+                "default": "instagram",
+                "description": "Platform to filter conversations. Required by the Instagram messaging API; set to 'instagram'."
+              },
+              "ig_user_id": {
+                "type": "string",
+                "description": "Instagram Business Account ID (optional for /me/conversations)"
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "The Facebook Graph API version to use for the request."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_LIST_ALL_MESSAGES": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_LIST_ALL_MESSAGES",
+          "description": "List all messages from a specific Instagram DM conversation. Requires a Business or Creator account with messaging permissions; personal accounts return empty results. Response data is nested under data.data (double-wrapped); attachment-only messages may have empty text fields.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "conversation_id"
+            ],
+            "properties": {
+              "after": {
+                "type": "string",
+                "description": "Cursor for paginationPass paging.cursors.after from the previous response to fetch the next page. Stop when paging.cursors.after or paging.next is absent."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 200,
+                "minimum": 1,
+                "description": "Maximum number of messages to return."
+              },
+              "conversation_id": {
+                "type": "string",
+                "description": "Unique identifier for the Instagram conversation. Obtain this by calling the INSTAGRAM_LIST_ALL_CONVERSATIONS action, which returns conversation IDs in the format 'aWdfZAG06...' (base64-encoded string)."
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "The Facebook Graph API version to use for the request."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_SEND_TEXT_MESSAGE": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_SEND_TEXT_MESSAGE",
+          "description": "Send a text message to an Instagram user via DM in an existing conversation. Cannot initiate new DM threads \u2014 a prior conversation must exist. Requires an Instagram Business or Creator account with messaging permissions. Fails with error_subcode 2534022 if outside the messaging window; do not retry these failures.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "recipient_id",
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "Message text to send"
+              },
+              "ig_user_id": {
+                "type": "string",
+                "description": "Instagram Business Account ID (optional when using /me/messages)"
+              },
+              "recipient_id": {
+                "type": "string",
+                "description": "Recipient PSID (Instagram-scoped ID) Must be a real PSID obtained from INSTAGRAM_LIST_ALL_CONVERSATIONS or INSTAGRAM_LIST_ALL_MESSAGES \u2014 usernames or fabricated IDs cause HTTP 400 (code 100)."
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "Instagram Graph API version"
+              },
+              "reply_to_message_id": {
+                "type": "string",
+                "description": "Message ID (mid) to reply to. This creates a visual reply link to the original message in the conversation. The mid can be obtained from webhook events or previous API responses."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_GET_CONVERSATION": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_CONVERSATION",
+          "description": "Get details about a specific Instagram DM conversation (participants, etc). Requires a Business or Creator account with Instagram messaging permissions; personal accounts will return permission errors. Newly sent/received messages may take a few seconds to appear in results.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "conversation_id"
+            ],
+            "properties": {
+              "conversation_id": {
+                "type": "string",
+                "description": "The unique identifier for the Instagram conversation thread.  The thread must already exist; first-contact DMs cannot be initiated via the API \u2014 a manual first message must be sent before a conversation_id is available.This is typically a base64-encoded string obtained from the list_conversations or list_all_conversations actions. Must not be empty or contain only whitespace."
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "The Graph API version to use (e.g., 'v21.0'). Defaults to 'v21.0'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_GET_PAGE_CONVERSATIONS": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_PAGE_CONVERSATIONS",
+          "description": "Get Instagram conversations for a Page connected to an Instagram Business account. Use platform=inst...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_GET_PAGE_CONVERSATIONS"
+              ]
+            }
+          }
+        },
+        "INSTAGRAM_GET_MESSENGER_PROFILE": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_MESSENGER_PROFILE",
+          "description": "Get the messenger profile settings for an Instagram account. Returns ice breakers and other messagin...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_GET_MESSENGER_PROFILE"
+              ]
+            }
+          }
+        },
+        "INSTAGRAM_MARK_SEEN": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_MARK_SEEN",
+          "description": "Mark Instagram DM messages as read/seen for a specific user. Sends a 'mark_seen' sender action to in...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_MARK_SEEN"
+              ]
+            }
+          }
+        },
+        "INSTAGRAM_SEND_IMAGE": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_SEND_IMAGE",
+          "description": "Send an image via Instagram DM to a specific user. Each send modifies inbox state; avoid bulk or aut...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_SEND_IMAGE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:34:53.510Z",
+        "current_time_utc_epoch_seconds": 1786599293,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "club",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"club\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_e7ow1haYXPwy"
+  }
+}

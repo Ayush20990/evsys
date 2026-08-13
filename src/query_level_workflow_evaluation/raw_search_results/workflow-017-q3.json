@@ -1,0 +1,476 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-017-q3",
+    "workflow_id": 17,
+    "workflow_task": "Create AI avatar promo videos using a HeyGen avatar and voice, prepare supporting media, attempt social publishing, send a support email for infrastructure issues, and read/update a booking schedule.",
+    "query": "social media publishing",
+    "intent": "Publish the created promo videos to social media platforms.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "INSTAGRAM_POST_IG_USER_MEDIA",
+          "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH"
+        ],
+        "purpose": "Publish promo videos to social media platform"
+      }
+    ],
+    "candidate_tools": [
+      "GMAIL_CREATE_EMAIL_DRAFT",
+      "GMAIL_DELETE_DRAFT",
+      "GMAIL_SEND_DRAFT",
+      "GMAIL_SEND_EMAIL",
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
+      "HEYGEN_RETRIEVE_AVATAR_DETAILS",
+      "HEYGEN_RETRIEVE_SHARABLE_VIDEO_URL",
+      "HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS",
+      "HEYGEN_UPLOAD_ASSET",
+      "HEYGEN_V1_AVATAR_LIST",
+      "HEYGEN_V2_USER_REMAINING_QUOTA",
+      "HEYGEN_V2_VIDEO_GENERATE",
+      "HEYGEN_V2_VOICES",
+      "INSTAGRAM_GET_IG_MEDIA",
+      "INSTAGRAM_GET_IG_USER_MEDIA",
+      "INSTAGRAM_LIST_ALL_MESSAGES",
+      "INSTAGRAM_POST_IG_USER_MEDIA",
+      "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH",
+      "INSTAGRAM_SEND_TEXT_MESSAGE"
+    ]
+  },
+  "request": {
+    "query": "social media publishing"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "social media publishing",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required (if destination unknown)] [Prerequisite]: Identify the publishing destination using FACEBOOK_LIST_MANAGED_PAGES (select a Page id; follow paging.cursors.after when present).",
+            "[Required] [Prerequisite]: Confirm the destination is publish-ready using FACEBOOK_GET_PAGE_DETAILS (use FACEBOOK_GET_PAGE_ROLES if publish capability is uncertain).",
+            "[Required] [Step]: Get explicit user confirmation for a public post, then publish using FACEBOOK_CREATE_POST (text/link) or FACEBOOK_CREATE_PHOTO_POST / FACEBOOK_CREATE_VIDEO_POST (media).",
+            "[Required] [Next Step]: Verify the published result using FACEBOOK_GET_POST (use the id returned by the create call, including composite ids).",
+            "[Optional (if edits are needed after publishing)] [Next Step]: Adjust message/caption using FACEBOOK_UPDATE_POST (use the returned post id).",
+            "[Fallback (if publish failed or incorrect content went live)] [Fallback]: Re-check access/state using FACEBOOK_GET_PAGE_DETAILS and FACEBOOK_GET_PAGE_ROLES, then retry via FACEBOOK_CREATE_POST or remove via FACEBOOK_DELETE_POST after explicit approval."
+          ],
+          "known_pitfalls": [
+            "[FACEBOOK_LIST_MANAGED_PAGES] Response may be nested (for example data.data) and can include paging.cursors.after; it can also return an empty data array when no managed destinations exist.",
+            "[FACEBOOK_LIST_MANAGED_PAGES] Can fail before returning destinations if the platform connection is inactive; posting cannot proceed until it succeeds.",
+            "[FACEBOOK_GET_PAGE_DETAILS] Missing publish permissions can surface as Graph error #200; avoid logging any token-like fields.",
+            "[FACEBOOK_CREATE_PHOTO_POST] Temporary/signed image URLs can fail fetch with HTTP 400 (often Graph error code 100); oversized payloads may be rejected as \u201crequest too large\u201d.",
+            "[FACEBOOK_CREATE_POST] Create response may return only a composite id; transient failures can appear as HTTP 500 with a generic \u201cunknown\u201d code/subcode\u2014retry later using the same destination."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "FACEBOOK_CREATE_POST",
+            "FACEBOOK_CREATE_PHOTO_POST",
+            "FACEBOOK_CREATE_VIDEO_POST"
+          ],
+          "related_tool_slugs": [
+            "FACEBOOK_LIST_MANAGED_PAGES",
+            "FACEBOOK_GET_PAGE_DETAILS",
+            "FACEBOOK_GET_PAGE_ROLES",
+            "FACEBOOK_GET_POST",
+            "FACEBOOK_UPDATE_POST",
+            "FACEBOOK_DELETE_POST"
+          ],
+          "toolkits": [
+            "facebook"
+          ],
+          "plan_id": "eb4efbcbf29343aa953361b85c00f7e2"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "facebook",
+          "has_active_connection": false,
+          "description": "Facebook is a social media and advertising platform used by individuals and businesses to connect, share content, and promote products or services. Only supports Facebook Pages, not Facebook Personal accounts.",
+          "status_message": "No Active connection for toolkit=facebook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"facebook\") to create a connection BEFORE executing any facebook tools."
+        }
+      ],
+      "tool_schemas": {
+        "FACEBOOK_CREATE_POST": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_CREATE_POST",
+          "description": "Creates a new text or link post on a Facebook Page. Requires `pages_manage_posts` permission and manage-level Page role on the target Page. For image posts use FACEBOOK_CREATE_PHOTO_POST; for video posts use FACEBOOK_CREATE_VIDEO_POST \u2014 media fields are not supported here. Returns a composite post ID in `PageID_PostID` format, required for FACEBOOK_GET_POST retrieval.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id",
+              "message"
+            ],
+            "properties": {
+              "link": {
+                "type": "string",
+                "description": "URL to include in the post"
+              },
+              "message": {
+                "type": "string",
+                "description": "The text content of the post At least one of `message` or `link` must be non-empty; omitting both causes a validation error."
+              },
+              "page_id": {
+                "type": "string",
+                "description": "The numeric ID of the Facebook Page to post to. This is a numeric string (e.g., '123456789012345'). To obtain a valid page_id, use the 'Get User Pages' or 'List Managed Pages' action which returns page IDs for pages you have access to manage."
+              },
+              "published": {
+                "type": "boolean",
+                "default": true,
+                "description": "Set to true to publish immediately, false to save as draft or schedule"
+              },
+              "targeting": {
+                "type": "object",
+                "description": "Audience targeting specifications",
+                "additionalProperties": true
+              },
+              "scheduled_publish_time": {
+                "type": "integer",
+                "description": "Unix timestamp for when the post should be published. Must be at least 10 minutes in the future. When provided, published must be false (will be auto-set to false if true). Must be Unix UTC epoch (not local time); timezone mismatches cause validation failures."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FACEBOOK_CREATE_PHOTO_POST": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_CREATE_PHOTO_POST",
+          "description": "Creates a photo post on a Facebook Page. Requires an image to be provided via either 'url' (publicly accessible image URL) or 'photo' (local image file upload). This action is specifically for posting images with optional captions, not text-only posts. Returns a composite post_id (PageID_PostID); use this for follow-up operations, not the photo/media id alone.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "URL of a publicly accessible image to upload. Supports direct image links with or without file extensions (e.g., https://example.com/image.jpg or hash-based URLs from services like Imgur, Gyazo, Postimages). The image host must not block requests from Facebook. Cannot be a Facebook URL. At least one of 'url', 'photo', or 'media' is required. The URL must return an image MIME type directly \u2014 redirects or HTML pages cause upload failures."
+              },
+              "media": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "Alias for 'photo'. for uploading a local image file (e.g..jpg.png.gif). At least one of 'media', 'photo', or 'url' is required.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "photo": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "for uploading a local image file (e.g..jpg.png.gif). At least one of 'photo', 'url', or 'media' is required.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "message": {
+                "type": "string",
+                "description": "Caption text for the photo. Can also be provided as 'caption'."
+              },
+              "page_id": {
+                "type": "string",
+                "description": "The numeric ID of the Facebook Page to post to. Can be provided as a string or number."
+              },
+              "published": {
+                "type": "boolean",
+                "default": true,
+                "description": "Set to true to publish immediately, false to save as unpublished"
+              },
+              "backdated_time": {
+                "type": "integer",
+                "description": "Unix timestamp to backdate the post"
+              },
+              "scheduled_publish_time": {
+                "type": "integer",
+                "description": "Unix timestamp for scheduled posts (required if published=false) Must be a future UTC epoch timestamp. Providing this with published=true triggers a 400 validation error."
+              },
+              "backdated_time_granularity": {
+                "type": "string",
+                "description": "Granularity of backdated time: year, month, day, hour, or min"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FACEBOOK_CREATE_VIDEO_POST": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_CREATE_VIDEO_POST",
+          "description": "Creates a video post on a Facebook Page. Requires a Page access token with `pages_manage_posts` scope and manage-level permissions on the target page.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "Title of the video"
+              },
+              "video": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "Local video file to upload. At least one of 'video' or 'file_url' must be provided.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "page_id": {
+                "type": "string",
+                "description": "The ID of the Facebook Page Must be a Facebook Page ID (not a personal profile ID); the authenticated token must have manage-level access."
+              },
+              "file_url": {
+                "type": "string",
+                "description": "URL of the video file to upload. At least one of 'file_url' or 'video' must be provided. Must be a direct download URL (e.g., direct MP4 link), not a watch/share URL. Use MP4 with H.264/AAC encoding; unsupported formats or very large files may fail."
+              },
+              "published": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to publish immediately"
+              },
+              "targeting": {
+                "type": "object",
+                "description": "Audience targeting specifications",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
+              },
+              "description": {
+                "type": "string",
+                "description": "Description of the video"
+              },
+              "scheduled_publish_time": {
+                "type": "integer",
+                "description": "Unix timestamp to schedule the video post Requires `published=false`; must be a UTC Unix epoch at least ~10 minutes in the future. Combining with `published=true` or omitting when `published=false` causes 400 errors."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FACEBOOK_LIST_MANAGED_PAGES": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_LIST_MANAGED_PAGES",
+          "description": "Retrieves a list of Facebook Pages that the user manages (not personal profiles), including page details, access tokens, and tasks. Requires `pages_show_list` or `pages_read_engagement` OAuth scopes; missing scopes silently return empty results rather than an error. An empty `data` array means the user manages no Pages. Results are paginated via `paging.cursors`; follow `paging.next` until absent to retrieve all Pages when count exceeds `limit`. Graph API throttling (error codes 4, 17, 613) can occur during pagination \u2014 use exponential backoff.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "description": "Cursor string for forward pagination. Use the 'after' cursor from a previous response's paging.cursors.after field to retrieve the next page of results."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 25,
+                "description": "Maximum number of pages to retrieve per request."
+              },
+              "before": {
+                "type": "string",
+                "description": "Cursor string for backward pagination. Use the 'before' cursor from a previous response's paging.cursors.before field to retrieve the previous page of results."
+              },
+              "fields": {
+                "type": "string",
+                "default": "id,name,access_token,category,tasks,about,link,picture",
+                "description": "Comma-separated list of fields to return for each managed page."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "description": "The ID of the user whose managed pages to retrieve. Defaults to 'me' for current user."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FACEBOOK_GET_PAGE_DETAILS": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_GET_PAGE_DETAILS",
+          "description": "Fetches details about a specific Facebook Page.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FACEBOOK_GET_PAGE_DETAILS"
+              ]
+            }
+          }
+        },
+        "FACEBOOK_GET_PAGE_ROLES": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_GET_PAGE_ROLES",
+          "description": "Retrieves a list of people and their tasks/roles on a Facebook Page. The connected account must have...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FACEBOOK_GET_PAGE_ROLES"
+              ]
+            }
+          }
+        },
+        "FACEBOOK_GET_POST": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_GET_POST",
+          "description": "Retrieves details of a specific Facebook post.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FACEBOOK_GET_POST"
+              ]
+            }
+          }
+        },
+        "FACEBOOK_UPDATE_POST": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_UPDATE_POST",
+          "description": "Updates an existing Facebook Page post.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FACEBOOK_UPDATE_POST"
+              ]
+            }
+          }
+        },
+        "FACEBOOK_DELETE_POST": {
+          "toolkit": "FACEBOOK",
+          "tool_slug": "FACEBOOK_DELETE_POST",
+          "description": "Permanently deletes a Facebook Page post. Deletion is irreversible \u2014 deleted posts cannot be recover...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FACEBOOK_DELETE_POST"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:29:50.303Z",
+        "current_time_utc_epoch_seconds": 1786598990,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "each",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"each\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_TQg6OfHEVb3w"
+  }
+}

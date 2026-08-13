@@ -1,0 +1,495 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-028-q3",
+    "workflow_id": 28,
+    "workflow_task": "Analyze recent Instagram Reel performance, generate a new short-form branded video with AI video and voice tools, publish it as an Instagram Reel, verify the post, and attempt to archive the final asset in a repository.",
+    "query": "publish instagram reel and verify post",
+    "intent": "Publish the newly generated video as an Instagram Reel and verify its live status.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "INSTAGRAM_POST_IG_USER_MEDIA"
+        ],
+        "purpose": "Create media container for the Instagram Reel"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH"
+        ],
+        "purpose": "Publish the Instagram Reel container"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "INSTAGRAM_GET_IG_MEDIA"
+        ],
+        "purpose": "Verify the published post"
+      }
+    ],
+    "candidate_tools": [
+      "ELEVENLABS_TEXT_TO_SPEECH",
+      "GEMINI_GENERATE_VIDEOS",
+      "GEMINI_WAIT_FOR_VIDEO",
+      "INSTAGRAM_GET_IG_MEDIA",
+      "INSTAGRAM_GET_IG_MEDIA_INSIGHTS",
+      "INSTAGRAM_GET_IG_USER_MEDIA",
+      "INSTAGRAM_POST_IG_USER_MEDIA",
+      "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH"
+    ]
+  },
+  "request": {
+    "query": "publish instagram reel and verify post"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "publish instagram reel and verify post",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if publishing identity/eligibility unclear)] [Prerequisite]: Validate publish-capable context using INSTAGRAM_GET_USER_INFO (must be Business/Creator) and capture ig_user_id.",
+            "[Required] [Prerequisite]: Prepare a stable video input for INSTAGRAM_POST_IG_USER_MEDIA (prefer direct-download HTTPS MP4 video_url without redirects/querystrings, otherwise use video_file).",
+            "[Required] [Step]: Create the Reel container using INSTAGRAM_POST_IG_USER_MEDIA (short-form video content) and store response.data.id as creation_id; if inputs change, create a new container.",
+            "[Required] [Prerequisite]: Obtain explicit user confirmation for irreversible/public settings (caption/hashtags and any feed-sharing behavior) before publishing.",
+            "[Required] [Step]: Publish using INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH (ig_user_id + creation_id) and allow async processing via wait; store returned published ig_media_id (may differ from creation_id).",
+            "[Optional (for verification/permalink)] [Next Step]: Fetch metadata/permalink using INSTAGRAM_GET_IG_MEDIA (use ig_media_id; if id is missing/unclear, locate recent items via INSTAGRAM_GET_IG_USER_MEDIA then re-fetch via INSTAGRAM_GET_IG_MEDIA).",
+            "[Optional (if publishing in bursts)] [Next Step]: Check remaining quota using INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT before additional publishes.",
+            "[Fallback (if create/publish fails due to URL fetch/validation, permissions, or container status ERROR)] [Fallback]: Fix the video input (clean video_url or switch to video_file), then create a NEW container via INSTAGRAM_POST_IG_USER_MEDIA and retry INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH."
+          ],
+          "known_pitfalls": [
+            "[INSTAGRAM_GET_USER_INFO] Ineligible contexts can fail as 400/403 (e.g., API error code=100, error_subcode=33); publishing requires a Business/Creator context.",
+            "[INSTAGRAM_POST_IG_USER_MEDIA] video_url with redirects, query strings, or non-file landing pages commonly fails ingestion/validation (often HTTP 400).",
+            "[INSTAGRAM_POST_IG_USER_MEDIA] \"Unsupported post request\" HTTP 400 often indicates wrong ig_user_id or missing publishing permissions.",
+            "[INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH] Publishing the same creation_id twice can return HTTP 409; if a container hits ERROR, you must create a NEW creation_id before retrying.",
+            "[INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT] Usage/config can be nested (commonly under response.data.data[0]); parse defensively."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Pattern to create and publish a single reel (store both IDs).",
+              "code": "```python\nres,_=run_composio_tool(\"INSTAGRAM_POST_IG_USER_MEDIA\",{\"ig_user_id\":ig_user_id,\"video_url\":video_url,\"caption\":caption,\"content_type\":\"reel\"})\ncreation_id=res[\"data\"][\"id\"]\npub,_=run_composio_tool(\"INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH\",{\"ig_user_id\":ig_user_id,\"creation_id\":creation_id,\"max_wait_seconds\":max_wait_seconds})\nig_media_id=(pub.get(\"data\") or {}).get(\"id\")\n```"
+            },
+            {
+              "description": "Extract quota totals/usage from a nested publishing-limit response.",
+              "code": "```python\nlimit_res,_=run_composio_tool(\"INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT\",{\"ig_user_id\":ig_user_id})\nrow=((limit_res.get(\"data\") or {}).get(\"data\") or [{}])[0]\nquota_usage=row.get(\"quota_usage\")\nquota_total=(row.get(\"config\") or {}).get(\"quota_total\")\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "INSTAGRAM_POST_IG_USER_MEDIA",
+            "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH"
+          ],
+          "related_tool_slugs": [
+            "INSTAGRAM_GET_IG_MEDIA",
+            "INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT",
+            "INSTAGRAM_GET_USER_INFO",
+            "INSTAGRAM_GET_IG_USER_MEDIA"
+          ],
+          "toolkits": [
+            "instagram"
+          ],
+          "plan_id": "598adaecb4af49e88c1cac9c1002574a"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "instagram",
+          "has_active_connection": false,
+          "description": "Instagram is a social media platform for sharing photos, videos, and stories. Only supports Instagram Business and Creator accounts, not Instagram Personal accounts.",
+          "status_message": "No Active connection for toolkit=instagram. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"instagram\") to create a connection BEFORE executing any instagram tools."
+        }
+      ],
+      "tool_schemas": {
+        "INSTAGRAM_POST_IG_USER_MEDIA": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_POST_IG_USER_MEDIA",
+          "description": "Tool to create a media container for Instagram posts. Use this to create a container for images, videos, Reels, or carousels. This is the first step in Instagram's two-step publishing process - after creating the container, use the media_publish endpoint to publish it.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ig_user_id"
+            ],
+            "properties": {
+              "caption": {
+                "type": "string",
+                "examples": [
+                  "Testing Instagram API",
+                  "Check out this post! #awesome"
+                ],
+                "description": "Caption text for the post. Use HTML URL encoding for hashtags (# becomes %23)."
+              },
+              "alt_text": {
+                "type": "string",
+                "examples": [
+                  "A sunset over the ocean with a sailboat in the distance."
+                ],
+                "maxLength": 1000,
+                "description": "Custom accessibility alt text for a single image or an image carousel child. Maximum 1,000 characters. Not supported for videos, Reels, Stories, or carousel parent containers."
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "17842618866645284",
+                    "17842618866645285"
+                  ]
+                ],
+                "maxItems": 10,
+                "minItems": 2,
+                "description": "For carousel posts - array of container IDs (2-10 items) from previously created media containers."
+              },
+              "cover_url": {
+                "type": "string",
+                "pattern": "^https?://",
+                "examples": [
+                  "https://example.com/cover.jpg"
+                ],
+                "description": "For Reels - MUST be a valid HTTP/HTTPS URL pointing to a custom cover image that Meta can fetch. Query parameters, including signed CDN or object-storage URLs, are supported as long as the complete URL remains accessible while the container is processed. If both cover_url and thumb_offset are provided, cover_url takes precedence."
+              },
+              "image_url": {
+                "type": "string",
+                "pattern": "^https?://",
+                "examples": [
+                  "https://example.com/image.jpg",
+                  "https://cdn.example.com/photos/my-photo.jpeg"
+                ],
+                "description": "MUST be a valid HTTP/HTTPS URL pointing to a JPEG image file that Meta can fetch. Must start with 'http://' or 'https://' (e.g., 'https://example.com/image.jpg'). Query parameters, including signed CDN or object-storage URLs, are supported as long as the complete URL remains accessible to Meta while the container is processed. DO NOT pass image descriptions or text - only actual URLs are accepted. At least one of: image_url, image_file, video_url, video_file, or children must be provided."
+              },
+              "user_tags": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "username"
+                  ],
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "maximum": 1,
+                      "minimum": 0,
+                      "examples": [
+                        0.5
+                      ],
+                      "description": "Horizontal position of the tag (0.0=left, 1.0=right). REQUIRED for images, CANNOT be used with Reels."
+                    },
+                    "y": {
+                      "type": "number",
+                      "maximum": 1,
+                      "minimum": 0,
+                      "examples": [
+                        0.5
+                      ],
+                      "description": "Vertical position of the tag (0.0=top, 1.0=bottom). REQUIRED for images, CANNOT be used with Reels."
+                    },
+                    "username": {
+                      "type": "string",
+                      "examples": [
+                        "instagram_handle",
+                        "testuser"
+                      ],
+                      "description": "Instagram username to tag (without @ symbol). Must be a public Instagram account."
+                    }
+                  },
+                  "description": "Model representing a user tag for Instagram media.\n\nUser tags allow tagging public Instagram accounts in media posts.\nFor images: x and y coordinates are REQUIRED to specify tag position.\nFor Reels: only username is used; x and y coordinates CANNOT be included."
+                },
+                "examples": [
+                  [
+                    {
+                      "x": 0.5,
+                      "y": 0.5,
+                      "username": "testuser"
+                    }
+                  ]
+                ],
+                "description": "Array of user tag objects for tagging public Instagram accounts. For images: x and y coordinates (0.0-1.0, from top-left) are REQUIRED. For Reels: only username is allowed; x/y coordinates CANNOT be used."
+              },
+              "video_url": {
+                "type": "string",
+                "pattern": "^https?://",
+                "examples": [
+                  "https://example.com/video.mp4",
+                  "https://cdn.example.com/videos/my-video.mp4"
+                ],
+                "description": "MUST be a valid HTTP/HTTPS URL pointing to a video or Reel MP4 file that Meta can fetch. Must start with 'http://' or 'https://' (e.g., 'https://example.com/video.mp4'). Query parameters, including signed CDN or object-storage URLs, are supported as long as the complete URL remains accessible to Meta while the container is processed. DO NOT pass video descriptions or text - only actual URLs are accepted. At least one of: image_url, image_file, video_url, video_file, or children must be provided. When using video_url alone, media_type will be automatically set to 'REELS' if not specified."
+              },
+              "audio_name": {
+                "type": "string",
+                "examples": [
+                  "My Custom Audio"
+                ],
+                "description": "For Reels - custom name for the audio track (default: 'Original Audio')."
+              },
+              "ig_user_id": {
+                "type": "string",
+                "examples": [
+                  "17841405309211844"
+                ],
+                "description": "The unique identifier of the Instagram Business account (IG User ID) to create media for. This must be an Instagram Business account."
+              },
+              "image_file": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "Image file to upload. The file will be uploaded to a temporary public URL for Instagram to fetch. At least one of: image_url, image_file, video_url, video_file, or children must be provided.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "media_type": {
+                "enum": [
+                  "REELS",
+                  "CAROUSEL",
+                  "STORIES"
+                ],
+                "type": "string",
+                "examples": [
+                  "REELS"
+                ],
+                "description": "Media type for the container. Valid values: 'REELS' (for video content), 'CAROUSEL' (for carousel posts with children), 'STORIES' (for story posts). When posting video content with video_url alone (no image_url), this will automatically default to 'REELS' if not specified. Note: 'VIDEO' is deprecated and no longer supported - use 'REELS' for all video content."
+              },
+              "video_file": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "Video file to upload. The file will be uploaded to a temporary public URL for Instagram to fetch. At least one of: image_url, image_file, video_url, video_file, or children must be provided.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "location_id": {
+                "type": "string",
+                "examples": [
+                  "123456789"
+                ],
+                "description": "Facebook Page ID of a location to tag. The Page must have latitude/longitude data."
+              },
+              "thumb_offset": {
+                "type": "integer",
+                "examples": [
+                  1000
+                ],
+                "description": "For videos/Reels - millisecond offset for thumbnail frame (default: 0)."
+              },
+              "share_to_feed": {
+                "type": "boolean",
+                "description": "For Reels - whether to share to both Feed and Reels tabs. Only applicable when media_type is REELS."
+              },
+              "is_carousel_item": {
+                "type": "boolean",
+                "description": "Indicates this container is part of a carousel. For carousels: create 2-10 individual containers, then create a parent carousel container with their IDs."
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "Instagram Graph API version to use. Defaults to v21.0."
+              }
+            },
+            "additionalProperties": false
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH",
+          "description": "Tool to publish a media container to an Instagram Business account. This action automatically waits for the container to finish processing before publishing. Instagram enforces an account-specific content-publishing rate limit over a 24-hour moving window; the exact cap varies by account and should be read live via INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT before bulk publishing. The publishing process: 1. First, create a media container using INSTAGRAM_CREATE_MEDIA_CONTAINER 2. Call this action with the creation_id - it will automatically poll for FINISHED status 3. Once ready, the media is published and the published media ID is returned For videos/reels, processing may take 30-120 seconds. Images are typically instant.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ig_user_id",
+              "creation_id"
+            ],
+            "properties": {
+              "ig_user_id": {
+                "type": "string",
+                "examples": [
+                  "17841405309211844",
+                  "me"
+                ],
+                "description": "Instagram Business Account ID (numeric string) or 'me' for the authenticated user. This ID is returned by INSTAGRAM_GET_USER_INFO or similar actions. Do NOT pass bank account numbers, connection IDs, or other non-Instagram identifiers."
+              },
+              "creation_id": {
+                "type": "string",
+                "examples": [
+                  "17842618866645284"
+                ],
+                "description": "Container ID returned by INSTAGRAM_CREATE_MEDIA_CONTAINER (numeric string). This is NOT the same as ig_user_id. Do NOT pass bank account numbers or other non-Instagram identifiers."
+              },
+              "max_wait_seconds": {
+                "type": "integer",
+                "default": 60,
+                "maximum": 300,
+                "minimum": 0,
+                "description": "Maximum time in seconds to wait for the container to reach FINISHED status before publishing. Images are typically ready instantly, but videos/reels commonly take 30-120 seconds to process. WARNING: Setting this to 0 skips all status checks and attempts immediate publish, which will fail with error 9007 if the container is still processing (common for videos). Only use 0 if you are certain the container is already in FINISHED status (rare - typically only after manually checking via INSTAGRAM_GET_POST_STATUS). For videos/reels, use at least 60 seconds (default) or higher (up to 300)."
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "Instagram Graph API version to use. Defaults to v21.0."
+              },
+              "poll_interval_seconds": {
+                "type": "number",
+                "default": 3,
+                "maximum": 30,
+                "minimum": 1,
+                "description": "Interval in seconds between status checks while waiting for the container to be ready. Default is 3 seconds."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_GET_IG_MEDIA": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_IG_MEDIA",
+          "description": "Get a published Instagram Media object (photo, video, story, reel, or carousel). Use when you need to retrieve detailed information about a specific Instagram post including engagement metrics, caption, media URLs, and metadata. NOTE: This action is for published media only. For unpublished container IDs (from INSTAGRAM_CREATE_MEDIA_CONTAINER), use INSTAGRAM_GET_POST_STATUS to check status instead.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ig_media_id"
+            ],
+            "properties": {
+              "fields": {
+                "type": "string",
+                "default": "id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count,media_product_type,legacy_instagram_media_id,alt_text,is_ai_generated,is_shared_to_feed,media_audio_type,view_count,reposts_count,saved_count,shares_count,total_like_count,total_comments_count,total_views_count",
+                "description": "Comma-separated list of fields to return. Supported: id, caption, comments_count, is_comment_enabled, like_count, media_type, media_url, media_product_type, legacy_instagram_media_id, owner, permalink, shortcode, thumbnail_url, timestamp, username, alt_text, is_ai_generated, is_shared_to_feed, media_audio_type, view_count, reposts_count, saved_count, shares_count, total_like_count, total_comments_count, total_views_count, children, comments. For nested fields use 'children{media_url,media_type}'. UNSUPPORTED (cause errors): tagged_users, user_tags, location, filter_name, latitude, longitude, text \u2014 use 'caption' not 'text'. For insights metrics use INSTAGRAM_GET_IG_MEDIA_INSIGHTS. Tagged-media retrieval is unavailable through this Instagram Login toolkit. A MediaBuilder error means the ID is an unpublished container \u2014 use INSTAGRAM_GET_POST_STATUS."
+              },
+              "ig_media_id": {
+                "type": "string",
+                "examples": [
+                  "17858625294504375"
+                ],
+                "description": "The numeric ID of the Instagram media object from the Graph API (e.g., '17858625294504375'). IMPORTANT: This must be a numeric string, NOT an alphanumeric shortcode from instagram.com/p/<shortcode>/ URLs (e.g., 'DUTi4n4D9wg' is NOT valid). Obtain numeric IDs from INSTAGRAM_GET_IG_USER_MEDIA or similar endpoints. For unpublished container IDs, use INSTAGRAM_GET_POST_STATUS instead."
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "Instagram Graph API version to use"
+              }
+            },
+            "additionalProperties": true
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT",
+          "description": "Get an Instagram Business Account's current content publishing usage. Use this to monitor quota usag...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT"
+              ]
+            }
+          }
+        },
+        "INSTAGRAM_GET_USER_INFO": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_USER_INFO",
+          "description": "Get Instagram Business Account info including profile details and statistics. Use \"me\" to query your...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_GET_USER_INFO"
+              ]
+            }
+          }
+        },
+        "INSTAGRAM_GET_IG_USER_MEDIA": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_IG_USER_MEDIA",
+          "description": "Get Instagram user's media collection (posts, photos, videos, reels, carousels). Use when you need t...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_GET_IG_USER_MEDIA"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:31:31.788Z",
+        "current_time_utc_epoch_seconds": 1786599091,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "meet",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"meet\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_E4a8hDSCEzeI"
+  }
+}

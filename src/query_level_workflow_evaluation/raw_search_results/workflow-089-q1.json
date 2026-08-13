@@ -1,0 +1,335 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-089-q1",
+    "workflow_id": 89,
+    "workflow_task": "Audit inbound email and HubSpot marketing/automation assets to understand an external funnel, compare it with existing marketing emails and workflows, and inspect meeting-booking setup.",
+    "query": "search inbound emails and HubSpot marketing assets",
+    "intent": "Search and retrieve inbound emails and HubSpot marketing assets and automation workflows to analyze the external funnel.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLESUPER_FETCH_EMAILS"
+        ],
+        "purpose": "Search and retrieve inbound emails"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT"
+        ],
+        "purpose": "Retrieve HubSpot marketing emails"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "HUBSPOT_GET_WORKFLOWS",
+          "HUBSPOT_GET_ALL_WORKFLOWS"
+        ],
+        "purpose": "Retrieve HubSpot automation workflows"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLESUPER_FETCH_EMAILS",
+      "HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT",
+      "HUBSPOT_GET_ALL_WORKFLOWS",
+      "HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL",
+      "HUBSPOT_GET_WORKFLOWS"
+    ]
+  },
+  "request": {
+    "query": "search inbound emails and HubSpot marketing assets"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search inbound emails and HubSpot marketing assets",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if contact scope is required but contact ID unknown)] [Prerequisite]: Find candidate contacts using HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA (capture candidate IDs; follow paging.next.after).",
+            "[Optional (if multiple candidates or to confirm identity)] [Step]: Verify the selected record using HUBSPOT_READ_CONTACT (confirm it\u2019s the intended person; capture final contact ID).",
+            "[Required] [Step]: Search email engagements by keyword using HUBSPOT_SEARCH_EMAILS (collect matching engagement/email IDs and minimal preview fields).",
+            "[Optional (if results must be limited to one contact)] [Step]: Filter HUBSPOT_SEARCH_EMAILS results client-side to items associated with the chosen contact ID.",
+            "[Optional (if paging.next.after present or many matches)] [Next Step]: Paginate HUBSPOT_SEARCH_EMAILS using the after cursor until relevant pages are collected.",
+            "[Optional (if you need richer fields/body for a subset)] [Next Step]: Enrich shortlisted items using HUBSPOT_GET_EMAILS (batch) or HUBSPOT_READ_EMAIL (single record).",
+            "[Fallback (if HUBSPOT_SEARCH_EMAILS returns no/too few matches)] [Fallback]: Broaden discovery using HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA (best-fit objectType and optional contact association filter), then inspect candidates with HUBSPOT_READ_EMAIL and/or HUBSPOT_GET_EMAILS."
+          ],
+          "known_pitfalls": [
+            "[HUBSPOT_SEARCH_EMAILS] Can succeed but still return results=[] with total=0; treat as \u201cno matches\u201d and broaden via HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA instead of retrying unchanged.",
+            "[HUBSPOT_SEARCH_EMAILS] Returned properties may be null or structured (non-string) values; downstream summarization must tolerate missing/typed fields.",
+            "[HUBSPOT_GET_EMAILS] Some engagements have null content fields; fall back to subject and/or html when text-like fields are absent.",
+            "[HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA] Name-based lookup can yield multiple candidates and pagination; response-shape nesting can trip up ID extraction.",
+            "[HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA] Certain date filters (e.g., createdate) may trigger 400 Bad Request; alternative timestamp properties can behave differently\u2014validate semantics before relying on them."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "HUBSPOT_SEARCH_EMAILS",
+            "HUBSPOT_GET_EMAILS"
+          ],
+          "related_tool_slugs": [
+            "HUBSPOT_READ_EMAIL",
+            "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+            "HUBSPOT_READ_CONTACT",
+            "HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA"
+          ],
+          "toolkits": [
+            "hubspot"
+          ],
+          "plan_id": "bec811695ede43d3b9fbe870705cddf6"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "hubspot",
+          "has_active_connection": false,
+          "description": "HubSpot is an inbound marketing, sales, and customer service platform integrating CRM, email automation, and analytics to facilitate lead nurturing and seamless customer experiences",
+          "status_message": "No Active connection for toolkit=hubspot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"hubspot\") to create a connection BEFORE executing any hubspot tools."
+        }
+      ],
+      "tool_schemas": {
+        "HUBSPOT_SEARCH_EMAILS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_EMAILS",
+          "description": "Searches for HubSpot emails using flexible criteria and filters.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "examples": [
+                  "1234567890"
+                ],
+                "description": "Pagination token from previous response."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 10,
+                "maximum": 100,
+                "examples": [
+                  10,
+                  50,
+                  100
+                ],
+                "description": "Maximum number of emails to return."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "newsletter",
+                  "promotion"
+                ],
+                "description": "Text search query to find emails by subject or content."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "hs_email_subject",
+                    "hs_email_html"
+                  ]
+                ],
+                "description": "Email property names to include in the response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_GET_EMAILS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_GET_EMAILS",
+          "description": "Retrieves multiple HubSpot email engagement records by their IDs in a single batch request.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "inputs",
+              "properties"
+            ],
+            "properties": {
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "examples": [
+                        "12345",
+                        "67890"
+                      ],
+                      "description": "The unique identifier of the email to retrieve."
+                    }
+                  },
+                  "description": "Request schema for individual email retrieval."
+                },
+                "description": "List of email identifiers to retrieve."
+              },
+              "archived": {
+                "type": "boolean",
+                "default": false,
+                "description": "Filter by archived status."
+              },
+              "idProperty": {
+                "type": "string",
+                "description": "Alternate unique identifier property to use."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Email property names to include in the response."
+              },
+              "propertiesWithHistory": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Email property names for which to retrieve historical values. Leave empty if history is not needed."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_READ_EMAIL": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_EMAIL",
+          "description": "Call this to retrieve an existing HubSpot email by its `emailId` or an alternative unique `idProperty`.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "emailId"
+            ],
+            "properties": {
+              "emailId": {
+                "type": "string",
+                "examples": [
+                  "1234567890"
+                ],
+                "description": "The unique identifier (HubSpot ID) of the email object to retrieve, or the value of the `idProperty` if specified."
+              },
+              "archived": {
+                "type": "boolean",
+                "default": false,
+                "description": "Set to true to retrieve only archived email objects."
+              },
+              "idProperty": {
+                "type": "string",
+                "examples": [
+                  "my_custom_unique_email_id"
+                ],
+                "description": "Name of an alternative unique property to identify the email if not using `emailId`."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "hs_timestamp",
+                    "hubspot_owner_id",
+                    "hs_email_subject"
+                  ]
+                ],
+                "description": "Specific email properties to include; non-existent properties are ignored."
+              },
+              "associations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "contact",
+                    "company",
+                    "ticket"
+                  ]
+                ],
+                "description": "Object types (e.g., 'contact', 'company') for associated IDs; non-existent associations are ignored."
+              },
+              "propertiesWithHistory": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "hs_email_status",
+                    "hs_email_direction"
+                  ]
+                ],
+                "description": "Email properties for which to retrieve historical values; non-existent properties are ignored."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+          "description": "Searches for HubSpot contacts using a text query, specific filter criteria (filters in a group are A...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_READ_CONTACT": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_CONTACT",
+          "description": "Retrieves a HubSpot contact by its ID.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_READ_CONTACT"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA",
+          "description": "Searches HubSpot CRM objects (e.g., 'contacts', 'companies') by `objectType` using complex criteria ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:39:01.934Z",
+        "current_time_utc_epoch_seconds": 1786599541,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "take",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"take\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_HHow-NurHJU0"
+  }
+}

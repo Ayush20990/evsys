@@ -1,0 +1,299 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-062-q1",
+    "workflow_id": 62,
+    "workflow_task": "Update an existing Google Docs nutrition-planning document by changing table content for two dinner entries, adding shared batch-cooking instructions, recalculating related summary content, and verifying the final document.",
+    "query": "Google Docs update table content and summary",
+    "intent": "Update specific table cells and recalculate summary content within an existing Google Docs document.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLEDOCS_UPDATE_EXISTING_DOCUMENT"
+        ],
+        "purpose": "Update table content and summary in an existing document"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+      "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+      "GOOGLEDOCS_UPDATE_EXISTING_DOCUMENT"
+    ]
+  },
+  "request": {
+    "query": "Google Docs update table content and summary"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Google Docs update table content and summary",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Inspect existing text using GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT (confirm target area; decide append vs bounded replace vs full overwrite).",
+            "[Optional (if file type is uncertain)] [Prerequisite]: Confirm it is a native document using GOOGLEDRIVE_GET_FILE_METADATA (check mimeType to avoid unsupported-doc errors).",
+            "[Optional (if edits are destructive or you need rollback)] [Prerequisite]: Create a backup copy using GOOGLEDOCS_COPY_DOCUMENT (preserve the prior state).",
+            "[Optional (if you need exact boundaries or nontrivial layout)] [Prerequisite]: Fetch structure using GOOGLEDOCS_GET_DOCUMENT_BY_ID (derive safe element startIndex/endIndex rather than plaintext offsets).",
+            "[Required] [Step]: Apply changes using GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN (omit indices to append; provide start_index/end_index to replace a bounded section).",
+            "[Fallback (if section update fails with placement/index errors)] [Fallback]: Overwrite full content using GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN (use when section updates return HTTP 400 INVALID_ARGUMENT).",
+            "[Required] [Next Step]: Re-read and confirm results using GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT (verify placement and intended text was updated)."
+          ],
+          "known_pitfalls": [
+            "[GOOGLEDOCS_GET_DOCUMENT_BY_ID] Use element startIndex/endIndex (not plaintext character offsets); structure responses can be very large for long docs.",
+            "[GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT] HTTP 400 FAILED_PRECONDITION can indicate a non-native/unsupported document type.",
+            "[GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN] HTTP 400 INVALID_ARGUMENT (index must be within an existing paragraph) can occur with complex Markdown (e.g., tables) or incorrect indices.",
+            "[GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN] Schema is strict (often expects fields named id and markdown); misnaming can cause validation failures.",
+            "[GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT] Very long documents may yield truncated plaintext; verify by checking key updated sections rather than relying on a full read-through."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Find a paragraph startIndex/endIndex by matching a marker string in GOOGLEDOCS_GET_DOCUMENT_BY_ID output.",
+              "code": "```python\ndef para_text(el):\n p=el.get('paragraph')\n if not p: return ''\n return ''.join(e.get('textRun',{}).get('content','') for e in p.get('elements',[]))\n\ndef find_range(doc,marker='ANCHOR_TEXT'):\n body=doc.get('body',{}).get('content',[])\n for el in body:\n  if marker in para_text(el):\n   return el.get('startIndex'),el.get('endIndex')\n return None,None\n```"
+            },
+            {
+              "description": "Compute a safe max endIndex from GOOGLEDOCS_GET_DOCUMENT_BY_ID output.",
+              "code": "```python\ndef max_end_index(doc):\n content=doc.get('body',{}).get('content',[])\n return max((e.get('endIndex',0) for e in content),default=0)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+            "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN"
+          ],
+          "related_tool_slugs": [
+            "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+            "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN",
+            "GOOGLEDOCS_COPY_DOCUMENT",
+            "GOOGLEDRIVE_GET_FILE_METADATA"
+          ],
+          "toolkits": [
+            "googledocs",
+            "googledrive"
+          ],
+          "plan_id": "84f9a80f323049e4bd71ff028d298fa7"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledocs",
+          "has_active_connection": false,
+          "description": "Google Docs is a cloud-based word processor with real-time collaboration, version history, and integration with other Google Workspace apps",
+          "status_message": "No Active connection for toolkit=googledocs. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledocs\") to create a connection BEFORE executing any googledocs tools."
+        },
+        {
+          "toolkit": "googledrive",
+          "has_active_connection": false,
+          "description": "Google Drive is a cloud storage solution for uploading, sharing, and collaborating on files across devices, with robust search and offline access. Special usecases: Sharing google sheets/docs or any G-Suite files with specific emails.",
+          "status_message": "No Active connection for toolkit=googledrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledrive\") to create a connection BEFORE executing any googledrive tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+          "description": "Retrieve a Google Doc by ID and return a best-effort plain-text rendering. Converts document structure into plain text including paragraphs, lists, and tables without requiring clients to traverse complex Docs API JSON.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "document_id"
+            ],
+            "properties": {
+              "tab_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Optional tab IDs to include when include_tabs_content=true. Nested child tabs are searched recursively."
+              },
+              "document_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                  "https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
+                ],
+                "minLength": 1,
+                "description": "The unique identifier for the Google Document. Accepts either a document ID (typically a 44-character alphanumeric string) or a full Google Docs URL. When a URL is provided, the document ID will be automatically extracted. Note: This parameter also accepts 'id' as an alias for consistency with other GOOGLEDOCS tools."
+              },
+              "include_tables": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include table content in the plain text output. Tables are rendered with configurable cell and row delimiters."
+              },
+              "include_footers": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include footer text in the plain text output. Footers are appended with a clear section separator."
+              },
+              "include_headers": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include header text in the plain text output. Headers are appended with a clear section separator."
+              },
+              "include_footnotes": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include footnote text in the plain text output. Footnotes are appended with a clear section separator."
+              },
+              "table_row_delimiter": {
+                "type": "string",
+                "default": "\n",
+                "examples": [
+                  "\n",
+                  "\n\n"
+                ],
+                "description": "The delimiter to use between table rows (default: newline character)."
+              },
+              "include_tabs_content": {
+                "type": "boolean",
+                "default": false,
+                "description": "When true, fetch the document using includeTabsContent=true query parameter to render all tabs. When false, only the main body content is rendered."
+              },
+              "table_cell_delimiter": {
+                "type": "string",
+                "default": "\t",
+                "examples": [
+                  "\t",
+                  " | ",
+                  ", "
+                ],
+                "description": "The delimiter to use between table cells (default: tab character)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN",
+          "description": "Tool to insert or replace a section of a Google Docs document with Markdown content. Use when you need to update only a section of a document by specifying start and optional end indices. Supports full Markdown formatting.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "document_id",
+              "markdown_text"
+            ],
+            "properties": {
+              "tab_id": {
+                "type": "string",
+                "examples": [
+                  "t.abc123"
+                ],
+                "description": "Optional tab ID to update with the rendered Markdown. When omitted, the first tab is updated."
+              },
+              "end_index": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Optional one-based end index of the content to replace (exclusive); must be greater than or equal to start_index. If end_index is not provided, the content is inserted at the start_index without replacing existing content. Requires start_index to be provided - if start_index is omitted (append mode), end_index is ignored. Important: Use the exact indices from GOOGLEDOCS_GET_DOCUMENT_BY_ID without modification. The Google Docs API does not allow deleting the last newline character of a document segment (body, header, footer, etc.), so ensure end_index does not include the final segment newline."
+              },
+              "document_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "minLength": 10,
+                "description": "The unique ID of the Google Docs document to update. This is the alphanumeric string found in the document URL: https://docs.google.com/document/d/{DOCUMENT_ID}/edit. Valid IDs are typically 44 characters long and contain only letters, numbers, hyphens, and underscores (e.g., '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms'). To get a document ID: create a new document using GOOGLEDOCS_CREATE_DOCUMENT, or extract it from an existing document's URL. Also accepts parameter aliases: 'id', 'doc_id', 'documentId', or 'docId'."
+              },
+              "start_index": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "One-based UTF-16 code unit index where to insert or start replacement. If not provided, content will be appended to the end of the document. Use 1 to insert at the very beginning of the document. To insert at a specific position, first use GOOGLEDOCS_GET_DOCUMENT_BY_ID to retrieve the document structure and find the desired index from the body.content elements' start_index/end_index values. If the provided index equals or exceeds the document segment's end index, it will be automatically adjusted to the last valid position (end_index - 1) and a message will be included in the response."
+              },
+              "markdown_text": {
+                "type": "string",
+                "description": "Markdown content to insert or replace in the document section. Large content is automatically split into smaller batches to avoid API limits. Also accepts 'markdown', 'content', 'text', 'body', 'markdownText', or 'markdown_content'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_GET_DOCUMENT_BY_ID": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+          "description": "Retrieves an existing Google Document by its ID; will error if the document is not found.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                  "https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
+                ],
+                "description": "The unique identifier for a native Google Docs document (typically a 44-character alphanumeric string). Accepts either a document ID or a full Google Docs URL (e.g., https://docs.google.com/document/d/{DOCUMENT_ID}/edit). When a URL is provided, the document ID will be automatically extracted. IMPORTANT: This tool only works with native Google Docs documents (mimeType application/vnd.google-apps.document), not uploaded Office files (DOCX, XLSX, etc.) stored in Google Drive. Use GOOGLEDOCS_SEARCH_DOCUMENTS to find available documents."
+              },
+              "includeTabsContent": {
+                "type": "boolean",
+                "default": false,
+                "description": "When true, request includeTabsContent=true so the response includes document.tabs with content for all tabs. When false, Google Docs returns the legacy first-tab content fields."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN",
+          "description": "Replaces the entire content of an existing Google Docs document with new Markdown text; requires edi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN"
+              ]
+            }
+          }
+        },
+        "GOOGLEDOCS_COPY_DOCUMENT": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_COPY_DOCUMENT",
+          "description": "Tool to create a copy of an existing Google Document. Use this to duplicate a document, for example,...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDOCS_COPY_DOCUMENT"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_GET_FILE_METADATA": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_GET_FILE_METADATA",
+          "description": "Tool to get a file's metadata by ID. Use to verify `mimeType`, `parents`, and `trashed` status befor...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_GET_FILE_METADATA"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:36:13.167Z",
+        "current_time_utc_epoch_seconds": 1786599373,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "dirt",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"dirt\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_nuq94MbeXurz"
+  }
+}

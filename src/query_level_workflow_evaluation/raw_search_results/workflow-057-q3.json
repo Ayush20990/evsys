@@ -1,0 +1,435 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-057-q3",
+    "workflow_id": 57,
+    "workflow_task": "Create short dog-themed videos, analyze channel and trend performance, upload and manage YouTube Shorts, and inspect Instagram posting context.",
+    "query": "upload and manage YouTube Shorts",
+    "intent": "Upload, publish, and manage short-form videos on YouTube.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "YOUTUBE_MULTIPART_UPLOAD_VIDEO"
+        ],
+        "purpose": "Upload YouTube Shorts"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "YOUTUBE_UPDATE_VIDEO"
+        ],
+        "purpose": "Manage YouTube video metadata"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "YOUTUBE_DELETE_VIDEO"
+        ],
+        "purpose": "Manage or remove YouTube videos"
+      }
+    ],
+    "candidate_tools": [
+      "GEMINI_GENERATE_IMAGE",
+      "GEMINI_GENERATE_VIDEOS",
+      "INSTAGRAM_GET_IG_USER_MEDIA",
+      "YOUTUBE_DELETE_VIDEO",
+      "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+      "YOUTUBE_LIST_CHANNEL_VIDEOS",
+      "YOUTUBE_MULTIPART_UPLOAD_VIDEO",
+      "YOUTUBE_SEARCH_YOU_TUBE",
+      "YOUTUBE_UPDATE_VIDEO"
+    ]
+  },
+  "request": {
+    "query": "upload and manage YouTube Shorts"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "upload and manage YouTube Shorts",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Confirm final title/description/tags/categoryId and privacyStatus, and get explicit approval before any privacyStatus=\"public\" using YOUTUBE_MULTIPART_UPLOAD_VIDEO (public-impact).",
+            "[Required] [Prerequisite]: Ensure the upload input is a staged videoFile {name,mimetype,s3key}; if the source isn\u2019t already uploadable, stage it via COMPOSIO_REMOTE_WORKBENCH (retry with a smaller export if staging hits limits).",
+            "[Required] [Step]: Upload the Short using YOUTUBE_MULTIPART_UPLOAD_VIDEO (primary upload) and store response.data.video.id (videoId) for follow-on actions.",
+            "[Optional (if processing/visibility confirmation is needed)] [Next Step]: Verify using YOUTUBE_GET_VIDEO_DETAILS_BATCH; if it returns no items soon after upload, wait briefly and re-check using YOUTUBE_VIDEO_DETAILS (single videoId).",
+            "[Optional (if post-upload changes or rollback are needed)] [Next Step]: Update metadata/privacy using YOUTUBE_UPDATE_VIDEO, set a thumbnail using YOUTUBE_UPDATE_THUMBNAIL, or remove the upload using YOUTUBE_DELETE_VIDEO (explicit delete confirmation).",
+            "[Fallback (if YOUTUBE_MULTIPART_UPLOAD_VIDEO fails for technical/non-quota reasons)] [Fallback]: Retry upload using YOUTUBE_UPLOAD_VIDEO (alternate upload path) and store the returned videoId."
+          ],
+          "known_pitfalls": [
+            "[YOUTUBE_MULTIPART_UPLOAD_VIDEO] Remote-only/non-staged inputs often fail with HTTP 403/404; videoFile must be s3key-backed with {name,mimetype,s3key}.",
+            "[YOUTUBE_MULTIPART_UPLOAD_VIDEO] HTTP 400 quota/daily upload limit or HTTP 401 readiness/scope issues won\u2019t resolve with simple retries; address limits/permissions first.",
+            "[YOUTUBE_GET_VIDEO_DETAILS_BATCH] Can return HTTP 200 with no items right after upload due to processing lag; re-check after a short delay or use YOUTUBE_VIDEO_DETAILS.",
+            "[YOUTUBE_UPDATE_THUMBNAIL] Can fail if the image is over ~2MB or return HTTP 403 if thumbnail permission is missing.",
+            "[YOUTUBE_UPLOAD_VIDEO] Expects file-path style input; passing multipart-style videoFile keys or misnaming fields triggers validation errors."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Stage a remotely hosted video into an s3key-backed videoFile for YOUTUBE_MULTIPART_UPLOAD_VIDEO",
+              "code": "```python\nimport urllib.request,tempfile\nreq=urllib.request.Request(remote_source,headers={'User-Agent':'Mozilla/5.0'})\nwith urllib.request.urlopen(req) as r, tempfile.NamedTemporaryFile(delete=False) as f:\n    f.write(r.read()); p=f.name\nres,err=upload_local_file(p)\nvideo_file=None if err else {'name':'video','mimetype':'video/mp4','s3key':(res or {}).get('s3key')}\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "YOUTUBE_MULTIPART_UPLOAD_VIDEO"
+          ],
+          "related_tool_slugs": [
+            "YOUTUBE_UPLOAD_VIDEO",
+            "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+            "YOUTUBE_VIDEO_DETAILS",
+            "YOUTUBE_UPDATE_VIDEO",
+            "YOUTUBE_UPDATE_THUMBNAIL",
+            "YOUTUBE_DELETE_VIDEO"
+          ],
+          "toolkits": [
+            "youtube"
+          ],
+          "plan_id": "1ba1f0dbafe044058b649ee7194bc82b"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "youtube",
+          "has_active_connection": false,
+          "description": "YouTube is a video-sharing platform with user-generated content, live streaming, and monetization opportunities, widely used for marketing, education, and entertainment",
+          "status_message": "No Active connection for toolkit=youtube. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"youtube\") to create a connection BEFORE executing any youtube tools."
+        }
+      ],
+      "tool_schemas": {
+        "YOUTUBE_MULTIPART_UPLOAD_VIDEO": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_MULTIPART_UPLOAD_VIDEO",
+          "description": "Uploads a video to YouTube using multipart upload in a single request. Use when you want to upload both metadata and video file together. This action uploads the video file and metadata in one request, unlike resumable upload which requires two steps.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "title",
+              "description",
+              "categoryId",
+              "privacyStatus",
+              "videoFile"
+            ],
+            "properties": {
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "educational",
+                    "python",
+                    "coding tutorial"
+                  ]
+                ],
+                "description": "List of keyword tags (strings) for the video, used to improve discoverability."
+              },
+              "title": {
+                "type": "string",
+                "examples": [
+                  "My Awesome Video"
+                ],
+                "description": "The title for the video."
+              },
+              "videoFile": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "Video file to upload to YouTube.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "categoryId": {
+                "type": "string",
+                "examples": [
+                  "22"
+                ],
+                "description": "YouTube category ID (e.g., '22' for People & Blogs). Can be provided as a string or integer."
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "A detailed walkthrough of my latest project."
+                ],
+                "description": "Detailed description of the video content."
+              },
+              "privacyStatus": {
+                "type": "string",
+                "examples": [
+                  "public",
+                  "private",
+                  "unlisted"
+                ],
+                "description": "Privacy status: 'public', 'private' (uploader/specified users only), or 'unlisted' (link accessible, not publicly listed)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_UPLOAD_VIDEO": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_UPLOAD_VIDEO",
+          "description": "Uploads a video file to a YouTube channel; the video file must be in a YouTube-supported format.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "title",
+              "description",
+              "tags",
+              "categoryId",
+              "privacyStatus",
+              "videoFilePath"
+            ],
+            "properties": {
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "['educational', 'python', 'coding tutorial']"
+                ],
+                "description": "List of keyword tags (strings) for the video, used to improve discoverability."
+              },
+              "title": {
+                "type": "string",
+                "examples": [
+                  "My Awesome Video Adventure"
+                ],
+                "description": "The title for the video."
+              },
+              "categoryId": {
+                "type": "string",
+                "examples": [
+                  "22"
+                ],
+                "description": "YouTube category ID (e.g., '22' for People & Blogs). Can be provided as a string or integer. See YouTube Data API docs for a full list of category IDs."
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "A detailed walkthrough of my latest project, showcasing all its features."
+                ],
+                "description": "Detailed description of the video content, optionally including keywords and context."
+              },
+              "privacyStatus": {
+                "enum": [
+                  "public",
+                  "private",
+                  "unlisted"
+                ],
+                "type": "string",
+                "examples": [
+                  "public"
+                ],
+                "description": "Privacy status."
+              },
+              "videoFilePath": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "Video file to upload to YouTube.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_GET_VIDEO_DETAILS_BATCH": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+          "description": "Retrieves multiple YouTube video resource parts in a single batch call. Use when you need cohort-level metrics for many videos to reduce quota usage and latency.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "hl": {
+                "type": "string",
+                "examples": [
+                  "en"
+                ],
+                "description": "Language for localized metadata (snippet.localized); IETF language tag, e.g., 'en'."
+              },
+              "id": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "dQw4w9WgXcQ",
+                    "eX2qFMC8cFo"
+                  ]
+                ],
+                "minItems": 1,
+                "description": "List of YouTube video IDs to retrieve. At least one video ID is required. Accepts a list or comma-separated string. Also accepts 'videoIds' as an alias. The YouTube API limits each request to 50 video IDs; if more are provided, they will be automatically split into multiple requests and the results merged."
+              },
+              "parts": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "contentDetails",
+                    "fileDetails",
+                    "id",
+                    "liveStreamingDetails",
+                    "localizations",
+                    "paidProductPlacementDetails",
+                    "player",
+                    "processingDetails",
+                    "recordingDetails",
+                    "snippet",
+                    "statistics",
+                    "status",
+                    "suggestions",
+                    "topicDetails"
+                  ],
+                  "type": "string"
+                },
+                "default": [
+                  "snippet",
+                  "statistics"
+                ],
+                "examples": [
+                  [
+                    "snippet",
+                    "statistics"
+                  ],
+                  [
+                    "snippet",
+                    "contentDetails",
+                    "statistics"
+                  ]
+                ],
+                "minItems": 1,
+                "description": "Video resource properties to include. At least one part is required. Accepts a list of parts or a comma-separated string. Also accepts 'part' (singular) as an alias. Valid parts: snippet, contentDetails, statistics, status, player, topicDetails, recordingDetails, fileDetails, processingDetails, suggestions, liveStreamingDetails, localizations, paidProductPlacementDetails, id. Defaults to ['snippet', 'statistics'] if not specified."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_UPDATE_VIDEO": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_UPDATE_VIDEO",
+          "description": "Updates metadata for a YouTube video identified by videoId, which must exist; an empty list for tags...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_UPDATE_VIDEO"
+              ]
+            }
+          }
+        },
+        "YOUTUBE_UPDATE_THUMBNAIL": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_UPDATE_THUMBNAIL",
+          "description": "Sets the custom thumbnail for a YouTube video using an image from a URL. Requirements: - The authent...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_UPDATE_THUMBNAIL"
+              ]
+            }
+          }
+        },
+        "YOUTUBE_DELETE_VIDEO": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_DELETE_VIDEO",
+          "description": "Tool to delete a YouTube video owned by the authenticated user/channel. Use when you need to permane...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_DELETE_VIDEO"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:35:45.771Z",
+        "current_time_utc_epoch_seconds": 1786599345,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "boat",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"boat\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_ZB5bE2zkjg6R"
+  }
+}

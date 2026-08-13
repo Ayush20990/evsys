@@ -1,0 +1,283 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-050-q4",
+    "workflow_id": 50,
+    "workflow_task": "Verify the correct Slack workspace, identify members of a Slack channel, send an approved direct message to selected members, and remediate accidental sends in the wrong workspace.",
+    "query": "delete or revert slack message",
+    "intent": "Remediate and remove accidental messages sent in the wrong Slack workspace.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "SLACK_DELETES_A_MESSAGE_FROM_A_CHAT"
+        ],
+        "purpose": "Delete an accidental message from a chat."
+      }
+    ],
+    "candidate_tools": [
+      "SLACK_DELETES_A_MESSAGE_FROM_A_CHAT",
+      "SLACK_FETCH_CONVERSATION_HISTORY",
+      "SLACK_FIND_CHANNELS",
+      "SLACK_LIST_ALL_USERS",
+      "SLACK_OPEN_DM",
+      "SLACK_RETRIEVE_CONVERSATION_MEMBERS_LIST",
+      "SLACK_SEARCH_MESSAGES",
+      "SLACK_SEND_MESSAGE",
+      "SLACK_TEST_AUTH"
+    ]
+  },
+  "request": {
+    "query": "delete or revert slack message"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "delete or revert slack message",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite (before irreversible delete)]: Generate a human-review link using SLACK_RETRIEVE_MESSAGE_PERMALINK_URL (confirm the conversation identifier and message timestamp token point to the intended message).",
+            "[Optional (if the identifiers need re-validation)] [Prerequisite]: Locate/confirm the message using SLACK_FETCH_CONVERSATION_HISTORY (use a narrow window; paginate when has_more=true and response_metadata.next_cursor is present).",
+            "[Optional (if history lookup fails due to access/channel errors)] [Prerequisite]: Retry lookup using SLACKBOT_FETCH_CONVERSATION_HISTORY (validate you have access rather than repeated retries).",
+            "[Optional (if the target is a thread reply)] [Prerequisite]: Enumerate replies using SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION (select the exact reply timestamp token).",
+            "[Required] [Step]: Delete the confirmed message using SLACK_DELETES_A_MESSAGE_FROM_A_CHAT (only after the target is explicitly confirmed).",
+            "[Optional (for verification)] [Next Step]: Re-fetch the surrounding window using SLACK_FETCH_CONVERSATION_HISTORY (or SLACKBOT_FETCH_CONVERSATION_HISTORY) to confirm the message is no longer present.",
+            "[Fallback (if delete fails due to permission/ownership errors such as cant_delete_message)] [Fallback]: Retry deletion using SLACKBOT_DELETES_A_MESSAGE_FROM_A_CHAT."
+          ],
+          "known_pitfalls": [
+            "[SLACK_DELETES_A_MESSAGE_FROM_A_CHAT] Treat success only when ok=true and the response echoes the expected channel and ts fields.",
+            "[SLACK_DELETES_A_MESSAGE_FROM_A_CHAT] message_not_found may mean wrong identifiers or already-removed content; confirm via history before repeated retries.",
+            "[SLACK_FETCH_CONVERSATION_HISTORY] If has_more=true and response_metadata.next_cursor exists, failing to paginate can miss the target beyond the first ~200 results.",
+            "[SLACK_RETRIEVE_MESSAGE_PERMALINK_URL] A permalink supports human review but does not imply delete permission for the active token.",
+            "[SLACK_FETCH_CONVERSATION_HISTORY] Conversation access errors can indicate a context mismatch; verify using SLACKBOT_FETCH_CONVERSATION_HISTORY rather than retrying the same call."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "SLACK_DELETES_A_MESSAGE_FROM_A_CHAT"
+          ],
+          "related_tool_slugs": [
+            "SLACK_RETRIEVE_MESSAGE_PERMALINK_URL",
+            "SLACK_FETCH_CONVERSATION_HISTORY",
+            "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION",
+            "SLACKBOT_DELETES_A_MESSAGE_FROM_A_CHAT",
+            "SLACKBOT_FETCH_CONVERSATION_HISTORY"
+          ],
+          "toolkits": [
+            "slack",
+            "slackbot"
+          ],
+          "plan_id": "2f8e33dc1e1d45339cba5722fcb86535"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "slack",
+          "has_active_connection": false,
+          "description": "Slack is a channel-based messaging platform. With Slack, people can work together more effectively, connect all their software tools and services, and find the information they need to do their best work - all within a secure, enterprise-grade enviro",
+          "status_message": "No Active connection for toolkit=slack. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"slack\") to create a connection BEFORE executing any slack tools."
+        },
+        {
+          "toolkit": "slackbot",
+          "has_active_connection": false,
+          "description": "Slackbot gives agents workspace-wide read access to a Slack workspace on behalf of the installing user - search messages and files, browse channel and thread history, and look up users and channels - while continuing to post and react as the bot. Inc",
+          "status_message": "No Active connection for toolkit=slackbot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"slackbot\") to create a connection BEFORE executing any slackbot tools."
+        }
+      ],
+      "tool_schemas": {
+        "SLACK_DELETES_A_MESSAGE_FROM_A_CHAT": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_DELETES_A_MESSAGE_FROM_A_CHAT",
+          "description": "Deletes a message, identified by its channel ID and timestamp, from a Slack channel, private group, or direct message conversation; the authenticated user or bot must be the original poster.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "ts": {
+                "type": "string",
+                "examples": [
+                  "1234567890.123456",
+                  "1609459200.000000"
+                ],
+                "description": "Timestamp of the message to be deleted. Must be the exact Slack message timestamp string with fractional precision, e.g., '1234567890.123456'. Thread replies use their own `ts`; ephemeral messages and certain app-posted messages cannot be deleted via this method even with a valid timestamp."
+              },
+              "as_user": {
+                "type": "boolean",
+                "description": "Legacy parameter for classic Slack apps. Pass true to delete the message as the authed user. Bot tokens can only delete messages posted by that bot. This parameter is primarily for legacy apps and is generally not needed with modern bot tokens."
+              },
+              "channel": {
+                "type": "string",
+                "examples": [
+                  "C1234567890",
+                  "G0987654321",
+                  "D060123ABC"
+                ],
+                "description": "The ID of the channel, private group, or direct message conversation containing the message to be deleted."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACK_RETRIEVE_MESSAGE_PERMALINK_URL": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_RETRIEVE_MESSAGE_PERMALINK_URL",
+          "description": "Retrieves a permalink URL for a specific message in a Slack channel or conversation; the permalink respects Slack's privacy settings.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "channel",
+              "message_ts"
+            ],
+            "properties": {
+              "channel": {
+                "type": "string",
+                "examples": [
+                  "C012AB3CD",
+                  "G123456"
+                ],
+                "description": "The ID of the conversation or channel containing the message. This can be a public channel ID, a private channel ID, a direct message channel ID, or a multi-person direct message channel ID. Must be a channel ID, not a channel name; use SLACK_FIND_CHANNELS to resolve names to IDs."
+              },
+              "message_ts": {
+                "type": "string",
+                "examples": [
+                  "1610144875.000600",
+                  "15712345.001500"
+                ],
+                "description": "A message's `ts` value (timestamp), uniquely identifying it within a channel. Example: '1610144875.000600'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACK_FETCH_CONVERSATION_HISTORY": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_FETCH_CONVERSATION_HISTORY",
+          "description": "Fetches a chronological list of messages and events from a specified Slack conversation, accessible by the authenticated user/bot, with options for pagination and time range filtering. IMPORTANT LIMITATION: This action only returns messages from the main channel timeline. Threaded replies are NOT returned by this endpoint. To retrieve threaded replies, use the SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION action (conversations.replies API) instead. The oldest/latest timestamp filters work reliably for filtering the main channel timeline, but cannot be used to retrieve individual threaded replies - even if you know the exact reply timestamp, setting oldest=latest to that timestamp will return an empty messages array. To get threaded replies: 1. Use this action to get parent messages (which include thread_ts, reply_count, latest_reply fields) 2. Use SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION with the parent's thread_ts to fetch all replies in that thread",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "channel"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 100,
+                "maximum": 1000,
+                "minimum": 1,
+                "examples": [
+                  "100",
+                  "200"
+                ],
+                "description": "Maximum number of messages to request in this single Slack API call (1-1000). Defaults to 100. Slack may return fewer than requested, especially for non-Marketplace apps where Slack can cap each page at 15 messages. This action does not internally paginate; use response_metadata.next_cursor in the cursor parameter of a follow-up call to fetch more messages."
+              },
+              "cursor": {
+                "type": "string",
+                "examples": [
+                  "dXNlcjpVMDYxTkZUVDA="
+                ],
+                "description": "Pagination cursor from `response_metadata.next_cursor` of a previous response. Omit this for the first page; pass the returned cursor in a follow-up call to fetch the next page."
+              },
+              "latest": {
+                "type": "string",
+                "examples": [
+                  "1609459200.000000"
+                ],
+                "description": "End of the time range of messages to include in results. Accepts a Unix timestamp or a Slack timestamp (e.g., '1234567890.000000'). NOTE: This filter only applies to main channel messages, not threaded replies. Use SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION to retrieve replies."
+              },
+              "oldest": {
+                "type": "string",
+                "examples": [
+                  "1609372800.000000"
+                ],
+                "description": "Start of the time range of messages to include in results. Accepts a Unix timestamp or a Slack timestamp (e.g., '1234567890.000000'). NOTE: This filter only applies to main channel messages, not threaded replies. Use SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION to retrieve replies."
+              },
+              "channel": {
+                "type": "string",
+                "examples": [
+                  "C1234567890",
+                  "G0123456789",
+                  "D0123456789"
+                ],
+                "description": "The ID of the public channel, private channel, direct message, or multi-person direct message to fetch history from."
+              },
+              "inclusive": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "When true, includes messages at the exact 'oldest' or 'latest' boundary timestamps in results. When false (default), excludes boundary messages. Only applies when 'oldest' or 'latest' is specified."
+              },
+              "include_all_metadata": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Return all metadata associated with messages in the conversation history. When true, includes additional metadata fields that may be present on messages."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION",
+          "description": "Retrieves replies to a specific parent message in a Slack conversation, using the channel ID and the...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_FETCH_MESSAGE_THREAD_FROM_A_CONVERSATION"
+              ]
+            }
+          }
+        },
+        "SLACKBOT_DELETES_A_MESSAGE_FROM_A_CHAT": {
+          "toolkit": "SLACKBOT",
+          "tool_slug": "SLACKBOT_DELETES_A_MESSAGE_FROM_A_CHAT",
+          "description": "Deletes a message, identified by its channel ID and timestamp, from a Slack channel, private group, ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACKBOT_DELETES_A_MESSAGE_FROM_A_CHAT"
+              ]
+            }
+          }
+        },
+        "SLACKBOT_FETCH_CONVERSATION_HISTORY": {
+          "toolkit": "SLACKBOT",
+          "tool_slug": "SLACKBOT_FETCH_CONVERSATION_HISTORY",
+          "description": "Fetches a chronological list of messages and events from a specified Slack conversation, accessible ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACKBOT_FETCH_CONVERSATION_HISTORY"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:34:47.603Z",
+        "current_time_utc_epoch_seconds": 1786599287,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "sang",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"sang\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_2S-9qkeWE_BV"
+  }
+}

@@ -1,0 +1,218 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-093-q1",
+    "workflow_id": 93,
+    "workflow_task": "Analyze Salesforce CRM data by discovering schema, running SOQL queries, extracting a large set of related records, and computing a cohort-based return-rate metric.",
+    "query": "Salesforce schema discovery and SOQL query execution",
+    "intent": "Discover the data schema and execute SOQL queries to retrieve CRM records from Salesforce.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "SALESFORCE_GET_ALL_CUSTOM_OBJECTS"
+        ],
+        "purpose": "Salesforce schema discovery"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "SALESFORCE_RUN_SOQL_QUERY"
+        ],
+        "purpose": "SOQL query execution"
+      }
+    ],
+    "candidate_tools": [
+      "SALESFORCE_GET_ALL_CUSTOM_OBJECTS",
+      "SALESFORCE_RUN_SOQL_QUERY"
+    ]
+  },
+  "request": {
+    "query": "Salesforce schema discovery and SOQL query execution"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Salesforce schema discovery and SOQL query execution",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "Required Prerequisite (if object/field API names are uncertain): Confirm the target object exists using SALESFORCE_GET_SUPPORTED_OBJECTS_DIRECTORY and identify the exact grouping field API name using SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT.",
+            "Required Step: Run an aggregate SOQL (GROUP BY + COUNT with an alias) using SALESFORCE_RUN_SOQL_QUERY to return one row per bucket with the count alias as a field.",
+            "Optional Next Step (if you need drill-down examples): Run a follow-up filtered SOQL using SALESFORCE_RUN_SOQL_QUERY to fetch sample record Ids/fields for a chosen group value.",
+            "Optional (if the field is missing/ambiguous in standard describe): Resolve field metadata via SALESFORCE_TOOLING_QUERY (e.g., FieldDefinition) and re-run the SOQL with the corrected API name.",
+            "Required Fallback (if SALESFORCE_RUN_SOQL_QUERY fails for the same SOQL): Re-execute the query using SALESFORCE_SERVICE_CLOUD_QUERY_SOQL to validate results or bypass executor-specific issues."
+          ],
+          "known_pitfalls": [
+            "[SALESFORCE_RUN_SOQL_QUERY] Aggregate queries return rows with attributes.type=\"AggregateResult\"; the COUNT() alias (e.g., \"total\") appears as a key in each record.",
+            "[SALESFORCE_RUN_SOQL_QUERY] GROUP BY can include a bucket where the grouping field is null/blank; handle this \"null\" group explicitly in output formatting.",
+            "[SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT] Use the field API name (not the label) in SOQL; otherwise queries fail with \"No such column\"-style field resolution errors."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "SALESFORCE_RUN_SOQL_QUERY"
+          ],
+          "related_tool_slugs": [
+            "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+            "SALESFORCE_SERVICE_CLOUD_QUERY_SOQL",
+            "SALESFORCE_TOOLING_QUERY",
+            "SALESFORCE_GET_SUPPORTED_OBJECTS_DIRECTORY",
+            "SALESFORCE_GET_QUERY_JOB_INFO"
+          ],
+          "toolkits": [
+            "salesforce",
+            "salesforce_service_cloud"
+          ],
+          "plan_id": "2d0c4b1339354784922d9cf0fa1f54e6"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "salesforce",
+          "has_active_connection": false,
+          "description": "Salesforce is a leading CRM platform integrating sales, service, marketing, and analytics to build customer relationships and drive business growth",
+          "status_message": "No Active connection for toolkit=salesforce. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"salesforce\") to create a connection BEFORE executing any salesforce tools."
+        },
+        {
+          "toolkit": "salesforce_service_cloud",
+          "has_active_connection": false,
+          "description": "Salesforce Service Cloud is a customer service platform providing case management, knowledge base, omnichannel support, and service automation to deliver exceptional customer experiences",
+          "status_message": "No Active connection for toolkit=salesforce_service_cloud. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"salesforce_service_cloud\") to create a connection BEFORE executing any salesforce_service_cloud tools."
+        }
+      ],
+      "tool_schemas": {
+        "SALESFORCE_RUN_SOQL_QUERY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_RUN_SOQL_QUERY",
+          "description": "Executes a SOQL query against Salesforce data. Returns records matching the query with pagination support.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "SELECT Id, Name, Email FROM Contact WHERE CreatedDate > 2024-01-01T00:00:00Z",
+                  "SELECT Name, (SELECT LastName FROM Contacts) FROM Account",
+                  "SELECT COUNT() FROM Lead WHERE Status = 'New'",
+                  "SELECT COUNT(Id), StageName FROM Opportunity GROUP BY StageName",
+                  "SELECT Id, Name FROM Opportunity ORDER BY Amount DESC LIMIT 10",
+                  "SELECT FIELDS(ALL) FROM Account LIMIT 200",
+                  "SELECT Id, Name FROM Contact WHERE LastName = 'O\\'Brien'",
+                  "SELECT Id, Name, Description FROM Account LIMIT 10"
+                ],
+                "description": "SOQL query to execute. Must start with SELECT. Field names must match object schema exactly \u2014 use SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT for unfamiliar objects. ALIASES: No 'AS' keyword (use 'SUM(Amount) TotalSales' NOT 'SUM(Amount) AS TotalSales'). AGGREGATES: Without GROUP BY, ORDER BY/LIMIT not allowed (single-row result). COUNT() SYNTAX: Bare COUNT() only valid alone. With GROUP BY or other fields, must specify field: COUNT(Id) or COUNT(fieldName). Example: 'SELECT COUNT(Id), Status FROM Lead GROUP BY Status' NOT 'SELECT COUNT(), Status FROM Lead GROUP BY Status'. NON-GROUPABLE: Long text, rich text, encrypted text, compound address/location fields. NON-FILTERABLE: Long text area, rich text, encrypted text, multi-select picklists, blob fields CANNOT be in WHERE. FIELDS(ALL)/FIELDS(CUSTOM) require LIMIT \u2264200. ID values need single quotes. Apostrophes use backslash: 'O\\'Brien'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+          "description": "Retrieves all fields (standard and custom) for a Salesforce object with complete metadata including field types, constraints, picklist values, and relationships.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "object_name"
+            ],
+            "properties": {
+              "object_name": {
+                "type": "string",
+                "examples": [
+                  "Contact",
+                  "Account",
+                  "Lead",
+                  "Custom_Object__c"
+                ],
+                "description": "API name of the Salesforce object to describe. Use standard object names (Account, Contact, Lead, Opportunity) or custom object API names ending in __c."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_SERVICE_CLOUD_QUERY_SOQL": {
+          "toolkit": "SALESFORCE_SERVICE_CLOUD",
+          "tool_slug": "SALESFORCE_SERVICE_CLOUD_QUERY_SOQL",
+          "description": "Tool to execute a SOQL query. Use when you need to retrieve records from Salesforce via SOQL.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "soql_query"
+            ],
+            "properties": {
+              "soql_query": {
+                "type": "string",
+                "examples": [
+                  "SELECT Id, Name FROM Account WHERE CreatedDate > LAST_WEEK"
+                ],
+                "description": "SOQL query string to execute."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_TOOLING_QUERY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_TOOLING_QUERY",
+          "description": "Tool to execute SOQL queries against Salesforce Tooling API metadata objects. Use when you need to q...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_TOOLING_QUERY"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_GET_SUPPORTED_OBJECTS_DIRECTORY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_SUPPORTED_OBJECTS_DIRECTORY",
+          "description": "Tool to get a Salesforce org's active theme and directory of supported objects. Use when you need to...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_SUPPORTED_OBJECTS_DIRECTORY"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_GET_QUERY_JOB_INFO": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_QUERY_JOB_INFO",
+          "description": "Tool to retrieve information about a Salesforce Bulk API v2 query job. Use when you need to check th...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_QUERY_JOB_INFO"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:39:26.076Z",
+        "current_time_utc_epoch_seconds": 1786599566,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "girl",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"girl\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_tzhmodP8FobR"
+  }
+}

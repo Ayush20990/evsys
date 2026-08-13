@@ -1,0 +1,472 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-041-q5",
+    "workflow_id": 41,
+    "workflow_task": "Implement and release a protected budget dashboard feature by reading Google Sheets and Google Docs data, retrieving deployment secrets from Vercel, committing and merging code changes, verifying deployments, and updating a Jira issue.",
+    "query": "update Jira issue status",
+    "intent": "Transition and update the corresponding Jira task to reflect completion of the feature release.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "JIRA_TRANSITION_ISSUE"
+        ],
+        "purpose": "Transition Jira issue status to reflect completion"
+      }
+    ],
+    "candidate_tools": [
+      "GITHUB_COMMIT_MULTIPLE_FILES",
+      "GITHUB_CREATE_A_PULL_REQUEST",
+      "GITHUB_DELETE_A_REFERENCE",
+      "GITHUB_GET_REPOSITORY_CONTENT",
+      "GITHUB_MERGE_A_PULL_REQUEST",
+      "GOOGLEDRIVE_DOWNLOAD_FILE",
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "JIRA_ADD_COMMENT",
+      "JIRA_ASSIGN_ISSUE",
+      "JIRA_TRANSITION_ISSUE",
+      "VERCEL_FILTER_PROJECT_ENVS",
+      "VERCEL_GET_DEPLOYMENTS",
+      "VERCEL_GET_PROJECT_ENV"
+    ]
+  },
+  "request": {
+    "query": "update Jira issue status"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "update Jira issue status",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if you need to confirm target/current state)] [Prerequisite]: Fetch current status/fields using JIRA_GET_ISSUE (read-only context before changes).",
+            "[Required] [Prerequisite]: Fetch valid workflow moves using JIRA_GET_TRANSITIONS (optionally expand transition field constraints; select a transitions[].id whose destination matches the intended status).",
+            "[Optional (if ownership must change before moving)] [Step]: Assign/reassign the work item using JIRA_ASSIGN_ISSUE (align with triage policy before transition).",
+            "[Required] [Step]: Add an audit/progress note using JIRA_ADD_COMMENT (keep a durable history entry separate from status change).",
+            "[Required] [Step]: Move the work item using JIRA_TRANSITION_ISSUE (use the selected transitions[].id as transition_id_or_name; if the desired move isn\u2019t available, apply the best available intermediate move, then re-run JIRA_GET_TRANSITIONS and transition again).",
+            "[Optional (for verification after writes)] [Next Step]: Re-fetch using JIRA_GET_ISSUE (confirm final status and that the comment exists).",
+            "[Required (if transition is rejected due to required/invalid fields)] [Fallback]: Inspect allowed/required fields using JIRA_GET_ISSUE_EDIT_METADATA (and if resolution is required, use JIRA_GET_ISSUE_RESOLUTIONS), retry JIRA_TRANSITION_ISSUE with only transition_id_or_name, then apply remaining updates via JIRA_EDIT_ISSUE."
+          ],
+          "known_pitfalls": [
+            "[JIRA_TRANSITION_ISSUE] Can fail if you set fields not present on the transition screen (e.g., resolution); transition first, then update via JIRA_EDIT_ISSUE after JIRA_GET_ISSUE_EDIT_METADATA.",
+            "[JIRA_TRANSITION_ISSUE] Validation error \"Following fields are missing: {'transition_id_or_name'}\" occurs if you pass the wrong parameter name (must be transition_id_or_name).",
+            "[JIRA_GET_TRANSITIONS] Available transitions and transitions[].id values are workflow-specific; re-fetch per work item and ensure the selected transition\u2019s destination matches the intended status.",
+            "[JIRA_GET_TRANSITIONS] After a successful JIRA_TRANSITION_ISSUE, the available transition set can change; call JIRA_GET_TRANSITIONS again before attempting a final close/done move.",
+            "[JIRA_GET_ISSUE] Tool schema may require argument name issue_key (not issue_id_or_key); mismatched parameter names can cause request validation failures."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "JIRA_GET_TRANSITIONS",
+            "JIRA_ADD_COMMENT",
+            "JIRA_TRANSITION_ISSUE"
+          ],
+          "related_tool_slugs": [
+            "JIRA_GET_ISSUE",
+            "JIRA_GET_ISSUE_EDIT_METADATA",
+            "JIRA_EDIT_ISSUE",
+            "JIRA_ASSIGN_ISSUE",
+            "JIRA_UPDATE_COMMENT",
+            "JIRA_GET_ISSUE_RESOLUTIONS"
+          ],
+          "toolkits": [
+            "jira"
+          ],
+          "plan_id": "c5e543b0df084a179acf82d1549eaa88"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "jira",
+          "has_active_connection": false,
+          "description": "A tool for bug tracking, issue tracking, and agile project management.",
+          "status_message": "No Active connection for toolkit=jira. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"jira\") to create a connection BEFORE executing any jira tools."
+        }
+      ],
+      "tool_schemas": {
+        "JIRA_GET_TRANSITIONS": {
+          "toolkit": "JIRA",
+          "tool_slug": "JIRA_GET_TRANSITIONS",
+          "description": "Retrieves available workflow transitions for a Jira issue. Always use the numeric `id` from the response when calling JIRA_TRANSITION_ISSUE \u2014 transition IDs are project/workflow-specific and must not be hardcoded or reused across different issues or projects. When multiple transitions share similar names, use `id` to disambiguate.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "issue_id_or_key"
+            ],
+            "properties": {
+              "expand": {
+                "type": "string",
+                "examples": [
+                  "transitions.fields"
+                ],
+                "description": "A comma-separated list of properties to expand in the response. Use 'transitions.fields' to include the fields associated with each transition, providing details on what input is expected or allowed."
+              },
+              "transition_id": {
+                "type": "string",
+                "examples": [
+                  "10"
+                ],
+                "description": "The ID of a specific transition to retrieve. If provided, only details for this transition are returned."
+              },
+              "issue_id_or_key": {
+                "type": "string",
+                "examples": [
+                  "PROJ-123",
+                  "10000"
+                ],
+                "description": "The ID (e.g., '10000') or key (e.g., 'PROJ-123') of the Jira issue for which to retrieve transitions."
+              },
+              "skip_remote_only_condition": {
+                "type": "boolean",
+                "description": "If true, conditions defined by remote apps that only run remotely will be skipped during evaluation."
+              },
+              "sort_by_ops_bar_and_status": {
+                "type": "boolean",
+                "description": "If true, sorts the returned transitions by their order in the operations bar and then by status category."
+              },
+              "include_unavailable_transitions": {
+                "type": "boolean",
+                "description": "If true, transitions that are not currently available for the issue (e.g., due to unmet conditions) will be included in the response. Use this as a diagnostic step when an expected target status is missing from the default response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "JIRA_ADD_COMMENT": {
+          "toolkit": "JIRA",
+          "tool_slug": "JIRA_ADD_COMMENT",
+          "description": "Adds a comment using Atlassian Document Format (ADF) for rich text to an existing Jira issue.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "issue_id_or_key",
+              "comment"
+            ],
+            "properties": {
+              "comment": {
+                "type": "string",
+                "examples": [
+                  "This issue is now ready for testing.",
+                  "Found a **critical** bug in the *login functionality*. `user.login()` method fails. @john.doe please review.",
+                  "Completed implementation. Next steps:\n1. Code review\n2. Testing\n3. Deployment\n\nSee [documentation](https://docs.example.com) for details.",
+                  "Please review this, @\"QA Team\""
+                ],
+                "description": "The comment text. Supports Markdown formatting including **bold**, *italic*, `code`, links [text](url), lists, and @mentions. To mention users, use @username for single-word names or @\"Display Name\" for names with spaces. Plain URLs are not hyperlinked; use `[text](url)` format for clickable links."
+              },
+              "issue_id_or_key": {
+                "type": "string",
+                "examples": [
+                  "PROJ-123",
+                  "10000"
+                ],
+                "description": "The ID or key of the issue to add the comment to."
+              },
+              "visibility_type": {
+                "type": "string",
+                "examples": [
+                  "group",
+                  "role"
+                ],
+                "description": "Specifies the type of visibility restriction for the comment. Valid values are 'group' or 'role'. If this field is used, `visibility_value` must also be provided. IMPORTANT: 'group' visibility requires group-level visibility to be enabled in the Jira instance settings by an administrator. For 'role' visibility, use JIRA_GET_PROJECT_ROLES action to discover valid role names for the project."
+              },
+              "visibility_value": {
+                "type": "string",
+                "examples": [
+                  "Administrator",
+                  "Member",
+                  "Viewer"
+                ],
+                "description": "Name of the group or role that can view the comment (required if visibility_type is set). IMPORTANT: These values are instance-specific and vary by Jira configuration. For role visibility: Use JIRA_GET_PROJECT_ROLES with your project key to discover valid role names (e.g., 'Administrator', 'Member', 'Viewer'). For group visibility: Use JIRA_GET_ALL_GROUPS to list available groups. Common roles include 'Administrator', 'Member', 'Viewer' but actual names depend on your project configuration."
+              },
+              "additional_properties": {
+                "type": "object",
+                "examples": [
+                  {
+                    "properties": [
+                      {
+                        "key": "sd.public.comment",
+                        "value": {
+                          "internal": true
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "description": "Additional properties to include in the comment request body. This can be used to pass extra fields supported by the Jira API that are not explicitly defined, such as 'properties' for EntityProperty objects. Format: {'properties': [{'key': 'myKey', 'value': {'myValue': 123}}]}.",
+                "additionalProperties": true
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "JIRA_TRANSITION_ISSUE": {
+          "toolkit": "JIRA",
+          "tool_slug": "JIRA_TRANSITION_ISSUE",
+          "description": "Transitions a Jira issue to a different workflow state, with support for transition name lookup and user assignment by email. IMPORTANT: Only fields that are on the transition's screen can be set during the transition. Which fields are available depends on the Jira workflow configuration and varies per project. Use JIRA_GET_TRANSITIONS with expand='transitions.fields' to check which fields a transition supports. If a field (e.g., assignee) is not on the transition screen, use a JIRA_EDIT_ISSUE action after the transition to set other fields.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "issue_id_or_key",
+              "transition_id_or_name"
+            ],
+            "properties": {
+              "comment": {
+                "type": "string",
+                "examples": [
+                  "Completed testing",
+                  "Moving to next stage",
+                  "Fixed **critical** bug in `user.login()` method.",
+                  "Changes made:\n- Updated validation logic\n- Fixed **memory leak**\n- Added `retry` mechanism"
+                ],
+                "description": "Optional comment to add during the transition. Supports Markdown-style formatting that is automatically converted to Atlassian Document Format (ADF). Supported formatting: **bold** (wrap text in double asterisks), *italic* or _italic_ (single asterisks or underscores), `inline code` (backticks), [link text](https://url) for hyperlinks, bullet lists (lines starting with -, *, or +), and numbered lists (lines starting with 1., 2., etc.). Example: 'Fixed **critical** bug in `user.login()` method. See [docs](https://example.com) for details.'"
+              },
+              "assignee": {
+                "type": "string",
+                "examples": [
+                  "5b10a2844c20165700ede21g"
+                ],
+                "description": "Account ID of the user to assign the issue to during transition. Takes precedence over assignee_name."
+              },
+              "resolution": {
+                "type": "string",
+                "examples": [
+                  "Done",
+                  "Fixed",
+                  "Won't Do"
+                ],
+                "description": "Resolution to set when CLOSING an issue (e.g., 'Done', 'Fixed', 'Won't Do'). IMPORTANT: Only use this when transitioning to a final status like 'Done', 'Closed', or 'Resolved'. Do NOT set this for intermediate transitions like 'In Progress', 'In Review', or 'To Do' - resolution is only available when completing/closing an issue."
+              },
+              "assignee_name": {
+                "type": "string",
+                "examples": [
+                  "john.doe@company.com",
+                  "John Doe",
+                  "rickard"
+                ],
+                "description": "Name of the user to assign the issue to during transition. Can be either an email address (e.g., 'john@company.com') or display name (e.g., 'John Doe'). The system will auto-detect the type and search accordingly. Ignored if assignee (account ID) is provided."
+              },
+              "issue_id_or_key": {
+                "type": "string",
+                "examples": [
+                  "PROJ-123",
+                  "10000"
+                ],
+                "description": "The ID or key of the issue to transition."
+              },
+              "transition_fields": {
+                "type": "object",
+                "examples": [
+                  {
+                    "timetracking": {
+                      "originalEstimate": "2h"
+                    }
+                  },
+                  {
+                    "timetracking": {
+                      "originalEstimate": "1d",
+                      "remainingEstimate": "4h"
+                    },
+                    "customfield_10001": "High"
+                  }
+                ],
+                "description": "Fields to include in the transition payload. Use this for fields that appear on the transition screen and may be required by the workflow (e.g., 'timetracking', custom fields). Format: {'timetracking': {'originalEstimate': '2h'}, 'customfield_10001': 'value'}. For time tracking, use format like '1d 2h' (1 day 2 hours), '30m' (30 minutes), or '1w' (1 week). Note: assignee, resolution, and comment are handled by dedicated parameters and don't need to be included here.",
+                "additionalProperties": true
+              },
+              "additional_properties": {
+                "type": "object",
+                "examples": [
+                  {
+                    "historyMetadata": {
+                      "type": "myplugin:type",
+                      "description": "Automated transition"
+                    }
+                  },
+                  {
+                    "properties": [
+                      {
+                        "key": "sd.public.comment",
+                        "value": {
+                          "internal": true
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "description": "Additional properties to include at the top level of the transition request body. This can be used to pass extra fields supported by the Jira API that are not explicitly defined, such as 'historyMetadata' for audit trail customization or 'properties' for entity properties. Format: {'historyMetadata': {'type': 'myplugin:type'}, 'properties': [{'key': 'myKey', 'value': {...}}]}.",
+                "additionalProperties": true
+              },
+              "transition_id_or_name": {
+                "type": "string",
+                "examples": [
+                  "31",
+                  "Done",
+                  "To Do"
+                ],
+                "description": "The ID or name of the transition to apply. IMPORTANT: Transition names are workflow-specific and vary between Jira projects (e.g., one project may have 'In Progress' while another has 'In Development'). It is strongly recommended to first retrieve available transitions for the issue using JIRA_GET_TRANSITIONS or JIRA_GET_ISSUE (with expand='transitions') to ensure you use a valid transition name for this specific issue's workflow. Available transitions also depend on the issue's *current status*, not just the project \u2014 never reuse cached transition IDs across different issues or statuses. When multiple transitions share similar names, prefer the numeric ID to avoid applying the wrong state change."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "JIRA_GET_ISSUE": {
+          "toolkit": "JIRA",
+          "tool_slug": "JIRA_GET_ISSUE",
+          "description": "Retrieves a Jira issue by ID or key with customizable fields and expansions. Request only needed fields and expansions to avoid large responses. Use specific `customfield_*` keys in `fields` to verify updated values programmatically.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "issue_key"
+            ],
+            "properties": {
+              "expand": {
+                "type": "string",
+                "examples": [
+                  "renderedFields,names,schema,transitions,operations,editmeta,changelog",
+                  "changelog",
+                  "renderedFields"
+                ],
+                "description": "A comma-separated list of entities to include with the issue. To retrieve update history, include 'changelog' in this list (e.g., 'changelog'). Other common expansions include 'renderedFields' (HTML content), 'transitions' (available workflows), and 'operations' (available actions)."
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "[\"summary\", \"description\", \"status\"]",
+                  "[\"assignee\", \"reporter\", \"customfield_10001\"]"
+                ],
+                "description": "A list of field names or IDs to return for the issue. If omitted or empty, a default set of fields (often all fields or all navigable fields) is returned. For specific fields, provide a list like `[\"summary\", \"status\"]`."
+              },
+              "issue_key": {
+                "type": "string",
+                "examples": [
+                  "PROJ-123",
+                  "10000"
+                ],
+                "description": "The ID (e.g., '10000') or key (e.g., 'PROJ-123') of the Jira issue to retrieve."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "[\"jira.issue.tools.v1.attachmentHandles\", \"com.atlassian.jira.plugin.devstatus.phasetracking\"]",
+                  "[\"my.custom.property\"]"
+                ],
+                "description": "A list of issue property keys to include in the response. Issue properties are extra key-value data attached to an issue, often by apps. Example: `[\"jira.meta.data\", \"com.example.custom.info\"]`."
+              },
+              "fields_by_keys": {
+                "type": "boolean",
+                "examples": [
+                  "false",
+                  "true"
+                ],
+                "description": "If true, the strings in the `fields` parameter are interpreted as field keys (e.g., 'summary') instead of field IDs (e.g., 'customfield_10000'). Default is false (uses field IDs)."
+              },
+              "update_history": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Controls whether viewing the issue adds it to the user's 'Recently viewed' list. This does not control inclusion of update history in the response. To include update history, use the 'expand' parameter with 'changelog'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "JIRA_GET_ISSUE_EDIT_METADATA": {
+          "toolkit": "JIRA",
+          "tool_slug": "JIRA_GET_ISSUE_EDIT_METADATA",
+          "description": "Tool to retrieve editable fields for a Jira issue. Use before running an edit action to fetch custom...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "JIRA_GET_ISSUE_EDIT_METADATA"
+              ]
+            }
+          }
+        },
+        "JIRA_EDIT_ISSUE": {
+          "toolkit": "JIRA",
+          "tool_slug": "JIRA_EDIT_ISSUE",
+          "description": "Updates an existing Jira issue with field values and operations. Supports direct field parameters (s...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "JIRA_EDIT_ISSUE"
+              ]
+            }
+          }
+        },
+        "JIRA_ASSIGN_ISSUE": {
+          "toolkit": "JIRA",
+          "tool_slug": "JIRA_ASSIGN_ISSUE",
+          "description": "Assigns a Jira issue to a user, default assignee, or unassigns; supports email/name lookup.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "JIRA_ASSIGN_ISSUE"
+              ]
+            }
+          }
+        },
+        "JIRA_UPDATE_COMMENT": {
+          "toolkit": "JIRA",
+          "tool_slug": "JIRA_UPDATE_COMMENT",
+          "description": "Updates text content or visibility of an existing Jira comment.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "JIRA_UPDATE_COMMENT"
+              ]
+            }
+          }
+        },
+        "JIRA_GET_ISSUE_RESOLUTIONS": {
+          "toolkit": "JIRA",
+          "tool_slug": "JIRA_GET_ISSUE_RESOLUTIONS",
+          "description": "Retrieves all available issue resolution types from Jira.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "JIRA_GET_ISSUE_RESOLUTIONS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:33:30.728Z",
+        "current_time_utc_epoch_seconds": 1786599210,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "rays",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"rays\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_sw1FmavtCN_S"
+  }
+}

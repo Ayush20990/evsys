@@ -1,0 +1,376 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-073-q4",
+    "workflow_id": 73,
+    "workflow_task": "Manage a large operational workflow across Google Tasks, Xero, and Notion: update and move task records, create and revise invoices, record payments, consolidate Notion rules, and track operational follow-ups.",
+    "query": "consolidate rules and pages in Notion",
+    "intent": "Merge and organize operational rules and documentation within Notion workspaces.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "NOTION_REPLACE_PAGE_CONTENT"
+        ],
+        "purpose": "Consolidate and restructure page content in Notion"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+      "GOOGLETASKS_DELETE_TASK",
+      "GOOGLETASKS_INSERT_TASK",
+      "GOOGLETASKS_LIST_TASKS",
+      "GOOGLETASKS_PATCH_TASK",
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_FETCH_BLOCK_CONTENTS",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_REPLACE_PAGE_CONTENT",
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_SEARCH_NOTION_PAGE",
+      "XERO_CREATE_CONTACT",
+      "XERO_CREATE_INVOICE",
+      "XERO_CREATE_PAYMENT",
+      "XERO_GET_CONTACTS",
+      "XERO_GET_INVOICE",
+      "XERO_LIST_INVOICES",
+      "XERO_POST_INVOICE_UPDATE"
+    ]
+  },
+  "request": {
+    "query": "consolidate rules and pages in Notion"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "consolidate rules and pages in Notion",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Enumerate pages to reorganize and the destination hub/parent using NOTION_SEARCH_NOTION_PAGE (collect page_ids/urls; paginate via next_cursor while has_more=true).",
+            "[Optional (if results are empty, ambiguous, or IDs seem stale)] [Prerequisite]: Validate target page/block exists and you have access using NOTION_FETCH_BLOCK_METADATA before any bulk edits/moves.",
+            "[Required] [Step]: Ensure the hub/container page is correctly named/standardized (title/icon/cover) using NOTION_UPDATE_PAGE (skip if already correct).",
+            "[Required] [Step]: Reorganize hierarchy by re-parenting pages into the hub/destination using NOTION_MOVE_PAGE (move parent pages before their nested children to preserve structure).",
+            "[Optional (if you need an audit trail or moves are risky)] [Fallback]: Duplicate into the hub using NOTION_DUPLICATE_PAGE, verify copies with NOTION_RETRIEVE_PAGE, then archive originals using NOTION_ARCHIVE_NOTION_PAGE only after explicit confirmation.",
+            "[Optional (if the hub needs an index/navigation)] [Next Step]: Build/refresh hub navigation sections using NOTION_ADD_MULTIPLE_PAGE_CONTENT (headings/dividers + linked items to key pages).",
+            "[Optional (for verification or recovery)] [Next Step]: Confirm key pages are visible and correctly linked using NOTION_RETRIEVE_PAGE; if something was accidentally trashed, restore via NOTION_ARCHIVE_NOTION_PAGE (archive=false)."
+          ],
+          "known_pitfalls": [
+            "[NOTION_SEARCH_NOTION_PAGE] Common titles can return many near-duplicates; choosing the wrong result can move content to the wrong location, and search can lag/omit items until indexing/access catches up.",
+            "[NOTION_FETCH_BLOCK_METADATA] 404 object_not_found often indicates a stale/inaccessible ID (not shared or deleted); preflight before destructive edits.",
+            "[NOTION_ADD_MULTIPLE_PAGE_CONTENT] Validation fails if blocks are empty/malformed; bulk inserts may return an oversized response requiring downstream handling of truncated/remote responses.",
+            "[NOTION_UPDATE_PAGE] Updating non-existent properties triggers property validation errors; cover/file URLs may include expiry_time and aren\u2019t stable.",
+            "[NOTION_ARCHIVE_NOTION_PAGE] Archiving is reversible but hides pages from normal views; require explicit confirmation before bulk archive (especially after duplication)."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Filter a captured NOTION_SEARCH_NOTION_PAGE response for titles containing a keyword in Remote Workbench",
+              "code": "```python\nimport json\nobj=json.load(open(\"response.json\"))\nitems=obj.get(\"results\",[])\nkw=\"keyword\".lower()\n[x for x in items if kw in (((x.get(\"title\") or \"\") if isinstance(x,dict) else \"\").lower())]\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "NOTION_SEARCH_NOTION_PAGE",
+            "NOTION_MOVE_PAGE",
+            "NOTION_ARCHIVE_NOTION_PAGE"
+          ],
+          "related_tool_slugs": [
+            "NOTION_RETRIEVE_PAGE",
+            "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+            "NOTION_DUPLICATE_PAGE",
+            "NOTION_FETCH_BLOCK_METADATA",
+            "NOTION_UPDATE_PAGE"
+          ],
+          "toolkits": [
+            "notion"
+          ],
+          "plan_id": "40ac5685995d44a389c2eb1b30a279a2"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "notion",
+          "has_active_connection": false,
+          "description": "Notion centralizes notes, docs, wikis, and tasks in a unified workspace, letting teams build custom workflows for collaboration and knowledge management",
+          "status_message": "No Active connection for toolkit=notion. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"notion\") to create a connection BEFORE executing any notion tools."
+        }
+      ],
+      "tool_schemas": {
+        "NOTION_SEARCH_NOTION_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_SEARCH_NOTION_PAGE",
+          "description": "Searches Notion pages and databases by title. Use specific search terms to find items by title (primary approach). KNOWN LIMITATIONS: (1) Search indexing is not immediate - recently shared items may not appear. (2) Search is not exhaustive - results may be incomplete. (3) Database pages return all custom properties with full nested structures, which can create large responses for databases with many properties - use filter_properties to reduce response size. FALLBACK STRATEGY: If a specific title search returns empty results despite knowing items exist, try an empty query to list all accessible items and filter client-side.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "default": "",
+                "description": "Text to search for in page and database titles. Use specific search terms to find items by title (primary approach). Note: Notion's search has known limitations - indexing is not immediate and recently shared items may not appear. If a specific query returns empty results, try an empty query as a fallback to list all accessible items and filter client-side."
+              },
+              "direction": {
+                "type": "string",
+                "examples": [
+                  "ascending",
+                  "descending"
+                ],
+                "description": "Specifies the sort direction for the results. Required if `timestamp` is provided. Valid values are `ascending` or `descending`."
+              },
+              "page_size": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 100,
+                "minimum": 1,
+                "description": "The number of items to include in the response. Must be an integer between 1 and 100, inclusive. Defaults to 25."
+              },
+              "timestamp": {
+                "type": "string",
+                "description": "The timestamp field to sort the results by. Currently, the only supported value is `last_edited_time`. If provided, `direction` must also be specified."
+              },
+              "filter_value": {
+                "enum": [
+                  "page",
+                  "database"
+                ],
+                "type": "string",
+                "default": "page",
+                "examples": [
+                  "page",
+                  "database"
+                ],
+                "description": "Filters results by object type: 'page' or 'database'. Note: When searching databases, Notion's search may not find recently shared or newly created databases due to indexing delays. If specific database searches return empty results, try an empty query with filter_value='database' as a fallback to list all accessible databases."
+              },
+              "start_cursor": {
+                "type": "string",
+                "description": "An opaque cursor value from a previous response's `next_cursor` field. Must be exactly as returned by the API - do not pass page IDs, database IDs, or any other identifiers. If `None`, empty, or invalid, results start from the beginning."
+              },
+              "filter_property": {
+                "type": "string",
+                "default": "object",
+                "examples": [
+                  "object"
+                ],
+                "description": "The property to filter the search results by. Currently, the only supported value is `object`, which filters by the type specified in `filter_value`. Defaults to `object`."
+              },
+              "filter_properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of property names to include in the response for page results. When specified, only these properties will be returned in each page's 'properties' object, reducing response size. Useful for database pages with many custom properties. If not specified, all properties are returned. Note: This filter is applied client-side after receiving the API response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_MOVE_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_MOVE_PAGE",
+          "description": "Tool to move a Notion page to a new parent (page or database). Use when you need to reorganize page hierarchy. Important: To move to a database, use data_source_id (NOT database_id). Get the data source ID from the database object using NOTION_FETCH_DATABASE.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id",
+              "parent"
+            ],
+            "properties": {
+              "parent": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "title": "PageParentDestination",
+                    "required": [
+                      "type",
+                      "page_id"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "page_id",
+                        "title": "Type",
+                        "description": "The constant string 'page_id'."
+                      },
+                      "page_id": {
+                        "type": "string",
+                        "title": "Page Id",
+                        "examples": [
+                          "f336d0bc-b841-465b-8045-024475c079dd"
+                        ],
+                        "description": "UUID of the parent page (with or without dashes). Must reference an actual page, not a database. If moving to a database, use type='data_source_id' instead."
+                      }
+                    },
+                    "description": "Parent destination as a page."
+                  },
+                  {
+                    "type": "object",
+                    "title": "DataSourceParentDestination",
+                    "required": [
+                      "type",
+                      "data_source_id"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "data_source_id",
+                        "title": "Type",
+                        "description": "The constant string 'data_source_id'."
+                      },
+                      "data_source_id": {
+                        "type": "string",
+                        "title": "Data Source Id",
+                        "examples": [
+                          "1c7b35e6-e67f-8096-bf3f-000ba938459e"
+                        ],
+                        "description": "UUID of the database's data source (NOT database_id). Retrieve using the database endpoint."
+                      }
+                    },
+                    "description": "Parent destination as a data source (database)."
+                  }
+                ],
+                "examples": [
+                  {
+                    "type": "page_id",
+                    "page_id": "f336d0bc-b841-465b-8045-024475c079dd"
+                  },
+                  {
+                    "type": "data_source_id",
+                    "data_source_id": "1c7b35e6-e67f-8096-bf3f-000ba938459e"
+                  }
+                ],
+                "description": "Parent destination for the page. Use type='page_id' with page_id to move under another page (the page_id must reference a page, not a database). Use type='data_source_id' with data_source_id to move into a database. Common mistake: Using type='page_id' with a database ID will fail - databases require type='data_source_id'."
+              },
+              "page_id": {
+                "type": "string",
+                "examples": [
+                  "59833787-2cf9-4fdf-8782-e53db20768a5"
+                ],
+                "description": "The ID of the page to move. UUID format with or without dashes is supported."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_ARCHIVE_NOTION_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_ARCHIVE_NOTION_PAGE",
+          "description": "Archives (moves to trash) or unarchives (restores from trash) a specified Notion page. Limitation: Workspace-level pages (top-level pages with no parent page or database) cannot be archived via the API and must be archived manually in the Notion UI.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id"
+            ],
+            "properties": {
+              "archive": {
+                "type": "boolean",
+                "default": true,
+                "description": "Set to `true` to move the page to trash (archive), or `false` to restore it from trash (unarchive). Defaults to `true`."
+              },
+              "page_id": {
+                "type": "string",
+                "examples": [
+                  "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+                ],
+                "description": "The unique identifier (UUID) of the Notion page to be archived or unarchived. Must be a page ID, not a database ID. Note: Workspace-level pages (pages that sit at the root of your workspace with no parent page or database) cannot be archived via the API - only pages nested under other pages or databases can be archived programmatically. Page IDs can be obtained using NOTION_SEARCH_NOTION_PAGE with filter_value='page' or from the 'id' field of page objects returned by other Notion actions."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_RETRIEVE_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_RETRIEVE_PAGE",
+          "description": "Retrieve a Notion page's properties/metadata (not block content) by page_id. Use when you have a page URL/ID and need to access its properties; for page content use block-children tools.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id"
+            ],
+            "properties": {
+              "page_id": {
+                "type": "string",
+                "examples": [
+                  "6c6a9b6c-12a4-4c3e-98e2-3c7a1e4f2d2a",
+                  "6c6a9b6c12a44c3e98e23c7a1e4f2d2a"
+                ],
+                "description": "The UUID of the Notion page to retrieve. Accepts both hyphenated (8-4-4-4-12) and unhyphenated (32 characters) UUID formats. IMPORTANT: Must be a PAGE ID, not a database ID. If you have a database ID, use NOTION_FETCH_DATABASE instead. This endpoint returns page properties and metadata, not page content (use block-children tools for content). For pages with properties containing more than 25 references, use NOTION_GET_PAGE_PROPERTY_ACTION to retrieve complete property values."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_ADD_MULTIPLE_PAGE_CONTENT": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+          "description": "Bulk-add content blocks to Notion. Text >2000 chars auto-splits. Parses markdown formatting. \u26a0\ufe0f PARE...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_ADD_MULTIPLE_PAGE_CONTENT"
+              ]
+            }
+          }
+        },
+        "NOTION_DUPLICATE_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_DUPLICATE_PAGE",
+          "description": "Duplicates a Notion page, including all its content, properties, and nested blocks, under a specifie...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_DUPLICATE_PAGE"
+              ]
+            }
+          }
+        },
+        "NOTION_FETCH_BLOCK_METADATA": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_BLOCK_METADATA",
+          "description": "Fetches metadata for a Notion block (including pages, which are special blocks) using its UUID. Retu...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_FETCH_BLOCK_METADATA"
+              ]
+            }
+          }
+        },
+        "NOTION_UPDATE_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_UPDATE_PAGE",
+          "description": "Update page properties, icon, cover, or archive status. IMPORTANT: Property names are workspace-spec...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_UPDATE_PAGE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:37:14.677Z",
+        "current_time_utc_epoch_seconds": 1786599434,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "well",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"well\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_cC2bOOv9Vxoz"
+  }
+}

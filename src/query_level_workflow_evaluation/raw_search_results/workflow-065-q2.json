@@ -1,0 +1,338 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-065-q2",
+    "workflow_id": 65,
+    "workflow_task": "Read and update Google Sheets-based SEO planning templates, enrich them with Search Console performance data, and verify that spreadsheet formulas and cleanup steps produced the expected results.",
+    "query": "fetch Google Search Console performance data",
+    "intent": "Search for tools to retrieve search analytics and performance metrics from Google Search Console.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY"
+        ],
+        "purpose": "fetch Search Console performance data"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_BATCH_UPDATE",
+      "GOOGLESHEETS_CLEAR_VALUES",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "GOOGLESHEETS_VALUES_GET",
+      "GOOGLESHEETS_VALUES_UPDATE",
+      "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY"
+    ]
+  },
+  "request": {
+    "query": "fetch Google Search Console performance data"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "fetch Google Search Console performance data",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Pull recent-window totals using GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY (use dimensions=[]/omitted to get clicks, impressions, ctr, position aggregates).",
+            "[Optional (if the exact property string is unknown or totals are empty)] [Prerequisite]: Enumerate verified properties using GOOGLE_SEARCH_CONSOLE_LIST_SITES (reuse siteEntry[].siteUrl exactly as site_url).",
+            "[Optional (if access errors or persistent empties occur)] [Prerequisite]: Validate permissionLevel for site_url using GOOGLE_SEARCH_CONSOLE_GET_SITE, then retry GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY.",
+            "[Optional (if trends or top drivers are needed)] [Next Step]: Re-run GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY with dimensions like ['date'], ['query'], ['page'], or ['page','query'] (optionally apply dimension_filter_groups to narrow).",
+            "[Optional (if top-N looks capped or full export is needed)] [Step]: Paginate GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY with start_row + row_limit until rows are empty or returned rows < row_limit; aggregate client-side.",
+            "[Optional (if investigating sitemap/indexing instead of performance)] [Next Step]: Use GOOGLE_SEARCH_CONSOLE_LIST_SITEMAPS and GOOGLE_SEARCH_CONSOLE_GET_SITEMAP, spot-check important URLs via GOOGLE_SEARCH_CONSOLE_INSPECT_URL, and use GOOGLE_SEARCH_CONSOLE_SUBMIT_SITEMAP only after explicit confirmation.",
+            "[Optional (if responses are large or schema-mapping is error-prone)] [Fallback]: Use COMPOSIO_REMOTE_WORKBENCH to load saved JSON, map rows[*].keys to requested dimensions safely, and compute totals/aggregates."
+          ],
+          "known_pitfalls": [
+            "[GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY] metadata.firstIncompleteDate can indicate the newest days are incomplete; avoid over-weighting the most recent slice.",
+            "[GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY] Results are often capped by row_limit (commonly ~1000); if len(rows)==row_limit assume truncation and continue pagination.",
+            "[GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY] Empty/missing rows (and missing rows[*].keys when dimensions=[]) can be a valid \u201cno data\u201d shape; treat as empty outcome, not parse failure.",
+            "[GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY] ctr is a fraction and position is a float; recompute overall CTR from summed clicks/impressions and use impression-weighted average position when aggregating.",
+            "[GOOGLE_SEARCH_CONSOLE_GET_SITE] Wrong property or insufficient access can surface as 404 notFound or 403 PERMISSION_DENIED/ACCESS_TOKEN_SCOPE_INSUFFICIENT; inactive connections may present as code 4302."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Safely map rows[*].keys into dimension columns",
+              "code": "```python\nimport pandas as pd\n\ndef rows_to_df(rows,dims):\n  out=[]\n  for r in rows or []:\n    keys=r.get('keys') or []\n    rec={dims[i]:(keys[i] if i<len(keys) else None) for i in range(len(dims))}\n    rec.update({k:r.get(k) for k in ['clicks','impressions','ctr','position']})\n    out.append(rec)\n  return pd.DataFrame(out)\n```"
+            },
+            {
+              "description": "Compute totals, overall CTR, and impression-weighted average position",
+              "code": "```python\nclicks=sum(r.get('clicks',0) for r in rows)\nimpr=sum(r.get('impressions',0) for r in rows)\nctr=clicks/impr if impr else 0.0\navg_pos=(sum(r.get('position',0)*r.get('impressions',0) for r in rows)/impr) if impr else 0.0\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY"
+          ],
+          "related_tool_slugs": [
+            "GOOGLE_SEARCH_CONSOLE_LIST_SITES",
+            "GOOGLE_SEARCH_CONSOLE_GET_SITE",
+            "GOOGLE_SEARCH_CONSOLE_LIST_SITEMAPS",
+            "GOOGLE_SEARCH_CONSOLE_GET_SITEMAP",
+            "GOOGLE_SEARCH_CONSOLE_INSPECT_URL",
+            "GOOGLE_SEARCH_CONSOLE_SUBMIT_SITEMAP"
+          ],
+          "toolkits": [
+            "google_search_console"
+          ],
+          "plan_id": "e80d10129f4440dfaa6a08d84fc7c458"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "google_search_console",
+          "has_active_connection": false,
+          "description": "Google Search Console provides tools to monitor, maintain, and troubleshoot your site's presence in Google Search results.",
+          "status_message": "No Active connection for toolkit=google_search_console. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"google_search_console\") to create a connection BEFORE executing any google_search_console tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY": {
+          "toolkit": "GOOGLE_SEARCH_CONSOLE",
+          "tool_slug": "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY",
+          "description": "Queries Google Search Console for search analytics data including clicks, impressions, CTR, and position metrics. Only returns URLs with at least one impression; missing rows do not confirm non-indexing. Position is an impression-weighted average rank.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "site_url",
+              "start_date",
+              "end_date"
+            ],
+            "properties": {
+              "end_date": {
+                "type": "string",
+                "examples": [
+                  "2023-12-31"
+                ],
+                "description": "The end date of the date range for the query, in YYYY-MM-DD format."
+              },
+              "site_url": {
+                "type": "string",
+                "examples": [
+                  "https://www.example.com/",
+                  "sc-domain:example.com"
+                ],
+                "description": "The site's URL, including protocol (e.g., https://www.example.com/) or a domain property (e.g., sc-domain:example.com). URL-prefix properties specify exact protocol and path, while domain properties aggregate data across all subdomains and protocols."
+              },
+              "row_limit": {
+                "type": "integer",
+                "default": 1000,
+                "maximum": 25000,
+                "minimum": 1,
+                "description": "The maximum number of rows to return. Must be between 1 and 25,000. Note: The API returns top results sorted by clicks (or date when grouping by date). Must be between 1 and 5000. Use start_row to paginate; stop when response rows < row_limit."
+              },
+              "start_row": {
+                "type": "integer",
+                "default": 0,
+                "minimum": 0,
+                "description": "The first row to return from the result set. Used for pagination."
+              },
+              "data_state": {
+                "enum": [
+                  "final",
+                  "all",
+                  "hourly_all"
+                ],
+                "type": "string",
+                "default": "final",
+                "examples": [
+                  "final",
+                  "all",
+                  "hourly_all"
+                ],
+                "description": "The data state to return."
+              },
+              "dimensions": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "query",
+                    "page",
+                    "country",
+                    "device",
+                    "date",
+                    "searchAppearance",
+                    "hour"
+                  ],
+                  "type": "string"
+                },
+                "default": [
+                  "query"
+                ],
+                "examples": [
+                  [
+                    "query",
+                    "page"
+                  ],
+                  [
+                    "country",
+                    "device"
+                  ],
+                  [
+                    "date"
+                  ]
+                ],
+                "description": "The dimensions to group the data by. Results are sorted by clicks descending, except when grouping by date (sorted by date ascending)."
+              },
+              "start_date": {
+                "type": "string",
+                "examples": [
+                  "2023-01-01"
+                ],
+                "description": "The start date of the date range for the query, in YYYY-MM-DD format. Data lags 2\u20133 days (UTC); most recent 1\u20132 days may be incomplete. Data retention is ~16 months; older ranges return zero rows."
+              },
+              "search_type": {
+                "enum": [
+                  "web",
+                  "image",
+                  "video",
+                  "news",
+                  "discover",
+                  "googleNews"
+                ],
+                "type": "string",
+                "default": "web",
+                "examples": [
+                  "web",
+                  "image",
+                  "video"
+                ],
+                "description": "The search type to filter results by."
+              },
+              "aggregation_type": {
+                "enum": [
+                  "auto",
+                  "byPage",
+                  "byProperty",
+                  "byNewsShowcasePanel"
+                ],
+                "type": "string",
+                "default": "auto",
+                "examples": [
+                  "auto",
+                  "byProperty",
+                  "byPage"
+                ],
+                "description": "How data is aggregated."
+              },
+              "dimension_filter_groups": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Optional filters to apply to dimensions. Each filter group contains an array of filters with structure: [{'filters': [{'dimension': 'country', 'operator': 'equals', 'expression': 'USA'}]}]. Operators: equals, notEquals, contains, notContains, includingRegex, excludingRegex. Invalid dimension names, unsupported operators, or mismatched expressions return zero rows without an error \u2014 verify each filter before trusting empty results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLE_SEARCH_CONSOLE_LIST_SITES": {
+          "toolkit": "GOOGLE_SEARCH_CONSOLE",
+          "tool_slug": "GOOGLE_SEARCH_CONSOLE_LIST_SITES",
+          "description": "Lists all verified sites (properties) owned by the authenticated user in Google Search Console. Response contains a siteEntry array \u2014 always iterate it, never assume a single object. Each entry includes permissionLevel, which varies per site; do not assume owner-level access for all returned properties. When calling downstream tools, use the site_url value exactly as returned, including protocol, subdomain, sc-domain: prefix, and trailing slash \u2014 any deviation causes empty results or permission errors. Empty siteEntry may indicate missing OAuth scopes or no verified properties. Newly added properties may not appear immediately due to propagation delay.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLE_SEARCH_CONSOLE_GET_SITE": {
+          "toolkit": "GOOGLE_SEARCH_CONSOLE",
+          "tool_slug": "GOOGLE_SEARCH_CONSOLE_GET_SITE",
+          "description": "Retrieves information about a specific Search Console site. Use when you need to get site details including permission level for a specific property.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "site_url"
+            ],
+            "properties": {
+              "site_url": {
+                "type": "string",
+                "examples": [
+                  "http://www.example.com/",
+                  "sc-domain:example.com"
+                ],
+                "description": "The URL of the property to retrieve, as defined by Search Console. Examples: http://www.example.com/ (for a URL-prefix property) or sc-domain:example.com (for a Domain property)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLE_SEARCH_CONSOLE_LIST_SITEMAPS": {
+          "toolkit": "GOOGLE_SEARCH_CONSOLE",
+          "tool_slug": "GOOGLE_SEARCH_CONSOLE_LIST_SITEMAPS",
+          "description": "Lists all sitemaps for a site in Google Search Console. Response fields `errors`, `warnings`, `conte...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLE_SEARCH_CONSOLE_LIST_SITEMAPS"
+              ]
+            }
+          }
+        },
+        "GOOGLE_SEARCH_CONSOLE_GET_SITEMAP": {
+          "toolkit": "GOOGLE_SEARCH_CONSOLE",
+          "tool_slug": "GOOGLE_SEARCH_CONSOLE_GET_SITEMAP",
+          "description": "Retrieves sitemap metadata (submitted/indexed counts, errors, warnings, last-submission timestamps) ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLE_SEARCH_CONSOLE_GET_SITEMAP"
+              ]
+            }
+          }
+        },
+        "GOOGLE_SEARCH_CONSOLE_INSPECT_URL": {
+          "toolkit": "GOOGLE_SEARCH_CONSOLE",
+          "tool_slug": "GOOGLE_SEARCH_CONSOLE_INSPECT_URL",
+          "description": "Inspects a URL for indexing issues and status in Google Search Console. Results may reflect cached d...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLE_SEARCH_CONSOLE_INSPECT_URL"
+              ]
+            }
+          }
+        },
+        "GOOGLE_SEARCH_CONSOLE_SUBMIT_SITEMAP": {
+          "toolkit": "GOOGLE_SEARCH_CONSOLE",
+          "tool_slug": "GOOGLE_SEARCH_CONSOLE_SUBMIT_SITEMAP",
+          "description": "Submits a sitemap to Google Search Console for indexing. This action registers or resubmits a sitema...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLE_SEARCH_CONSOLE_SUBMIT_SITEMAP"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:36:32.554Z",
+        "current_time_utc_epoch_seconds": 1786599392,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "path",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"path\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_VYLI1uETWTCA"
+  }
+}

@@ -1,0 +1,580 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-070-q4",
+    "workflow_id": 70,
+    "workflow_task": "Migrate Vercel projects and GitHub repositories between connected accounts, preserve domains and settings, add deployment workflows, trigger/verify deployments, and audit repository access.",
+    "query": "add vercel github deployment workflow",
+    "intent": "Configure and add deployment workflows connecting the GitHub repository to Vercel.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS"
+        ],
+        "purpose": "Add or update a deployment workflow file in the GitHub repository"
+      }
+    ],
+    "candidate_tools": [
+      "GITHUB_COMPARE_TWO_COMMITS",
+      "GITHUB_CREATE_A_WORKFLOW_DISPATCH_EVENT",
+      "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+      "GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN",
+      "GITHUB_GET_A_REPOSITORY",
+      "GITHUB_GET_REPOSITORY_CONTENT",
+      "GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN",
+      "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+      "GITHUB_LIST_REPOSITORY_COLLABORATORS",
+      "GITHUB_LIST_REPOSITORY_INVITATIONS",
+      "GITHUB_LIST_REPOSITORY_SECRETS",
+      "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY",
+      "VERCEL_CREATE_PROJECT_TRANSFER_REQUEST",
+      "VERCEL_GET_AUTH_USER",
+      "VERCEL_GET_DEPLOYMENT",
+      "VERCEL_GET_DEPLOYMENTS",
+      "VERCEL_GET_PROJECT2",
+      "VERCEL_GET_PROJECTS",
+      "VERCEL_GET_PROJECT_DOMAINS",
+      "VERCEL_LIST_DOMAINS"
+    ]
+  },
+  "request": {
+    "query": "add vercel github deployment workflow"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "add vercel github deployment workflow",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if repository identifier or default ref is unknown)] [Prerequisite]: Fetch repository metadata using GITHUB_GET_A_REPOSITORY (confirm access; capture repository identifier and default ref for linking/deploy).",
+            "[Optional (if deploying under a non-default/shared scope)] [Prerequisite]: Resolve target scope using VERCEL_GET_TEAMS (select scope and reuse in later calls).",
+            "[Optional (if a project may already exist)] [Prerequisite]: Check for an existing project using VERCEL_GET_PROJECT2 (reuse existing settings/identifiers if found).",
+            "[Required] [Step]: Create and (when supported) link the hosting project using VERCEL_CREATE_PROJECT2 (provide repository path; set framework/root/build settings; optionally set environmentVariables; capture returned project identifiers/link metadata).",
+            "[Fallback (if VERCEL_CREATE_PROJECT2 fails when git linking is included)] [Fallback]: Retry VERCEL_CREATE_PROJECT2 without gitRepository (create unlinked project, then rely on Git-based deploy triggers or manual deploy creation).",
+            "[Optional (if an initial deploy is desired)] [Next Step]: Create a deployment using VERCEL_CREATE_NEW_DEPLOYMENT (use gitSource with repository identifier and ref; ensure exactly one of files, gitSource, or deploymentId is set).",
+            "[Optional (if you need to confirm or debug deployments)] [Next Step]: List recent deploys using VERCEL_GET_DEPLOYMENTS (pick latest id/url) and inspect build output via VERCEL_GET_DEPLOYMENT_EVENTS2 (identify actionable errors before retrying)."
+          ],
+          "known_pitfalls": [
+            "[GITHUB_GET_A_REPOSITORY] Can fail with a no-connection/no-active-connection style error if the source-control connection is not active.",
+            "[VERCEL_CREATE_PROJECT2] Including gitRepository may return HTTP 400 when provider integration/access is missing; retry by omitting gitRepository.",
+            "[VERCEL_CREATE_PROJECT2] environmentVariables values may be echoed in responses; avoid logging or persisting full responses when secrets are included.",
+            "[VERCEL_CREATE_NEW_DEPLOYMENT] Must provide exactly one of files, gitSource, or deploymentId or you can hit HTTP 400 validation errors; gitSource.sha can trigger HTTP 400 \"incorrect_git_source_info\".",
+            "[VERCEL_GET_DEPLOYMENTS] Deployments may show an error/blocked state due to commit author identity not being associated with the Git provider; resolve externally before re-deploying."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract likely build/compile errors from VERCEL_GET_DEPLOYMENT_EVENTS2 output",
+              "code": "```python\nresult,_=run_composio_tool(\"VERCEL_GET_DEPLOYMENT_EVENTS2\",{\"idOrUrl\":\"<deployment>\",\"teamId\":\"<scope>\"})\nevents=(result.get(\"data\") or []) if isinstance(result,dict) else []\ntexts=[]\nfor e in events:\n  if isinstance(e,dict):\n    p=e.get(\"payload\") or {}\n    t=p.get(\"text\") or e.get(\"text\") or \"\"\n    if t: texts.append(t)\nerrs=[t for t in texts if \"error\" in t.lower() or \"type error\" in t.lower()]\nprint(\"\\n\".join(errs[:200]))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "VERCEL_CREATE_PROJECT2"
+          ],
+          "related_tool_slugs": [
+            "VERCEL_GET_TEAMS",
+            "VERCEL_GET_PROJECT2",
+            "VERCEL_CREATE_NEW_DEPLOYMENT",
+            "GITHUB_GET_A_REPOSITORY",
+            "VERCEL_GET_DEPLOYMENTS",
+            "VERCEL_GET_DEPLOYMENT_EVENTS2"
+          ],
+          "toolkits": [
+            "github",
+            "vercel"
+          ],
+          "plan_id": "0d988f1c2a784b59b1d2ba17e4aef24f"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "github",
+          "has_active_connection": false,
+          "description": "GitHub is a code hosting platform for version control and collaboration, offering Git-based repository management, issue tracking, and continuous integration features",
+          "status_message": "No Active connection for toolkit=github. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"github\") to create a connection BEFORE executing any github tools."
+        },
+        {
+          "toolkit": "vercel",
+          "has_active_connection": false,
+          "description": "Vercel is a platform for frontend frameworks and static sites, enabling developers to host websites and web services that deploy instantly, scale automatically, and require minimal configuration.",
+          "status_message": "No Active connection for toolkit=vercel. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"vercel\") to create a connection BEFORE executing any vercel tools."
+        }
+      ],
+      "tool_schemas": {
+        "VERCEL_CREATE_PROJECT2": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_CREATE_PROJECT2",
+          "description": "Tool to create a new Vercel project with comprehensive configuration options. Use when you need to create a project with specific settings like environment variables, framework selection, Git repository connection, resource configuration, or deployment policies.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "my-new-project"
+                ],
+                "maxLength": 100,
+                "description": "The desired name for the project. Must be lowercase and can only contain letters, digits, '.', '_', and '-'. Cannot contain the sequence '---'. Maximum 100 characters."
+              },
+              "slug": {
+                "type": "string",
+                "description": "The Team slug to perform the request on behalf of"
+              },
+              "teamId": {
+                "type": "string",
+                "description": "The Team identifier to perform the request on behalf of"
+              },
+              "framework": {
+                "enum": [
+                  "blitzjs",
+                  "nextjs",
+                  "gatsby",
+                  "remix",
+                  "react-router",
+                  "astro",
+                  "hexo",
+                  "eleventy",
+                  "docusaurus-2",
+                  "docusaurus",
+                  "preact",
+                  "solidstart-1",
+                  "solidstart",
+                  "dojo",
+                  "ember",
+                  "vue",
+                  "scully",
+                  "ionic-angular",
+                  "angular",
+                  "polymer",
+                  "svelte",
+                  "sveltekit",
+                  "sveltekit-1",
+                  "ionic-react",
+                  "create-react-app",
+                  "gridsome",
+                  "umijs",
+                  "sapper",
+                  "saber",
+                  "stencil",
+                  "nuxtjs",
+                  "redwoodjs",
+                  "hugo",
+                  "jekyll",
+                  "brunch",
+                  "middleman",
+                  "zola",
+                  "hydrogen",
+                  "vite",
+                  "tanstack-start",
+                  "vitepress",
+                  "vuepress",
+                  "parcel",
+                  "fastapi",
+                  "flask",
+                  "fasthtml",
+                  "sanity-v3",
+                  "sanity",
+                  "storybook",
+                  "nitro",
+                  "hono",
+                  "express",
+                  "h3",
+                  "nestjs",
+                  "elysia",
+                  "fastify",
+                  "xmcp"
+                ],
+                "type": "string",
+                "description": "The framework being used for this project. When null, no framework is selected"
+              },
+              "devCommand": {
+                "type": "string",
+                "maxLength": 256,
+                "description": "The dev command for this project. When null is used, this value will be automatically detected"
+              },
+              "buildCommand": {
+                "type": "string",
+                "maxLength": 256,
+                "description": "The build command for this project. When null is used, this value will be automatically detected"
+              },
+              "publicSource": {
+                "type": "boolean",
+                "description": "Specifies whether the source code and logs of the deployments for this project should be public or not"
+              },
+              "gitRepository": {
+                "type": "object",
+                "required": [
+                  "repo",
+                  "type"
+                ],
+                "properties": {
+                  "repo": {
+                    "type": "string",
+                    "description": "Name of the git repository, e.g., \"vercel/next.js\""
+                  },
+                  "type": {
+                    "enum": [
+                      "github",
+                      "github-limited",
+                      "gitlab",
+                      "bitbucket"
+                    ],
+                    "type": "string",
+                    "description": "Git provider of the repository"
+                  }
+                },
+                "description": "Git repository configuration for automatic deployments.",
+                "additionalProperties": false
+              },
+              "rootDirectory": {
+                "type": "string",
+                "maxLength": 256,
+                "description": "The name of a directory or relative path to the source code. When null, it will default to the project root"
+              },
+              "ssoProtection": {
+                "type": "object",
+                "required": [
+                  "deploymentType"
+                ],
+                "properties": {
+                  "deploymentType": {
+                    "enum": [
+                      "all",
+                      "preview",
+                      "prod_deployment_urls_and_all_previews",
+                      "all_except_custom_domains"
+                    ],
+                    "type": "string",
+                    "description": "Which deployments to apply SSO protection to"
+                  }
+                },
+                "description": "SSO protection configuration for the project.",
+                "additionalProperties": false
+              },
+              "installCommand": {
+                "type": "string",
+                "maxLength": 256,
+                "description": "The install command for this project. When null is used, this value will be automatically detected"
+              },
+              "resourceConfig": {
+                "type": "object",
+                "properties": {
+                  "fluid": {
+                    "type": "boolean",
+                    "description": "Enable fluid functions"
+                  },
+                  "isNSNBDisabled": {
+                    "type": "boolean",
+                    "description": "Whether NSNB is disabled"
+                  },
+                  "buildMachineType": {
+                    "enum": [
+                      "enhanced",
+                      "turbo"
+                    ],
+                    "type": "string",
+                    "description": "Type of build machine"
+                  },
+                  "functionDefaultRegions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Regions to deploy Vercel Functions to for this project"
+                  },
+                  "functionDefaultTimeout": {
+                    "type": "integer",
+                    "maximum": 900,
+                    "minimum": 1,
+                    "description": "Default timeout for functions in seconds"
+                  },
+                  "elasticConcurrencyEnabled": {
+                    "type": "boolean",
+                    "description": "Enable elastic concurrency"
+                  },
+                  "functionDefaultMemoryType": {
+                    "enum": [
+                      "standard_legacy",
+                      "standard",
+                      "performance"
+                    ],
+                    "type": "string",
+                    "description": "Memory type for functions. Note: 'performance' option may require a specific plan tier"
+                  },
+                  "functionZeroConfigFailover": {
+                    "type": "boolean",
+                    "description": "Whether Zero Config Failover is enabled"
+                  }
+                },
+                "description": "Resource override configuration for the project.",
+                "additionalProperties": false
+              },
+              "oidcTokenConfig": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether to generate OpenID Connect JSON Web Tokens"
+                  },
+                  "issuerMode": {
+                    "enum": [
+                      "team",
+                      "global"
+                    ],
+                    "type": "string",
+                    "default": "team",
+                    "description": "Issuer mode: \"team\" for https://oidc.vercel.com/[team_slug], \"global\" for https://oidc.vercel.com"
+                  }
+                },
+                "description": "OpenID Connect JSON Web Token generation configuration.",
+                "additionalProperties": false
+              },
+              "outputDirectory": {
+                "type": "string",
+                "maxLength": 256,
+                "description": "The output directory of the project. When null is used, this value will be automatically detected"
+              },
+              "environmentVariables": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "key",
+                    "value",
+                    "target",
+                    "type"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "Name of the environment variable"
+                    },
+                    "type": {
+                      "enum": [
+                        "plain",
+                        "secret",
+                        "encrypted",
+                        "sensitive"
+                      ],
+                      "type": "string",
+                      "description": "Type of the environment variable. Use 'encrypted' for sensitive data like API keys, 'plain' for non-sensitive values, 'secret' for secrets from integrations, or 'sensitive' for values that should be redacted in logs"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "Value of the environment variable"
+                    },
+                    "target": {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "production",
+                          "preview",
+                          "development"
+                        ],
+                        "type": "string"
+                      },
+                      "description": "Target environments for the variable"
+                    },
+                    "gitBranch": {
+                      "type": "string",
+                      "description": "Git branch to which this environment variable applies"
+                    }
+                  },
+                  "description": "Environment variable configuration for a project."
+                },
+                "description": "Collection of environment variables the project will use"
+              },
+              "enablePreviewFeedback": {
+                "type": "boolean",
+                "description": "Opt-in to preview toolbar on the project level"
+              },
+              "previewDeploymentSuffix": {
+                "type": "string",
+                "maxLength": 253,
+                "description": "Custom domain suffix for preview deployments. Must be a domain owned by the team"
+              },
+              "enableProductionFeedback": {
+                "type": "boolean",
+                "description": "Opt-in to production toolbar on the project level"
+              },
+              "serverlessFunctionRegion": {
+                "type": "string",
+                "maxLength": 4,
+                "description": "The region to deploy Serverless Functions in this project"
+              },
+              "skipGitConnectDuringLink": {
+                "type": "boolean",
+                "description": "Opts-out of the message prompting a CLI user to connect a Git repository in vercel link"
+              },
+              "previewDeploymentsDisabled": {
+                "type": "boolean",
+                "description": "Specifies whether preview deployments are disabled for this project"
+              },
+              "commandForIgnoringBuildStep": {
+                "type": "string",
+                "maxLength": 256,
+                "description": "Command to determine whether to skip the build step"
+              },
+              "enableAffectedProjectsDeployments": {
+                "type": "boolean",
+                "description": "Opt-in to skip deployments when there are no changes to the root directory and its dependencies"
+              },
+              "serverlessFunctionZeroConfigFailover": {
+                "type": "boolean",
+                "description": "Specifies whether Zero Config Failover is enabled for this project"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_GET_TEAMS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_TEAMS",
+          "description": "Tool to list all teams accessible to the authenticated user with detailed information. Use when you need comprehensive team data including membership, configuration, and settings.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "examples": [
+                  20
+                ],
+                "description": "Maximum number of Teams which may be returned."
+              },
+              "since": {
+                "type": "integer",
+                "examples": [
+                  1540095775951
+                ],
+                "description": "Timestamp (in milliseconds) to only include Teams created since then."
+              },
+              "until": {
+                "type": "integer",
+                "examples": [
+                  1540095775951
+                ],
+                "description": "Timestamp (in milliseconds) to only include Teams created until then."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_GET_PROJECT2": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_PROJECT2",
+          "description": "Tool to find a project by ID or name with comprehensive details. Use when you need complete project metadata including configuration, deployments, security settings, and analytics.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "idOrName"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string",
+                "examples": [
+                  "my-team-slug"
+                ],
+                "description": "The Team slug to perform the request on behalf of."
+              },
+              "teamId": {
+                "type": "string",
+                "examples": [
+                  "team_ABC123"
+                ],
+                "description": "The Team identifier to perform the request on behalf of."
+              },
+              "idOrName": {
+                "type": "string",
+                "examples": [
+                  "prj_fV2zDDAjRtk6LHa3ma99NxcFHjPE",
+                  "my-project-name"
+                ],
+                "description": "The unique project identifier or the project name"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_CREATE_NEW_DEPLOYMENT": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_CREATE_NEW_DEPLOYMENT",
+          "description": "Tool to create a new deployment. Use when you need to deploy files or a Git commit to a Vercel proje...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_CREATE_NEW_DEPLOYMENT"
+              ]
+            }
+          }
+        },
+        "GITHUB_GET_A_REPOSITORY": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_REPOSITORY",
+          "description": "Retrieves detailed information about an existing and accessible GitHub repository.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_A_REPOSITORY"
+              ]
+            }
+          }
+        },
+        "VERCEL_GET_DEPLOYMENTS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENTS",
+          "description": "Tool to list deployments from Vercel. Use when you need to retrieve deployment information for a pro...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_GET_DEPLOYMENTS"
+              ]
+            }
+          }
+        },
+        "VERCEL_GET_DEPLOYMENT_EVENTS2": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENT_EVENTS2",
+          "description": "Tool to get deployment events for a specific Vercel deployment by ID or URL. Use when you need to re...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_GET_DEPLOYMENT_EVENTS2"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:36:58.613Z",
+        "current_time_utc_epoch_seconds": 1786599418,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "real",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"real\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_Alvc83G0k8fK"
+  }
+}

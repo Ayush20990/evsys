@@ -1,0 +1,275 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-084-q1",
+    "workflow_id": 84,
+    "workflow_task": "Use GitHub to inspect accessible repositories and branches, fetch repository files, update multiple repository files, create a public static preview repository, enable GitHub Pages, and commit generated content/configuration files.",
+    "query": "list repositories and branches on GitHub",
+    "intent": "Retrieve a list of accessible GitHub repositories and their corresponding branches.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER"
+        ],
+        "purpose": "list repositories"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_LIST_BRANCHES"
+        ],
+        "purpose": "list branches"
+      }
+    ],
+    "candidate_tools": [
+      "GITHUB_COMMIT_MULTIPLE_FILES",
+      "GITHUB_CREATE_AN_ORGANIZATION_REPOSITORY",
+      "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+      "GITHUB_CREATE_OR_UPDATE_GITHUB_PAGES_SITE",
+      "GITHUB_GET_A_BRANCH",
+      "GITHUB_GET_A_TREE",
+      "GITHUB_GET_RAW_REPOSITORY_CONTENT",
+      "GITHUB_LIST_BRANCHES",
+      "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+      "GITHUB_SEARCH_CODE"
+    ]
+  },
+  "request": {
+    "query": "list repositories and branches on GitHub"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "list repositories and branches on GitHub",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if repository coordinates or access are uncertain)] [Prerequisite]: Validate visibility and capture default branch using GITHUB_GET_A_REPOSITORY (separate auth failures from not-found before listing).",
+            "[Required] [Step 1]: List branches using GITHUB_LIST_BRANCHES (collect branch name and tip commit identifier; response items may be nested).",
+            "[Optional (if branch count may exceed one page)] [Next Step]: Paginate using GITHUB_LIST_BRANCHES (use per_page up to 100; increment page; stop when a page is short/empty).",
+            "[Optional (if confirming a specific branch tip or ref)] [Next Step]: Fetch branch metadata using GITHUB_GET_A_BRANCH and/or verify an exact ref using GITHUB_GET_A_REFERENCE (use heads/<branch>).",
+            "[Fallback (if 404/validation errors suggest wrong coordinates)] [Fallback]: Discover the correct repository using GITHUB_FIND_REPOSITORIES, then retry GITHUB_GET_A_REPOSITORY and GITHUB_LIST_BRANCHES with corrected inputs."
+          ],
+          "known_pitfalls": [
+            "[GITHUB_LIST_BRANCHES] per_page max 100; without pagination you can miss branches on large repositories.",
+            "[GITHUB_LIST_BRANCHES] Items may appear under data.details; parsing a different path can look like zero branches.",
+            "[GITHUB_LIST_BRANCHES] Missing required inputs can raise an invalid-request error indicating owner/repo fields are absent.",
+            "[GITHUB_GET_A_REPOSITORY] 401 vs 403/404 can be ambiguous (bad credentials vs restricted/private vs wrong coordinates); validate before concluding the repo is missing.",
+            "[GITHUB_GET_A_REFERENCE] Ref must be heads/<branch>; using a bare branch name can 404."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse branch names and tip commit identifiers from a nested GITHUB_LIST_BRANCHES response.",
+              "code": "```python\nres, err = run_tool(\"GITHUB_LIST_BRANCHES\", {\"owner\":\"OWNER\",\"repo\":\"REPO\",\"per_page\":100})\nif err: raise RuntimeError(err)\nitems = (res.get(\"data\") or {}).get(\"details\") or []\nrows = [(b.get(\"name\"), (b.get(\"commit\") or {}).get(\"sha\")) for b in items]\n```"
+            },
+            {
+              "description": "Paginate GITHUB_LIST_BRANCHES and collect branch names.",
+              "code": "```python\nnames=[]\npage=1\nwhile True:\n  r,e = run_tool(\"GITHUB_LIST_BRANCHES\", {\"owner\":\"OWNER\",\"repo\":\"REPO\",\"per_page\":100,\"page\":page})\n  if e: raise RuntimeError(e)\n  ds=(r.get(\"data\") or {}).get(\"details\") or []\n  if not ds: break\n  names += [b.get(\"name\",\"\") for b in ds]\n  if len(ds) < 100: break\n  page += 1\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GITHUB_LIST_BRANCHES"
+          ],
+          "related_tool_slugs": [
+            "GITHUB_GET_A_REPOSITORY",
+            "GITHUB_GET_A_BRANCH",
+            "GITHUB_GET_A_REFERENCE",
+            "GITHUB_FIND_REPOSITORIES"
+          ],
+          "toolkits": [
+            "github"
+          ],
+          "plan_id": "f4dd60e2aa7a4a00ad794952db3346ae"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "github",
+          "has_active_connection": false,
+          "description": "GitHub is a code hosting platform for version control and collaboration, offering Git-based repository management, issue tracking, and continuous integration features",
+          "status_message": "No Active connection for toolkit=github. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"github\") to create a connection BEFORE executing any github tools."
+        }
+      ],
+      "tool_schemas": {
+        "GITHUB_LIST_BRANCHES": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_BRANCHES",
+          "description": "List branches in a GitHub repository. Returns branch names, commit information, and protection status. Use this action when you need to retrieve all branches in a repository, optionally filtered by protection status. This is useful for identifying available branches, checking which branches are protected, or preparing to create pull requests.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "minimum": 1,
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "The page number of the results to fetch. For more information, see 'Using pagination in the REST API'."
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "hello-world",
+                  "vscode"
+                ],
+                "description": "The name of the repository without the `.git` extension. The name is not case sensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "microsoft"
+                ],
+                "description": "The account owner of the repository. The name is not case sensitive."
+              },
+              "per_page": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  25,
+                  50,
+                  100
+                ],
+                "description": "The number of results per page (max 100). For more information, see 'Using pagination in the REST API'."
+              },
+              "protected": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Setting to `true` returns only branches protected by branch protections or rulesets. When set to `false`, only unprotected branches are returned. Omitting this parameter returns all branches."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_REPOSITORY": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_REPOSITORY",
+          "description": "Retrieves detailed information about an existing and accessible GitHub repository.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Hello-World",
+                  "kubernetes"
+                ],
+                "minLength": 1,
+                "description": "The name of the repository, without the `.git` extension. This field is case-insensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "kubernetes"
+                ],
+                "minLength": 1,
+                "description": "The username of the account that owns the repository. This field is case-insensitive."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_BRANCH": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_BRANCH",
+          "description": "Retrieves detailed information for a specified branch within a GitHub repository.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "branch"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Hello-World"
+                ],
+                "description": "The name of the repository without the `.git` extension. The name is not case sensitive. "
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat"
+                ],
+                "description": "The account owner of the repository. The name is not case sensitive."
+              },
+              "branch": {
+                "type": "string",
+                "examples": [
+                  "main"
+                ],
+                "description": "The name of the branch. Cannot contain wildcard characters. To use wildcard characters in branch names, use [the GraphQL API](https://docs.github.com/graphql). If 'HEAD' is provided, it will be resolved to the repository's default branch."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_REFERENCE": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_REFERENCE",
+          "description": "Retrieves a specific Git reference (e.g., a branch, tag, or fully qualified like 'heads/main') from ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_A_REFERENCE"
+              ]
+            }
+          }
+        },
+        "GITHUB_FIND_REPOSITORIES": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_FIND_REPOSITORIES",
+          "description": "AI-optimized repository search with smart filtering by language, stars, topics, and ownership. Build...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_FIND_REPOSITORIES"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:38:38.815Z",
+        "current_time_utc_epoch_seconds": 1786599518,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "nuts",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"nuts\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_dYdldp2LR0l3"
+  }
+}

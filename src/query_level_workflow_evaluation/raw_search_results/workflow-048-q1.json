@@ -1,0 +1,308 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-048-q1",
+    "workflow_id": 48,
+    "workflow_task": "Generate and post-process a long text-to-speech audio asset, upload it to cloud storage, research YouTube content opportunities and comments, then update YouTube channel branding metadata.",
+    "query": "text to speech audio generation and post processing",
+    "intent": "Generate a long audio asset from text and apply necessary post-processing.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "ELEVENLABS_TEXT_TO_SPEECH"
+        ],
+        "purpose": "Convert text to speech audio"
+      }
+    ],
+    "candidate_tools": [
+      "ELEVENLABS_GET_USER_SUBSCRIPTION_INFO",
+      "ELEVENLABS_TEXT_TO_SPEECH",
+      "GOOGLEDRIVE_CREATE_FOLDER",
+      "GOOGLEDRIVE_RESUMABLE_UPLOAD",
+      "YOUTUBE_GET_CHANNEL_STATISTICS",
+      "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+      "YOUTUBE_LIST_COMMENT_THREADS2",
+      "YOUTUBE_SEARCH_YOU_TUBE",
+      "YOUTUBE_UPDATE_CHANNEL"
+    ]
+  },
+  "request": {
+    "query": "text to speech audio generation and post processing"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "text to speech audio generation and post processing",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite (if voice identifier is unknown)]: Discover available voices using ELEVENLABS_GET_VOICES or HEYGEN_LIST_TTS_VOICES (pick a voice matching the desired style/language).",
+            "[Optional (if using ELEVENLABS_TEXT_TO_SPEECH and model choice must be confirmed)] [Prerequisite]: List supported models using ELEVENLABS_GET_MODELS (select a text-to-speech capable model).",
+            "[Optional (if using HEYGEN_GENERATE_TEXT_TO_SPEECH and you want to validate the voice first)] [Next Step]: Generate a short sample using HEYGEN_GENERATE_VOICE_AUDIO_PREVIEW (confirm pronunciation/tone before full output).",
+            "[Required] [Step]: Synthesize a downloadable speech audio file using ELEVENLABS_TEXT_TO_SPEECH or HEYGEN_GENERATE_TEXT_TO_SPEECH (provide the script text and chosen voice identifier).",
+            "[Optional (if incremental audio delivery is required or single-file responses are problematic)] [Fallback]: Generate streaming audio using ELEVENLABS_TEXT_TO_SPEECH_STREAM (handle chunked output client-side)."
+          ],
+          "known_pitfalls": [
+            "[ELEVENLABS_TEXT_TO_SPEECH] Fails if the voice identifier is missing or invalid; run ELEVENLABS_GET_VOICES when unsure.",
+            "[HEYGEN_GENERATE_TEXT_TO_SPEECH] Output quality/availability depends on the selected voice; unsupported voices may error or sound unexpected.",
+            "[ELEVENLABS_TEXT_TO_SPEECH_STREAM] Returns audio in chunks and requires client-side assembly; not equivalent to a single downloadable file.",
+            "[ELEVENLABS_TEXT_TO_SPEECH] Execution can be blocked when no active connection is configured.",
+            "[HEYGEN_GENERATE_TEXT_TO_SPEECH] Execution can be blocked when no active connection is configured."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "ELEVENLABS_TEXT_TO_SPEECH",
+            "HEYGEN_GENERATE_TEXT_TO_SPEECH"
+          ],
+          "related_tool_slugs": [
+            "ELEVENLABS_GET_VOICES",
+            "HEYGEN_LIST_TTS_VOICES",
+            "ELEVENLABS_TEXT_TO_SPEECH_STREAM",
+            "HEYGEN_GENERATE_VOICE_AUDIO_PREVIEW",
+            "ELEVENLABS_GET_MODELS"
+          ],
+          "toolkits": [
+            "elevenlabs",
+            "heygen"
+          ],
+          "plan_id": "5e57812889914340a5e0a2f604068167"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "elevenlabs",
+          "has_active_connection": false,
+          "description": "Create natural AI voices instantly in any language - perfect for video creators, developers, and businesses.",
+          "status_message": "No Active connection for toolkit=elevenlabs. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"elevenlabs\") to create a connection BEFORE executing any elevenlabs tools."
+        },
+        {
+          "toolkit": "heygen",
+          "has_active_connection": false,
+          "description": "HeyGen is an innovative video platform that harnesses the power of generative AI to streamline your video creation process",
+          "status_message": "No Active connection for toolkit=heygen. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"heygen\") to create a connection BEFORE executing any heygen tools."
+        }
+      ],
+      "tool_schemas": {
+        "ELEVENLABS_TEXT_TO_SPEECH": {
+          "toolkit": "ELEVENLABS",
+          "tool_slug": "ELEVENLABS_TEXT_TO_SPEECH",
+          "description": "Converts text to speech using a specified ElevenLabs voice and model, returning a downloadable audio file (use ELEVENLABS_TEXT_TO_SPEECH_STREAM for streaming instead). Keep `voice_id`, `model_id`, and `output_format` consistent across all chunks to avoid audible artifacts when concatenating. Some voice/model/format combinations require specific subscription tiers; test with a short sample before full runs. HTTP 429 on burst batches; respect `Retry-After` headers.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "voice_id",
+              "text"
+            ],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "examples": [
+                  "123",
+                  "42"
+                ],
+                "description": "Integer seed for potentially deterministic audio generation. Repeatability with the same seed and parameters is aimed for but not guaranteed."
+              },
+              "text": {
+                "type": "string",
+                "examples": [
+                  "Hello, world!",
+                  "This is a test of the text-to-speech API."
+                ],
+                "description": "Input text for speech conversion. Max 10,000 characters for most models. Flash/Turbo v2 models: up to 30,000. Flash/Turbo v2.5 models: up to 40,000. For long-form content, use Studio."
+              },
+              "model_id": {
+                "type": "string",
+                "default": "eleven_monolingual_v1",
+                "examples": [
+                  "eleven_monolingual_v1",
+                  "eleven_multilingual_v2"
+                ],
+                "description": "Identifier of the model for synthesis. List available models via `/v1/models`; ensure chosen model's `can_do_text_to_speech` is true."
+              },
+              "voice_id": {
+                "type": "string",
+                "examples": [
+                  "21m00Tcm4TlvDq8ikWAM",
+                  "AZnzlk1XvdvUeBnXmlld"
+                ],
+                "description": "Identifier of the voice for speech generation. Obtainable from the `/v1/voices` endpoint."
+              },
+              "output_format": {
+                "type": "string",
+                "default": "mp3_44100_128",
+                "examples": [
+                  "mp3_44100_128",
+                  "mp3_22050_32",
+                  "pcm_16000",
+                  "ulaw_8000"
+                ],
+                "description": "Output audio format. Supported formats include:\n- `mp3_22050_32`: 22.05kHz, 32kbps MP3.\n- `mp3_44100_32`: 44.1kHz, 32kbps MP3.\n- `mp3_44100_64`: 44.1kHz, 64kbps MP3.\n- `mp3_44100_96`: 44.1kHz, 96kbps MP3.\n- `mp3_44100_128`: 44.1kHz, 128kbps MP3.\n- `mp3_44100_192`: 44.1kHz, 192kbps MP3 (Creator tier+).\n- `pcm_16000`: 16kHz PCM (S16LE).\n- `pcm_22050`: 22.05kHz PCM (S16LE).\n- `pcm_24000`: 24kHz PCM (S16LE).\n- `pcm_44100`: 44.1kHz PCM (S16LE) (Pro tier+).\n- `ulaw_8000`: 8kHz \u03bc-law (for Twilio audio inputs)."
+              },
+              "voice_settings": {
+                "type": "object",
+                "properties": {
+                  "style": {
+                    "type": "number",
+                    "description": "Determines style exaggeration. Recommended to keep at 0. Consumes additional computational resources. Range: 0.0 to 1.0."
+                  },
+                  "stability": {
+                    "type": "number",
+                    "description": "Controls voice consistency. Lower values (0.30-0.50) introduce broader emotional range, higher values (0.60-0.85) create more consistent output. Range: 0.0 to 1.0."
+                  },
+                  "similarity_boost": {
+                    "type": "number",
+                    "description": "Boosts similarity to the original speaker. Higher values risk reproducing background noise if source audio quality is poor. Range: 0.0 to 1.0."
+                  },
+                  "use_speaker_boost": {
+                    "type": "boolean",
+                    "description": "Enables speaker boost enhancement. Not available for the Eleven v3 model."
+                  }
+                },
+                "description": "Voice settings for controlling speech generation characteristics.",
+                "additionalProperties": false
+              },
+              "optimize_streaming_latency": {
+                "type": "integer",
+                "examples": [
+                  "0",
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "description": "Controls latency optimizations for streaming. Higher values reduce latency, potentially affecting quality.\n0: No optimizations.\n1: Normal (approx. 50% of max improvement vs option 3).\n2: Strong (approx. 75% of max improvement vs option 3).\n3: Maximum.\n4: Maximum with text normalizer disabled (affects number/date pronunciation, best latency).\nNOTE: Not supported with model 'eleven_v3'. If using eleven_v3, leave this parameter unset."
+              },
+              "pronunciation_dictionary_locators": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "default": [],
+                "examples": [
+                  "[{'pronunciation_dictionary_id': 'your_dict_id', 'version_id': 'your_version_id'}]",
+                  "[]"
+                ],
+                "description": "List of up to 3 pronunciation dictionary locators, applied sequentially. Each dictionary must contain `pronunciation_dictionary_id` and `version_id`."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HEYGEN_GENERATE_TEXT_TO_SPEECH": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_GENERATE_TEXT_TO_SPEECH",
+          "description": "Tool to generate a speech audio file from any text input using a specified voice, powered by HeyGen's Starfish model. Use when you need to convert text to speech audio with high-quality voice synthesis.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "text",
+              "voice_id"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "examples": [
+                  "Hello, this is a test of the HeyGen text to speech API."
+                ],
+                "description": "The text content to convert to speech"
+              },
+              "voice_id": {
+                "type": "string",
+                "examples": [
+                  "1bd001e7e50f421d891986aad5158bc8"
+                ],
+                "description": "The ID of the voice to use for speech generation. Can be obtained from the List All Voices (V2) endpoint"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ELEVENLABS_GET_VOICES": {
+          "toolkit": "ELEVENLABS",
+          "tool_slug": "ELEVENLABS_GET_VOICES",
+          "description": "Retrieves a list of all available voices along with their detailed attributes and settings.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "HEYGEN_LIST_TTS_VOICES": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_LIST_TTS_VOICES",
+          "description": "Tool to retrieve a list of public and custom voices compatible with HeyGen's Starfish TTS model. Use...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HEYGEN_LIST_TTS_VOICES"
+              ]
+            }
+          }
+        },
+        "ELEVENLABS_TEXT_TO_SPEECH_STREAM": {
+          "toolkit": "ELEVENLABS",
+          "tool_slug": "ELEVENLABS_TEXT_TO_SPEECH_STREAM",
+          "description": "Converts text to a spoken audio stream (no saved file or history entry); use the non-streaming text-...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ELEVENLABS_TEXT_TO_SPEECH_STREAM"
+              ]
+            }
+          }
+        },
+        "HEYGEN_GENERATE_VOICE_AUDIO_PREVIEW": {
+          "toolkit": "HEYGEN",
+          "tool_slug": "HEYGEN_GENERATE_VOICE_AUDIO_PREVIEW",
+          "description": "Tool to generate a short audio preview with the specified voice and text. Use when you need to synth...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HEYGEN_GENERATE_VOICE_AUDIO_PREVIEW"
+              ]
+            }
+          }
+        },
+        "ELEVENLABS_GET_MODELS": {
+          "toolkit": "ELEVENLABS",
+          "tool_slug": "ELEVENLABS_GET_MODELS",
+          "description": "Retrieves a detailed list of all available ElevenLabs text-to-speech (TTS) models and their capabili...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ELEVENLABS_GET_MODELS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:34:22.570Z",
+        "current_time_utc_epoch_seconds": 1786599262,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "foot",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"foot\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_mhhsYnvVgjbf"
+  }
+}

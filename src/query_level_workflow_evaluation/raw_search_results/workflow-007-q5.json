@@ -48,29 +48,19 @@
         {
           "index": 1,
           "use_case": "read incoming sms messages",
-          "execution_guidance": "Found 5 tools for this query. Look at the schemas to know how to use them.",
+          "execution_guidance": "Found 2 tools for this query. Look at the schemas to know how to use them.",
           "primary_tool_slugs": [
-            "CLICKSEND_SMS_INBOUND_READ_PUT",
-            "CLICKSEND_SMS_INBOUND_READ_BY_MESSAGE_ID_PUT",
             "TELTEL_RECEIVE_INBOUND_SMS"
           ],
           "related_tool_slugs": [
-            "CLICKSEND_GET_SMS_INBOUND",
             "TELTEL_GET_SMS_LIST"
           ],
           "toolkits": [
-            "clicksend",
             "teltel"
           ]
         }
       ],
       "toolkit_connection_statuses": [
-        {
-          "toolkit": "clicksend",
-          "has_active_connection": false,
-          "description": "ClickSend is a cloud-based SMS and email marketing platform that enables businesses to send and receive SMS messages, manage contacts, and track campaign performance.",
-          "status_message": "No Active connection for toolkit=clicksend. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"clicksend\") to create a connection BEFORE executing any clicksend tools."
-        },
         {
           "toolkit": "teltel",
           "has_active_connection": false,
@@ -79,48 +69,6 @@
         }
       ],
       "tool_schemas": {
-        "CLICKSEND_SMS_INBOUND_READ_PUT": {
-          "toolkit": "CLICKSEND",
-          "tool_slug": "CLICKSEND_SMS_INBOUND_READ_PUT",
-          "description": "Mark inbound SMS messages as read in ClickSend. Use this action to mark all inbound SMS messages as read, or only those received before a specific timestamp. This is commonly used after polling for new messages with GET /sms/inbound to prevent re-reading the same messages. Once marked as read, messages will no longer appear in the default View Inbound SMS (GET /sms/inbound) response, but remain accessible via the View Specific Inbound SMS by Message ID endpoint. The operation is idempotent - marking already-read messages has no negative effect.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "date_before": {
-                "type": "number",
-                "examples": [
-                  1442398100,
-                  1609459200,
-                  1735776000
-                ],
-                "description": "Unix timestamp (in seconds since epoch). If provided, only inbound SMS received before this timestamp will be marked as read. If omitted, ALL unread inbound messages will be marked as read. For incremental polling, use the 'timestamp' value from the last message in your previous GET /sms/inbound response to avoid marking future messages."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "CLICKSEND_SMS_INBOUND_READ_BY_MESSAGE_ID_PUT": {
-          "toolkit": "CLICKSEND",
-          "tool_slug": "CLICKSEND_SMS_INBOUND_READ_BY_MESSAGE_ID_PUT",
-          "description": "Tool to mark a specific inbound SMS message as read in ClickSend. Use when you need to mark an individual inbound SMS as processed. Once marked as read, the message won't appear in the View Inbound SMS endpoint but can still be viewed using the View Specific Inbound SMS endpoint.",
-          "input_schema": {
-            "type": "object",
-            "required": [
-              "message_id"
-            ],
-            "properties": {
-              "message_id": {
-                "type": "string",
-                "examples": [
-                  "test-message-id-123",
-                  "1F0D99DA-8B81-67D2-9430-7FF013381302"
-                ],
-                "description": "The identifier for the inbound SMS to mark as read. This is the message_id of the inbound message sent by the recipient (not the original_message_id of the outbound message)."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
         "TELTEL_RECEIVE_INBOUND_SMS": {
           "toolkit": "TELTEL",
           "tool_slug": "TELTEL_RECEIVE_INBOUND_SMS",
@@ -181,88 +129,77 @@
           },
           "hasFullSchema": true
         },
-        "CLICKSEND_GET_SMS_INBOUND": {
-          "toolkit": "CLICKSEND",
-          "tool_slug": "CLICKSEND_GET_SMS_INBOUND",
-          "description": "Retrieves inbound SMS messages received by your ClickSend account. Use this tool when you need to: - View messages sent TO your ClickSend numbers FROM customers/recipients - Search for specific messages by sender, recipient, or content - Monitor incoming SMS replies and interactions Important: To receive inbound messages via API polling, you must first configure an inbound rule in the ClickSend Dashboard with the Action set to 'POLL'. By default, only unread messages are returned.",
+        "TELTEL_GET_SMS_LIST": {
+          "toolkit": "TELTEL",
+          "tool_slug": "TELTEL_GET_SMS_LIST",
+          "description": "Tool to retrieve a list of sent (outbox) or received (inbox) SMS messages from TelTel. Use when you need to filter or paginate through SMS message history. Supports filtering by date, sender, recipient, and message state.",
           "input_schema": {
             "type": "object",
             "properties": {
-              "q": {
+              "sort": {
                 "type": "string",
                 "examples": [
-                  "from:+61437085284",
-                  "to:+61426123123",
-                  "body:reply"
+                  "-created_at"
                 ],
-                "description": "Search query to filter inbound SMS messages. Format: field_name:value (e.g., from:+61437085284). Searches are case-insensitive. Available searchable fields: from (sender number), to (recipient number), message_id, body (message text). Multiple criteria can be combined using the operator parameter Malformed queries silently return zero results instead of errors."
-              },
-              "page": {
-                "type": "integer",
-                "default": 1,
-                "minimum": 1,
-                "examples": [
-                  1,
-                  2,
-                  3
-                ],
-                "description": "Page number for pagination. Default: 1 Increment iteratively with consistent limit to retrieve all records."
+                "description": "Sorting field. Use '-' prefix for descending order. Multiple fields separated by comma. Default is '-id'."
               },
               "limit": {
                 "type": "integer",
-                "default": 15,
+                "maximum": 5000,
                 "minimum": 1,
                 "examples": [
-                  15,
-                  25,
-                  50
+                  100
                 ],
-                "description": "Number of records per page. Default: 15"
+                "description": "Maximum number of results to return. Default is 500, max is 5000."
               },
-              "operator": {
+              "fields": {
                 "type": "string",
                 "examples": [
-                  "AND",
-                  "OR"
+                  "id,from,to,state,created_at,message"
                 ],
-                "description": "Search operator to combine multiple search criteria in the q parameter. Use 'AND' to match all criteria (default) or 'OR' to match any criteria. Only relevant when multiple field:value pairs are provided in the q parameter"
+                "description": "Comma-separated list of fields to return. Leave empty for default fields."
               },
-              "order_by": {
+              "filter": {
                 "type": "string",
                 "examples": [
-                  "date:desc",
-                  "date:asc"
+                  "created_at>2021-01-01T10:00:00,state=DONE"
                 ],
-                "description": "Sort order for results. Format: field_name:direction where direction is 'asc' (ascending) or 'desc' (descending). Default is 'date:asc' (oldest first). Use 'date:desc' to get newest messages first"
+                "description": "Filter expression. Multiple filters separated by comma. Examples: 'created_at>2021-01-01T10:00:00', 'from=37126222222', 'state=DONE'."
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0
+                ],
+                "description": "Number of results to skip before returning. Default is 0."
+              },
+              "message_type": {
+                "enum": [
+                  "outbox",
+                  "inbox"
+                ],
+                "type": "string",
+                "default": "outbox",
+                "examples": [
+                  "outbox"
+                ],
+                "description": "Type of SMS messages to retrieve: 'outbox' for sent messages, 'inbox' for received messages."
               }
             }
           },
           "hasFullSchema": true
-        },
-        "TELTEL_GET_SMS_LIST": {
-          "toolkit": "TELTEL",
-          "tool_slug": "TELTEL_GET_SMS_LIST",
-          "description": "Tool to retrieve a list of sent (outbox) or received (inbox) SMS messages from TelTel. Use when you ...",
-          "hasFullSchema": false,
-          "schemaRef": {
-            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
-            "args": {
-              "tool_slugs": [
-                "TELTEL_GET_SMS_LIST"
-              ]
-            }
-          }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T21:31:17.144Z",
-        "current_time_utc_epoch_seconds": 1786570277,
+        "current_time_utc": "2026-08-13T05:28:15.485Z",
+        "current_time_utc_epoch_seconds": 1786598895,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "luck",
+        "id": "mark",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"luck\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"mark\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "Follow these steps carefully to begin the task:",
@@ -272,6 +209,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_k_dHPkVcsBm0"
+    "log_id": "log_QYeF1Zf7Tonl"
   }
 }

@@ -1,0 +1,455 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-052-q1",
+    "workflow_id": 52,
+    "workflow_task": "Migrate a user's memory data from Mem0 into Zep, inspect existing Zep context, attempt to organize migrated content by project-like scopes, and verify that the imported content is searchable.",
+    "query": "export or read all memories from Mem0",
+    "intent": "Retrieve all stored user memory data from Mem0 so it can be prepared for migration.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "MEM0_GET_MEMORIES_BY_ENTITY"
+        ],
+        "purpose": "Retrieve all memories from Mem0 for a specific entity"
+      }
+    ],
+    "candidate_tools": [
+      "MEM0_GET_MEMORIES_BY_ENTITY",
+      "ZEP_CREATE_GRAPH",
+      "ZEP_GET_PROJECT_INFO",
+      "ZEP_GET_USER_NODE",
+      "ZEP_GRAPH_SEARCH",
+      "ZEP_LIST_GROUPS_ORDERED"
+    ]
+  },
+  "request": {
+    "query": "export or read all memories from Mem0"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "export or read all memories from Mem0",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Select exactly one stable scope identifier and reuse it for all calls using MEM0_RETRIEVE_MEMORY_LIST (avoid mixing scopes across requests).",
+            "[Required] [Step]: List newest items using MEM0_RETRIEVE_MEMORY_LIST (recency) and paginate with page/page_size; continue until a page returns no items or pagination indicates end; collect from response.data.memories (or other observed list keys).",
+            "[Optional (if you know a target entity or listing is too broad)] [Next Step]: Retrieve a tighter set using MEM0_GET_MEMORIES_BY_ENTITY or MEM0_SEARCH_MEMORIES_WITH_QUERY_FILTERS, then merge/dedupe by memory identifier.",
+            "[Optional (if list output is truncated, you need full fidelity, or you will edit)] [Next Step]: Hydrate selected records using MEM0_RETRIEVE_MEMORY_BY_UNIQUE_IDENTIFIER (dedupe IDs, batch requests); if changes are required, update the confirmed record using MEM0_UPDATE_MEMORY_DETAILS_BY_ID.",
+            "[Fallback (if results are empty or scope/entity is unclear)] [Fallback]: Discover valid entities using MEM0_LIST_ENTITIES_WITH_OPTIONAL_ORG_AND_PROJECT_FILTERS, then retry via MEM0_GET_MEMORIES_BY_ENTITY or MEM0_RETRIEVE_MEMORY_LIST in the confirmed scope."
+          ],
+          "known_pitfalls": [
+            "[MEM0_RETRIEVE_MEMORY_LIST] Can legitimately return an empty list (e.g., data.count=0 and response.data.memories=[]); treat as a valid empty scope, not an error.",
+            "[MEM0_RETRIEVE_MEMORY_LIST] Response shape varies; items may appear under data.memories vs other list keys (e.g., data.results), so parsers should check multiple containers.",
+            "[MEM0_RETRIEVE_MEMORY_LIST] Pagination signals vary; response.data.next may be null/absent\u2014treat that as end-of-pagination rather than an error.",
+            "[MEM0_RETRIEVE_MEMORY_BY_UNIQUE_IDENTIFIER] Expanding many IDs can trigger HTTP 429; dedupe first, then batch and back off/retry.",
+            "[MEM0_UPDATE_MEMORY_DETAILS_BY_ID] Updating with an incorrect/placeholder memory identifier can yield a not-found error; always source the exact identifier from listing/search before updating."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Defensive extraction of list items from a MEM0_RETRIEVE_MEMORY_LIST response",
+              "code": "```python\ndef extract_items(res):\n    d=(res or {}).get('data') or {}\n    return d.get('memories') or d.get('results') or []\n\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "MEM0_RETRIEVE_MEMORY_LIST"
+          ],
+          "related_tool_slugs": [
+            "MEM0_RETRIEVE_MEMORY_BY_UNIQUE_IDENTIFIER",
+            "MEM0_SEARCH_MEMORIES_WITH_QUERY_FILTERS",
+            "MEM0_UPDATE_MEMORY_DETAILS_BY_ID",
+            "MEM0_GET_MEMORIES_BY_ENTITY",
+            "MEM0_LIST_ENTITIES_WITH_OPTIONAL_ORG_AND_PROJECT_FILTERS"
+          ],
+          "toolkits": [
+            "mem0"
+          ],
+          "plan_id": "b9c9c77bc79446e6a1fdf186901f7663"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "mem0",
+          "has_active_connection": false,
+          "description": "Mem0 is an universal, self-improving memory layer for LLM applications.",
+          "status_message": "No Active connection for toolkit=mem0. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"mem0\") to create a connection BEFORE executing any mem0 tools."
+        }
+      ],
+      "tool_schemas": {
+        "MEM0_RETRIEVE_MEMORY_LIST": {
+          "toolkit": "MEM0",
+          "tool_slug": "MEM0_RETRIEVE_MEMORY_LIST",
+          "description": "Retrieves a list of memories, supporting pagination and diverse filtering (e.g., by IDs, metadata, keywords, date ranges); ensure dates are ISO 8601 and `page`/`page_size` (if used) are positive integers. REQUIRED: At least one of agent_id, user_id, app_id, or run_id must be provided.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "description": "The page number for pagination, starting from 1. Default: 1."
+              },
+              "app_id": {
+                "type": "string",
+                "examples": [
+                  "app_xyz789",
+                  "data_analyzer_app"
+                ],
+                "description": "The unique identifier of the application associated with the memories. At least one of user_id, agent_id, app_id, or run_id is required."
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "content",
+                  "summary",
+                  "user_input_text"
+                ],
+                "description": "A list of specific field names to consider during filtering. This might involve checking for the existence of these fields or scoping other filters (e.g., keywords) to them."
+              },
+              "org_id": {
+                "type": "string",
+                "examples": [
+                  "org_def456",
+                  "my_company_id"
+                ],
+                "description": "The unique identifier of the organization to filter memories by. Must be provided together with project_id, or both must be omitted."
+              },
+              "run_id": {
+                "type": "string",
+                "examples": [
+                  "run_67890",
+                  "session_log_54321"
+                ],
+                "description": "The unique identifier of a specific run or session to filter memories by. At least one of user_id, agent_id, app_id, or run_id is required."
+              },
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "user_12345",
+                  "specific_user_id"
+                ],
+                "description": "The unique identifier of the user whose memories are to be retrieved. At least one of user_id, agent_id, app_id, or run_id is required."
+              },
+              "agent_id": {
+                "type": "string",
+                "examples": [
+                  "agent_abcde",
+                  "chatbot_assistant_v2"
+                ],
+                "description": "The unique identifier of the agent associated with the memories to be retrieved. At least one of user_id, agent_id, app_id, or run_id is required."
+              },
+              "end_date": {
+                "type": "string",
+                "examples": [
+                  "2023-01-31",
+                  "2023-10-30T23:59:59Z"
+                ],
+                "description": "The end date (inclusive) for filtering memories, typically in ISO 8601 format (e.g., 'YYYY-MM-DDTHH:MM:SSZ' or 'YYYY-MM-DD')."
+              },
+              "keywords": {
+                "type": "string",
+                "examples": [
+                  "artificial intelligence",
+                  "meeting notes from last week"
+                ],
+                "description": "Keywords to search for within the memories. The search might be across all text fields or restricted by the `fields` parameter if specified."
+              },
+              "metadata": {
+                "type": "object",
+                "examples": [
+                  "{\"source\": \"email\", \"priority\": \"high\"}",
+                  "{\"project_id\": \"prj_alpha\", \"status\": \"completed\"}"
+                ],
+                "description": "A dictionary of key-value pairs to filter memories. Only memories matching all key-value pairs in the provided metadata will be returned.",
+                "additionalProperties": true
+              },
+              "org_name": {
+                "type": "string",
+                "description": "The name of the organization to filter memories by. This field is deprecated and will be removed in a future version; please use `org_id` instead."
+              },
+              "page_size": {
+                "type": "integer",
+                "description": "The number of memories to return per page. Default: 100."
+              },
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "work",
+                  "project_alpha",
+                  "personal_notes"
+                ],
+                "description": "A list of categories to filter memories by. Memories matching any of the specified categories will be returned."
+              },
+              "project_id": {
+                "type": "string",
+                "examples": [
+                  "proj_uvw123",
+                  "research_project_gamma"
+                ],
+                "description": "The unique identifier of the project to filter memories by. Must be provided together with org_id, or both must be omitted."
+              },
+              "start_date": {
+                "type": "string",
+                "examples": [
+                  "2023-01-01",
+                  "2023-10-15T00:00:00Z"
+                ],
+                "description": "The start date (inclusive) for filtering memories, typically in ISO 8601 format (e.g., 'YYYY-MM-DDTHH:MM:SSZ' or 'YYYY-MM-DD')."
+              },
+              "project_name": {
+                "type": "string",
+                "description": "The name of the project to filter memories by. This field is deprecated and will be removed in a future version; please use `project_id` instead."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "MEM0_RETRIEVE_MEMORY_BY_UNIQUE_IDENTIFIER": {
+          "toolkit": "MEM0",
+          "tool_slug": "MEM0_RETRIEVE_MEMORY_BY_UNIQUE_IDENTIFIER",
+          "description": "Retrieves a complete memory entry by its unique identifier; `memory_id` must be valid and for an existing memory.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "memory_id"
+            ],
+            "properties": {
+              "memory_id": {
+                "type": "string",
+                "examples": [
+                  "c276347d-f1a2-4c21-89b4-86d47f9c3d4a",
+                  "mem_abc123xyz789"
+                ],
+                "description": "Unique identifier of the memory to retrieve."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "MEM0_SEARCH_MEMORIES_WITH_QUERY_FILTERS": {
+          "toolkit": "MEM0",
+          "tool_slug": "MEM0_SEARCH_MEMORIES_WITH_QUERY_FILTERS",
+          "description": "Semantically searches memories using structured filters with an optional natural language query. If query is omitted, defaults to '*' (wildcard) for filter-only searches. Offers options to rerank results, select specific fields, and adjust similarity threshold; any provided `org_id` or `project_id` must reference a valid existing entity.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "filters"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "default": "*",
+                "examples": [
+                  "latest meeting notes with John Doe",
+                  "summary of Q3 financial report",
+                  "*"
+                ],
+                "description": "Natural language query for searching memories. The API requires this field to be non-blank, so it defaults to '*' for filter-only searches. Omit or use '*' to retrieve memories matching only the filters without semantic search constraints."
+              },
+              "top_k": {
+                "type": "integer",
+                "default": 10,
+                "examples": [
+                  "5",
+                  "10",
+                  "25"
+                ],
+                "description": "Maximum number of most relevant search results to return."
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "[\"text\", \"user_id\", \"created_at\"]",
+                  "[\"summary\", \"source\"]",
+                  "[\"id\", \"metadata\"]"
+                ],
+                "description": "Specific field names to include in returned memory objects (e.g., 'text', 'source', 'metadata.custom_field'). If omitted, all fields are returned."
+              },
+              "org_id": {
+                "type": "string",
+                "examples": [
+                  "org_2NVCsVmXqEga2N6bzr76dILXYZ",
+                  "org_aBcDeFgHiJkLmNoPqRsTuVwXyZ12345"
+                ],
+                "description": "UUID of the organization to scope the memory search; preferred over `org_name`."
+              },
+              "rerank": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "If true, applies a secondary reranking model to initial search results for improved relevance."
+              },
+              "filters": {
+                "type": "object",
+                "examples": [
+                  {
+                    "user_id": "alice"
+                  },
+                  {
+                    "user_id": "*"
+                  },
+                  {
+                    "created_at": {
+                      "gte": "2023-01-01T00:00:00Z"
+                    }
+                  },
+                  {
+                    "AND": [
+                      {
+                        "user_id": "alice"
+                      }
+                    ]
+                  },
+                  {
+                    "AND": [
+                      {
+                        "user_id": "alice"
+                      },
+                      {
+                        "agent_id": {
+                          "in": [
+                            "travel-agent",
+                            "sports-agent"
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "OR": [
+                      {
+                        "user_id": "alice"
+                      },
+                      {
+                        "user_id": "bob"
+                      }
+                    ]
+                  }
+                ],
+                "description": "REQUIRED and cannot be empty - must contain at least one filter condition. Available filter fields: user_id, agent_id, app_id, run_id, created_at, updated_at, categories, keywords. Filters can be provided in two formats: (1) Simple key-value pairs: `{\"user_id\": \"alice\"}` for equality matching or `{\"created_at\": {\"gte\": \"2023-01-01T00:00:00Z\"}}` with comparison operators. (2) Wrapped in logical operators: `{\"AND\": [{\"user_id\": \"alice\"}]}` for combining multiple conditions. Comparison operators (lowercase): `in` (matches any value in list), `gte` (>=), `lte` (<=), `gt` (>), `lt` (<), `ne` (not equal), `contains`, `icontains` (case-insensitive). Logical operators (`AND`, `OR`, `NOT`) must be UPPERCASE and take a list of conditions. Use `*` as wildcard to match any value for a field (e.g., `{\"user_id\": \"*\"}` to match all users).",
+                "additionalProperties": true
+              },
+              "org_name": {
+                "type": "string",
+                "examples": [
+                  "AcmeCorp",
+                  "WayneEnterprises"
+                ],
+                "description": "Deprecated: Name of the organization to scope the memory search. Use `org_id` instead for improved accuracy and stability."
+              },
+              "threshold": {
+                "type": "number",
+                "default": 0.3,
+                "examples": [
+                  0.3,
+                  0.5,
+                  0.7
+                ],
+                "description": "Minimum similarity threshold for search results (0.0 to 1.0). Higher values return more relevant but fewer results."
+              },
+              "project_id": {
+                "type": "string",
+                "examples": [
+                  "proj_1ABCDEFGHJKLMNOPQRSTUVWXYZabc",
+                  "proj_zyxwUTSRQPONMLKJIHGFEDCBA98765"
+                ],
+                "description": "UUID of the project to scope the memory search; preferred over `project_name`."
+              },
+              "project_name": {
+                "type": "string",
+                "examples": [
+                  "ProjectPhoenix",
+                  "AlphaInitiative"
+                ],
+                "description": "Deprecated: Name of the project to scope the memory search. Use `project_id` instead for improved accuracy and stability."
+              },
+              "keyword_search": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to search for memories based on keywords instead of semantic similarity."
+              },
+              "filter_memories": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to strictly apply all provided metadata filters."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "MEM0_UPDATE_MEMORY_DETAILS_BY_ID": {
+          "toolkit": "MEM0",
+          "tool_slug": "MEM0_UPDATE_MEMORY_DETAILS_BY_ID",
+          "description": "Updates the text content of an existing memory, identified by its `memory_id`.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MEM0_UPDATE_MEMORY_DETAILS_BY_ID"
+              ]
+            }
+          }
+        },
+        "MEM0_GET_MEMORIES_BY_ENTITY": {
+          "toolkit": "MEM0",
+          "tool_slug": "MEM0_GET_MEMORIES_BY_ENTITY",
+          "description": "Tool to retrieve all memories associated with a specific entity (user, agent, app, or run). Use when...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MEM0_GET_MEMORIES_BY_ENTITY"
+              ]
+            }
+          }
+        },
+        "MEM0_LIST_ENTITIES_WITH_OPTIONAL_ORG_AND_PROJECT_FILTERS": {
+          "toolkit": "MEM0",
+          "tool_slug": "MEM0_LIST_ENTITIES_WITH_OPTIONAL_ORG_AND_PROJECT_FILTERS",
+          "description": "Retrieves a list of entities, optionally filtered by organization or project (prefer `org_id`/`proje...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "MEM0_LIST_ENTITIES_WITH_OPTIONAL_ORG_AND_PROJECT_FILTERS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:34:59.693Z",
+        "current_time_utc_epoch_seconds": 1786599299,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "flat",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"flat\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_GiTgm3pGWGOD"
+  }
+}

@@ -1,0 +1,2647 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-099-q3",
+    "workflow_id": 99,
+    "workflow_task": "Maintain and review a Notion-based project task page and append-only log for a technical project, including reading state, posting review/decision rows, updating task-page checklists, and inspecting a Supabase schema to support implementation decisions.",
+    "query": "append row to notion project log",
+    "intent": "Post new review and decision rows to the append-only project log in Notion.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "NOTION_INSERT_ROW_DATABASE"
+        ],
+        "purpose": "append a new row/page to the Notion project log database"
+      }
+    ],
+    "candidate_tools": [
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_DELETE_BLOCK",
+      "NOTION_FETCH_ALL_BLOCK_CONTENTS",
+      "NOTION_FETCH_BLOCK_CONTENTS",
+      "NOTION_FETCH_BLOCK_METADATA",
+      "NOTION_FETCH_DATABASE",
+      "NOTION_FETCH_ROW",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_INSERT_ROW_DATABASE",
+      "NOTION_PROXY_EXECUTE",
+      "NOTION_QUERY_DATABASE",
+      "NOTION_QUERY_DATABASE_WITH_FILTER",
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_SEARCH_NOTION_PAGE",
+      "NOTION_UPDATE_BLOCK",
+      "NOTION_UPDATE_PAGE",
+      "NOTION_UPDATE_ROW_DATABASE",
+      "NOTION_UPSERT_ROW_DATABASE",
+      "SUPABASE_LIST_TABLES",
+      "SUPABASE_RUN_READ_ONLY_QUERY"
+    ]
+  },
+  "request": {
+    "query": "append row to notion project log"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "append row to notion project log",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if property schema/options are unclear or first write fails)] [Prerequisite]: Inspect exact property names/types, required title property, and allowed option labels using NOTION_FETCH_DATABASE.",
+            "[Optional (if reruns may create duplicates)] [Prerequisite]: Dedupe by a stable key using NOTION_QUERY_DATABASE_WITH_FILTER (paginate via has_more/next_cursor using start_cursor) or use NOTION_UPSERT_ROW_DATABASE when a stable match filter exists.",
+            "[Required] [Step]: Create the row using NOTION_INSERT_ROW_DATABASE (send properties as a top-level LIST of {name,type,value}; include the title property; capture the created page identifier to use as row_id later).",
+            "[Optional (to confirm values persisted or fix mismatches)] [Next Step]: Read back using NOTION_FETCH_ROW, then patch missing/incorrect properties using NOTION_UPDATE_ROW_DATABASE (with row_id from the created page).",
+            "[Optional (if a long/rich page body is needed)] [Next Step]: Append formatted blocks using NOTION_ADD_MULTIPLE_PAGE_CONTENT (create the row first; use the created page identifier in the required parent identifier field).",
+            "[Fallback (if NOTION_INSERT_ROW_DATABASE returns 400 validation_error for unknown fields/types)] [Fallback]: Re-run NOTION_FETCH_DATABASE and retry NOTION_INSERT_ROW_DATABASE with only schema-certain fields (coerce ambiguous values to strings; ensure select/status values match exact option labels), then backfill remaining properties via NOTION_UPDATE_ROW_DATABASE."
+          ],
+          "known_pitfalls": [
+            "[NOTION_FETCH_DATABASE] 401 unauthorized/404 object_not_found if the database is not shared with the integration or the identifier is not a database; writes may also fail if the database is archived/trashed per metadata.",
+            "[NOTION_FETCH_DATABASE] Schema is under a properties object keyed by property name (not an array); misreading this commonly breaks payload mapping.",
+            "[NOTION_INSERT_ROW_DATABASE] Strict validation: properties must be a LIST of {name,type,value}; validation_error may point to list indices (e.g., properties.N.value) when one entry is malformed or missing value.",
+            "[NOTION_INSERT_ROW_DATABASE] Success responses can be large and deeply nested; extract the created page identifier from the returned page object rather than assuming a flat response.",
+            "[NOTION_QUERY_DATABASE_WITH_FILTER] Large scans require pagination and may hit 429; honor Retry-After and keep throughput low (about 3 requests/second)."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Example NOTION_INSERT_ROW_DATABASE payload shape (properties as list of name/type/value)",
+              "code": "```python\npayload={'database_id':'<database_id>','properties':[{'name':'<title_property>','type':'title','value':'Example'},{'name':'<option_property>','type':'select','value':'<allowed_label>'},{'name':'<text_property>','type':'rich_text','value':'...'}]}\n```"
+            },
+            {
+              "description": "Paginate NOTION_QUERY_DATABASE_WITH_FILTER for reliable dedupe checks",
+              "code": "```python\nrows=[]\ncursor=None\nwhile True:\n  args={'database_id':'<database_id>','page_size':100,'filter':filter_obj}\n  if cursor: args['start_cursor']=cursor\n  res,err=run_composio_tool('NOTION_QUERY_DATABASE_WITH_FILTER',args)\n  if err: raise Exception(err)\n  data=res.get('data',res)\n  rows+=data.get('results',[])\n  if not data.get('has_more'): break\n  cursor=data.get('next_cursor')\nlen(rows)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "NOTION_FETCH_DATABASE",
+            "NOTION_INSERT_ROW_DATABASE"
+          ],
+          "related_tool_slugs": [
+            "NOTION_UPSERT_ROW_DATABASE",
+            "NOTION_QUERY_DATABASE_WITH_FILTER",
+            "NOTION_FETCH_ROW",
+            "NOTION_UPDATE_ROW_DATABASE",
+            "NOTION_ADD_MULTIPLE_PAGE_CONTENT"
+          ],
+          "toolkits": [
+            "notion"
+          ],
+          "plan_id": "73f869f688a445499121cfd0c12052f5"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "notion",
+          "has_active_connection": false,
+          "description": "Notion centralizes notes, docs, wikis, and tasks in a unified workspace, letting teams build custom workflows for collaboration and knowledge management",
+          "status_message": "No Active connection for toolkit=notion. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"notion\") to create a connection BEFORE executing any notion tools."
+        }
+      ],
+      "tool_schemas": {
+        "NOTION_FETCH_DATABASE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_DATABASE",
+          "description": "Fetches a Notion database's structural metadata (properties, title, etc.) via its `database_id`, not the data entries; `database_id` must reference an existing database.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "database_id"
+            ],
+            "properties": {
+              "database_id": {
+                "type": "string",
+                "examples": [
+                  "2ec43c10-7ecd-8159-a8f4-ff16630df66c"
+                ],
+                "minLength": 1,
+                "description": "Required. The unique identifier of the Notion database in UUID format (e.g., '2ec43c10-7ecd-8159-a8f4-ff16630df66c') or unhyphenated 32-char hex (e.g., '2ec43c107ecd8159a8f4ff16630df66c'). Must be a DATABASE ID, not a page ID. Linked databases are NOT supported - use the original source database ID. To find database IDs: use NOTION_SEARCH_NOTION_PAGE with filter_value='database', or extract from database URLs (notion.so/{database_id})."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_INSERT_ROW_DATABASE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_INSERT_ROW_DATABASE",
+          "description": "Creates a new page (row) in a specified Notion database. Prerequisites: - Database must be shared with your integration - Property names AND types must match schema exactly (case-sensitive) - Use NOTION_FETCH_DATA with fetch_type='databases' first to get exact property names and types - Each database has ONE 'title' property; other text fields are 'rich_text' - Database must NOT have multiple data sources (synced databases are not supported) Common Errors: - 404: Database not shared with integration - 400 \"not a property\": Wrong property name - 400 \"expected to be X\": Wrong property type - 400 \"multiple_data_sources\": Database uses multiple data sources (not supported) Note: Rich text content in child_blocks is automatically truncated to 2000 characters per Notion API limits.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "database_id"
+            ],
+            "properties": {
+              "icon": {
+                "type": "string",
+                "examples": [
+                  "\ud83d\ude3b",
+                  "\ud83e\udd14"
+                ],
+                "description": "Emoji to be used as the page icon. Must be a single emoji character."
+              },
+              "cover": {
+                "type": "string",
+                "examples": [
+                  "https://google.com/image.png"
+                ],
+                "description": "URL of an external image to set as the page cover. The URL must point to a publicly accessible image."
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "type",
+                    "value"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Name of the property"
+                    },
+                    "type": {
+                      "enum": [
+                        "title",
+                        "rich_text",
+                        "number",
+                        "select",
+                        "multi_select",
+                        "date",
+                        "people",
+                        "files",
+                        "checkbox",
+                        "url",
+                        "email",
+                        "phone_number",
+                        "formula",
+                        "relation",
+                        "rollup",
+                        "status",
+                        "created_time",
+                        "created_by",
+                        "last_edited_time",
+                        "last_edited_by",
+                        "place",
+                        "unique_id"
+                      ],
+                      "type": "string",
+                      "description": "Type of the property. Common types: title (ONE per database), rich_text, number, select (for dropdowns), multi_select, date, people, files, checkbox, url, email, phone_number, relation. \u26a0\ufe0f IMPORTANT: Use 'select' for dropdown properties - NOT 'status'. The 'status' type is a SPECIAL Notion property type (with 'To-do', 'In progress', 'Complete' groups) that most databases do NOT have. If your property shows a simple dropdown list, use 'select' even if the property is NAMED 'Status'. Read-only/unsupported types (auto-skipped): created_time, created_by, last_edited_time, last_edited_by, formula, rollup, unique_id, place. Title and rich_text values are written as literal plain text and split into Notion rich-text objects when needed."
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "Value formatted according to the property type:\n- title, rich_text - literal text string. Values longer than 2,000 UTF-16 units are split across Notion rich-text objects; oversized values fail before writing instead of being truncated.\n- number - numeric string ex. \"23.4\"\n- select - single option name (no commas). For multiple values, use multi_select.\n- multi_select - comma separated values ex. \"India,USA\"\n- date - ISO 8601. Single: \"2021-05-11\". Range: \"2021-05-11/2021-05-15\" (slash-separated).\n- people - comma separated USER UUIDs (not names). Use NOTION_LIST_USERS to find UUIDs.\n- relation - comma separated PAGE UUIDs (not titles). Use NOTION_QUERY_DATABASE to find UUIDs.\n- url - a URL string.\n- files - comma separated HTTPS URLs only (no file:// or http://).\n- checkbox - \"True\" or \"False\"\n"
+                    }
+                  }
+                },
+                "default": [],
+                "examples": [
+                  "[{\"name\": \"Task Name\", \"type\": \"title\", \"value\": \"Finalize Q3 report\"}, {\"name\": \"Priority\", \"type\": \"select\", \"value\": \"High\"}]"
+                ],
+                "description": "Property values for the new page. Accepts a LIST of objects or a JSON-encoded string. Each object must include: `name` (exact property name, case-sensitive), `type` (property data type), and `value` (string-formatted value).\n\nProperty names AND types are CASE-SENSITIVE and must match your Notion database schema exactly. Each database has exactly ONE 'title' type property; all other text properties use 'rich_text'. Use NOTION_FETCH_DATA with fetch_type='databases' to find exact property names and types.\n\nCORRECT FORMAT (list of property objects):\n[\n  {\"name\": \"Task Name\", \"type\": \"title\", \"value\": \"Finalize Q3 report\"},\n  {\"name\": \"Priority\", \"type\": \"select\", \"value\": \"High\"},\n  {\"name\": \"Tags\", \"type\": \"multi_select\", \"value\": \"Work,Personal\"},\n  {\"name\": \"Due Date\", \"type\": \"date\", \"value\": \"2024-06-01T12:00:00.000-04:00\"},\n  {\"name\": \"Completed\", \"type\": \"checkbox\", \"value\": \"False\"}\n]\n\nINCORRECT FORMAT (dict - causes validation error): {\"Task Name\": \"value\", \"Priority\": \"High\"}\n\n'status' vs 'select' TYPE CONFUSION:\n- Dropdown lists use type='select' - even if the property is NAMED 'Status'.\n- The 'status' type is a special Notion property with workflow groups ('To-do', 'In progress', 'Complete').\n- Use NOTION_FETCH_DATA to verify the actual type in your database schema.\n\nPROPERTY TYPE ERRORS:\n- 'X is not a property that exists': Check schema - wrong property name or wrong type.\n- 'X is expected to be Y': Wrong type specified - use the type shown in the error.\n\nValue formatting rules by type:\n- `title` / `rich_text`: Plain text string (max 2000 chars).\n- `number`: String of a number (e.g., \"23.4\").\n- `select`: Single option name. Commas NOT allowed - use 'multi_select' for multiple values.\n- `multi_select`: Comma-separated option names (e.g., \"Work,Personal\"). Options must exist in schema.\n- `date`: ISO 8601. Single: \"2024-06-01T12:00:00.000-04:00\". Range: \"start/end\" separated by \"/\".\n- `people`: Comma-separated Notion user IDs.\n- `relation`: Comma-separated page UUIDs (NOT text/titles). Use NOTION_QUERY_DATABASE to get page IDs.\n- `checkbox`: \"True\" or \"False\".\n- `url`: Valid URL string.\n- `files`: Comma-separated URLs.\n- `email`: Valid email string.\n- `phone_number`: Phone number string. Only use if database property type is 'Phone'."
+              },
+              "database_id": {
+                "type": "string",
+                "examples": [
+                  "59833787-2cf9-4fdf-8782-e53db20768a5"
+                ],
+                "description": "Identifier (UUID) of the Notion database where the new page (row) will be inserted. Can be provided with or without hyphens (e.g., '59833787-2cf9-4fdf-8782-e53db20768a5' or '598337872cf94fdf8782e53db20768a5'). This ID must correspond to an existing database that has been explicitly shared with your integration. IMPORTANT: The database must be shared with your integration in Notion settings, otherwise you will get a 404 error. NOTE: Databases with multiple data sources (synced databases or combined views) are not supported by this integration. Use the `NOTION_FETCH_DATA` action to find available database IDs that are already shared with your integration."
+              },
+              "child_blocks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bold": {
+                      "type": "boolean",
+                      "default": false,
+                      "examples": [
+                        true,
+                        false
+                      ],
+                      "description": "Indicates if the text is bold."
+                    },
+                    "code": {
+                      "type": "boolean",
+                      "default": false,
+                      "examples": [
+                        true,
+                        false
+                      ],
+                      "description": "Indicates if the text is formatted as code."
+                    },
+                    "link": {
+                      "type": "string",
+                      "examples": [
+                        "https://www.google.com",
+                        "https://example.com/image.png"
+                      ],
+                      "description": "URL for hyperlinks or media blocks. For TEXT blocks: optional URL to make text clickable. For MEDIA blocks (image, video, file): REQUIRED - must be a valid external URL (http/https). Do not pass placeholder text in 'content' for media blocks."
+                    },
+                    "color": {
+                      "type": "string",
+                      "default": "default",
+                      "examples": [
+                        "blue_background",
+                        "yellow_background",
+                        "gray",
+                        "purple"
+                      ],
+                      "description": "The color of the text background or text itself."
+                    },
+                    "italic": {
+                      "type": "boolean",
+                      "default": false,
+                      "examples": [
+                        true,
+                        false
+                      ],
+                      "description": "Indicates if the text is italic."
+                    },
+                    "content": {
+                      "type": "string",
+                      "examples": [
+                        "Hello World",
+                        "This is **bold** and *italic* text",
+                        "Visit [our site](https://example.com)",
+                        "Use `code` snippets",
+                        "~~Strikethrough~~ text"
+                      ],
+                      "description": "The textual content for TEXT blocks only. ENHANCED: Automatically parses markdown formatting including bold (**text**), italic (*text*), strikethrough (~~text~~), inline code (`code`), and links ([text](url)). Required for: paragraph, heading_1, heading_2, heading_3, callout, to_do, toggle, quote. NOT USED for media blocks (image, video, file) - use 'link' field instead."
+                    },
+                    "underline": {
+                      "type": "boolean",
+                      "default": false,
+                      "examples": [
+                        true,
+                        false
+                      ],
+                      "description": "Indicates if the text is underlined."
+                    },
+                    "strikethrough": {
+                      "type": "boolean",
+                      "default": false,
+                      "examples": [
+                        true,
+                        false
+                      ],
+                      "description": "Indicates if the text has strikethrough."
+                    },
+                    "block_property": {
+                      "enum": [
+                        "paragraph",
+                        "heading_1",
+                        "heading_2",
+                        "heading_3",
+                        "callout",
+                        "to_do",
+                        "toggle",
+                        "quote",
+                        "bulleted_list_item",
+                        "numbered_list_item",
+                        "file",
+                        "image",
+                        "video",
+                        "divider"
+                      ],
+                      "type": "string",
+                      "default": "paragraph",
+                      "examples": [
+                        "paragraph",
+                        "heading_1",
+                        "heading_2",
+                        "heading_3",
+                        "bulleted_list_item",
+                        "numbered_list_item",
+                        "to_do",
+                        "callout",
+                        "toggle",
+                        "quote",
+                        "divider"
+                      ],
+                      "description": "The block property of the block to be added. **Common text blocks:** `paragraph`, `heading_1`, `heading_2`, `heading_3`, `callout`, `to_do`, `toggle`, `quote`, `bulleted_list_item`, `numbered_list_item`. **Special blocks:** `divider` (creates a horizontal divider line, no content required). **Media/embed blocks:** `file`, `image`, `video` (requires `link` field with external URL - direct file uploads not supported). \n\n**NOTE:** Notion API only supports heading levels 1-3. heading_4, heading_5, etc. are automatically converted to heading_3."
+                    }
+                  },
+                  "description": "Include these fields in the json: {'content': 'Some words', 'link': 'https://random-link.com'. For content styling, refer to https://developers.notion.com/reference/rich-text.\n\nENHANCED: The 'content' field now automatically detects and parses markdown formatting - supports bold (**text**), italic (*text*), strikethrough (~~text~~), inline code (`code`), and links ([text](url)). Headers (# ## ###) are handled via block_property."
+                },
+                "default": [],
+                "description": "A list of `NotionRichText` objects defining content blocks (e.g., paragraphs, headings, media) to append to the new page's body. Accepts either a list of objects OR a JSON-encoded string representing a list. If omitted, the page body will be empty. \n\n**Supported block types:** paragraph, heading_1, heading_2, heading_3, callout, to_do, toggle, quote, bulleted_list_item, numbered_list_item, divider, image, video, file. \n\n**Media blocks (image, video, file):** Require the `link` field with an external URL. The Notion API does not support uploading files directly - you must provide publicly accessible URLs.\n\n**Note:** Notion API limits children to 100 blocks per request. If more than 100 blocks are provided, the action will automatically create the page with the first 100 blocks and then append remaining blocks in subsequent API calls."
+              }
+            },
+            "additionalProperties": false
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_UPSERT_ROW_DATABASE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_UPSERT_ROW_DATABASE",
+          "description": "Tool to upsert rows in a Notion database by querying for existing rows and creating or updating them. Use when you need to sync data to Notion without creating duplicates. Each item is matched by a filter, then either created (if no match) or updated (if match found). Supports bulk operations with per-item error handling.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "items"
+            ],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "match",
+                    "create",
+                    "update"
+                  ],
+                  "properties": {
+                    "match": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "title": "MatchFilter",
+                          "required": [
+                            "property",
+                            "equals"
+                          ],
+                          "properties": {
+                            "equals": {
+                              "type": "string",
+                              "title": "Equals",
+                              "examples": [
+                                "john@example.com",
+                                "Project Alpha"
+                              ],
+                              "description": "Value to match exactly."
+                            },
+                            "property": {
+                              "type": "string",
+                              "title": "Property",
+                              "examples": [
+                                "Email",
+                                "Name",
+                                "ID"
+                              ],
+                              "description": "Property name or ID to filter by."
+                            }
+                          },
+                          "description": "Filter specification for matching existing rows."
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      ],
+                      "description": "Filter to find existing row. Can be simplified {'property': 'Email', 'equals': 'user@example.com'} or full Notion filter object."
+                    },
+                    "create": {
+                      "type": "object",
+                      "required": [
+                        "properties"
+                      ],
+                      "properties": {
+                        "icon": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "title": "EmojiIcon",
+                              "required": [
+                                "emoji"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "emoji",
+                                  "title": "Type",
+                                  "default": "emoji",
+                                  "description": "The icon type (emoji)."
+                                },
+                                "emoji": {
+                                  "type": "string",
+                                  "title": "Emoji",
+                                  "description": "Emoji character (e.g., '\ud83c\udf89')."
+                                }
+                              },
+                              "description": "Emoji icon."
+                            },
+                            {
+                              "type": "object",
+                              "title": "ExternalIcon",
+                              "required": [
+                                "external"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "external",
+                                  "title": "Type",
+                                  "default": "external",
+                                  "description": "The icon type (external URL)."
+                                },
+                                "external": {
+                                  "type": "object",
+                                  "title": "ExternalFile",
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "properties": {
+                                    "url": {
+                                      "type": "string",
+                                      "title": "Url",
+                                      "description": "URL of the external file."
+                                    }
+                                  },
+                                  "description": "External file URL."
+                                }
+                              },
+                              "description": "External file icon."
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          ],
+                          "description": "Icon for the page. Either emoji: {'type': 'emoji', 'emoji': '\ud83c\udf89'} or external image: {'type': 'external', 'external': {'url': 'https://...'}}"
+                        },
+                        "cover": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "title": "ExternalCover",
+                              "required": [
+                                "external"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "external",
+                                  "title": "Type",
+                                  "default": "external",
+                                  "description": "The cover image type (external URL)."
+                                },
+                                "external": {
+                                  "type": "object",
+                                  "title": "ExternalFile",
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "properties": {
+                                    "url": {
+                                      "type": "string",
+                                      "title": "Url",
+                                      "description": "URL of the external file."
+                                    }
+                                  },
+                                  "description": "External image URL."
+                                }
+                              },
+                              "description": "External cover image."
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          ],
+                          "description": "Cover image for the page: {'type': 'external', 'external': {'url': 'https://...'}}"
+                        },
+                        "children": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "title": "ParagraphBlock",
+                                "required": [
+                                  "paragraph"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "paragraph",
+                                    "title": "Type",
+                                    "default": "paragraph",
+                                    "description": "The block type identifier."
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  },
+                                  "paragraph": {
+                                    "type": "object",
+                                    "title": "Paragraph",
+                                    "description": "Paragraph content with rich_text array.",
+                                    "additionalProperties": true
+                                  }
+                                },
+                                "description": "Paragraph block type."
+                              },
+                              {
+                                "type": "object",
+                                "title": "Heading1Block",
+                                "required": [
+                                  "heading_1"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "heading_1",
+                                    "title": "Type",
+                                    "default": "heading_1",
+                                    "description": "The block type identifier."
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  },
+                                  "heading_1": {
+                                    "type": "object",
+                                    "title": "Heading 1",
+                                    "description": "Heading content with rich_text array.",
+                                    "additionalProperties": true
+                                  }
+                                },
+                                "description": "Heading 1 block type."
+                              },
+                              {
+                                "type": "object",
+                                "title": "Heading2Block",
+                                "required": [
+                                  "heading_2"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "heading_2",
+                                    "title": "Type",
+                                    "default": "heading_2",
+                                    "description": "The block type identifier."
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  },
+                                  "heading_2": {
+                                    "type": "object",
+                                    "title": "Heading 2",
+                                    "description": "Heading content with rich_text array.",
+                                    "additionalProperties": true
+                                  }
+                                },
+                                "description": "Heading 2 block type."
+                              },
+                              {
+                                "type": "object",
+                                "title": "Heading3Block",
+                                "required": [
+                                  "heading_3"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "heading_3",
+                                    "title": "Type",
+                                    "default": "heading_3",
+                                    "description": "The block type identifier."
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  },
+                                  "heading_3": {
+                                    "type": "object",
+                                    "title": "Heading 3",
+                                    "description": "Heading content with rich_text array.",
+                                    "additionalProperties": true
+                                  }
+                                },
+                                "description": "Heading 3 block type."
+                              },
+                              {
+                                "type": "object",
+                                "title": "BulletedListItemBlock",
+                                "required": [
+                                  "bulleted_list_item"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "bulleted_list_item",
+                                    "title": "Type",
+                                    "default": "bulleted_list_item",
+                                    "description": "The block type identifier."
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  },
+                                  "bulleted_list_item": {
+                                    "type": "object",
+                                    "title": "Bulleted List Item",
+                                    "description": "List item content with rich_text array.",
+                                    "additionalProperties": true
+                                  }
+                                },
+                                "description": "Bulleted list item block type."
+                              },
+                              {
+                                "type": "object",
+                                "title": "NumberedListItemBlock",
+                                "required": [
+                                  "numbered_list_item"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "numbered_list_item",
+                                    "title": "Type",
+                                    "default": "numbered_list_item",
+                                    "description": "The block type identifier."
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  },
+                                  "numbered_list_item": {
+                                    "type": "object",
+                                    "title": "Numbered List Item",
+                                    "description": "List item content with rich_text array.",
+                                    "additionalProperties": true
+                                  }
+                                },
+                                "description": "Numbered list item block type."
+                              },
+                              {
+                                "type": "object",
+                                "title": "ToDoBlock",
+                                "required": [
+                                  "to_do"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "to_do",
+                                    "title": "Type",
+                                    "default": "to_do",
+                                    "description": "The block type identifier."
+                                  },
+                                  "to_do": {
+                                    "type": "object",
+                                    "title": "To Do",
+                                    "description": "To-do content with rich_text array and checked boolean.",
+                                    "additionalProperties": true
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  }
+                                },
+                                "description": "To-do block type."
+                              },
+                              {
+                                "type": "object",
+                                "title": "ToggleBlock",
+                                "required": [
+                                  "toggle"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "toggle",
+                                    "title": "Type",
+                                    "default": "toggle",
+                                    "description": "The block type identifier."
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  },
+                                  "toggle": {
+                                    "type": "object",
+                                    "title": "Toggle",
+                                    "description": "Toggle content with rich_text array.",
+                                    "additionalProperties": true
+                                  }
+                                },
+                                "description": "Toggle block type."
+                              },
+                              {
+                                "type": "object",
+                                "title": "CodeBlock",
+                                "required": [
+                                  "code"
+                                ],
+                                "properties": {
+                                  "code": {
+                                    "type": "object",
+                                    "title": "Code",
+                                    "description": "Code content with rich_text array and language.",
+                                    "additionalProperties": true
+                                  },
+                                  "type": {
+                                    "type": "string",
+                                    "const": "code",
+                                    "title": "Type",
+                                    "default": "code",
+                                    "description": "The block type identifier."
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  }
+                                },
+                                "description": "Code block type."
+                              },
+                              {
+                                "type": "object",
+                                "title": "QuoteBlock",
+                                "required": [
+                                  "quote"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "quote",
+                                    "title": "Type",
+                                    "default": "quote",
+                                    "description": "The block type identifier."
+                                  },
+                                  "quote": {
+                                    "type": "object",
+                                    "title": "Quote",
+                                    "description": "Quote content with rich_text array.",
+                                    "additionalProperties": true
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  }
+                                },
+                                "description": "Quote block type."
+                              },
+                              {
+                                "type": "object",
+                                "title": "CalloutBlock",
+                                "required": [
+                                  "callout"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "callout",
+                                    "title": "Type",
+                                    "default": "callout",
+                                    "description": "The block type identifier."
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  },
+                                  "callout": {
+                                    "type": "object",
+                                    "title": "Callout",
+                                    "description": "Callout content with rich_text array and icon.",
+                                    "additionalProperties": true
+                                  }
+                                },
+                                "description": "Callout block type."
+                              },
+                              {
+                                "type": "object",
+                                "title": "DividerBlock",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "divider",
+                                    "title": "Type",
+                                    "default": "divider",
+                                    "description": "The block type identifier."
+                                  },
+                                  "object": {
+                                    "type": "string",
+                                    "const": "block",
+                                    "title": "Object",
+                                    "default": "block",
+                                    "description": "The object type identifier (always 'block')."
+                                  },
+                                  "divider": {
+                                    "type": "object",
+                                    "title": "Divider",
+                                    "description": "Empty object for divider.",
+                                    "additionalProperties": true
+                                  }
+                                },
+                                "description": "Divider block type."
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": true
+                              }
+                            ]
+                          },
+                          "description": "Array of block objects to add as page content. Each block has 'type' and a corresponding content object. Supported types: paragraph, heading_1, heading_2, heading_3, bulleted_list_item, numbered_list_item, to_do, toggle, code, quote, callout, divider."
+                        },
+                        "properties": {
+                          "type": "object",
+                          "description": "Property values for the new page. Keys are property names, values are property value objects. Supported types: title, rich_text, number, select, multi_select, status, date, people, files, checkbox, url, email, phone_number, relation. Format: {'PropertyName': {'type_name': value}}. Example: {'Name': {'title': [{'text': {'content': 'Page Title'}}]}, 'Status': {'select': {'name': 'Done'}}, 'Count': {'number': 42}}",
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "title": "TitlePropertyValue",
+                                "required": [
+                                  "title"
+                                ],
+                                "properties": {
+                                  "title": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "RichTextObject",
+                                      "properties": {
+                                        "href": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Href",
+                                          "default": null,
+                                          "description": "URL if the text contains a link."
+                                        },
+                                        "text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "title": "TextContent",
+                                              "required": [
+                                                "content"
+                                              ],
+                                              "properties": {
+                                                "link": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "object",
+                                                      "propertyNames": {
+                                                        "const": "url"
+                                                      },
+                                                      "additionalProperties": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ],
+                                                  "title": "Link",
+                                                  "default": null,
+                                                  "description": "Optional link object with 'url' key."
+                                                },
+                                                "content": {
+                                                  "type": "string",
+                                                  "title": "Content",
+                                                  "maxLength": 2000,
+                                                  "description": "The text content."
+                                                }
+                                              },
+                                              "description": "Text content with optional link."
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "default": null,
+                                          "description": "Text content. Required when type is 'text'."
+                                        },
+                                        "type": {
+                                          "enum": [
+                                            "text",
+                                            "mention",
+                                            "equation"
+                                          ],
+                                          "type": "string",
+                                          "title": "Type",
+                                          "default": "text",
+                                          "description": "Type of rich text object."
+                                        },
+                                        "plain_text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Plain Text",
+                                          "default": null,
+                                          "description": "Plain text without formatting."
+                                        },
+                                        "annotations": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "title": "Annotations",
+                                              "properties": {
+                                                "bold": {
+                                                  "type": "boolean",
+                                                  "title": "Bold",
+                                                  "default": false,
+                                                  "description": "Whether the text is bold."
+                                                },
+                                                "code": {
+                                                  "type": "boolean",
+                                                  "title": "Code",
+                                                  "default": false,
+                                                  "description": "Whether the text is formatted as code."
+                                                },
+                                                "color": {
+                                                  "type": "string",
+                                                  "title": "Color",
+                                                  "default": "default",
+                                                  "description": "Color of text or background. Values: default, gray, brown, orange, yellow, green, blue, purple, pink, red, or with _background suffix."
+                                                },
+                                                "italic": {
+                                                  "type": "boolean",
+                                                  "title": "Italic",
+                                                  "default": false,
+                                                  "description": "Whether the text is italic."
+                                                },
+                                                "underline": {
+                                                  "type": "boolean",
+                                                  "title": "Underline",
+                                                  "default": false,
+                                                  "description": "Whether the text is underlined."
+                                                },
+                                                "strikethrough": {
+                                                  "type": "boolean",
+                                                  "title": "Strikethrough",
+                                                  "default": false,
+                                                  "description": "Whether the text has strikethrough."
+                                                }
+                                              },
+                                              "description": "Text formatting annotations."
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "default": null,
+                                          "description": "Text formatting annotations."
+                                        }
+                                      },
+                                      "description": "Rich text object for title and rich_text properties."
+                                    },
+                                    "title": "Title",
+                                    "description": "Array of rich text objects for the title."
+                                  }
+                                },
+                                "description": "Title property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "RichTextPropertyValue",
+                                "required": [
+                                  "rich_text"
+                                ],
+                                "properties": {
+                                  "rich_text": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "RichTextObject",
+                                      "properties": {
+                                        "href": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Href",
+                                          "default": null,
+                                          "description": "URL if the text contains a link."
+                                        },
+                                        "text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "title": "TextContent",
+                                              "required": [
+                                                "content"
+                                              ],
+                                              "properties": {
+                                                "link": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "object",
+                                                      "propertyNames": {
+                                                        "const": "url"
+                                                      },
+                                                      "additionalProperties": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ],
+                                                  "title": "Link",
+                                                  "default": null,
+                                                  "description": "Optional link object with 'url' key."
+                                                },
+                                                "content": {
+                                                  "type": "string",
+                                                  "title": "Content",
+                                                  "maxLength": 2000,
+                                                  "description": "The text content."
+                                                }
+                                              },
+                                              "description": "Text content with optional link."
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "default": null,
+                                          "description": "Text content. Required when type is 'text'."
+                                        },
+                                        "type": {
+                                          "enum": [
+                                            "text",
+                                            "mention",
+                                            "equation"
+                                          ],
+                                          "type": "string",
+                                          "title": "Type",
+                                          "default": "text",
+                                          "description": "Type of rich text object."
+                                        },
+                                        "plain_text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Plain Text",
+                                          "default": null,
+                                          "description": "Plain text without formatting."
+                                        },
+                                        "annotations": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "title": "Annotations",
+                                              "properties": {
+                                                "bold": {
+                                                  "type": "boolean",
+                                                  "title": "Bold",
+                                                  "default": false,
+                                                  "description": "Whether the text is bold."
+                                                },
+                                                "code": {
+                                                  "type": "boolean",
+                                                  "title": "Code",
+                                                  "default": false,
+                                                  "description": "Whether the text is formatted as code."
+                                                },
+                                                "color": {
+                                                  "type": "string",
+                                                  "title": "Color",
+                                                  "default": "default",
+                                                  "description": "Color of text or background. Values: default, gray, brown, orange, yellow, green, blue, purple, pink, red, or with _background suffix."
+                                                },
+                                                "italic": {
+                                                  "type": "boolean",
+                                                  "title": "Italic",
+                                                  "default": false,
+                                                  "description": "Whether the text is italic."
+                                                },
+                                                "underline": {
+                                                  "type": "boolean",
+                                                  "title": "Underline",
+                                                  "default": false,
+                                                  "description": "Whether the text is underlined."
+                                                },
+                                                "strikethrough": {
+                                                  "type": "boolean",
+                                                  "title": "Strikethrough",
+                                                  "default": false,
+                                                  "description": "Whether the text has strikethrough."
+                                                }
+                                              },
+                                              "description": "Text formatting annotations."
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "default": null,
+                                          "description": "Text formatting annotations."
+                                        }
+                                      },
+                                      "description": "Rich text object for title and rich_text properties."
+                                    },
+                                    "title": "Rich Text",
+                                    "description": "Array of rich text objects."
+                                  }
+                                },
+                                "description": "Rich text property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "NumberPropertyValue",
+                                "properties": {
+                                  "number": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "title": "Number",
+                                    "default": null,
+                                    "description": "Numeric value or null."
+                                  }
+                                },
+                                "description": "Number property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "SelectPropertyValue",
+                                "properties": {
+                                  "select": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "title": "SelectOption",
+                                        "properties": {
+                                          "id": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Id",
+                                            "default": null,
+                                            "description": "ID of the select option."
+                                          },
+                                          "name": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Name",
+                                            "default": null,
+                                            "description": "Name of the select option."
+                                          },
+                                          "color": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Color",
+                                            "default": null,
+                                            "description": "Color of the option."
+                                          }
+                                        },
+                                        "description": "Select option reference."
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null,
+                                    "description": "Selected option or null to clear."
+                                  }
+                                },
+                                "description": "Select property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "MultiSelectPropertyValue",
+                                "properties": {
+                                  "multi_select": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "SelectOption",
+                                      "properties": {
+                                        "id": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Id",
+                                          "default": null,
+                                          "description": "ID of the select option."
+                                        },
+                                        "name": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Name",
+                                          "default": null,
+                                          "description": "Name of the select option."
+                                        },
+                                        "color": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Color",
+                                          "default": null,
+                                          "description": "Color of the option."
+                                        }
+                                      },
+                                      "description": "Select option reference."
+                                    },
+                                    "title": "Multi Select",
+                                    "description": "Array of selected options."
+                                  }
+                                },
+                                "description": "Multi-select property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "StatusPropertyValue",
+                                "properties": {
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "title": "SelectOption",
+                                        "properties": {
+                                          "id": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Id",
+                                            "default": null,
+                                            "description": "ID of the select option."
+                                          },
+                                          "name": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Name",
+                                            "default": null,
+                                            "description": "Name of the select option."
+                                          },
+                                          "color": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Color",
+                                            "default": null,
+                                            "description": "Color of the option."
+                                          }
+                                        },
+                                        "description": "Select option reference."
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null,
+                                    "description": "Status option or null to clear."
+                                  }
+                                },
+                                "description": "Status property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "DatePropertyValue",
+                                "properties": {
+                                  "date": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "title": "DateValue",
+                                        "required": [
+                                          "start"
+                                        ],
+                                        "properties": {
+                                          "end": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "End",
+                                            "default": null,
+                                            "description": "End date in ISO 8601 format for date ranges."
+                                          },
+                                          "start": {
+                                            "type": "string",
+                                            "title": "Start",
+                                            "description": "Start date in ISO 8601 format."
+                                          },
+                                          "time_zone": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Time Zone",
+                                            "default": null,
+                                            "description": "IANA timezone identifier."
+                                          }
+                                        },
+                                        "description": "Date value with start, optional end, and timezone."
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null,
+                                    "description": "Date value or null to clear."
+                                  }
+                                },
+                                "description": "Date property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "PeoplePropertyValue",
+                                "properties": {
+                                  "people": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "UserReference",
+                                      "required": [
+                                        "id"
+                                      ],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "title": "Id",
+                                          "description": "UUID of the user."
+                                        },
+                                        "object": {
+                                          "type": "string",
+                                          "const": "user",
+                                          "title": "Object",
+                                          "default": "user",
+                                          "description": "Always 'user'."
+                                        }
+                                      },
+                                      "description": "Reference to a Notion user."
+                                    },
+                                    "title": "People",
+                                    "description": "Array of user references."
+                                  }
+                                },
+                                "description": "People property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "FilesPropertyValue",
+                                "properties": {
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "FileObject",
+                                      "required": [
+                                        "name",
+                                        "external"
+                                      ],
+                                      "properties": {
+                                        "name": {
+                                          "type": "string",
+                                          "title": "Name",
+                                          "description": "Name of the file."
+                                        },
+                                        "type": {
+                                          "type": "string",
+                                          "const": "external",
+                                          "title": "Type",
+                                          "default": "external",
+                                          "description": "Type of file. Only 'external' supported for creation."
+                                        },
+                                        "external": {
+                                          "type": "object",
+                                          "title": "ExternalFile",
+                                          "required": [
+                                            "url"
+                                          ],
+                                          "properties": {
+                                            "url": {
+                                              "type": "string",
+                                              "title": "Url",
+                                              "description": "URL of the external file."
+                                            }
+                                          },
+                                          "description": "External file reference."
+                                        }
+                                      },
+                                      "description": "File object for files property."
+                                    },
+                                    "title": "Files",
+                                    "description": "Array of file objects."
+                                  }
+                                },
+                                "description": "Files property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "CheckboxPropertyValue",
+                                "required": [
+                                  "checkbox"
+                                ],
+                                "properties": {
+                                  "checkbox": {
+                                    "type": "boolean",
+                                    "title": "Checkbox",
+                                    "description": "Boolean checkbox value."
+                                  }
+                                },
+                                "description": "Checkbox property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "UrlPropertyValue",
+                                "properties": {
+                                  "url": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "title": "Url",
+                                    "default": null,
+                                    "description": "URL string or null to clear."
+                                  }
+                                },
+                                "description": "URL property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "EmailPropertyValue",
+                                "properties": {
+                                  "email": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "title": "Email",
+                                    "default": null,
+                                    "description": "Email address or null to clear."
+                                  }
+                                },
+                                "description": "Email property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "PhoneNumberPropertyValue",
+                                "properties": {
+                                  "phone_number": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "title": "Phone Number",
+                                    "default": null,
+                                    "description": "Phone number string or null to clear."
+                                  }
+                                },
+                                "description": "Phone number property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "RelationPropertyValue",
+                                "properties": {
+                                  "relation": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "RelationReference",
+                                      "required": [
+                                        "id"
+                                      ],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "title": "Id",
+                                          "description": "UUID of the related page."
+                                        }
+                                      },
+                                      "description": "Reference to a related page."
+                                    },
+                                    "title": "Relation",
+                                    "description": "Array of page references."
+                                  }
+                                },
+                                "description": "Relation property value."
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "description": "Payload to use when creating a new page if no match is found.",
+                      "additionalProperties": false
+                    },
+                    "update": {
+                      "type": "object",
+                      "properties": {
+                        "icon": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "title": "EmojiIcon",
+                              "required": [
+                                "emoji"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "emoji",
+                                  "title": "Type",
+                                  "default": "emoji",
+                                  "description": "The icon type (emoji)."
+                                },
+                                "emoji": {
+                                  "type": "string",
+                                  "title": "Emoji",
+                                  "description": "Emoji character (e.g., '\ud83c\udf89')."
+                                }
+                              },
+                              "description": "Emoji icon."
+                            },
+                            {
+                              "type": "object",
+                              "title": "ExternalIcon",
+                              "required": [
+                                "external"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "external",
+                                  "title": "Type",
+                                  "default": "external",
+                                  "description": "The icon type (external URL)."
+                                },
+                                "external": {
+                                  "type": "object",
+                                  "title": "ExternalFile",
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "properties": {
+                                    "url": {
+                                      "type": "string",
+                                      "title": "Url",
+                                      "description": "URL of the external file."
+                                    }
+                                  },
+                                  "description": "External file URL."
+                                }
+                              },
+                              "description": "External file icon."
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          ],
+                          "description": "Icon for the page. Either emoji: {'type': 'emoji', 'emoji': '\ud83c\udf89'} or external image: {'type': 'external', 'external': {'url': 'https://...'}}"
+                        },
+                        "cover": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "title": "ExternalCover",
+                              "required": [
+                                "external"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "external",
+                                  "title": "Type",
+                                  "default": "external",
+                                  "description": "The cover image type (external URL)."
+                                },
+                                "external": {
+                                  "type": "object",
+                                  "title": "ExternalFile",
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "properties": {
+                                    "url": {
+                                      "type": "string",
+                                      "title": "Url",
+                                      "description": "URL of the external file."
+                                    }
+                                  },
+                                  "description": "External image URL."
+                                }
+                              },
+                              "description": "External cover image."
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          ],
+                          "description": "Cover image for the page: {'type': 'external', 'external': {'url': 'https://...'}}"
+                        },
+                        "archived": {
+                          "type": "boolean",
+                          "description": "Set to true to archive the page, false to restore."
+                        },
+                        "properties": {
+                          "type": "object",
+                          "description": "Property values to update. Keys are property names, values are property value objects. Only properties specified will be updated; others remain unchanged. Format: {'PropertyName': {'type_name': value}}. Example: {'Status': {'select': {'name': 'Done'}}, 'Count': {'number': 42}}",
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "title": "TitlePropertyValue",
+                                "required": [
+                                  "title"
+                                ],
+                                "properties": {
+                                  "title": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "RichTextObject",
+                                      "properties": {
+                                        "href": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Href",
+                                          "default": null,
+                                          "description": "URL if the text contains a link."
+                                        },
+                                        "text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "title": "TextContent",
+                                              "required": [
+                                                "content"
+                                              ],
+                                              "properties": {
+                                                "link": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "object",
+                                                      "propertyNames": {
+                                                        "const": "url"
+                                                      },
+                                                      "additionalProperties": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ],
+                                                  "title": "Link",
+                                                  "default": null,
+                                                  "description": "Optional link object with 'url' key."
+                                                },
+                                                "content": {
+                                                  "type": "string",
+                                                  "title": "Content",
+                                                  "maxLength": 2000,
+                                                  "description": "The text content."
+                                                }
+                                              },
+                                              "description": "Text content with optional link."
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "default": null,
+                                          "description": "Text content. Required when type is 'text'."
+                                        },
+                                        "type": {
+                                          "enum": [
+                                            "text",
+                                            "mention",
+                                            "equation"
+                                          ],
+                                          "type": "string",
+                                          "title": "Type",
+                                          "default": "text",
+                                          "description": "Type of rich text object."
+                                        },
+                                        "plain_text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Plain Text",
+                                          "default": null,
+                                          "description": "Plain text without formatting."
+                                        },
+                                        "annotations": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "title": "Annotations",
+                                              "properties": {
+                                                "bold": {
+                                                  "type": "boolean",
+                                                  "title": "Bold",
+                                                  "default": false,
+                                                  "description": "Whether the text is bold."
+                                                },
+                                                "code": {
+                                                  "type": "boolean",
+                                                  "title": "Code",
+                                                  "default": false,
+                                                  "description": "Whether the text is formatted as code."
+                                                },
+                                                "color": {
+                                                  "type": "string",
+                                                  "title": "Color",
+                                                  "default": "default",
+                                                  "description": "Color of text or background. Values: default, gray, brown, orange, yellow, green, blue, purple, pink, red, or with _background suffix."
+                                                },
+                                                "italic": {
+                                                  "type": "boolean",
+                                                  "title": "Italic",
+                                                  "default": false,
+                                                  "description": "Whether the text is italic."
+                                                },
+                                                "underline": {
+                                                  "type": "boolean",
+                                                  "title": "Underline",
+                                                  "default": false,
+                                                  "description": "Whether the text is underlined."
+                                                },
+                                                "strikethrough": {
+                                                  "type": "boolean",
+                                                  "title": "Strikethrough",
+                                                  "default": false,
+                                                  "description": "Whether the text has strikethrough."
+                                                }
+                                              },
+                                              "description": "Text formatting annotations."
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "default": null,
+                                          "description": "Text formatting annotations."
+                                        }
+                                      },
+                                      "description": "Rich text object for title and rich_text properties."
+                                    },
+                                    "title": "Title",
+                                    "description": "Array of rich text objects for the title."
+                                  }
+                                },
+                                "description": "Title property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "RichTextPropertyValue",
+                                "required": [
+                                  "rich_text"
+                                ],
+                                "properties": {
+                                  "rich_text": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "RichTextObject",
+                                      "properties": {
+                                        "href": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Href",
+                                          "default": null,
+                                          "description": "URL if the text contains a link."
+                                        },
+                                        "text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "title": "TextContent",
+                                              "required": [
+                                                "content"
+                                              ],
+                                              "properties": {
+                                                "link": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "object",
+                                                      "propertyNames": {
+                                                        "const": "url"
+                                                      },
+                                                      "additionalProperties": {
+                                                        "type": "string"
+                                                      }
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ],
+                                                  "title": "Link",
+                                                  "default": null,
+                                                  "description": "Optional link object with 'url' key."
+                                                },
+                                                "content": {
+                                                  "type": "string",
+                                                  "title": "Content",
+                                                  "maxLength": 2000,
+                                                  "description": "The text content."
+                                                }
+                                              },
+                                              "description": "Text content with optional link."
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "default": null,
+                                          "description": "Text content. Required when type is 'text'."
+                                        },
+                                        "type": {
+                                          "enum": [
+                                            "text",
+                                            "mention",
+                                            "equation"
+                                          ],
+                                          "type": "string",
+                                          "title": "Type",
+                                          "default": "text",
+                                          "description": "Type of rich text object."
+                                        },
+                                        "plain_text": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Plain Text",
+                                          "default": null,
+                                          "description": "Plain text without formatting."
+                                        },
+                                        "annotations": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "title": "Annotations",
+                                              "properties": {
+                                                "bold": {
+                                                  "type": "boolean",
+                                                  "title": "Bold",
+                                                  "default": false,
+                                                  "description": "Whether the text is bold."
+                                                },
+                                                "code": {
+                                                  "type": "boolean",
+                                                  "title": "Code",
+                                                  "default": false,
+                                                  "description": "Whether the text is formatted as code."
+                                                },
+                                                "color": {
+                                                  "type": "string",
+                                                  "title": "Color",
+                                                  "default": "default",
+                                                  "description": "Color of text or background. Values: default, gray, brown, orange, yellow, green, blue, purple, pink, red, or with _background suffix."
+                                                },
+                                                "italic": {
+                                                  "type": "boolean",
+                                                  "title": "Italic",
+                                                  "default": false,
+                                                  "description": "Whether the text is italic."
+                                                },
+                                                "underline": {
+                                                  "type": "boolean",
+                                                  "title": "Underline",
+                                                  "default": false,
+                                                  "description": "Whether the text is underlined."
+                                                },
+                                                "strikethrough": {
+                                                  "type": "boolean",
+                                                  "title": "Strikethrough",
+                                                  "default": false,
+                                                  "description": "Whether the text has strikethrough."
+                                                }
+                                              },
+                                              "description": "Text formatting annotations."
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "default": null,
+                                          "description": "Text formatting annotations."
+                                        }
+                                      },
+                                      "description": "Rich text object for title and rich_text properties."
+                                    },
+                                    "title": "Rich Text",
+                                    "description": "Array of rich text objects."
+                                  }
+                                },
+                                "description": "Rich text property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "NumberPropertyValue",
+                                "properties": {
+                                  "number": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "title": "Number",
+                                    "default": null,
+                                    "description": "Numeric value or null."
+                                  }
+                                },
+                                "description": "Number property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "SelectPropertyValue",
+                                "properties": {
+                                  "select": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "title": "SelectOption",
+                                        "properties": {
+                                          "id": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Id",
+                                            "default": null,
+                                            "description": "ID of the select option."
+                                          },
+                                          "name": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Name",
+                                            "default": null,
+                                            "description": "Name of the select option."
+                                          },
+                                          "color": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Color",
+                                            "default": null,
+                                            "description": "Color of the option."
+                                          }
+                                        },
+                                        "description": "Select option reference."
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null,
+                                    "description": "Selected option or null to clear."
+                                  }
+                                },
+                                "description": "Select property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "MultiSelectPropertyValue",
+                                "properties": {
+                                  "multi_select": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "SelectOption",
+                                      "properties": {
+                                        "id": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Id",
+                                          "default": null,
+                                          "description": "ID of the select option."
+                                        },
+                                        "name": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Name",
+                                          "default": null,
+                                          "description": "Name of the select option."
+                                        },
+                                        "color": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "title": "Color",
+                                          "default": null,
+                                          "description": "Color of the option."
+                                        }
+                                      },
+                                      "description": "Select option reference."
+                                    },
+                                    "title": "Multi Select",
+                                    "description": "Array of selected options."
+                                  }
+                                },
+                                "description": "Multi-select property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "StatusPropertyValue",
+                                "properties": {
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "title": "SelectOption",
+                                        "properties": {
+                                          "id": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Id",
+                                            "default": null,
+                                            "description": "ID of the select option."
+                                          },
+                                          "name": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Name",
+                                            "default": null,
+                                            "description": "Name of the select option."
+                                          },
+                                          "color": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Color",
+                                            "default": null,
+                                            "description": "Color of the option."
+                                          }
+                                        },
+                                        "description": "Select option reference."
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null,
+                                    "description": "Status option or null to clear."
+                                  }
+                                },
+                                "description": "Status property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "DatePropertyValue",
+                                "properties": {
+                                  "date": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "title": "DateValue",
+                                        "required": [
+                                          "start"
+                                        ],
+                                        "properties": {
+                                          "end": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "End",
+                                            "default": null,
+                                            "description": "End date in ISO 8601 format for date ranges."
+                                          },
+                                          "start": {
+                                            "type": "string",
+                                            "title": "Start",
+                                            "description": "Start date in ISO 8601 format."
+                                          },
+                                          "time_zone": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "title": "Time Zone",
+                                            "default": null,
+                                            "description": "IANA timezone identifier."
+                                          }
+                                        },
+                                        "description": "Date value with start, optional end, and timezone."
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null,
+                                    "description": "Date value or null to clear."
+                                  }
+                                },
+                                "description": "Date property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "PeoplePropertyValue",
+                                "properties": {
+                                  "people": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "UserReference",
+                                      "required": [
+                                        "id"
+                                      ],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "title": "Id",
+                                          "description": "UUID of the user."
+                                        },
+                                        "object": {
+                                          "type": "string",
+                                          "const": "user",
+                                          "title": "Object",
+                                          "default": "user",
+                                          "description": "Always 'user'."
+                                        }
+                                      },
+                                      "description": "Reference to a Notion user."
+                                    },
+                                    "title": "People",
+                                    "description": "Array of user references."
+                                  }
+                                },
+                                "description": "People property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "FilesPropertyValue",
+                                "properties": {
+                                  "files": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "FileObject",
+                                      "required": [
+                                        "name",
+                                        "external"
+                                      ],
+                                      "properties": {
+                                        "name": {
+                                          "type": "string",
+                                          "title": "Name",
+                                          "description": "Name of the file."
+                                        },
+                                        "type": {
+                                          "type": "string",
+                                          "const": "external",
+                                          "title": "Type",
+                                          "default": "external",
+                                          "description": "Type of file. Only 'external' supported for creation."
+                                        },
+                                        "external": {
+                                          "type": "object",
+                                          "title": "ExternalFile",
+                                          "required": [
+                                            "url"
+                                          ],
+                                          "properties": {
+                                            "url": {
+                                              "type": "string",
+                                              "title": "Url",
+                                              "description": "URL of the external file."
+                                            }
+                                          },
+                                          "description": "External file reference."
+                                        }
+                                      },
+                                      "description": "File object for files property."
+                                    },
+                                    "title": "Files",
+                                    "description": "Array of file objects."
+                                  }
+                                },
+                                "description": "Files property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "CheckboxPropertyValue",
+                                "required": [
+                                  "checkbox"
+                                ],
+                                "properties": {
+                                  "checkbox": {
+                                    "type": "boolean",
+                                    "title": "Checkbox",
+                                    "description": "Boolean checkbox value."
+                                  }
+                                },
+                                "description": "Checkbox property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "UrlPropertyValue",
+                                "properties": {
+                                  "url": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "title": "Url",
+                                    "default": null,
+                                    "description": "URL string or null to clear."
+                                  }
+                                },
+                                "description": "URL property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "EmailPropertyValue",
+                                "properties": {
+                                  "email": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "title": "Email",
+                                    "default": null,
+                                    "description": "Email address or null to clear."
+                                  }
+                                },
+                                "description": "Email property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "PhoneNumberPropertyValue",
+                                "properties": {
+                                  "phone_number": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "title": "Phone Number",
+                                    "default": null,
+                                    "description": "Phone number string or null to clear."
+                                  }
+                                },
+                                "description": "Phone number property value."
+                              },
+                              {
+                                "type": "object",
+                                "title": "RelationPropertyValue",
+                                "properties": {
+                                  "relation": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "title": "RelationReference",
+                                      "required": [
+                                        "id"
+                                      ],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "title": "Id",
+                                          "description": "UUID of the related page."
+                                        }
+                                      },
+                                      "description": "Reference to a related page."
+                                    },
+                                    "title": "Relation",
+                                    "description": "Array of page references."
+                                  }
+                                },
+                                "description": "Relation property value."
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": true
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "description": "Payload to use when updating an existing page if a match is found.",
+                      "additionalProperties": false
+                    }
+                  },
+                  "description": "Single upsert item containing match criteria and create/update payloads."
+                },
+                "minItems": 1,
+                "description": "Array of items to upsert. Each item contains match criteria and create/update payloads."
+              },
+              "options": {
+                "type": "object",
+                "properties": {
+                  "continue_on_error": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "If true, continue processing remaining items after an error; if false, stop on first error."
+                  },
+                  "if_multiple_matches": {
+                    "enum": [
+                      "error",
+                      "update_first"
+                    ],
+                    "type": "string",
+                    "default": "update_first",
+                    "description": "Behavior when multiple matches are found: 'error' raises an error, 'update_first' updates the first result."
+                  }
+                },
+                "description": "Options controlling upsert behavior.",
+                "additionalProperties": false
+              },
+              "database_id": {
+                "type": "string",
+                "examples": [
+                  "a12b3c4d-5e6f-7890-abcd-ef1234567890"
+                ],
+                "description": "UUID of the Notion database (legacy). If provided without data_source_id, will attempt to resolve to data_source_id. Only safe for single-source databases."
+              },
+              "data_source_id": {
+                "type": "string",
+                "examples": [
+                  "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+                ],
+                "description": "UUID of the Notion data source (preferred). Required if database_id is not provided."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_QUERY_DATABASE_WITH_FILTER": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_QUERY_DATABASE_WITH_FILTER",
+          "description": "Tool to query a Notion database with server-side filtering, sorting, and pagination. Use when you ne...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_QUERY_DATABASE_WITH_FILTER"
+              ]
+            }
+          }
+        },
+        "NOTION_FETCH_ROW": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_ROW",
+          "description": "Retrieves a Notion database row's properties and metadata; use fetch_block_contents for page content...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_FETCH_ROW"
+              ]
+            }
+          }
+        },
+        "NOTION_UPDATE_ROW_DATABASE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_UPDATE_ROW_DATABASE",
+          "description": "Updates a specific row/page within a Notion database by its page UUID (row_id). IMPORTANT CLARIFICAT...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_UPDATE_ROW_DATABASE"
+              ]
+            }
+          }
+        },
+        "NOTION_ADD_MULTIPLE_PAGE_CONTENT": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+          "description": "Bulk-add content blocks to Notion. Text >2000 chars auto-splits. Parses markdown formatting. \u26a0\ufe0f PARE...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_ADD_MULTIPLE_PAGE_CONTENT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:40:14.393Z",
+        "current_time_utc_epoch_seconds": 1786599614,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "nuts",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"nuts\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_BtcXLy1nexl6"
+  }
+}

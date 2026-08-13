@@ -1,0 +1,329 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-062-q2",
+    "workflow_id": 62,
+    "workflow_task": "Update an existing Google Docs nutrition-planning document by changing table content for two dinner entries, adding shared batch-cooking instructions, recalculating related summary content, and verifying the final document.",
+    "query": "Google Docs verify document content",
+    "intent": "Verify the final state of the Google Docs document after making edits and additions.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+          "GOOGLEDOCS_GET_DOCUMENT_BY_ID"
+        ],
+        "purpose": "Verify the final document content"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+      "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+      "GOOGLEDOCS_UPDATE_EXISTING_DOCUMENT"
+    ]
+  },
+  "request": {
+    "query": "Google Docs verify document content"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Google Docs verify document content",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if document identifier is unknown/untrusted)] [Prerequisite]: Locate/confirm the document using GOOGLEDOCS_SEARCH_DOCUMENTS (select response.data.files[].id; paginate via response.data.next_page_token).",
+            "[Optional (if the input might not be a Docs-native file or access is unclear)] [Prerequisite]: Verify type/availability using GOOGLEDRIVE_GET_FILE_METADATA before calling Docs tools.",
+            "[Required] [Step]: Retrieve readable content using GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT (use response.data.plain_text; cross-check returned title/identifier to confirm it\u2019s the intended doc).",
+            "[Optional (if output seems incomplete: tabs/tables/headers/footers/footnotes)] [Next Step]: Re-run GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT with the needed include_* options (and table settings if supported).",
+            "[Optional (if plain_text is empty/suspiciously short or structure/indices matter)] [Fallback]: Retrieve the full document model using GOOGLEDOCS_GET_DOCUMENT_BY_ID and extract visible text by walking response.data.body.content (include paragraphs + tableRows/tableCells; handle inline object placeholders).",
+            "[Optional (if responses look truncated/offloaded in previews, very large, or bulk reads are needed)] [Next Step]: Use COMPOSIO_REMOTE_WORKBENCH to load saved tool payloads, extract complete text fields reliably, and normalize/chunk for downstream use.",
+            "[Optional (if you want a safe copy for experiments)] [Step]: Duplicate using GOOGLEDOCS_COPY_DOCUMENT, then re-run GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT (and fallback if needed) on the copy."
+          ],
+          "known_pitfalls": [
+            "[GOOGLEDOCS_SEARCH_DOCUMENTS] Results are under response.data.files[] and may include multiple title matches; pagination uses response.data.next_page_token.",
+            "[GOOGLEDOCS_SEARCH_DOCUMENTS] 403 can occur when sorting with fullText queries (sorting not supported); retry without order/sort.",
+            "[GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT] Output may include markers like image/page-break placeholders and control characters (e.g., \\u000b); long docs can appear truncated in previews.",
+            "[GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT] Common failures include 404 NOT_FOUND, 403 PERMISSION_DENIED, 400 code=1810 FAILED_PRECONDITION (non-native/unsupported), and 500 INTERNAL (JSON conversion error).",
+            "[GOOGLEDOCS_GET_DOCUMENT_BY_ID] Visible text is deeply nested; skipping tableRows/tableCells drops table text, and large models may appear truncated in previews."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract plain text from a saved single-result payload.",
+              "code": "```python\nimport json\np=json.load(open(path,\"r\",encoding=\"utf-8\"))\nd=p[\"results\"][0][\"response\"][\"data\"]\nplain=d.get(\"plain_text\",\"\")\n(plain[:0],len(plain))\n```"
+            },
+            {
+              "description": "Extract plain text across a multi-result payload (bulk reads).",
+              "code": "```python\nimport json\np=json.load(open(path,\"r\",encoding=\"utf-8\"))\ntexts=[r[\"response\"][\"data\"].get(\"plain_text\",\"\") for r in p.get(\"results\",[])]\n(len(texts),sum(map(len,texts)))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT"
+          ],
+          "related_tool_slugs": [
+            "GOOGLEDOCS_SEARCH_DOCUMENTS",
+            "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+            "GOOGLEDOCS_COPY_DOCUMENT",
+            "GOOGLEDRIVE_GET_FILE_METADATA"
+          ],
+          "toolkits": [
+            "googledocs",
+            "googledrive"
+          ],
+          "plan_id": "6a703ea987ab4488953d641998dd12a0"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledocs",
+          "has_active_connection": false,
+          "description": "Google Docs is a cloud-based word processor with real-time collaboration, version history, and integration with other Google Workspace apps",
+          "status_message": "No Active connection for toolkit=googledocs. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledocs\") to create a connection BEFORE executing any googledocs tools."
+        },
+        {
+          "toolkit": "googledrive",
+          "has_active_connection": false,
+          "description": "Google Drive is a cloud storage solution for uploading, sharing, and collaborating on files across devices, with robust search and offline access. Special usecases: Sharing google sheets/docs or any G-Suite files with specific emails.",
+          "status_message": "No Active connection for toolkit=googledrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledrive\") to create a connection BEFORE executing any googledrive tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+          "description": "Retrieve a Google Doc by ID and return a best-effort plain-text rendering. Converts document structure into plain text including paragraphs, lists, and tables without requiring clients to traverse complex Docs API JSON.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "document_id"
+            ],
+            "properties": {
+              "tab_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Optional tab IDs to include when include_tabs_content=true. Nested child tabs are searched recursively."
+              },
+              "document_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                  "https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
+                ],
+                "minLength": 1,
+                "description": "The unique identifier for the Google Document. Accepts either a document ID (typically a 44-character alphanumeric string) or a full Google Docs URL. When a URL is provided, the document ID will be automatically extracted. Note: This parameter also accepts 'id' as an alias for consistency with other GOOGLEDOCS tools."
+              },
+              "include_tables": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include table content in the plain text output. Tables are rendered with configurable cell and row delimiters."
+              },
+              "include_footers": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include footer text in the plain text output. Footers are appended with a clear section separator."
+              },
+              "include_headers": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include header text in the plain text output. Headers are appended with a clear section separator."
+              },
+              "include_footnotes": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include footnote text in the plain text output. Footnotes are appended with a clear section separator."
+              },
+              "table_row_delimiter": {
+                "type": "string",
+                "default": "\n",
+                "examples": [
+                  "\n",
+                  "\n\n"
+                ],
+                "description": "The delimiter to use between table rows (default: newline character)."
+              },
+              "include_tabs_content": {
+                "type": "boolean",
+                "default": false,
+                "description": "When true, fetch the document using includeTabsContent=true query parameter to render all tabs. When false, only the main body content is rendered."
+              },
+              "table_cell_delimiter": {
+                "type": "string",
+                "default": "\t",
+                "examples": [
+                  "\t",
+                  " | ",
+                  ", "
+                ],
+                "description": "The delimiter to use between table cells (default: tab character)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_SEARCH_DOCUMENTS": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_SEARCH_DOCUMENTS",
+          "description": "Search for Google Documents using various filters including name, content, date ranges, and more.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "quarterly report",
+                  "name contains 'report'",
+                  "fullText contains 'important'",
+                  "name contains 'project' and fullText contains 'status'"
+                ],
+                "description": "Search query to filter documents. Provide either: (1) Plain text to search in document content (e.g., 'quarterly report'), which will search fullText, or (2) Drive API query syntax with operators like 'name contains', 'fullText contains', combined with 'and', 'or', 'not'. Leave empty to get all documents."
+              },
+              "order_by": {
+                "type": "string",
+                "default": "modifiedTime desc",
+                "examples": [
+                  "modifiedTime desc",
+                  "name",
+                  "createdTime desc",
+                  "viewedByMeTime desc"
+                ],
+                "description": "Order results by field. Common options: 'modifiedTime desc', 'modifiedTime asc', 'name', 'createdTime desc'"
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Token for continuing a previous search request on the next page. Use the next_page_token from the previous response to retrieve additional results."
+              },
+              "max_results": {
+                "type": "integer",
+                "default": 10,
+                "maximum": 100,
+                "minimum": 1,
+                "description": "Maximum number of documents to return per page (1-100). Defaults to 10. Use page_token for pagination when more results are available."
+              },
+              "starred_only": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to return only starred documents. Defaults to False."
+              },
+              "created_after": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01T00:00:00Z",
+                  "2024-12-01T12:00:00-08:00"
+                ],
+                "description": "Return documents created after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
+              },
+              "modified_after": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01T00:00:00Z",
+                  "2024-12-01T12:00:00-08:00"
+                ],
+                "description": "Return documents modified after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
+              },
+              "shared_with_me": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to return only documents shared with the current user. Defaults to False."
+              },
+              "include_trashed": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include documents in trash. Defaults to False."
+              },
+              "response_detail": {
+                "enum": [
+                  "minimal",
+                  "full"
+                ],
+                "type": "string",
+                "default": "minimal",
+                "description": "Level of detail in the response. 'minimal' returns only essential fields (id, name, modifiedTime, webViewLink) for efficient token usage. 'full' returns comprehensive metadata including permissions, owners, timestamps, and other detailed information."
+              },
+              "include_shared_drives": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include documents from shared drives you have access to. Defaults to True."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_GET_DOCUMENT_BY_ID": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+          "description": "Retrieves an existing Google Document by its ID; will error if the document is not found.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                  "https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
+                ],
+                "description": "The unique identifier for a native Google Docs document (typically a 44-character alphanumeric string). Accepts either a document ID or a full Google Docs URL (e.g., https://docs.google.com/document/d/{DOCUMENT_ID}/edit). When a URL is provided, the document ID will be automatically extracted. IMPORTANT: This tool only works with native Google Docs documents (mimeType application/vnd.google-apps.document), not uploaded Office files (DOCX, XLSX, etc.) stored in Google Drive. Use GOOGLEDOCS_SEARCH_DOCUMENTS to find available documents."
+              },
+              "includeTabsContent": {
+                "type": "boolean",
+                "default": false,
+                "description": "When true, request includeTabsContent=true so the response includes document.tabs with content for all tabs. When false, Google Docs returns the legacy first-tab content fields."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_COPY_DOCUMENT": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_COPY_DOCUMENT",
+          "description": "Tool to create a copy of an existing Google Document. Use this to duplicate a document, for example,...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDOCS_COPY_DOCUMENT"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_GET_FILE_METADATA": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_GET_FILE_METADATA",
+          "description": "Tool to get a file's metadata by ID. Use to verify `mimeType`, `parents`, and `trashed` status befor...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_GET_FILE_METADATA"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:36:15.865Z",
+        "current_time_utc_epoch_seconds": 1786599375,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "away",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"away\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_2dwoep0m04sb"
+  }
+}

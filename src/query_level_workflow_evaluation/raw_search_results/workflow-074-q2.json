@@ -1,0 +1,313 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-074-q2",
+    "workflow_id": 74,
+    "workflow_task": "Analyze Salesforce opportunity pipeline data by discovering a custom field, retrieving stage metadata, querying filtered opportunity records, fetching stage-change history, and computing stage conversion and skip metrics.",
+    "query": "query filtered Salesforce opportunity records and stage history",
+    "intent": "Retrieve filtered opportunity records along with their stage-change history to compute conversion metrics.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "SALESFORCE_RUN_SOQL_QUERY"
+        ],
+        "purpose": "Execute a SOQL query to retrieve filtered opportunity records and related stage history"
+      }
+    ],
+    "candidate_tools": [
+      "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+      "SALESFORCE_RUN_SOQL_QUERY"
+    ]
+  },
+  "request": {
+    "query": "query filtered Salesforce opportunity records and stage history"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "query filtered Salesforce opportunity records and stage history",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Confirm which date field to filter (e.g., created-vs-close semantics), confirm stage meaning, and set UTC start/end boundaries before querying using SALESFORCE_RUN_SOQL_QUERY (avoid timezone/off-by-one issues).",
+            "[Optional (if stage label/record-type mapping is uncertain)] [Prerequisite]: Resolve valid stage picklist values using SALESFORCE_GET_PICKLIST_VALUES_BY_RECORD_TYPE (prevents silent zero-result filters).",
+            "[Required] [Step]: Retrieve matching opportunities using SALESFORCE_RUN_SOQL_QUERY (filter by date range + StageName; select only needed fields; order by date for stable paging).",
+            "[Optional (if totals look off or you need counts)] [Step]: Cross-check with an aggregate GROUP BY StageName query using SALESFORCE_RUN_SOQL_QUERY (COUNT and optional SUM) to validate coverage and refine filters.",
+            "[Optional (if large/partial result set)] [Next Step]: Check headroom using SALESFORCE_GET_ORG_LIMITS, then paginate SALESFORCE_RUN_SOQL_QUERY using the query locator/nextRecordsUrl until all rows are collected.",
+            "[Optional (if you need richer fields in bulk)] [Next Step]: Enrich many records via SALESFORCE_GET_UI_API_RECORDS_BATCH, and spot-check specific rows with SALESFORCE_GET_OPPORTUNITY.",
+            "[Fallback (if SALESFORCE_RUN_SOQL_QUERY returns unexpected empties/missing rows)] [Fallback]: Re-run equivalent SOQL using SALESFORCE_QUERY_ALL to include wider query scope."
+          ],
+          "known_pitfalls": [
+            "[SALESFORCE_SEARCH_OPPORTUNITIES] Using close-date style constraints when the intent is created-date filtering can yield empty/incorrect results.",
+            "[SALESFORCE_RUN_SOQL_QUERY] GROUP BY returns AggregateResult rows (not opportunity rows) and count/sum fields may appear under alias keys.",
+            "[SALESFORCE_RUN_SOQL_QUERY] Relationship selects return nested objects; downstream logic must null-check nested Name fields and ignore attributes wrappers.",
+            "[SALESFORCE_GET_PICKLIST_VALUES_BY_RECORD_TYPE] StageName matching is exact; label/near-match guesses often return totalSize=0 without an explicit error.",
+            "[SALESFORCE_RUN_SOQL_QUERY] If the real intent is \u201centered a stage within the window,\u201d filtering on CreatedDate + StageName will not capture stage transitions (history-style queries can also error depending on org config)."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse AggregateResult/group-by responses defensively when grouped fields arrive under unexpected keys",
+              "code": "```python\ndef get_group_key(rec, keys):\n    for k in keys:\n        if k in rec and rec[k] is not None:\n            return rec[k]\n    return None\nrows=result_data['records']\nfor r in rows:\n    group_val=get_group_key(r,['StageName','Name'])\n    total=r.get('total')\n    print(group_val,total)\n```"
+            },
+            {
+              "description": "Parse list-style SOQL responses consistently when reading records/totalSize",
+              "code": "```python\nrecords=result[\"data\"][\"records\"]\ntotal=result[\"data\"][\"totalSize\"]\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "SALESFORCE_RUN_SOQL_QUERY",
+            "SALESFORCE_SEARCH_OPPORTUNITIES"
+          ],
+          "related_tool_slugs": [
+            "SALESFORCE_GET_PICKLIST_VALUES_BY_RECORD_TYPE",
+            "SALESFORCE_QUERY_ALL",
+            "SALESFORCE_GET_OPPORTUNITY",
+            "SALESFORCE_GET_ORG_LIMITS",
+            "SALESFORCE_GET_UI_API_RECORDS_BATCH"
+          ],
+          "toolkits": [
+            "salesforce"
+          ],
+          "plan_id": "810983bec1cf46cdbd8c1b4bef04bdda"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "salesforce",
+          "has_active_connection": false,
+          "description": "Salesforce is a leading CRM platform integrating sales, service, marketing, and analytics to build customer relationships and drive business growth",
+          "status_message": "No Active connection for toolkit=salesforce. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"salesforce\") to create a connection BEFORE executing any salesforce tools."
+        }
+      ],
+      "tool_schemas": {
+        "SALESFORCE_RUN_SOQL_QUERY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_RUN_SOQL_QUERY",
+          "description": "Executes a SOQL query against Salesforce data. Returns records matching the query with pagination support.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "SELECT Id, Name, Email FROM Contact WHERE CreatedDate > 2024-01-01T00:00:00Z",
+                  "SELECT Name, (SELECT LastName FROM Contacts) FROM Account",
+                  "SELECT COUNT() FROM Lead WHERE Status = 'New'",
+                  "SELECT COUNT(Id), StageName FROM Opportunity GROUP BY StageName",
+                  "SELECT Id, Name FROM Opportunity ORDER BY Amount DESC LIMIT 10",
+                  "SELECT FIELDS(ALL) FROM Account LIMIT 200",
+                  "SELECT Id, Name FROM Contact WHERE LastName = 'O\\'Brien'",
+                  "SELECT Id, Name, Description FROM Account LIMIT 10"
+                ],
+                "description": "SOQL query to execute. Must start with SELECT. Field names must match object schema exactly \u2014 use SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT for unfamiliar objects. ALIASES: No 'AS' keyword (use 'SUM(Amount) TotalSales' NOT 'SUM(Amount) AS TotalSales'). AGGREGATES: Without GROUP BY, ORDER BY/LIMIT not allowed (single-row result). COUNT() SYNTAX: Bare COUNT() only valid alone. With GROUP BY or other fields, must specify field: COUNT(Id) or COUNT(fieldName). Example: 'SELECT COUNT(Id), Status FROM Lead GROUP BY Status' NOT 'SELECT COUNT(), Status FROM Lead GROUP BY Status'. NON-GROUPABLE: Long text, rich text, encrypted text, compound address/location fields. NON-FILTERABLE: Long text area, rich text, encrypted text, multi-select picklists, blob fields CANNOT be in WHERE. FIELDS(ALL)/FIELDS(CUSTOM) require LIMIT \u2264200. ID values need single quotes. Apostrophes use backslash: 'O\\'Brien'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_SEARCH_OPPORTUNITIES": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_SEARCH_OPPORTUNITIES",
+          "description": "Search for Salesforce opportunities using multiple criteria like name, account, stage, amount, close date, or status. Apply at least one filter to avoid broad result sets. Partial-match searches may return multiple similar records; verify the correct record by Id before downstream use.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Q4 Deal",
+                  "Enterprise Sale",
+                  "Renewal"
+                ],
+                "description": "Search by opportunity name. Supports partial matches."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 50,
+                "maximum": 2000,
+                "minimum": 1,
+                "description": "Maximum number of opportunities to return. Maximum value is 2000. When totalSize in the response exceeds limit, use nextRecordsUrl to paginate through the full dataset."
+              },
+              "fields": {
+                "type": "string",
+                "default": "Id,Name,AccountId,Account.Name,StageName,Amount,CloseDate,IsClosed,IsWon,Probability,LeadSource,CreatedDate",
+                "examples": [
+                  "Id,Name,AccountId,Account.Name,StageName,Amount,CloseDate",
+                  "Id,Name,AccountId,Account.Name,StageName,Amount,CloseDate,IsClosed,IsWon,Probability"
+                ],
+                "description": "Comma-separated list of Opportunity fields to retrieve. Supports direct Opportunity fields (e.g., Id, Name, Amount) and parent relationship fields (e.g., Account.Name, Owner.Name). Note: Contact.* fields (Contact.Name, Contact.Email, etc.) are NOT valid because Opportunity does not have a direct parent relationship to Contact; use OpportunityContactRole queries to get contact information. Parent relationship fields like Account.Name may be null on returned records; guard against missing nested values when post-processing."
+              },
+              "is_won": {
+                "type": "boolean",
+                "description": "Filter by won status. True for won opportunities, False for lost (only applies to closed opportunities)."
+              },
+              "is_closed": {
+                "type": "boolean",
+                "description": "Filter by closed status. True for closed opportunities, False for open."
+              },
+              "amount_max": {
+                "type": "number",
+                "examples": [
+                  100000,
+                  1000000
+                ],
+                "description": "Maximum opportunity amount."
+              },
+              "amount_min": {
+                "type": "number",
+                "examples": [
+                  1000,
+                  50000
+                ],
+                "description": "Minimum opportunity amount."
+              },
+              "stage_name": {
+                "type": "string",
+                "examples": [
+                  "Prospecting",
+                  "Qualification",
+                  "Proposal/Price Quote",
+                  "Closed Won"
+                ],
+                "description": "Search by opportunity stage."
+              },
+              "lead_source": {
+                "type": "string",
+                "examples": [
+                  "Web",
+                  "Phone Inquiry",
+                  "Partner Referral"
+                ],
+                "description": "Search by lead source."
+              },
+              "account_name": {
+                "type": "string",
+                "examples": [
+                  "Acme Corp",
+                  "Tech Solutions"
+                ],
+                "description": "Search by associated account name. Supports partial matches."
+              },
+              "close_date_to": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31",
+                  "2025-06-30",
+                  "2025-09-30"
+                ],
+                "description": "Search opportunities with close date before this date (YYYY-MM-DD)."
+              },
+              "close_date_from": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01",
+                  "2024-06-15",
+                  "2025-03-31"
+                ],
+                "description": "Search opportunities with close date from this date (YYYY-MM-DD). When computing relative ranges (e.g., 'this week'), derive dates using the user's local timezone to avoid off-by-one-day errors."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_GET_PICKLIST_VALUES_BY_RECORD_TYPE": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_PICKLIST_VALUES_BY_RECORD_TYPE",
+          "description": "Tool to get values for all picklist fields of a record type, including dependent picklists. Use when you need to retrieve available picklist options for a specific object and record type, especially for dependent picklist hierarchies.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "sobject_api_name",
+              "record_type_id"
+            ],
+            "properties": {
+              "record_type_id": {
+                "type": "string",
+                "examples": [
+                  "012000000000000AAA",
+                  "012xx0000000000AAA"
+                ],
+                "description": "The 18-character Record Type ID. Use '012000000000000AAA' for objects without record types (default record type)."
+              },
+              "sobject_api_name": {
+                "type": "string",
+                "examples": [
+                  "Account",
+                  "Contact",
+                  "Opportunity",
+                  "Car__c"
+                ],
+                "description": "The API name of the Salesforce object (e.g., 'Account', 'Contact', 'Opportunity', or custom object like 'Car__c')."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_QUERY_ALL": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_QUERY_ALL",
+          "description": "Tool to execute SOQL queries including soft-deleted and archived records. Use when you need to query...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_QUERY_ALL"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_GET_OPPORTUNITY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_OPPORTUNITY",
+          "description": "Retrieves a specific opportunity by ID from Salesforce, returning all available fields.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_OPPORTUNITY"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_GET_ORG_LIMITS": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_ORG_LIMITS",
+          "description": "Tool to retrieve organization limits with max and remaining allocations. Use when you need to check ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_ORG_LIMITS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:37:24.700Z",
+        "current_time_utc_epoch_seconds": 1786599444,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "fire",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"fire\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_CTcKyu4mIwHw"
+  }
+}

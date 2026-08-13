@@ -1,0 +1,506 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-046-q4",
+    "workflow_id": 46,
+    "workflow_task": "Create, update, query, and verify Notion database rows and page content for generic deal-room style pages, including owner lookup, bulk content replacement, child-page preservation, and database filtering.",
+    "query": "read and replace page content",
+    "intent": "Read existing page content and perform bulk replacements while preserving child pages.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "NOTION_GET_PAGE_MARKDOWN"
+        ],
+        "purpose": "Read existing page content"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "NOTION_REPLACE_PAGE_CONTENT"
+        ],
+        "purpose": "Replace page content safely with child-page preservation"
+      }
+    ],
+    "candidate_tools": [
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_CREATE_NOTION_PAGE",
+      "NOTION_FETCH_ALL_BLOCK_CONTENTS",
+      "NOTION_FETCH_BLOCK_CONTENTS",
+      "NOTION_FETCH_DATABASE",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_LIST_USERS",
+      "NOTION_QUERY_DATABASE",
+      "NOTION_QUERY_DATABASE_WITH_FILTER",
+      "NOTION_REPLACE_PAGE_CONTENT",
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_SEARCH_NOTION_PAGE",
+      "NOTION_UPDATE_PAGE",
+      "NOTION_UPSERT_ROW_DATABASE"
+    ]
+  },
+  "request": {
+    "query": "read and replace page content"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "read and replace page content",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "=== NOTION WORKFLOW ===",
+            "[Required] [Prerequisite]: Enumerate the full block tree using NOTION_FETCH_ALL_BLOCK_CONTENTS (walk children to collect block_ids and every rich_text span eligible for find/replace).",
+            "[Optional (for readable baseline/rollback text)] [Prerequisite]: Export the page using NOTION_GET_PAGE_MARKDOWN (capture before-state and later diff/verification).",
+            "[Optional (before destructive or wide changes)] [Prerequisite]: Create a safety snapshot using NOTION_DUPLICATE_PAGE (quick rollback copy).",
+            "[Required] [Step]: Compute replacements per block (apply find/replace to each rich_text while preserving annotations/structure; ensure required rich_text is never empty).",
+            "[Required] [Step]: Write changes per affected block using NOTION_UPDATE_BLOCK (send the complete desired content for that block; iterate until all matches are updated).",
+            "[Optional (for verification)] [Next Step]: Re-read using NOTION_FETCH_ALL_BLOCK_CONTENTS or NOTION_GET_PAGE_MARKDOWN (confirm all occurrences changed and formatting preserved).",
+            "[Fallback (if many blocks must be rewritten or updates are too fragmented)] [Fallback]: Overwrite children using NOTION_REPLACE_PAGE_CONTENT (prefer archiving existing children); if remnants remain, archive with NOTION_DELETE_BLOCK and re-add in batches via NOTION_ADD_MULTIPLE_PAGE_CONTENT, then verify by re-reading.",
+            "=== CODA WORKFLOW ===",
+            "[Optional (if you only have a browser URL)] [Prerequisite]: Convert URL to doc/page identifiers using CODA_RESOLVE_BROWSER_LINK (avoid manual parsing).",
+            "[Required Prerequisite (if pageIdOrName unknown)] [Prerequisite]: Find the target page using CODA_LIST_PAGES (select correct pageIdOrName; follow continuation link/pageToken until found).",
+            "[Optional (if you must confirm current canvas/anchor before editing)] [Prerequisite]: Read existing content/structure using CODA_LIST_PAGE_CONTENT (decide append vs replace, confirm insert location).",
+            "[Required] [Step]: Append/insert/replace page canvas using CODA_UPDATE_A_PAGE (set contentUpdate.insertionMode; set canvasContent.format/content, e.g., markdown).",
+            "[Optional (if downstream depends on confirmed write)] [Next Step]: Verify async completion using CODA_GET_MUTATION_STATUS (poll requestId returned by CODA_UPDATE_A_PAGE).",
+            "[Optional (if CODA_UPDATE_A_PAGE returns 404 page not found)] [Fallback]: Re-derive a valid pageIdOrName using CODA_LIST_PAGES or CODA_RESOLVE_BROWSER_LINK, then retry CODA_UPDATE_A_PAGE."
+          ],
+          "known_pitfalls": [
+            "=== NOTION PITFALLS ===",
+            "[NOTION_UPDATE_BLOCK] Updates replace the block\u2019s content rather than patching substrings; you must send the full intended rich_text for that block.",
+            "[NOTION_REPLACE_PAGE_CONTENT] Requests fail if any child block in new_children omits the required type discriminator (schema cannot be inferred).",
+            "[NOTION_REPLACE_PAGE_CONTENT] Blocks that require rich_text can error if rich_text is empty; supply a minimal placeholder text object when needed.",
+            "[NOTION_REPLACE_PAGE_CONTENT] The API may apply partial deletes/appends; confirm using response summaries and always verify by re-reading.",
+            "[NOTION_DELETE_BLOCK] Archiving requires correct child block_ids; nested descendants require full traversal via NOTION_FETCH_ALL_BLOCK_CONTENTS.",
+            "=== CODA PITFALLS ===",
+            "[CODA_UPDATE_A_PAGE] May return only page id + requestId (async mutation), not updated content; use CODA_GET_MUTATION_STATUS if you must confirm completion.",
+            "[CODA_UPDATE_A_PAGE] insertionMode and canvasContent.format control placement/rendering; insertionMode=\"replace\" can wipe a page\u2014get explicit confirmation.",
+            "[CODA_UPDATE_A_PAGE] Can fail with 404 \"Could not find a page with the specified ID or name\" when pageIdOrName is wrong; retry after obtaining a valid (often \"canvas-\u2026\") ID via CODA_LIST_PAGES.",
+            "[CODA_LIST_PAGES] Small limits (observed 50) may miss the target; responses can include a continuation link (data.href with pageToken) requiring additional fetches.",
+            "[CODA_LIST_PAGE_CONTENT] Field naming can differ (doc_id/page_id_or_name vs docId/pageIdOrName); mismatches can cause request-shape errors."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Construct minimal schema-correct Notion blocks for NOTION_REPLACE_PAGE_CONTENT (type discriminator + rich_text).",
+              "code": "```python\ndef rt(s):\n    return [{\"type\":\"text\",\"text\":{\"content\":s}}]\n\ndef h2(s):\n    return {\"type\":\"heading_2\",\"object\":\"block\",\"heading_2\":{\"rich_text\":rt(s),\"is_toggleable\":False,\"color\":\"default\"}}\n\ndef p(s):\n    return {\"type\":\"paragraph\",\"object\":\"block\",\"paragraph\":{\"rich_text\":rt(s),\"color\":\"default\"}}\n```"
+            }
+          ],
+          "primary_tool_slugs": [
+            "NOTION_FETCH_ALL_BLOCK_CONTENTS",
+            "NOTION_UPDATE_BLOCK",
+            "CODA_UPDATE_A_PAGE"
+          ],
+          "related_tool_slugs": [
+            "NOTION_GET_PAGE_MARKDOWN",
+            "NOTION_DUPLICATE_PAGE",
+            "NOTION_REPLACE_PAGE_CONTENT",
+            "NOTION_DELETE_BLOCK",
+            "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+            "CODA_RESOLVE_BROWSER_LINK",
+            "CODA_LIST_PAGES",
+            "CODA_LIST_PAGE_CONTENT",
+            "CODA_GET_MUTATION_STATUS"
+          ],
+          "toolkits": [
+            "notion",
+            "coda"
+          ],
+          "plan_id": "d892b69b19cf45aa93297434d34de6cc,11eb5171ae7b476da218225d94df2ca0"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "notion",
+          "has_active_connection": false,
+          "description": "Notion centralizes notes, docs, wikis, and tasks in a unified workspace, letting teams build custom workflows for collaboration and knowledge management",
+          "status_message": "No Active connection for toolkit=notion. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"notion\") to create a connection BEFORE executing any notion tools."
+        },
+        {
+          "toolkit": "coda",
+          "has_active_connection": false,
+          "description": "Collaborative workspace platform that transforms documents into powerful tools for team productivity and project management",
+          "status_message": "No Active connection for toolkit=coda. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"coda\") to create a connection BEFORE executing any coda tools."
+        }
+      ],
+      "tool_schemas": {
+        "NOTION_FETCH_ALL_BLOCK_CONTENTS": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_ALL_BLOCK_CONTENTS",
+          "description": "Tool to fetch all child blocks for a given Notion block. Use when you need a complete listing of a block's children beyond a single page; supports optional recursive expansion of nested blocks.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "block_id": {
+                "type": "string",
+                "examples": [
+                  "c02fc1d3-db8b-45c5-a222-27595b15aea7",
+                  "c02fc1d3db8b45c5a22227595b15aea7"
+                ],
+                "description": "Identifier (UUID) of the parent Notion block or page whose children to list. Pages are blocks in Notion. Accepts UUIDs with or without hyphens (e.g., 'c02fc1d3-db8b-45c5-a222-27595b15aea7' or 'c02fc1d3db8b45c5a22227595b15aea7'). Either block_id or page_url must be provided. The block must be shared with your integration."
+              },
+              "page_url": {
+                "type": "string",
+                "examples": [
+                  "https://www.notion.so/My-Page-c02fc1d3db8b45c5a22227595b15aea7",
+                  "https://workspace.notion.site/Page-Title-c02fc1d3db8b45c5a22227595b15aea7"
+                ],
+                "description": "Notion page URL from which to extract the page/block ID. Either block_id or page_url must be provided. NOTE: Database view URLs (those containing '?v=' parameter) are NOT supported. Database views are filtered views of a database and do not have block children. To access database content, use the NOTION_QUERY_DATABASE action instead."
+              },
+              "max_depth": {
+                "type": "integer",
+                "default": 10,
+                "maximum": 50,
+                "minimum": 1,
+                "examples": [
+                  5,
+                  10,
+                  20
+                ],
+                "description": "Maximum recursion depth when recursive=true. Prevents excessive nesting traversal. Defaults to 10. Set higher for deeply nested structures, lower for faster results."
+              },
+              "page_size": {
+                "type": "integer",
+                "default": 100,
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  25,
+                  50,
+                  100
+                ],
+                "description": "Maximum number of child blocks to return per request. Defaults to 100, with a maximum of 100 as per Notion API limits."
+              },
+              "recursive": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, fetches nested children for blocks with 'has_children' set to true, appending all descendants to the output list. Subject to max_depth and max_blocks limits."
+              },
+              "max_blocks": {
+                "type": "integer",
+                "default": 5000,
+                "maximum": 10000,
+                "minimum": 1,
+                "examples": [
+                  1000,
+                  5000,
+                  10000
+                ],
+                "description": "Maximum total blocks to return when recursive=true. Prevents runaway fetches on extremely large block trees. Defaults to 5000. When limit is reached, blocks fetched so far are returned with a warning in the response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_UPDATE_BLOCK": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_UPDATE_BLOCK",
+          "description": "Updates existing Notion block's text content. \u26a0\ufe0f CRITICAL: Content limited to 2000 chars. Cannot change block type or archive blocks. Content exceeding 2000 chars will fail with validation error. For longer content, split across multiple blocks using add_multiple_page_content.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "block_id",
+              "content"
+            ],
+            "properties": {
+              "content": {
+                "type": "string",
+                "examples": [
+                  "This is the updated line of text.",
+                  "New heading text",
+                  "Updated task description"
+                ],
+                "description": "The new text content for the block. Replaces existing text content entirely. \u26a0\ufe0f CRITICAL: Notion API enforces a HARD LIMIT of 2000 characters per text.content field. Content exceeding 2000 chars will cause a validation error. For longer content, split across multiple blocks using append_block_children or add_multiple_page_content."
+              },
+              "block_id": {
+                "type": "string",
+                "examples": [
+                  "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+                ],
+                "description": "Identifier of the Notion block to be updated. Must be a valid UUID (with or without dashes). To find a block's ID, other Notion actions that list or retrieve blocks can be used. For updating content within a page (which is also a block), its ID can be obtained using actions like `NOTION_FETCH_DATA` to get page IDs and titles."
+              },
+              "language": {
+                "type": "string",
+                "examples": [
+                  "python",
+                  "javascript",
+                  "mermaid",
+                  "json"
+                ],
+                "description": "Programming language for code blocks. Required when block_type='code'. Supported values include: 'abap', 'arduino', 'bash', 'basic', 'c', 'clojure', 'coffeescript', 'c++', 'c#', 'css', 'dart', 'diff', 'docker', 'elixir', 'elm', 'erlang', 'flow', 'fortran', 'f#', 'gherkin', 'glsl', 'go', 'graphql', 'groovy', 'haskell', 'html', 'java', 'javascript', 'json', 'julia', 'kotlin', 'latex', 'less', 'lisp', 'livescript', 'lua', 'makefile', 'markdown', 'markup', 'matlab', 'mermaid', 'nix', 'objective-c', 'ocaml', 'pascal', 'perl', 'php', 'plain text', 'powershell', 'prolog', 'protobuf', 'python', 'r', 'reason', 'ruby', 'rust', 'sass', 'scala', 'scheme', 'scss', 'shell', 'sql', 'swift', 'typescript', 'vb.net', 'verilog', 'vhdl', 'visual basic', 'webassembly', 'xml', 'yaml', 'java/c/c++/c#'. If not provided for a code block, the existing language will be preserved."
+              },
+              "block_type": {
+                "type": "string",
+                "examples": [
+                  "paragraph",
+                  "to_do",
+                  "heading_2",
+                  "code"
+                ],
+                "description": "The type of the block being updated. If not provided, the action will automatically detect the block type by fetching the block first (adds 1 extra API call). If provided, it must match the EXISTING block's type - you cannot change a block's type. Supported types: 'paragraph', 'heading_1', 'heading_2', 'heading_3', 'bulleted_list_item', 'numbered_list_item', 'to_do', 'toggle', 'code', 'quote', 'callout'."
+              },
+              "additional_properties": {
+                "type": "object",
+                "examples": [
+                  {
+                    "checked": true
+                  },
+                  {
+                    "color": "blue_background"
+                  },
+                  {
+                    "color": "gray",
+                    "is_toggleable": true
+                  },
+                  {
+                    "color": "red",
+                    "checked": false
+                  },
+                  {
+                    "icon": {
+                      "type": "emoji",
+                      "emoji": "\ud83d\udca1"
+                    }
+                  }
+                ],
+                "description": "Optional dictionary of type-specific properties. Common examples: 'checked' (boolean) for to_do blocks to mark complete/incomplete, 'color' (string like 'blue_background', 'gray', 'red') for text styling, 'is_toggleable' (boolean) for heading blocks to make them collapsible, 'icon' (object with 'type' and 'emoji' fields) for callout blocks. NOTE: Cannot use 'archived' here - use NOTION_DELETE_BLOCK to remove blocks instead. NOTE: Null/None values are automatically filtered out (omitting a property preserves its existing value).",
+                "additionalProperties": true
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CODA_UPDATE_A_PAGE": {
+          "toolkit": "CODA",
+          "tool_slug": "CODA_UPDATE_A_PAGE",
+          "description": "Update properties for a page. Note that updating a page title or icon requires you to be a Doc Maker in the applicable workspace.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "docId",
+              "pageIdOrName"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "New name for the page. Note: Updating the page name requires Doc Maker permissions."
+              },
+              "docId": {
+                "type": "string",
+                "description": "ID of the doc containing the page to update."
+              },
+              "iconName": {
+                "type": "string",
+                "description": "Name of the icon to use for the page. Can be a standard Coda icon name (e.g., 'rocket', 'star') or a custom icon reference. Requires Doc Maker permissions."
+              },
+              "imageUrl": {
+                "type": "string",
+                "description": "URL of the cover image to use for the page."
+              },
+              "isHidden": {
+                "type": "boolean",
+                "description": "Whether the page should be hidden. Note: Some pages cannot be hidden (e.g., the sole top-level page in a doc), and this setting will be ignored for those pages."
+              },
+              "subtitle": {
+                "type": "string",
+                "description": "New subtitle for the page."
+              },
+              "pageIdOrName": {
+                "type": "string",
+                "description": "ID or name of the page to update. Page IDs are recommended over names as names can be easily changed by users. If using a name, URI-encode it. If multiple pages have the same name, an arbitrary one will be selected."
+              },
+              "contentUpdate": {
+                "type": "object",
+                "required": [
+                  "insertionMode",
+                  "canvasContent"
+                ],
+                "properties": {
+                  "canvasContent": {
+                    "type": "object",
+                    "required": [
+                      "format",
+                      "content"
+                    ],
+                    "properties": {
+                      "format": {
+                        "type": "string",
+                        "description": "The format of the content. Currently only \"html\" and \"markdown\" are supported."
+                      },
+                      "content": {
+                        "type": "string",
+                        "description": "The actual content string in the specified format (HTML or Markdown)."
+                      }
+                    },
+                    "description": "The content to insert into the page.",
+                    "additionalProperties": false
+                  },
+                  "insertionMode": {
+                    "type": "string",
+                    "description": "How to insert the content. Use \"append\" to add content to the end of the page."
+                  }
+                },
+                "description": "Content update configuration for appending or inserting content into a page",
+                "additionalProperties": false
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_GET_PAGE_MARKDOWN": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_GET_PAGE_MARKDOWN",
+          "description": "Retrieve a Notion page's full content rendered as Notion-flavored Markdown in a single API call. Use when you need the readable content of a page without recursive block-children fetching.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id"
+            ],
+            "properties": {
+              "page_id": {
+                "type": "string",
+                "examples": [
+                  "6c6a9b6c-12a4-4c3e-98e2-3c7a1e4f2d2a",
+                  "6c6a9b6c12a44c3e98e23c7a1e4f2d2a"
+                ],
+                "description": "The UUID of the Notion page to retrieve as markdown. Accepts both hyphenated (8-4-4-4-12) and unhyphenated (32 characters) UUID formats. This endpoint retrieves the full page content rendered as Notion-flavored Markdown in a single API call, avoiding the need for recursive block-children fetching. IMPORTANT: Only page IDs are accepted - database IDs will be rejected. To retrieve database content, use the 'Fetch Database' or 'Query Database' actions instead."
+              },
+              "include_transcript": {
+                "type": "boolean",
+                "description": "Set to true to include meeting note transcripts in the markdown response. Defaults to false if not specified."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_DUPLICATE_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_DUPLICATE_PAGE",
+          "description": "Duplicates a Notion page, including all its content, properties, and nested blocks, under a specifie...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_DUPLICATE_PAGE"
+              ]
+            }
+          }
+        },
+        "NOTION_REPLACE_PAGE_CONTENT": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_REPLACE_PAGE_CONTENT",
+          "description": "Safely replaces a page's child blocks by optionally backing up current content, deleting existing ch...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_REPLACE_PAGE_CONTENT"
+              ]
+            }
+          }
+        },
+        "NOTION_DELETE_BLOCK": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_DELETE_BLOCK",
+          "description": "Archives a Notion block, page, or database using its ID, which sets its 'archived' property to true ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_DELETE_BLOCK"
+              ]
+            }
+          }
+        },
+        "NOTION_ADD_MULTIPLE_PAGE_CONTENT": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+          "description": "Bulk-add content blocks to Notion. Text >2000 chars auto-splits. Parses markdown formatting. \u26a0\ufe0f PARE...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_ADD_MULTIPLE_PAGE_CONTENT"
+              ]
+            }
+          }
+        },
+        "CODA_RESOLVE_BROWSER_LINK": {
+          "toolkit": "CODA",
+          "tool_slug": "CODA_RESOLVE_BROWSER_LINK",
+          "description": "Given a browser link to a Coda object, attempts to find it and return metadata that can be used to g...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CODA_RESOLVE_BROWSER_LINK"
+              ]
+            }
+          }
+        },
+        "CODA_LIST_PAGES": {
+          "toolkit": "CODA",
+          "tool_slug": "CODA_LIST_PAGES",
+          "description": "Returns a list of pages in a Coda doc.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CODA_LIST_PAGES"
+              ]
+            }
+          }
+        },
+        "CODA_LIST_PAGE_CONTENT": {
+          "toolkit": "CODA",
+          "tool_slug": "CODA_LIST_PAGE_CONTENT",
+          "description": "Tool to list page content. Returns the content of the specified page. Use when you need to retrieve ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CODA_LIST_PAGE_CONTENT"
+              ]
+            }
+          }
+        },
+        "CODA_GET_MUTATION_STATUS": {
+          "toolkit": "CODA",
+          "tool_slug": "CODA_GET_MUTATION_STATUS",
+          "description": "Checks whether an asynchronous mutation operation has been applied to a Coda document. When you perf...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CODA_GET_MUTATION_STATUS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:34:14.549Z",
+        "current_time_utc_epoch_seconds": 1786599254,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "back",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"back\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_3czY8zeFhAJS"
+  }
+}

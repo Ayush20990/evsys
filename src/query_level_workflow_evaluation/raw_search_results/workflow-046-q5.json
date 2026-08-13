@@ -1,0 +1,646 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-046-q5",
+    "workflow_id": 46,
+    "workflow_task": "Create, update, query, and verify Notion database rows and page content for generic deal-room style pages, including owner lookup, bulk content replacement, child-page preservation, and database filtering.",
+    "query": "verify page content and database rows",
+    "intent": "Verify that database updates and page content modifications were applied correctly.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "NOTION_RETRIEVE_PAGE",
+          "NOTION_GET_PAGE_MARKDOWN"
+        ],
+        "purpose": "Verify page content and properties"
+      }
+    ],
+    "candidate_tools": [
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_CREATE_NOTION_PAGE",
+      "NOTION_FETCH_ALL_BLOCK_CONTENTS",
+      "NOTION_FETCH_BLOCK_CONTENTS",
+      "NOTION_FETCH_DATABASE",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_LIST_USERS",
+      "NOTION_QUERY_DATABASE",
+      "NOTION_QUERY_DATABASE_WITH_FILTER",
+      "NOTION_REPLACE_PAGE_CONTENT",
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_SEARCH_NOTION_PAGE",
+      "NOTION_UPDATE_PAGE",
+      "NOTION_UPSERT_ROW_DATABASE"
+    ]
+  },
+  "request": {
+    "query": "verify page content and database rows"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "verify page content and database rows",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "=== SUPABASE WORKFLOW ===",
+            "[Optional (if the database project reference is ambiguous)] [Prerequisite]: Locate the intended project using SUPABASE_LIST_ALL_PROJECTS, then confirm metadata using SUPABASE_GET_PROJECT (avoid verifying the wrong environment).",
+            "[Optional (if table names/schemas are uncertain)] [Prerequisite]: Enumerate tables and views using SUPABASE_LIST_TABLES (reduce schema/name typos before querying).",
+            "[Optional (if columns/filters are uncertain or errors occur)] [Prerequisite]: Validate columns and types using SUPABASE_GET_TABLE_SCHEMAS (ensure predicates and join keys exist).",
+            "[Required] [Step]: Compute per-table counts using SUPABASE_RUN_READ_ONLY_QUERY (SELECT COUNT(*) per target table; optionally return a table,count list via UNION ALL; treat output as a single-row-per-table aggregate payload).",
+            "[Optional (if audits or deeper verification is needed)] [Next Step]: Extend checks using SUPABASE_RUN_READ_ONLY_QUERY (COUNT DISTINCT, NULL checks, GROUP BY distributions, orphan checks via NOT EXISTS; optionally add size/usage estimates where relevant).",
+            "[Optional (if spot-checking or reconciling row-level data is needed)] [Next Step]: Pull bounded, paginated rows using SUPABASE_SELECT_FROM_TABLE (use limit/offset; rely on diagnostics.total_count rather than page length).",
+            "[Fallback (if SUPABASE_RUN_READ_ONLY_QUERY fails or can\u2019t express the query)] [Fallback]: Re-run equivalent SELECT aggregates using SUPABASE_BETA_RUN_SQL_QUERY and compare results for consistency.",
+            "=== GRIST WORKFLOW ===",
+            "[Optional (if multiple org contexts exist)] [Prerequisite]: Confirm the correct org context using GRIST_LIST_ORGANIZATIONS (avoid querying the wrong workspace).",
+            "[Optional (if docId unknown)] [Prerequisite]: Locate the target document using GRIST_LIST_WORKSPACES (capture docId for downstream calls).",
+            "[Optional (for access/reachability check)] [Prerequisite]: Validate the document is readable using GRIST_FETCH_DOCUMENT_METADATA.",
+            "[Required] [Step]: Enumerate authoritative table IDs using GRIST_LIST_TABLES (use these IDs in SQL FROM clauses).",
+            "[Optional (if column IDs are uncertain or joins fail)] [Prerequisite]: Verify column identifiers using GRIST_LIST_COLUMNS or GRIST_FETCH_TABLE_METADATA (align SQL to actual schema).",
+            "[Required] [Step]: Run a read-only validation query using GRIST_RUN_SQL_QUERY (start with small COUNT(*)/LIMIT checks before selecting wide or large-text fields).",
+            "[Optional (for cross-checking results)] [Next Step]: Sample a small slice of rows using GRIST_LIST_RECORDS (compare with SQL output when results seem truncated).",
+            "[Optional (if GRIST_RUN_SQL_QUERY returns SQLITE_ERROR like missing table/column)] [Fallback]: Re-inspect table/column identifiers using GRIST_LIST_TABLES and GRIST_LIST_COLUMNS or GRIST_FETCH_TABLE_METADATA, then rerun GRIST_RUN_SQL_QUERY."
+          ],
+          "known_pitfalls": [
+            "=== SUPABASE PITFALLS ===",
+            "[SUPABASE_RUN_READ_ONLY_QUERY] HTTP 400 with SQLSTATE 42P01/42703 usually indicates wrong schema/table or missing column; fix names/types before retrying.",
+            "[SUPABASE_RUN_READ_ONLY_QUERY] Aggregate outputs may be nested under response.data.result (often as single-row arrays) and values may be strings\u2014normalize before comparing.",
+            "[SUPABASE_RUN_READ_ONLY_QUERY] Uses a project identifier field ref while SUPABASE_SELECT_FROM_TABLE uses project_ref; mixing them can cause request validation failures.",
+            "[SUPABASE_SELECT_FROM_TABLE] May return diagnostics.http_status_code=206 (partial content) and range metadata; use diagnostics.total_count plus pagination, not len(rows).",
+            "[SUPABASE_SELECT_FROM_TABLE] An out-of-range page can return diagnostics.http_status_code=416; treat as end-of-pagination, not a hard error.",
+            "[SUPABASE_BETA_RUN_SQL_QUERY] SELECT aggregates return in response.data.result (rows_affected isn\u2019t meaningful for counts) and may hit HTTP 429 throttling\u2014retry with backoff.",
+            "=== GRIST PITFALLS ===",
+            "[GRIST_LIST_WORKSPACES] Downstream calls require a docId; avoid relying on a URL-derived identifier that may not match the API docId.",
+            "[GRIST_LIST_TABLES] SQL must use returned table IDs; display labels may differ, and large table lists can look truncated in previews.",
+            "[GRIST_RUN_SQL_QUERY] HTTP 400 with SQLITE_ERROR (e.g., missing table/column) usually indicates identifier/schema mismatch, not permissions.",
+            "[GRIST_RUN_SQL_QUERY] Results may appear under data.records[*].fields (and sometimes alternate shapes); normalize before downstream processing.",
+            "[GRIST_LIST_COLUMNS] Uses doc_id/table_id inputs (snake_case) while other tools commonly use docId/tableId; mismatched naming can cause call failures."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Pagination pattern for SUPABASE_SELECT_FROM_TABLE using offset/limit and diagnostics",
+              "code": "```python\ndef fetch_all_rows(project_ref, table, select, filters, order, page_size=1000, max_pages=1000):\n    out=[]\n    for i in range(max_pages):\n        res=call_tool('SUPABASE_SELECT_FROM_TABLE',{'project_ref':project_ref,'table':table,'select':select,'filters':filters,'order':order,'limit':page_size,'offset':i*page_size})\n        data=(res or {}).get('data',{})\n        diag=data.get('diagnostics') or {}\n        rows=data.get('rows') or []\n        if diag.get('http_status_code')==416 or not rows: break\n        out.extend(rows)\n        if len(rows)<page_size: break\n    return out\n```"
+            },
+            {
+              "description": "Normalize GRIST_RUN_SQL_QUERY results into row dictionaries",
+              "code": "```python\ndef norm(res):\n d=(res or {}).get('data') or {}\n recs=d.get('records') or d.get('rows') or []\n out=[]\n for r in recs:\n  if isinstance(r,dict) and isinstance(r.get('fields'),dict):\n   row=dict(r['fields']); row.setdefault('id',r.get('id')); out.append(row)\n  else: out.append(r)\n return out\n```"
+            }
+          ],
+          "primary_tool_slugs": [
+            "SUPABASE_RUN_READ_ONLY_QUERY",
+            "SUPABASE_SELECT_FROM_TABLE",
+            "GRIST_RUN_SQL_QUERY",
+            "GRIST_LIST_TABLES"
+          ],
+          "related_tool_slugs": [
+            "SUPABASE_LIST_TABLES",
+            "SUPABASE_GET_TABLE_SCHEMAS",
+            "SUPABASE_BETA_RUN_SQL_QUERY",
+            "SUPABASE_LIST_ALL_PROJECTS",
+            "SUPABASE_GET_PROJECT",
+            "GRIST_LIST_COLUMNS",
+            "GRIST_LIST_RECORDS",
+            "GRIST_LIST_WORKSPACES",
+            "GRIST_FETCH_TABLE_METADATA",
+            "GRIST_FETCH_DOCUMENT_METADATA",
+            "GRIST_LIST_ORGANIZATIONS"
+          ],
+          "toolkits": [
+            "supabase",
+            "grist"
+          ],
+          "plan_id": "540aab79e9fe4a73b2c51b9771337f49,a6bae48f8299499c88802ed35b058393"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "supabase",
+          "has_active_connection": false,
+          "description": "Supabase is an open-source backend-as-a-service providing a Postgres database, authentication, storage, and real-time subscription APIs for building modern applications",
+          "status_message": "No Active connection for toolkit=supabase. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"supabase\") to create a connection BEFORE executing any supabase tools."
+        },
+        {
+          "toolkit": "grist",
+          "has_active_connection": false,
+          "description": "Grist is a relational spreadsheet platform that combines the flexibility of a spreadsheet with the robustness of a database, allowing users to create custom applications tailored to their data needs.",
+          "status_message": "No Active connection for toolkit=grist. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"grist\") to create a connection BEFORE executing any grist tools."
+        }
+      ],
+      "tool_schemas": {
+        "SUPABASE_RUN_READ_ONLY_QUERY": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_RUN_READ_ONLY_QUERY",
+          "description": "[Beta] Run a SQL query as supabase_read_only_user. Use when you need to safely execute SELECT queries without risk of modifying data. Only read operations are allowed.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ref",
+              "query"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "pattern": "^[a-z]{20}$",
+                "examples": [
+                  "abcdefghijklmnopqrst",
+                  "pamqaklsszmjzugtywow"
+                ],
+                "maxLength": 20,
+                "minLength": 20,
+                "description": "The unique reference ID of the Supabase project (used in the URL path). Must be exactly 20 lowercase letters (a-z). Can be found in Project Settings > General > Reference ID in the Supabase Dashboard, or from the dashboard URL: https://supabase.com/dashboard/project/<project-ref>. Can also be provided as 'project_ref'."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "SELECT * FROM users WHERE id = 1;",
+                  "SELECT version();",
+                  "SELECT NOW();",
+                  "SELECT COUNT(*) FROM products;"
+                ],
+                "minLength": 1,
+                "description": "The SQL query to be executed as supabase_read_only_user. Only SELECT and other read-only operations are allowed. Write operations (INSERT, UPDATE, DELETE, CREATE, etc.) will be rejected. Can also be provided as 'sql'. IMPORTANT - Single Quote Handling: DO NOT double or escape single quotes in your SQL. The query is transmitted as a JSON string body, so standard SQL single quotes work directly. For example, write WHERE name = 'John' NOT WHERE name = ''John''."
+              },
+              "parameters": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "examples": [
+                  null,
+                  [
+                    1,
+                    "active"
+                  ],
+                  [
+                    "John",
+                    25
+                  ]
+                ],
+                "description": "Optional array of parameters for parameterized queries. Use $1, $2, etc. in the query to reference parameters."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SUPABASE_SELECT_FROM_TABLE": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_SELECT_FROM_TABLE",
+          "description": "Tool to select rows from a Supabase/PostgREST table. Use for read-only queries with filtering, sorting, and pagination.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "project_ref",
+              "table",
+              "select"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  100
+                ],
+                "description": "Maximum number of rows to return (must be >= 1)"
+              },
+              "order": {
+                "type": "string",
+                "examples": [
+                  "created_at.desc"
+                ],
+                "description": "Ordering expression in the form `column.asc` or `column.desc`"
+              },
+              "table": {
+                "type": "string",
+                "description": "Table or view name to select from"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0
+                ],
+                "description": "Number of rows to skip before returning results (must be >= 0)"
+              },
+              "select": {
+                "type": "string",
+                "examples": [
+                  "id,name",
+                  "id,name,profile->avatar_url"
+                ],
+                "description": "Comma-separated list of columns to return. Supports nested/related selections and JSON path selectors (e.g., address->postcode)."
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "column",
+                    "operator",
+                    "value"
+                  ],
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "boolean"
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      ],
+                      "description": "Value to compare the column against"
+                    },
+                    "column": {
+                      "type": "string",
+                      "description": "Column name to filter on"
+                    },
+                    "operator": {
+                      "enum": [
+                        "eq",
+                        "neq",
+                        "gt",
+                        "gte",
+                        "lt",
+                        "lte",
+                        "like",
+                        "ilike",
+                        "is",
+                        "in",
+                        "cs",
+                        "cd",
+                        "sl",
+                        "sr",
+                        "nxl",
+                        "nxr",
+                        "adj",
+                        "ov",
+                        "fts",
+                        "plfts",
+                        "phfts",
+                        "wfts"
+                      ],
+                      "type": "string",
+                      "description": "PostgREST filter operator to apply"
+                    }
+                  },
+                  "description": "Filter on a single column using a PostgREST operator."
+                },
+                "description": "Optional list of filters. Each filter will be rendered as `<column>_<operator>=<value>` in the query string (e.g., id_eq=123). Can be provided as a list of FilterItem objects. Each FilterItem must have: column (string), operator (one of: eq, neq, gt, gte, lt, lte, like, ilike, is, in, cs, cd, sl, sr, nxl, nxr, adj, ov, fts, plfts, phfts, wfts), and value (the comparison value)."
+              },
+              "project_ref": {
+                "type": "string",
+                "examples": [
+                  "ab12cd34ef56gh78ij90"
+                ],
+                "description": "Unique reference ID of the Supabase project (used in the hostname)"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GRIST_RUN_SQL_QUERY": {
+          "toolkit": "GRIST",
+          "tool_slug": "GRIST_RUN_SQL_QUERY",
+          "description": "Tool to execute a read-only SQL SELECT query on a Grist document. Use after confirming the document ID and preparing a valid SQL SELECT statement.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "docId",
+              "sql"
+            ],
+            "properties": {
+              "sql": {
+                "type": "string",
+                "examples": [
+                  "SELECT * FROM People",
+                  "SELECT id, Name FROM Users WHERE age > ?"
+                ],
+                "description": "SQL SELECT statement to execute. Must be a single read-only SELECT (no INSERT/UPDATE/DELETE). Do not include trailing semicolon. WITH clauses and parameterized queries (using '?' placeholders) are supported."
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "examples": [
+                  [
+                    21
+                  ],
+                  [
+                    "John",
+                    30
+                  ]
+                ],
+                "description": "Positional parameters to substitute for '?' placeholders in the SQL statement. Provide values in order matching the placeholders."
+              },
+              "docId": {
+                "type": "string",
+                "examples": [
+                  "rsUfVdgSXSL3UpmhYq3tAe"
+                ],
+                "description": "Document ID of the Grist document to query. Obtain this via GRIST_LIST_WORKSPACES or from the document URL."
+              },
+              "timeout": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  500
+                ],
+                "description": "Maximum execution time in milliseconds. Default is 1000ms. Can only be reduced from the default, not increased."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GRIST_LIST_TABLES": {
+          "toolkit": "GRIST",
+          "tool_slug": "GRIST_LIST_TABLES",
+          "description": "Tool to list all tables within a specified document. Use after obtaining the document ID to retrieve its tables.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "docId"
+            ],
+            "properties": {
+              "docId": {
+                "type": "string",
+                "examples": [
+                  "rsUfVdgSXSL3UpmhYq3tAe"
+                ],
+                "description": "The unique identifier of the Grist document to list tables from. Obtain this from GRIST_LIST_WORKSPACES or GRIST_CREATE_DOCUMENT."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SUPABASE_LIST_TABLES": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_LIST_TABLES",
+          "description": "Lists all tables and views in specified database schemas, providing a quick overview of database structure to help identify available tables before fetching detailed schemas.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "project_ref"
+            ],
+            "properties": {
+              "schemas": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  null,
+                  [
+                    "public"
+                  ],
+                  [
+                    "public",
+                    "auth",
+                    "storage"
+                  ]
+                ],
+                "description": "List of schemas to search for tables (maximum 10). If not provided, lists tables from all non-system schemas. Specify schema names to limit the search to specific schemas."
+              },
+              "project_ref": {
+                "type": "string",
+                "pattern": "^[a-z]+$",
+                "examples": [
+                  "huqmqtilymjtstzxbuww",
+                  "abcdefghijklmnopqrst"
+                ],
+                "maxLength": 20,
+                "minLength": 20,
+                "description": "The unique reference ID of the Supabase project. Must be exactly 20 lowercase letters (a-z only, no numbers or hyphens). This is visible in your Supabase project URL (e.g., https://supabase.com/dashboard/project/{project_ref})."
+              },
+              "include_views": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include views along with tables in the results"
+              },
+              "include_metadata": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include basic metadata like estimated row count and table size"
+              },
+              "include_system_schemas": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include system schemas (pg_catalog, information_schema, etc.) when listing all schemas. When set to false, temporary and internal schemas such as pg_temp_*, pg_toast_temp_* and pgbouncer are excluded from the results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SUPABASE_GET_TABLE_SCHEMAS": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_GET_TABLE_SCHEMAS",
+          "description": "Retrieves column details, types, and constraints for multiple database tables to help debug schema i...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SUPABASE_GET_TABLE_SCHEMAS"
+              ]
+            }
+          }
+        },
+        "SUPABASE_BETA_RUN_SQL_QUERY": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_BETA_RUN_SQL_QUERY",
+          "description": "Executes a given SQL query against the project's database; use for advanced data operations or when ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SUPABASE_BETA_RUN_SQL_QUERY"
+              ]
+            }
+          }
+        },
+        "SUPABASE_LIST_ALL_PROJECTS": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_LIST_ALL_PROJECTS",
+          "description": "Retrieves a list of all Supabase projects, including their ID, name, region, and status, for the aut...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SUPABASE_LIST_ALL_PROJECTS"
+              ]
+            }
+          }
+        },
+        "SUPABASE_GET_PROJECT": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_GET_PROJECT",
+          "description": "Retrieves detailed information about a specific Supabase project by its unique reference ID. Use whe...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SUPABASE_GET_PROJECT"
+              ]
+            }
+          }
+        },
+        "GRIST_LIST_COLUMNS": {
+          "toolkit": "GRIST",
+          "tool_slug": "GRIST_LIST_COLUMNS",
+          "description": "Tool to list all columns in a specified Grist table. Use after selecting the document and table to i...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GRIST_LIST_COLUMNS"
+              ]
+            }
+          }
+        },
+        "GRIST_LIST_RECORDS": {
+          "toolkit": "GRIST",
+          "tool_slug": "GRIST_LIST_RECORDS",
+          "description": "Tool to retrieve records from a specified table within a Grist document. Use when you need to fetch ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GRIST_LIST_RECORDS"
+              ]
+            }
+          }
+        },
+        "GRIST_LIST_WORKSPACES": {
+          "toolkit": "GRIST",
+          "tool_slug": "GRIST_LIST_WORKSPACES",
+          "description": "Tool to list all workspaces and documents accessible to the authenticated user on the current site. ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GRIST_LIST_WORKSPACES"
+              ]
+            }
+          }
+        },
+        "GRIST_FETCH_TABLE_METADATA": {
+          "toolkit": "GRIST",
+          "tool_slug": "GRIST_FETCH_TABLE_METADATA",
+          "description": "Tool to retrieve metadata for a specified table in a Grist document. Use when you need to inspect ta...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GRIST_FETCH_TABLE_METADATA"
+              ]
+            }
+          }
+        },
+        "GRIST_FETCH_DOCUMENT_METADATA": {
+          "toolkit": "GRIST",
+          "tool_slug": "GRIST_FETCH_DOCUMENT_METADATA",
+          "description": "Tool to fetch metadata for a specified Grist document. Use after obtaining the document ID.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GRIST_FETCH_DOCUMENT_METADATA"
+              ]
+            }
+          }
+        },
+        "GRIST_LIST_ORGANIZATIONS": {
+          "toolkit": "GRIST",
+          "tool_slug": "GRIST_LIST_ORGANIZATIONS",
+          "description": "Tool to list all organizations accessible to the authenticated user. Use when you need to select a G...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GRIST_LIST_ORGANIZATIONS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:34:17.111Z",
+        "current_time_utc_epoch_seconds": 1786599257,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "pink",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"pink\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_g4ln-4NYqsyy"
+  }
+}

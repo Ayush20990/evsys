@@ -1,0 +1,350 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-057-q1",
+    "workflow_id": 57,
+    "workflow_task": "Create short dog-themed videos, analyze channel and trend performance, upload and manage YouTube Shorts, and inspect Instagram posting context.",
+    "query": "create short dog themed videos",
+    "intent": "Generate short-form video content specifically themed around dogs.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GEMINI_GENERATE_VIDEOS"
+        ],
+        "purpose": "Generate dog-themed videos from text prompts"
+      }
+    ],
+    "candidate_tools": [
+      "GEMINI_GENERATE_IMAGE",
+      "GEMINI_GENERATE_VIDEOS",
+      "INSTAGRAM_GET_IG_USER_MEDIA",
+      "YOUTUBE_DELETE_VIDEO",
+      "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+      "YOUTUBE_LIST_CHANNEL_VIDEOS",
+      "YOUTUBE_MULTIPART_UPLOAD_VIDEO",
+      "YOUTUBE_SEARCH_YOU_TUBE",
+      "YOUTUBE_UPDATE_VIDEO"
+    ]
+  },
+  "request": {
+    "query": "create short dog themed videos"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create short dog themed videos",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Collect an asset brief (goal, platform, aspect_ratio, duration_seconds, style, safety constraints) and decide still vs motion using GEMINI_GENERATE_IMAGE or GEMINI_GENERATE_VIDEOS.",
+            "[Optional (if model identifier is uncertain)] [Prerequisite]: Confirm supported model identifiers using GEMINI_LIST_MODELS (avoid invalid model errors).",
+            "[Optional (if you need prompt/caption variants)] [Prerequisite]: Draft/refine storyboard prompts and platform copy using GEMINI_GENERATE_CONTENT (reuse chosen prompts for generation).",
+            "[Required (for motion)] [Step]: Start each video/scene using GEMINI_GENERATE_VIDEOS (valid aspect_ratio) and persist data.operation_name per job.",
+            "[Required (for motion)] [Next Step]: Poll job completion using GEMINI_WAIT_FOR_VIDEO until data.video_file.s3url is returned; if success but URL is null, re-poll with bounded retries.",
+            "[Required (for static)] [Step]: Generate images/thumbnails using GEMINI_GENERATE_IMAGE and capture data.image.s3url for each asset (throttle parallelism as needed).",
+            "[Optional (if status is unclear or media is missing)] [Fallback]: Inspect once using GEMINI_GET_VIDEOS_OPERATION; if the job failed validation or stalled, regenerate via GEMINI_GENERATE_VIDEOS with adjusted constraints, then resume GEMINI_WAIT_FOR_VIDEO.",
+            "[Optional (if you need longer retention or local edits)] [Next Step]: Download time-limited URLs promptly and/or persist copies via COMPOSIO_REMOTE_WORKBENCH.",
+            "[Required] [Next Step]: Return the URLs (data.image.s3url, data.video_file.s3url) and verify platform specs (aspect_ratio/resolution/format and duration_seconds) before packaging with captions."
+          ],
+          "known_pitfalls": [
+            "[GEMINI_GENERATE_IMAGE] Unsupported aspect_ratio can fail with \"Invalid request data\"; allowed values observed: \"1:1\",\"2:3\",\"3:2\",\"3:4\",\"4:3\",\"4:5\",\"5:4\",\"9:16\",\"16:9\",\"21:9\".",
+            "[GEMINI_GENERATE_VIDEOS] aspect_ratio validation can be strict (observed: \"Input should be '16:9' or '9:16' on parameter `aspect_ratio`\").",
+            "[GEMINI_GENERATE_VIDEOS] Validation constraints may couple resolution and duration_seconds; mismatches can cause immediate request errors.",
+            "[GEMINI_WAIT_FOR_VIDEO] May report success while data.video_file.s3url is still null; re-poll with bounded retries (URL may be short-lived).",
+            "[GEMINI_GENERATE_IMAGE] 429/RESOURCE_EXHAUSTED under load\u2014cap concurrency (about 5 parallel calls) and use exponential backoff."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parallel GEMINI_GENERATE_IMAGE calls with throttled concurrency and s3url extraction",
+              "code": "```python\nfrom concurrent.futures import ThreadPoolExecutor,as_completed\nprompts=[\"p1\",\"p2\"]\ndef gen(i,p):\n r,e=run_composio_tool(\"GEMINI_GENERATE_IMAGE\",{\"prompt\":p,\"model\":\"gemini-2.5-flash-image\",\"aspect_ratio\":\"16:9\"})\n return {\"i\":i,\"ok\":not e,\"url\":None if e else r[\"data\"][\"image\"][\"s3url\"]}\nout=[]\nwith ThreadPoolExecutor(max_workers=5) as ex:\n fs=[ex.submit(gen,i,p) for i,p in enumerate(prompts)]\n for f in as_completed(fs):\n  out.append(f.result())\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "GEMINI_GENERATE_IMAGE",
+            "GEMINI_GENERATE_VIDEOS"
+          ],
+          "related_tool_slugs": [
+            "GEMINI_WAIT_FOR_VIDEO",
+            "GEMINI_GET_VIDEOS_OPERATION",
+            "GEMINI_LIST_MODELS",
+            "GEMINI_GENERATE_CONTENT"
+          ],
+          "toolkits": [
+            "gemini"
+          ],
+          "plan_id": "e197c2dcb50249deaaa96f9f57a777b2"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "gemini",
+          "has_active_connection": true,
+          "description": "Comprehensive Gemini integration supporting Veo 3 video generation, Gemini Flash text generation (Nano Banana), chat completions, and multimodal AI capabilities via the Google Gemini API.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        }
+      ],
+      "tool_schemas": {
+        "GEMINI_GENERATE_IMAGE": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_GENERATE_IMAGE",
+          "description": "Generates images from text prompts using Gemini models (Nano Banana). Supports models: 'gemini-2.5-flash-image' (GA stable, fast), 'gemini-3-pro-image-preview' (Nano Banana Pro - advanced with 4K resolution, thinking mode, up to 14 reference images), and 'gemini-2.0-flash-exp-image-generation' (2.0 Flash experimental). Returns one downloadable image per call, or a text-type entry in data.content when no image is produced. Always validate that an image was returned before treating the call as successful. Output formats are raster only (JPG/PNG/WebP); request PNG for transparency. Concurrent usage may trigger HTTP 429/RESOURCE_EXHAUSTED \u2014 keep concurrency \u22643 and use exponential backoff (1s\u21922s\u21924s, ~5 retries). NOTE NEVER EVER TRUE SYNC_TO_WORKBENCH IN RUBE_MULTI_EXECUTE_TOOL",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "prompt"
+            ],
+            "properties": {
+              "model": {
+                "enum": [
+                  "gemini-2.5-flash-image",
+                  "gemini-3-pro-image-preview",
+                  "gemini-2.0-flash-exp-image-generation"
+                ],
+                "type": "string",
+                "default": "gemini-3-pro-image-preview",
+                "description": "Model to use for image generation. Options: 'gemini-2.5-flash-image' (GA stable, fast), 'gemini-3-pro-image-preview' (advanced with 4K, thinking mode), 'gemini-2.0-flash-exp-image-generation' (2.0 Flash experimental)."
+              },
+              "top_k": {
+                "type": "integer",
+                "description": "Top-k sampling parameter"
+              },
+              "top_p": {
+                "type": "number",
+                "description": "Nucleus sampling parameter (0.0 to 1.0)"
+              },
+              "prompt": {
+                "type": "string",
+                "description": "Text prompt for image generation Sensitive, trademarked, or explicit content triggers HTTP 400 (PROHIBITED_CONTENT or IMAGE_RECITATION) with no image returned \u2014 rephrase into neutral, policy-compliant language rather than retrying identical prompts."
+              },
+              "timeout": {
+                "type": "number",
+                "default": 300,
+                "description": "Request timeout in seconds. Default is 300 seconds (5 minutes). Increase for complex prompts or high-resolution images. Minimum 120 seconds, maximum 600 seconds."
+              },
+              "image_size": {
+                "enum": [
+                  "1K",
+                  "2K",
+                  "4K"
+                ],
+                "type": "string",
+                "default": "1K",
+                "description": "Output resolution (only for 'gemini-3-pro-image-preview'). Options: 1K, 2K, 4K."
+              },
+              "temperature": {
+                "type": "number",
+                "description": "Controls randomness (0.0 to 2.0)"
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "1:1",
+                  "2:3",
+                  "3:2",
+                  "3:4",
+                  "4:3",
+                  "4:5",
+                  "5:4",
+                  "9:16",
+                  "16:9",
+                  "21:9"
+                ],
+                "type": "string",
+                "default": "1:1",
+                "description": "Aspect ratio for generated image. Not supported by 'gemini-2.0-flash-exp-image-generation' model. Accepted values: '1:1', '4:5', '16:9', '9:16'. Unsupported strings will fail or silently default to 1:1."
+              },
+              "safety_settings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "threshold"
+                  ],
+                  "properties": {
+                    "category": {
+                      "enum": [
+                        "HARM_CATEGORY_HARASSMENT",
+                        "HARM_CATEGORY_HATE_SPEECH",
+                        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        "HARM_CATEGORY_DANGEROUS_CONTENT"
+                      ],
+                      "type": "string",
+                      "description": "The category of harmful content to filter"
+                    },
+                    "threshold": {
+                      "enum": [
+                        "BLOCK_NONE",
+                        "BLOCK_LOW_AND_ABOVE",
+                        "BLOCK_MEDIUM_AND_ABOVE",
+                        "BLOCK_ONLY_HIGH"
+                      ],
+                      "type": "string",
+                      "description": "The threshold for blocking content in this category"
+                    }
+                  }
+                },
+                "description": "Safety filter settings. List of objects specifying content categories to filter and threshold levels. Each setting requires 'category' (HARM_CATEGORY_HARASSMENT, HARM_CATEGORY_HATE_SPEECH, HARM_CATEGORY_SEXUALLY_EXPLICIT, or HARM_CATEGORY_DANGEROUS_CONTENT) and 'threshold' (BLOCK_NONE, BLOCK_LOW_AND_ABOVE, BLOCK_MEDIUM_AND_ABOVE, or BLOCK_ONLY_HIGH)."
+              },
+              "max_output_tokens": {
+                "type": "integer",
+                "description": "Maximum number of tokens to generate (max 32,768). For image generation, images consume tokens based on resolution: 1K/2K consume 1,120 tokens, 4K consumes 2,000 tokens. If set too low, the API may return MAX_TOKENS finish reason with no image. If not specified, the API uses its default which is sufficient for image generation."
+              },
+              "system_instruction": {
+                "type": "string",
+                "description": "System instruction to guide image generation behavior"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GEMINI_GENERATE_VIDEOS": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_GENERATE_VIDEOS",
+          "description": "Generates videos from text prompts using Google's Veo models. Returns an operation_name for tracking; pass it verbatim (no edits) to GEMINI_WAIT_FOR_VIDEO or GEMINI_GET_VIDEOS_OPERATION. Jobs take 30\u2013180+ seconds; wait 10s before first poll, then poll every 10\u201330s (allow up to 12 min). Successful results include data.video_file.s3url \u2014 missing s3url means failure. If done=true but no video_file, check raiMediaFilteredReasons (safety block); revise prompt and regenerate. Text-only; cannot accept image inputs. Max ~3\u20135 concurrent jobs; 429 RESOURCE_EXHAUSTED requires exponential backoff. For retries, always start a fresh call \u2014 never reuse a failed operation_name.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "prompt"
+            ],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "description": "Seed value for reproducibility. Supported by the Veo 3.1 models."
+              },
+              "model": {
+                "enum": [
+                  "veo-3.1-lite-generate-preview"
+                ],
+                "type": "string",
+                "default": "veo-3.1-lite-generate-preview",
+                "description": "Video model. Only Veo 3.1 Lite ('veo-3.1-lite-generate-preview') is supported \u2014 you may omit this field. Any other value (e.g. the legacy 'veo-3.1-generate-preview' / 'veo-3.1-fast-generate-preview') is coerced to Lite rather than rejected, for backward compatibility."
+              },
+              "prompt": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Text prompt for Veo video generation. Must be a non-empty string describing the video to generate."
+              },
+              "resolution": {
+                "enum": [
+                  "720p"
+                ],
+                "type": "string",
+                "description": "Resolution for video generation.\n\nOnly 720p is offered. On Veo 3.1 Lite it is $0.05/s versus $0.08/s for\n1080p, and pinning it removes the 1080p-requires-8s duration constraint\nentirely (a common source of failed calls when a caller pairs 1080p with a\n4s/6s duration). 1080p is coerced to 720p rather than served (see\nGenerateVideosRequest.resolution)."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "16:9",
+                  "9:16"
+                ],
+                "type": "string",
+                "description": "Supported aspect ratios for video generation."
+              },
+              "negative_prompt": {
+                "type": "string",
+                "description": "Text describing content to avoid in the generated video (e.g., 'cartoon, drawing, low quality')."
+              },
+              "duration_seconds": {
+                "enum": [
+                  4,
+                  6,
+                  8
+                ],
+                "type": "integer",
+                "description": "Supported video durations in seconds (Veo 3.1: 4, 6, or 8)."
+              },
+              "person_generation": {
+                "enum": [
+                  "allow_all"
+                ],
+                "type": "string",
+                "description": "Person generation safety setting (Veo 3.1 supports only ALLOW_ALL)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GEMINI_WAIT_FOR_VIDEO": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_WAIT_FOR_VIDEO",
+          "description": "Polls a Veo video generation operation until completion, then downloads and returns the video file. Generation takes 30\u2013120+ seconds (up to ~10\u201312 min); long waits are normal, not failures. A done=true response without a video file indicates safety filter rejection (check raiMediaFilteredReasons) or quota exhaustion \u2014 adjust the prompt and regenerate. On timeout, use GEMINI_GET_VIDEOS_OPERATION with incremental backoff before starting a new job. Keep parallel jobs to 3\u20135 to avoid 429 RESOURCE_EXHAUSTED errors.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "operation_name"
+            ],
+            "properties": {
+              "operation_name": {
+                "type": "string",
+                "pattern": "^models/[a-zA-Z0-9._-]+/operations/[a-zA-Z0-9_-]+$",
+                "description": "The full operation name returned by GEMINI_GENERATE_VIDEOS. Format: 'models/<model-id>/operations/<operation-id>' where <operation-id> is an alphanumeric string (e.g., 'models/veo-3.1-generate-preview/operations/m8dl4dtqqzg8'). IMPORTANT: Do NOT use placeholder values like '...' - use the exact operation_name string from the generate videos response. Do not reuse operation_name from a failed GEMINI_GENERATE_VIDEOS job \u2014 always start a new GEMINI_GENERATE_VIDEOS call for retried requests."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GEMINI_GET_VIDEOS_OPERATION": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_GET_VIDEOS_OPERATION",
+          "description": "DEPRECATED: Use WaitForVideo instead. Checks status of a Veo video generation operation. Use operati...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GEMINI_GET_VIDEOS_OPERATION"
+              ]
+            }
+          }
+        },
+        "GEMINI_LIST_MODELS": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_LIST_MODELS",
+          "description": "Lists available Gemini and Veo models with their capabilities and limits. Useful for discovering sup...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GEMINI_LIST_MODELS"
+              ]
+            }
+          }
+        },
+        "GEMINI_GENERATE_CONTENT": {
+          "toolkit": "GEMINI",
+          "tool_slug": "GEMINI_GENERATE_CONTENT",
+          "description": "Generates text content or speech audio from prompts using Gemini models. Supports text generation mo...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GEMINI_GENERATE_CONTENT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:35:40.710Z",
+        "current_time_utc_epoch_seconds": 1786599340,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "very",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"very\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) Connections active, proceed to next step",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_M7OE96wLhW1m"
+  }
+}

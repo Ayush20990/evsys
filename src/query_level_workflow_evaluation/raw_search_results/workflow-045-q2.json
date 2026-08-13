@@ -1,0 +1,774 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-045-q2",
+    "workflow_id": 45,
+    "workflow_task": "Create and publish a HubSpot quote for a CRM contact by first finding the contact, creating a deal, creating line items and a quote, applying quote terms and template settings, publishing the quote, and inspecting quote/template properties.",
+    "query": "create HubSpot deal and associate with contact",
+    "intent": "Create a new deal record in HubSpot and link it to the found contact.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "HUBSPOT_CREATE_DEAL"
+        ],
+        "purpose": "Create a new HubSpot deal record"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "HUBSPOT_CREATE_OBJECT_ASSOCIATION"
+        ],
+        "purpose": "Associate the deal with the found contact"
+      }
+    ],
+    "candidate_tools": [
+      "HUBSPOT_CREATE_DEAL",
+      "HUBSPOT_CREATE_LINE_ITEM",
+      "HUBSPOT_CREATE_OBJECT_ASSOCIATION",
+      "HUBSPOT_CREATE_QUOTE_OBJECT",
+      "HUBSPOT_GET_QUOTE",
+      "HUBSPOT_LIST_ASSOCIATION_TYPES",
+      "HUBSPOT_LIST_CONTACTS",
+      "HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE",
+      "HUBSPOT_READ_APAGE_OF_OBJECTS_BY_TYPE",
+      "HUBSPOT_READ_ASSOCIATIONS_BATCH",
+      "HUBSPOT_READ_CRM_OBJECT_BY_ID",
+      "HUBSPOT_RETRIEVE_ALL_PIPELINES_FOR_SPECIFIED_OBJECT_TYPE",
+      "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+      "HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA",
+      "HUBSPOT_UPDATE_QUOTE"
+    ]
+  },
+  "request": {
+    "query": "create HubSpot deal and associate with contact"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create HubSpot deal and associate with contact",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if pipeline/stage IDs unknown)] [Prerequisite]: List deal pipelines/stages using HUBSPOT_RETRIEVE_ALL_PIPELINES_FOR_SPECIFIED_OBJECT_TYPE (pick valid pipeline/dealstage; be ready to scan a large response).",
+            "[Optional (to avoid duplicates)] [Prerequisite]: Search for an existing similar deal using HUBSPOT_SEARCH_DEALS (reuse if a clear match exists).",
+            "[Required] [Prerequisite]: Find the target person record using HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA (capture results[].id).",
+            "[Required] [Prerequisite]: Find the target organization record using HUBSPOT_SEARCH_COMPANIES (paginate via data.paging.next.after; capture results[].id).",
+            "[Optional (if association labels/type IDs are required)] [Prerequisite]: Enumerate association types using HUBSPOT_LIST_ASSOCIATION_TYPES (record needed associationTypeId values).",
+            "[Required] [Step]: Create the deal using HUBSPOT_CREATE_DEAL (set schema-valid properties incl. pipeline/dealstage; include person/organization associations inline when supported).",
+            "[Fallback (if creation fails with validation/schema errors)] [Fallback]: Retry using HUBSPOT_CREATE_DEAL_FROM_NL (keep only clearly valid fields and intended associations).",
+            "[Required] [Next Step]: Verify deal\u2194person and deal\u2194organization links using HUBSPOT_READ_ASSOCIATIONS_BATCH (treat results as source of truth).",
+            "[Optional (if verification shows missing/incorrect links)] [Next Step]: Create/fix links using HUBSPOT_CREATE_OBJECT_ASSOCIATION (include associationTypeId when required), then re-check using HUBSPOT_READ_ASSOCIATIONS_BATCH."
+          ],
+          "known_pitfalls": [
+            "[HUBSPOT_RETRIEVE_ALL_PIPELINES_FOR_SPECIFIED_OBJECT_TYPE] Pipeline/stage payloads can be very large and may appear truncated; select by id/label and scan/filter rather than expecting a small response.",
+            "[HUBSPOT_SEARCH_COMPANIES] Cursor pagination is common; stop only when data.paging.next.after is absent or matches may be missed.",
+            "[HUBSPOT_CREATE_DEAL] 400 errors like INVALID_OPTION, INVALID_INTEGER, PROPERTY_DOESNT_EXIST indicate schema/type mismatches; remove or correct offending properties before retry.",
+            "[HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA] Overly strict criteria can return empty results; broaden filters when matches are unexpectedly missing.",
+            "[HUBSPOT_READ_ASSOCIATIONS_BATCH] Results may include multiple associationTypes for the same linked record (and direction can vary); treat typeIds as metadata, not duplicate links."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "HUBSPOT_CREATE_DEAL",
+            "HUBSPOT_CREATE_OBJECT_ASSOCIATION",
+            "HUBSPOT_RETRIEVE_ALL_PIPELINES_FOR_SPECIFIED_OBJECT_TYPE"
+          ],
+          "related_tool_slugs": [
+            "HUBSPOT_LIST_ASSOCIATION_TYPES",
+            "HUBSPOT_CREATE_DEAL_FROM_NL",
+            "HUBSPOT_SEARCH_DEALS",
+            "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+            "HUBSPOT_SEARCH_COMPANIES",
+            "HUBSPOT_READ_ASSOCIATIONS_BATCH"
+          ],
+          "toolkits": [
+            "hubspot"
+          ],
+          "plan_id": "0efae6d54b474637b82c73bfded80125"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "hubspot",
+          "has_active_connection": false,
+          "description": "HubSpot is an inbound marketing, sales, and customer service platform integrating CRM, email automation, and analytics to facilitate lead nurturing and seamless customer experiences",
+          "status_message": "No Active connection for toolkit=hubspot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"hubspot\") to create a connection BEFORE executing any hubspot tools."
+        }
+      ],
+      "tool_schemas": {
+        "HUBSPOT_CREATE_DEAL": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_CREATE_DEAL",
+          "description": "Creates a new HubSpot deal.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "amount": {
+                "type": "string",
+                "examples": [
+                  "1000.00",
+                  "2500.50"
+                ],
+                "description": "Total monetary value of the deal.",
+                "is_property": true
+              },
+              "hs_acv": {
+                "type": "string",
+                "examples": [
+                  "12000.00"
+                ],
+                "description": "Annual Contract Value (ACV) (HubSpot-calculated).",
+                "is_property": true
+              },
+              "hs_arr": {
+                "type": "string",
+                "examples": [
+                  "10000.00"
+                ],
+                "description": "Annual Recurring Revenue (ARR) (HubSpot-calculated).",
+                "is_property": true
+              },
+              "hs_mrr": {
+                "type": "string",
+                "examples": [
+                  "833.33"
+                ],
+                "description": "Monthly Recurring Revenue (MRR) (HubSpot-calculated).",
+                "is_property": true
+              },
+              "hs_tcv": {
+                "type": "string",
+                "examples": [
+                  "24000.00"
+                ],
+                "description": "Total Contract Value (TCV) (HubSpot-calculated).",
+                "is_property": true
+              },
+              "dealname": {
+                "type": "string",
+                "examples": [
+                  "New Website Project for Acme Corp",
+                  "Q4 Enterprise Software Sale"
+                ],
+                "description": "Descriptive name or title of the deal.",
+                "is_property": true
+              },
+              "dealtype": {
+                "type": "string",
+                "examples": [
+                  "newbusiness",
+                  "existingbusiness"
+                ],
+                "description": "Type of deal (e.g., 'newbusiness', 'existingbusiness').",
+                "is_property": true
+              },
+              "pipeline": {
+                "type": "string",
+                "examples": [
+                  "default",
+                  "sales_pipeline_2"
+                ],
+                "description": "ID of the sales pipeline for this deal (required).",
+                "is_property": true
+              },
+              "closedate": {
+                "type": "string",
+                "examples": [
+                  "2023-12-31",
+                  "2024-01-15T14:30:00Z"
+                ],
+                "description": "Date (YYYY-MM-DD) or datetime (ISO 8601) when the deal closed or is expected to close.",
+                "is_property": true
+              },
+              "dealstage": {
+                "type": "string",
+                "examples": [
+                  "closedwon",
+                  "closedlost",
+                  "2317386479"
+                ],
+                "description": "Valid pipeline stage ID for the deal. IMPORTANT: Stage IDs must be actual values from your HubSpot pipeline configuration - random values, phone numbers, or placeholder text will be rejected by the API with INVALID_OPTION errors. Stage IDs can be either string-based (e.g., 'closedwon', 'closedlost') or numeric strings (e.g., '2317386479') depending on your pipeline setup. You MUST retrieve valid stage IDs using the Pipelines API (GET /crm/v3/pipelines/deals) or from HubSpot Settings > Objects > Deals > Pipelines before setting this field.",
+                "is_property": true
+              },
+              "createdate": {
+                "type": "string",
+                "examples": [
+                  "2023-10-26T10:00:00Z"
+                ],
+                "description": "Date/time deal was created (read-only, HubSpot-set).",
+                "is_property": true
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "Initial discussion with client about their needs for a new CRM system.",
+                  "Follow-up meeting scheduled to discuss proposal details."
+                ],
+                "description": "Detailed text description of the deal.",
+                "is_property": true
+              },
+              "hs_campaign": {
+                "type": "string",
+                "examples": [
+                  "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+                ],
+                "description": "GUID of the HubSpot campaign that generated this deal.",
+                "is_property": true
+              },
+              "hs_priority": {
+                "type": "string",
+                "examples": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "description": "Priority level (e.g., 'high', 'medium', 'low').",
+                "is_property": true
+              },
+              "associations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "types"
+                  ],
+                  "properties": {
+                    "to": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "description": "Numeric ID of the CRM object to associate with (e.g., '12345')."
+                        }
+                      },
+                      "description": "Represents the target object ID for an association.",
+                      "additionalProperties": false
+                    },
+                    "types": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "associationCategory",
+                          "associationTypeId"
+                        ],
+                        "properties": {
+                          "associationTypeId": {
+                            "type": "integer",
+                            "description": "Unique ID of the association type, specifying the relationship nature (e.g., deal-contact)."
+                          },
+                          "associationCategory": {
+                            "enum": [
+                              "HUBSPOT_DEFINED",
+                              "USER_DEFINED",
+                              "INTEGRATOR_DEFINED"
+                            ],
+                            "type": "string",
+                            "description": "A categorization of the association type. The available categories are `HUBSPOT_DEFINED`, `USER_DEFINED`, and `INTEGRATOR_DEFINED`."
+                          }
+                        },
+                        "description": "Defines the type of association between CRM objects."
+                      },
+                      "description": "List of association types to be created, each defining category and type ID."
+                    },
+                    "to__id": {
+                      "type": "string",
+                      "examples": [
+                        "12345",
+                        "67890123"
+                      ],
+                      "description": "Numeric ID of the CRM object (e.g., contact, company) to associate with. Must be a numeric string (e.g., '12345'). Alternative to 'to' field - use either 'to_id' OR 'to', not both."
+                    }
+                  },
+                  "description": "Specifies associations with other CRM objects."
+                },
+                "description": "Associations to create between the new deal and other CRM objects (e.g., contact, company)."
+              },
+              "hs_is_closed": {
+                "type": "string",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Indicates if deal is closed ('true'/'false'; read-only, from deal stage properties).",
+                "is_property": true
+              },
+              "hs_next_step": {
+                "type": "string",
+                "examples": [
+                  "Send proposal by EOD Friday",
+                  "Schedule follow-up call for next week"
+                ],
+                "description": "Next planned step for this deal.",
+                "is_property": true
+              },
+              "hs_object_id": {
+                "type": "string",
+                "examples": [
+                  "1234567890"
+                ],
+                "description": "Unique ID of the deal object (read-only, HubSpot-assigned).",
+                "is_property": true
+              },
+              "days_to_close": {
+                "type": "string",
+                "examples": [
+                  "30",
+                  "90"
+                ],
+                "description": "Days between creation and close (read-only, HubSpot-calculated).",
+                "is_property": true
+              },
+              "hs_createdate": {
+                "type": "string",
+                "examples": [
+                  "2023-10-26T10:00:00.000Z"
+                ],
+                "description": "Specific date/time deal record created (ISO 8601, read-only, HubSpot-set).",
+                "is_property": true
+              },
+              "hs_all_team_ids": {
+                "type": "string",
+                "examples": [
+                  "12345;67890"
+                ],
+                "description": "Semicolon-separated list of all associated team IDs (owner's primary, additional teams; typically read-only).",
+                "is_property": true
+              },
+              "hs_all_owner_ids": {
+                "type": "string",
+                "examples": [
+                  "101;202;303"
+                ],
+                "description": "Semicolon-separated list of all owner IDs (primary, co-owners).",
+                "is_property": true
+              },
+              "hs_closed_amount": {
+                "type": "string",
+                "examples": [
+                  "950.00"
+                ],
+                "description": "Actual amount when deal closed (HubSpot-calculated).",
+                "is_property": true
+              },
+              "hubspot_owner_id": {
+                "type": "string",
+                "examples": [
+                  "123456",
+                  "789012"
+                ],
+                "description": "ID of the HubSpot user owning the deal; may be auto-assigned if unspecified.",
+                "is_property": true
+              },
+              "closed_won_reason": {
+                "type": "string",
+                "examples": [
+                  "Strong product fit",
+                  "Excellent customer service"
+                ],
+                "description": "Reason why the deal was won.",
+                "is_property": true
+              },
+              "custom_properties": {
+                "type": "object",
+                "description": "Custom properties for the deal. Keys are internal property names (as defined in your HubSpot account), values are the property values to set. CRITICAL: Enum/dropdown properties have STRICT validation - you MUST use exact values from your HubSpot configuration or the API will reject with INVALID_OPTION error. To find valid values: go to HubSpot Settings > Properties > Deals > [Property Name] > Edit > Field Type Options. Requirements by type: (1) Enum/dropdown: case-sensitive exact match required (check your HubSpot property settings for valid options); (2) Number: numeric strings only, no units (e.g., '12' not '12 months'); (3) Date: ISO 8601 format (e.g., '2024-01-15'); (4) Checkbox: 'true' or 'false'. Properties are account-specific and may not exist in all HubSpot portals. Example: `{'project_type': 'migration', 'priority_level': 'high'}`.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "closed_lost_reason": {
+                "type": "string",
+                "examples": [
+                  "Price too high",
+                  "Went with competitor"
+                ],
+                "description": "Reason why the deal was lost.",
+                "is_property": true
+              },
+              "deal_currency_code": {
+                "type": "string",
+                "examples": [
+                  "USD",
+                  "EUR"
+                ],
+                "description": "Currency code for deal amount. IMPORTANT: Only currency codes enabled in your HubSpot portal settings are valid. If omitted, defaults to your portal's home currency. To find valid currency codes: go to Settings > Account defaults > Currencies to see your enabled currencies. Common codes include 'USD' and 'EUR', but availability depends on your portal configuration.",
+                "is_property": true
+              },
+              "hs_forecast_amount": {
+                "type": "string",
+                "examples": [
+                  "500.00"
+                ],
+                "description": "Forecasted amount ('Amount' * 'hs_deal_stage_probability'; HubSpot-calculated).",
+                "is_property": true
+              },
+              "hs_analytics_source": {
+                "type": "string",
+                "examples": [
+                  "Organic Search",
+                  "Paid Social",
+                  "Referrals"
+                ],
+                "description": "Original deal source per HubSpot analytics (e.g., 'Organic Search'; typically read-only).",
+                "is_property": true
+              },
+              "hs_lastmodifieddate": {
+                "type": "string",
+                "examples": [
+                  "2024-01-21T15:30:00.000Z"
+                ],
+                "description": "Date/time deal last modified (ISO 8601, read-only, HubSpot-updated).",
+                "is_property": true
+              },
+              "hs_projected_amount": {
+                "type": "string",
+                "examples": [
+                  "1100.00"
+                ],
+                "description": "Projected deal amount (manually set or calculated).",
+                "is_property": true
+              },
+              "amount_in_home_currency": {
+                "type": "string",
+                "examples": [
+                  "850.00",
+                  "2125.75"
+                ],
+                "description": "Deal's value in company's home currency (read-only, HubSpot-calculated).",
+                "is_property": true
+              },
+              "hs_forecast_probability": {
+                "type": "string",
+                "examples": [
+                  "0.6"
+                ],
+                "description": "Sales forecasting probability; may differ from 'hs_deal_stage_probability'.",
+                "is_property": true
+              },
+              "hs_deal_stage_probability": {
+                "type": "string",
+                "examples": [
+                  "0.5",
+                  "0.75"
+                ],
+                "description": "Win probability (decimal, e.g., 0.5) based on current stage; typically stage-defined.",
+                "is_property": true
+              },
+              "hs_all_accessible_team_ids": {
+                "type": "string",
+                "examples": [
+                  "12345;67890"
+                ],
+                "description": "Semicolon-separated list of team IDs with access (typically read-only).",
+                "is_property": true
+              },
+              "engagements_last_meeting_booked": {
+                "type": "string",
+                "examples": [
+                  "2024-01-20T10:00:00Z"
+                ],
+                "description": "Date/time of last booked meeting for this deal (typically read-only).",
+                "is_property": true
+              },
+              "hs_all_assigned_business_unit_ids": {
+                "type": "string",
+                "examples": [
+                  "111;222"
+                ],
+                "description": "Semicolon-separated list of assigned business unit IDs (for Business Units add-on).",
+                "is_property": true
+              },
+              "hs_closed_amount_in_home_currency": {
+                "type": "string",
+                "examples": [
+                  "800.00"
+                ],
+                "description": "Closed amount in home currency (HubSpot-calculated).",
+                "is_property": true
+              },
+              "hs_projected_amount_in_home_currency": {
+                "type": "string",
+                "examples": [
+                  "935.00"
+                ],
+                "description": "Projected amount in home currency (HubSpot-calculated).",
+                "is_property": true
+              },
+              "engagements_last_meeting_booked_medium": {
+                "type": "string",
+                "examples": [
+                  "Meetings",
+                  "Email"
+                ],
+                "description": "Medium (e.g., 'Meetings') of last booked meeting (typically read-only).",
+                "is_property": true
+              },
+              "engagements_last_meeting_booked_source": {
+                "type": "string",
+                "examples": [
+                  "Calendar",
+                  "CRM"
+                ],
+                "description": "Source (e.g., 'Calendar') of last booked meeting (typically read-only).",
+                "is_property": true
+              },
+              "engagements_last_meeting_booked_campaign": {
+                "type": "string",
+                "examples": [
+                  "7a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d"
+                ],
+                "description": "Campaign ID for the last booked meeting (typically read-only).",
+                "is_property": true
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_CREATE_OBJECT_ASSOCIATION": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_CREATE_OBJECT_ASSOCIATION",
+          "description": "Tool to create or label an association between two CRM records using HubSpot Associations v4 API. Use when you need to link records (e.g., contact to company, deal to contact) with explicit association labels.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "objectType",
+              "objectId",
+              "toObjectType",
+              "toObjectId",
+              "labels"
+            ],
+            "properties": {
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "associationCategory",
+                    "associationTypeId"
+                  ],
+                  "properties": {
+                    "associationTypeId": {
+                      "type": "integer",
+                      "examples": [
+                        1,
+                        2,
+                        3,
+                        5,
+                        13,
+                        14,
+                        279,
+                        280,
+                        449,
+                        450
+                      ],
+                      "description": "The numeric type ID for this association label. IMPORTANT: Association type IDs are specific to each object type combination and direction. Common examples: Contact\u2192Company (1=primary, 279=unlabeled), Company\u2192Contact (2=primary, 280=unlabeled), Company\u2192Company (450=company_to_company, 13=parent_to_child, 14=child_to_parent), Contact\u2192Contact (449), Deal\u2192Contact (3), Deal\u2192Company (5). To find valid IDs for your object types, use the HUBSPOT_LIST_ASSOCIATION_TYPES action. Custom associations use IDs \u2265 100000."
+                    },
+                    "associationCategory": {
+                      "enum": [
+                        "HUBSPOT_DEFINED",
+                        "USER_DEFINED",
+                        "INTEGRATOR_DEFINED"
+                      ],
+                      "type": "string",
+                      "examples": [
+                        "HUBSPOT_DEFINED",
+                        "USER_DEFINED"
+                      ],
+                      "description": "Category of the association: HUBSPOT_DEFINED for standard associations, USER_DEFINED for custom user-created associations, or INTEGRATOR_DEFINED for integration-specific associations."
+                    }
+                  },
+                  "description": "Association label descriptor with category and type ID."
+                },
+                "minItems": 1,
+                "description": "Array of association label descriptors defining the type(s) of relationship between the two records. Each label includes an associationCategory and associationTypeId."
+              },
+              "objectId": {
+                "type": "string",
+                "examples": [
+                  "12345",
+                  "67890"
+                ],
+                "description": "The unique ID of the source CRM record."
+              },
+              "objectType": {
+                "type": "string",
+                "examples": [
+                  "contacts",
+                  "companies",
+                  "deals",
+                  "tickets"
+                ],
+                "description": "The type of the source object (e.g., 'contacts', 'companies', 'deals', 'tickets', or a custom object type)."
+              },
+              "toObjectId": {
+                "type": "string",
+                "examples": [
+                  "54321",
+                  "98765"
+                ],
+                "description": "The unique ID of the target CRM record to associate with."
+              },
+              "toObjectType": {
+                "type": "string",
+                "examples": [
+                  "companies",
+                  "contacts",
+                  "deals",
+                  "tickets"
+                ],
+                "description": "The type of the target object to associate with (e.g., 'contacts', 'companies', 'deals', 'tickets', or a custom object type)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_RETRIEVE_ALL_PIPELINES_FOR_SPECIFIED_OBJECT_TYPE": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_RETRIEVE_ALL_PIPELINES_FOR_SPECIFIED_OBJECT_TYPE",
+          "description": "Retrieves all pipelines in HubSpot for a specified CRM object type, such as deals or tickets.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "objectType"
+            ],
+            "properties": {
+              "objectType": {
+                "type": "string",
+                "examples": [
+                  "deals",
+                  "tickets"
+                ],
+                "description": "The case-sensitive CRM object type (e.g., 'deals', 'tickets') for which to retrieve pipelines; must support pipelines."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_LIST_ASSOCIATION_TYPES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_LIST_ASSOCIATION_TYPES",
+          "description": "Lists all valid association types between two specified HubSpot CRM object types.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "fromObjectType",
+              "toObjectType"
+            ],
+            "properties": {
+              "toObjectType": {
+                "type": "string",
+                "examples": [
+                  "contacts",
+                  "companies",
+                  "deals",
+                  "tickets"
+                ],
+                "description": "The type of the second object in the association (e.g., contact, company, deal)."
+              },
+              "fromObjectType": {
+                "type": "string",
+                "examples": [
+                  "contacts",
+                  "companies",
+                  "deals",
+                  "tickets"
+                ],
+                "description": "The type of the first object in the association (e.g., contact, company, deal)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_CREATE_DEAL_FROM_NL": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_CREATE_DEAL_FROM_NL",
+          "description": "Creates a new deal in HubSpot from a natural language description. Fetches the deal property schema ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_CREATE_DEAL_FROM_NL"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_SEARCH_DEALS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_DEALS",
+          "description": "Searches for HubSpot deals using flexible criteria and filters.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_SEARCH_DEALS"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+          "description": "Searches for HubSpot contacts using a text query, specific filter criteria (filters in a group are A...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_SEARCH_COMPANIES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_COMPANIES",
+          "description": "Searches for HubSpot companies using flexible criteria and filters.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_SEARCH_COMPANIES"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_READ_ASSOCIATIONS_BATCH": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_ASSOCIATIONS_BATCH",
+          "description": "Tool to batch-read CRM associations (e.g., deals\u2192contacts, deals\u2192companies) for up to 1,000 source r...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_READ_ASSOCIATIONS_BATCH"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:33:50.965Z",
+        "current_time_utc_epoch_seconds": 1786599230,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "copy",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"copy\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_C5FVfdxRwZ2_"
+  }
+}

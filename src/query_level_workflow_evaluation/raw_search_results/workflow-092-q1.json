@@ -1,0 +1,444 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-092-q1",
+    "workflow_id": 92,
+    "workflow_task": "Migrate active Todoist projects, sections, tasks, subtasks, labels, due dates, priorities, durations, and assignment metadata into a private ClickUp Space, then verify the migration without modifying Todoist source data.",
+    "query": "fetch active Todoist projects sections tasks subtasks labels due dates priorities durations and assignees",
+    "intent": "Retrieve all active tasks and their metadata from Todoist without modifying the source data.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "TODOIST_GET_ALL_PROJECTS",
+          "TODOIST_GET_ALL_TASKS",
+          "TODOIST_LIST_SECTIONS"
+        ],
+        "purpose": "fetch active projects, tasks, and sections from Todoist"
+      }
+    ],
+    "candidate_tools": [
+      "CLICKUP_CREATE_FOLDER",
+      "CLICKUP_CREATE_LIST",
+      "CLICKUP_CREATE_SPACE",
+      "CLICKUP_CREATE_SPACE_TAG",
+      "CLICKUP_CREATE_TASK",
+      "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES",
+      "CLICKUP_GET_FILTERED_TEAM_TASKS",
+      "CLICKUP_GET_FOLDERS",
+      "CLICKUP_GET_LISTS",
+      "CLICKUP_GET_SPACE",
+      "CLICKUP_GET_SPACES",
+      "CLICKUP_GET_SPACE_TAGS",
+      "CLICKUP_GET_TASK",
+      "CLICKUP_UPDATE_SPACE",
+      "CLICKUP_UPDATE_TASK",
+      "CLICKUP_UPDATE_WORKSPACE_ACL",
+      "TODOIST_GET_ALL_PROJECTS",
+      "TODOIST_GET_ALL_TASKS",
+      "TODOIST_LIST_SECTIONS"
+    ]
+  },
+  "request": {
+    "query": "fetch active Todoist projects sections tasks subtasks labels due dates priorities durations and assignees"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "fetch active Todoist projects sections tasks subtasks labels due dates priorities durations and assignees",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: List projects using TODOIST_GET_ALL_PROJECTS (capture project_id for grouping and downstream queries).",
+            "[Optional (if you need to restrict to a subset of projects)] [Prerequisite]: Find matching projects using TODOIST_SEARCH_PROJECTS (resolve project_id before project-scoped pulls).",
+            "[Optional (if you need section grouping)] [Step]: List sections using TODOIST_LIST_SECTIONS (optionally scoped by project_id; map section_id\u2192project_id for joins).",
+            "[Required] [Step]: List active tasks using TODOIST_GET_ALL_TASKS (paginate via cursor/next_cursor; validate each task\u2019s project_id when scoping; join to projects/sections by IDs).",
+            "[Required] [Step]: List completed tasks using TODOIST_LIST_COMPLETED_TASKS (optionally by project_id; paginate via cursor/next_cursor; parse completed items from completed-task shape).",
+            "[Optional (for focused views or QA)] [Next Step]: Refine the active task set using TODOIST_FILTER_TASKS (apply query; re-join to projects/sections).",
+            "[Optional (if you need richer per-project context)] [Next Step]: Enrich a project snapshot using TODOIST_GET_PROJECT_FULL (reduce joins when building the final output).",
+            "[Optional (if completed history is too large or you only need a window)] [Fallback]: Fetch completions using TODOIST_GET_COMPLETED_TASKS_BY_COMPLETION_DATE (since/until in desired timezone; paginate via cursor/next_cursor until empty)."
+          ],
+          "known_pitfalls": [
+            "[TODOIST_LIST_SECTIONS] Sections are returned under response.data.results (not a top-level array).",
+            "[TODOIST_GET_ALL_TASKS] Returns only active/incomplete tasks; completion history must come from TODOIST_LIST_COMPLETED_TASKS or TODOIST_GET_COMPLETED_TASKS_BY_COMPLETION_DATE.",
+            "[TODOIST_LIST_COMPLETED_TASKS] Completed-task payload commonly uses data.items (different from active task shapes) and can be very large; scope by project_id when possible.",
+            "[TODOIST_FILTER_TASKS] Active tasks are returned under data.results (not data.tasks), so downstream parsing must branch by tool response shape.",
+            "[TODOIST_GET_COMPLETED_TASKS_BY_COMPLETION_DATE] Results are under response.data.items and may be empty for a window even when pagination fields are present."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse a combined tool payload to summarize how many active tasks exist per project_id.",
+              "code": "```python\nimport json,collections\npayload=json.loads(s)\nprojects=payload[\"results\"][0][\"response\"][\"data\"][\"projects\"]\ntasks=payload[\"results\"][1][\"response\"][\"data\"][\"tasks\"]\ncounts=collections.Counter(t.get(\"project_id\") for t in tasks)\nprint({\"project_count\":len(projects),\"active_task_counts_by_project_id\":dict(counts)})\n```"
+            },
+            {
+              "description": "Extract active/completed/section lists defensively when response shapes differ or keys are nested.",
+              "code": "```python\nimport json\np=json.loads(s)\nsec=p[\"results\"][0][\"response\"][\"data\"].get(\"results\") or []\nactive=p[\"results\"][1][\"response\"][\"data\"].get(\"tasks\") or []\ncompleted=p[\"results\"][2][\"response\"][\"data\"].get(\"items\") or []\nprint({\"sections\":len(sec),\"active\":len(active),\"completed\":len(completed)})\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "TODOIST_GET_ALL_PROJECTS",
+            "TODOIST_LIST_SECTIONS",
+            "TODOIST_GET_ALL_TASKS",
+            "TODOIST_LIST_COMPLETED_TASKS"
+          ],
+          "related_tool_slugs": [
+            "TODOIST_GET_COMPLETED_TASKS_BY_COMPLETION_DATE",
+            "TODOIST_FILTER_TASKS",
+            "TODOIST_GET_PROJECT_FULL",
+            "TODOIST_SEARCH_PROJECTS",
+            "TODOIST_SYNC",
+            "TODOIST_LIST_ACTIVITIES"
+          ],
+          "toolkits": [
+            "todoist"
+          ],
+          "plan_id": "1523a7f8ba7d4622a9a389b6dbf7314d"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "todoist",
+          "has_active_connection": false,
+          "description": "Todoist is a task management tool allowing users to create to-do lists, set deadlines, and collaborate on projects with reminders and cross-platform syncing",
+          "status_message": "No Active connection for toolkit=todoist. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"todoist\") to create a connection BEFORE executing any todoist tools."
+        }
+      ],
+      "tool_schemas": {
+        "TODOIST_GET_ALL_PROJECTS": {
+          "toolkit": "TODOIST",
+          "tool_slug": "TODOIST_GET_ALL_PROJECTS",
+          "description": "Get all projects from a user's Todoist account. Retrieves all active (non-archived) projects; use TODOIST_LIST_ARCHIVED_WORKSPACE_PROJECTS for archived ones. Response returns the list in the projects field, with fields including project_id, name, color, parent project, sharing status, and is_inbox_project flag. Always reference projects by project_id \u2014 names are non-unique and may be localized. Detect the Inbox via is_inbox_project, not by name. Results are a point-in-time snapshot; re-call after structural changes before relying on cached project_ids. In large accounts, paginate until no next-page token remains to avoid missing projects. Check existing projects before creating new ones to prevent duplicates.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The number of projects to return per page. Defaults to server default if not provided."
+              },
+              "cursor": {
+                "type": "string",
+                "description": "Pagination cursor from a previous response. Use the next_cursor value to fetch the next page of results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TODOIST_LIST_SECTIONS": {
+          "toolkit": "TODOIST",
+          "tool_slug": "TODOIST_LIST_SECTIONS",
+          "description": "Tool to get all active sections for the user, with optional filtering by project. Supports cursor-based pagination to handle large result sets.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  50,
+                  100
+                ],
+                "description": "The number of objects to return in a page. Default is 50."
+              },
+              "cursor": {
+                "type": "string",
+                "examples": [
+                  "eyJwYWdlIjogMn0"
+                ],
+                "description": "Pagination cursor for fetching the next page of results. Use the next_cursor value from a previous response."
+              },
+              "project_id": {
+                "type": "string",
+                "examples": [
+                  "2203306141"
+                ],
+                "description": "String ID of the project to get sections from. If omitted or null, get sections from all projects."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TODOIST_GET_ALL_TASKS": {
+          "toolkit": "TODOIST",
+          "tool_slug": "TODOIST_GET_ALL_TASKS",
+          "description": "Fetches all INCOMPLETE tasks from Todoist and returns their details. Supports cursor-based pagination. IMPORTANT LIMITATIONS: - This endpoint only returns active (incomplete) tasks - Cannot retrieve completed tasks - use a different endpoint for that - Filter queries using 'completed', '!completed', or 'completed after' will fail - Project/label references must use ACTUAL EXISTING names from the user's account - Arbitrary text in filters causes 400 errors - use 'search: keyword' for text search Common use cases: - Get all tasks: no filter - Get today's tasks: filter=\"today\" - Get overdue tasks: filter=\"overdue\" - Get tasks from specific project: filter=\"#ProjectName\" (project must exist) - Get high priority tasks: filter=\"p1\" - Search task content: filter=\"search: keyword\" - Paginate results: use limit and cursor parameters",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "6Xvwww9XFpHQc2qW",
+                    "6Xvwww8jQhrQjFPW"
+                  ]
+                ],
+                "description": "List of task IDs to retrieve (alphanumeric string IDs)."
+              },
+              "lang": {
+                "type": "string",
+                "examples": [
+                  "en",
+                  "es"
+                ],
+                "description": "Language code for parsing date/times in queries."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  50,
+                  100
+                ],
+                "description": "The number of tasks to return per page. Default is 50."
+              },
+              "cursor": {
+                "type": "string",
+                "description": "Cursor for pagination. Provide the next_cursor value from previous response to get next page."
+              },
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "today | overdue",
+                  "7 days",
+                  "-7 days",
+                  "created after: -14 days",
+                  "p1 & !#Work",
+                  "#Personal",
+                  "search: meeting",
+                  "search: yoga | search: gym",
+                  "due after: 2024-01-01",
+                  "no due date"
+                ],
+                "description": "Filter tasks using Todoist filter syntax. This endpoint only returns INCOMPLETE tasks. Terms must be valid keywords or reference existing entities; arbitrary text causes 400 errors. Supported filters: predefined keywords ('today', 'overdue', 'no due date', etc.), priority ('p1'-'p4'), projects ('#Name'), labels ('@Name'), relative dates ('7 days', '-7 days'), date filters ('due before: YYYY-MM-DD'), created/deadline ('created after: -14 days'), search ('search: keyword'). Operators: '&' (AND), '|' (OR), '!' (NOT). DO NOT USE: 'completed', '!completed', 'completed after' - these cause 400 errors on this endpoint (use TODOIST_GET_COMPLETED_TASKS_BY_COMPLETION_DATE instead)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TODOIST_LIST_COMPLETED_TASKS": {
+          "toolkit": "TODOIST",
+          "tool_slug": "TODOIST_LIST_COMPLETED_TASKS",
+          "description": "Tool to retrieve all completed tasks with optional project filtering. Use when you need to fetch completed tasks without date range restrictions. Note: This action uses an undocumented Todoist API endpoint (/api/v1/tasks/completed). The endpoint is not officially documented but is confirmed to work based on runtime testing. The response schemas are based on actual API responses.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  50,
+                  100
+                ],
+                "description": "Maximum number of tasks to return per page. Optional parameter."
+              },
+              "cursor": {
+                "type": "string",
+                "examples": [
+                  "eyJwYWdlIjogMn0"
+                ],
+                "description": "Pagination cursor from previous response to fetch next page of results. Optional parameter."
+              },
+              "project_id": {
+                "type": "string",
+                "examples": [
+                  "2203306141",
+                  "6fm7pCWp5Q3hhwHW"
+                ],
+                "description": "Filter completed tasks by project ID. Optional parameter."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TODOIST_GET_COMPLETED_TASKS_BY_COMPLETION_DATE": {
+          "toolkit": "TODOIST",
+          "tool_slug": "TODOIST_GET_COMPLETED_TASKS_BY_COMPLETION_DATE",
+          "description": "Tool to retrieve completed tasks within a specified completion date window. Use when you need to fetch historical completed tasks for reporting, audits, or weekly summaries. The API restricts the completion-date range to approximately 3 months between since and until parameters.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "since",
+              "until"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  50,
+                  100
+                ],
+                "description": "Maximum number of tasks to return per page. Optional parameter. API default is 50."
+              },
+              "since": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01T00:00:00Z",
+                  "2024-06-15T08:00:00Z"
+                ],
+                "description": "Start date for filtering completed tasks in RFC3339 format (e.g., '2024-01-01T00:00:00Z'). Must be before 'until'. Maximum range between 'since' and 'until' is 3 months (~92 days)."
+              },
+              "until": {
+                "type": "string",
+                "examples": [
+                  "2024-01-31T23:59:59Z",
+                  "2024-06-22T08:00:00Z"
+                ],
+                "description": "End date for filtering completed tasks in RFC3339 format (e.g., '2024-01-31T23:59:59Z'). Must be after 'since'. Maximum range between 'since' and 'until' is 3 months (~92 days)."
+              },
+              "cursor": {
+                "type": "string",
+                "examples": [
+                  "eyJwYWdlIjogMn0"
+                ],
+                "description": "Pagination cursor from previous response to fetch next page of results. Optional parameter."
+              },
+              "parent_id": {
+                "type": "string",
+                "examples": [
+                  "6fr9mHQJG3HV7gC4",
+                  "6fv2q9PfJXHjxqW4"
+                ],
+                "description": "Parent task ID in v2 alphanumeric format (e.g., '6fr9mHQJG3HV7gC4') to filter completed subtasks. Use IDs from TODOIST_GET_ALL_TASKS. Numeric v1 IDs are deprecated."
+              },
+              "project_id": {
+                "type": "string",
+                "examples": [
+                  "6fm7pCWp5Q3hhwHW",
+                  "6XvwwRvRfmCjM5PW"
+                ],
+                "description": "Project ID in v2 alphanumeric format (e.g., '6fm7pCWp5Q3hhwHW'). Use IDs from TODOIST_GET_ALL_PROJECTS. Numeric v1 IDs are deprecated."
+              },
+              "section_id": {
+                "type": "string",
+                "examples": [
+                  "6fm7pCWp5Q3hhwHW",
+                  "6X7FxXvX84jHphx2"
+                ],
+                "description": "Section ID in v2 alphanumeric format (e.g., '6fm7pCWp5Q3hhwHW'). Use IDs from TODOIST_GET_ALL_SECTIONS. Numeric v1 IDs are deprecated."
+              },
+              "filter_lang": {
+                "type": "string",
+                "examples": [
+                  "en",
+                  "es",
+                  "fr"
+                ],
+                "description": "Language code for parsing filter_query. Optional parameter."
+              },
+              "filter_query": {
+                "type": "string",
+                "examples": [
+                  "p1",
+                  "#Work",
+                  "@urgent"
+                ],
+                "description": "Filter query string using Todoist's filter syntax to further refine results. Optional parameter."
+              },
+              "workspace_id": {
+                "type": "string",
+                "examples": [
+                  "6XvwwRvRfmCjM5PW"
+                ],
+                "description": "Workspace ID in v2 alphanumeric format (e.g., '6XvwwRvRfmCjM5PW'). Use IDs from TODOIST_GET_ALL_PROJECTS or similar actions. Numeric v1 IDs are deprecated."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "TODOIST_FILTER_TASKS": {
+          "toolkit": "TODOIST",
+          "tool_slug": "TODOIST_FILTER_TASKS",
+          "description": "Tool to get all tasks matching the filter. Use when you need to retrieve tasks based on specific fil...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TODOIST_FILTER_TASKS"
+              ]
+            }
+          }
+        },
+        "TODOIST_GET_PROJECT_FULL": {
+          "toolkit": "TODOIST",
+          "tool_slug": "TODOIST_GET_PROJECT_FULL",
+          "description": "Tool to retrieve full project data including all sections, tasks, and collaborators. Use when you ne...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TODOIST_GET_PROJECT_FULL"
+              ]
+            }
+          }
+        },
+        "TODOIST_SEARCH_PROJECTS": {
+          "toolkit": "TODOIST",
+          "tool_slug": "TODOIST_SEARCH_PROJECTS",
+          "description": "Search active user projects by name with support for wildcards and pagination. Use when you need to ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TODOIST_SEARCH_PROJECTS"
+              ]
+            }
+          }
+        },
+        "TODOIST_SYNC": {
+          "toolkit": "TODOIST",
+          "tool_slug": "TODOIST_SYNC",
+          "description": "Tool to sync data with Todoist server, supporting both read and write operations. This is the centra...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TODOIST_SYNC"
+              ]
+            }
+          }
+        },
+        "TODOIST_LIST_ACTIVITIES": {
+          "toolkit": "TODOIST",
+          "tool_slug": "TODOIST_LIST_ACTIVITIES",
+          "description": "Tool to get activity logs from Todoist. Returns a paginated list of activity events for the user. Ev...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "TODOIST_LIST_ACTIVITIES"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:39:17.660Z",
+        "current_time_utc_epoch_seconds": 1786599557,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "paid",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"paid\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_U_IYjeztVZjq"
+  }
+}

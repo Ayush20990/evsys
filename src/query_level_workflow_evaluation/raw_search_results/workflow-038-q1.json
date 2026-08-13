@@ -1,0 +1,411 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-038-q1",
+    "workflow_id": 38,
+    "workflow_task": "Analyze Salesforce opportunity and pipeline data, read and update a Google Sheets tracking spreadsheet, search a Salesforce account, and attempt to send a Slack direct message with CRM-derived context.",
+    "query": "search Salesforce accounts and opportunities",
+    "intent": "Search for Salesforce account and pipeline opportunity data.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "SALESFORCE_SEARCH_ACCOUNTS",
+          "SALESFORCE_RUN_SOQL_QUERY"
+        ],
+        "purpose": "Search Salesforce accounts and opportunities"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+      "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+      "SALESFORCE_QUERY",
+      "SALESFORCE_RUN_SOQL_QUERY",
+      "SALESFORCE_SEARCH_ACCOUNTS",
+      "SLACK_FIND_USER_BY_EMAIL_ADDRESS"
+    ]
+  },
+  "request": {
+    "query": "search Salesforce accounts and opportunities"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search Salesforce accounts and opportunities",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if field API names, permissions, or custom objects are uncertain)] [Prerequisite]: Validate readable fields and object API names using SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT and SALESFORCE_GET_ALL_CUSTOM_OBJECTS (avoid requesting non-existent/unreadable fields).",
+            "[Optional (if name-based matching is noisy and you need cross-object discovery)] [Prerequisite]: Broadly search relevant records using SALESFORCE_EXECUTE_SOSL_SEARCH (use results to refine the account to query).",
+            "[Required] [Step]: Find candidate accounts using SALESFORCE_SEARCH_ACCOUNTS (search by the provided organization/account name; start with only identifier + display name fields).",
+            "[Required] [Step]: Retrieve related opportunities using SALESFORCE_SEARCH_OPPORTUNITIES (scope by the resolved AccountId when possible; request only fields needed to filter/rank such as stage, amount, closing date, and record owner).",
+            "[Required] [Next Step]: If multiple matches exist, disambiguate and confirm the intended opportunity (compare stage/amount/closing date/owner) and select a single opportunity identifier.",
+            "[Optional (if additional context is needed after selecting identifiers)] [Next Step]: Fetch record details using SALESFORCE_GET_OPPORTUNITY and/or SALESFORCE_GET_ACCOUNT (request only needed fields when possible).",
+            "[Fallback (if searches return none/too many results or deterministic filtering/sorting is required)] [Fallback]: Re-run with SALESFORCE_RUN_SOQL_QUERY (SELECT only validated fields; filter by AccountId and status/owner/closing date; add ORDER BY and LIMIT)."
+          ],
+          "known_pitfalls": [
+            "[SALESFORCE_SEARCH_ACCOUNTS] HTTP 400 INVALID_FIELD if any requested field is missing or not permitted; retry with only identifier/display name fields or validate via SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT.",
+            "[SALESFORCE_SEARCH_OPPORTUNITIES] HTTP 400 INVALID_FIELD when requesting unavailable fields; reduce field set and/or validate fields with SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT.",
+            "[SALESFORCE_RUN_SOQL_QUERY] SOQL must be passed in the required input key query; empty matches return totalSize=0 with records=[].",
+            "[SALESFORCE_RUN_SOQL_QUERY] IN-clause identifier values must be correctly single-quoted or the query can fail.",
+            "[SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT] Display labels can be ambiguous; prefer API-name validation when similar labels exist."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Batch identifier lists to keep SOQL IN clauses manageable.",
+              "code": "```python\ndef batched(xs,n):\n    for i in range(0,len(xs),n):\n        yield xs[i:i+n]\n\nfor b in batched(record_ids,10):\n    ids='(' + ','.join([f\"\\'{x}\\'\" for x in b]) + ')'\n    q=f\"SELECT Id,AccountId,StageName,CloseDate FROM Opportunity WHERE AccountId IN {ids} AND IsClosed=false\"\n```"
+            },
+            {
+              "description": "Run multiple SOQL statements and accumulate returned records.",
+              "code": "```python\ndef run_soql_batched(run_tool, queries):\n    out=[]\n    for q in queries:\n        res, err = run_tool(\"SALESFORCE_RUN_SOQL_QUERY\", {\"query\": q})\n        if err:\n            continue\n        out.extend(((res or {}).get(\"data\", {}) or {}).get(\"records\", []) or [])\n    return out\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "SALESFORCE_SEARCH_ACCOUNTS",
+            "SALESFORCE_SEARCH_OPPORTUNITIES"
+          ],
+          "related_tool_slugs": [
+            "SALESFORCE_GET_ACCOUNT",
+            "SALESFORCE_GET_OPPORTUNITY",
+            "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+            "SALESFORCE_RUN_SOQL_QUERY",
+            "SALESFORCE_EXECUTE_SOSL_SEARCH",
+            "SALESFORCE_GET_ALL_CUSTOM_OBJECTS"
+          ],
+          "toolkits": [
+            "salesforce"
+          ],
+          "plan_id": "ada34b36c8074867ba4082b3de3e44de"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "salesforce",
+          "has_active_connection": false,
+          "description": "Salesforce is a leading CRM platform integrating sales, service, marketing, and analytics to build customer relationships and drive business growth",
+          "status_message": "No Active connection for toolkit=salesforce. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"salesforce\") to create a connection BEFORE executing any salesforce tools."
+        }
+      ],
+      "tool_schemas": {
+        "SALESFORCE_SEARCH_ACCOUNTS": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_SEARCH_ACCOUNTS",
+          "description": "Search for Salesforce accounts using criteria like name, industry, type, location, or contact information. Always provide at least one filter parameter; omitting all filters returns a broad, slow listing. Owner/territory filtering is unsupported \u2014 use SALESFORCE_RUN_SOQL_QUERY for ownership-based filters. Use SALESFORCE_GET_ACCOUNT to fetch complete field data for a specific record. Unsupported filter fields may be silently ignored \u2014 verify results reflect intended criteria.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Acme Corp",
+                  "Tech Solutions",
+                  "Inc"
+                ],
+                "description": "Search by account name. Supports partial matches."
+              },
+              "type": {
+                "type": "string",
+                "examples": [
+                  "Customer - Direct",
+                  "Customer - Channel",
+                  "Prospect",
+                  "Partner"
+                ],
+                "description": "Search by account type. Note: The Type field may not exist in all Salesforce orgs. If the query fails with 'No such column Type', either omit this parameter or use a custom Type__c field if available in your org."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 50,
+                "maximum": 2000,
+                "minimum": 1,
+                "description": "Maximum number of accounts to return. Results are hard-capped at approximately 2000 rows; use more selective filters if the full dataset exceeds this."
+              },
+              "phone": {
+                "type": "string",
+                "examples": [
+                  "555-1234",
+                  "800",
+                  "+1"
+                ],
+                "description": "Search by phone number. Supports partial matches. Requires field-level security access to the Phone field."
+              },
+              "fields": {
+                "type": "string",
+                "default": "Id,Name,Industry,Phone,Website,BillingStreet,BillingCity,BillingState,BillingCountry,NumberOfEmployees",
+                "examples": [
+                  "Id,Name,Industry,Phone,Website",
+                  "Id,Name,Industry,Phone,Website,BillingCity,BillingState,NumberOfEmployees"
+                ],
+                "description": "Comma-separated list of valid Salesforce Account field API names to retrieve. Only use actual field names like Id, Name, Industry, etc. Do not include type annotations or placeholders like <string> or <DATE_TIME>. If any field in this list is restricted by field-level security, the entire request will fail \u2014 use a minimal set of standard fields (e.g., Id,Name,Website) when access is uncertain."
+              },
+              "website": {
+                "type": "string",
+                "examples": [
+                  "acme.com",
+                  ".com",
+                  "https://"
+                ],
+                "description": "Search by website. Supports partial matches."
+              },
+              "industry": {
+                "type": "string",
+                "examples": [
+                  "Technology",
+                  "Healthcare",
+                  "Manufacturing",
+                  "Financial Services"
+                ],
+                "description": "Search by industry."
+              },
+              "billing_city": {
+                "type": "string",
+                "examples": [
+                  "San Francisco",
+                  "New York",
+                  "Chicago"
+                ],
+                "description": "Search by billing city. Supports partial matches."
+              },
+              "billing_state": {
+                "type": "string",
+                "examples": [
+                  "CA",
+                  "NY",
+                  "Texas"
+                ],
+                "description": "Search by billing state/province. Supports partial matches."
+              },
+              "billing_country": {
+                "type": "string",
+                "examples": [
+                  "United States",
+                  "Canada",
+                  "UK"
+                ],
+                "description": "Search by billing country. Supports partial matches."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_SEARCH_OPPORTUNITIES": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_SEARCH_OPPORTUNITIES",
+          "description": "Search for Salesforce opportunities using multiple criteria like name, account, stage, amount, close date, or status. Apply at least one filter to avoid broad result sets. Partial-match searches may return multiple similar records; verify the correct record by Id before downstream use.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Q4 Deal",
+                  "Enterprise Sale",
+                  "Renewal"
+                ],
+                "description": "Search by opportunity name. Supports partial matches."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 50,
+                "maximum": 2000,
+                "minimum": 1,
+                "description": "Maximum number of opportunities to return. Maximum value is 2000. When totalSize in the response exceeds limit, use nextRecordsUrl to paginate through the full dataset."
+              },
+              "fields": {
+                "type": "string",
+                "default": "Id,Name,AccountId,Account.Name,StageName,Amount,CloseDate,IsClosed,IsWon,Probability,LeadSource,CreatedDate",
+                "examples": [
+                  "Id,Name,AccountId,Account.Name,StageName,Amount,CloseDate",
+                  "Id,Name,AccountId,Account.Name,StageName,Amount,CloseDate,IsClosed,IsWon,Probability"
+                ],
+                "description": "Comma-separated list of Opportunity fields to retrieve. Supports direct Opportunity fields (e.g., Id, Name, Amount) and parent relationship fields (e.g., Account.Name, Owner.Name). Note: Contact.* fields (Contact.Name, Contact.Email, etc.) are NOT valid because Opportunity does not have a direct parent relationship to Contact; use OpportunityContactRole queries to get contact information. Parent relationship fields like Account.Name may be null on returned records; guard against missing nested values when post-processing."
+              },
+              "is_won": {
+                "type": "boolean",
+                "description": "Filter by won status. True for won opportunities, False for lost (only applies to closed opportunities)."
+              },
+              "is_closed": {
+                "type": "boolean",
+                "description": "Filter by closed status. True for closed opportunities, False for open."
+              },
+              "amount_max": {
+                "type": "number",
+                "examples": [
+                  100000,
+                  1000000
+                ],
+                "description": "Maximum opportunity amount."
+              },
+              "amount_min": {
+                "type": "number",
+                "examples": [
+                  1000,
+                  50000
+                ],
+                "description": "Minimum opportunity amount."
+              },
+              "stage_name": {
+                "type": "string",
+                "examples": [
+                  "Prospecting",
+                  "Qualification",
+                  "Proposal/Price Quote",
+                  "Closed Won"
+                ],
+                "description": "Search by opportunity stage."
+              },
+              "lead_source": {
+                "type": "string",
+                "examples": [
+                  "Web",
+                  "Phone Inquiry",
+                  "Partner Referral"
+                ],
+                "description": "Search by lead source."
+              },
+              "account_name": {
+                "type": "string",
+                "examples": [
+                  "Acme Corp",
+                  "Tech Solutions"
+                ],
+                "description": "Search by associated account name. Supports partial matches."
+              },
+              "close_date_to": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31",
+                  "2025-06-30",
+                  "2025-09-30"
+                ],
+                "description": "Search opportunities with close date before this date (YYYY-MM-DD)."
+              },
+              "close_date_from": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01",
+                  "2024-06-15",
+                  "2025-03-31"
+                ],
+                "description": "Search opportunities with close date from this date (YYYY-MM-DD). When computing relative ranges (e.g., 'this week'), derive dates using the user's local timezone to avoid off-by-one-day errors."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_GET_ACCOUNT": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_ACCOUNT",
+          "description": "Retrieves a specific account by ID from Salesforce, returning all available fields.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "account_id"
+            ],
+            "properties": {
+              "account_id": {
+                "type": "string",
+                "examples": [
+                  "001Wd00000BSLklIAH",
+                  "001XXXXXXXXXXXXXXX"
+                ],
+                "description": "The Salesforce ID of the account to retrieve."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_GET_OPPORTUNITY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_OPPORTUNITY",
+          "description": "Retrieves a specific opportunity by ID from Salesforce, returning all available fields.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_OPPORTUNITY"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+          "description": "Retrieves all fields (standard and custom) for a Salesforce object with complete metadata including ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_RUN_SOQL_QUERY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_RUN_SOQL_QUERY",
+          "description": "Executes a SOQL query against Salesforce data. Returns records matching the query with pagination su...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_RUN_SOQL_QUERY"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_EXECUTE_SOSL_SEARCH": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_EXECUTE_SOSL_SEARCH",
+          "description": "Execute a SOSL search to search across multiple Salesforce objects. Use when you need to search for ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_EXECUTE_SOSL_SEARCH"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_GET_ALL_CUSTOM_OBJECTS": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_ALL_CUSTOM_OBJECTS",
+          "description": "Retrieves Salesforce objects (standard and custom) with detailed metadata. Each object includes a 'c...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_ALL_CUSTOM_OBJECTS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:33:03.728Z",
+        "current_time_utc_epoch_seconds": 1786599183,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "rise",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"rise\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_cnzORzSIdq5r"
+  }
+}

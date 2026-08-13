@@ -1,0 +1,329 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-081-q1",
+    "workflow_id": 81,
+    "workflow_task": "Inventory YouTube channel videos, generate and update video metadata in bulk, verify updates, and fetch captions/transcript for a YouTube video.",
+    "query": "list all videos in youtube channel",
+    "intent": "Retrieve an inventory of videos from a specific YouTube channel.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "YOUTUBE_LIST_CHANNEL_VIDEOS",
+          "YOUTUBE_LIST_PLAYLIST_ITEMS"
+        ],
+        "purpose": "List videos in a YouTube channel"
+      }
+    ],
+    "candidate_tools": [
+      "YOUTUBE_GET_CHANNEL_STATISTICS",
+      "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+      "YOUTUBE_LIST_CAPTION_TRACK",
+      "YOUTUBE_LIST_CHANNEL_VIDEOS",
+      "YOUTUBE_LIST_PLAYLIST_ITEMS",
+      "YOUTUBE_LOAD_CAPTIONS",
+      "YOUTUBE_UPDATE_VIDEO"
+    ]
+  },
+  "request": {
+    "query": "list all videos in youtube channel"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "list all videos in youtube channel",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if starting from a public handle)] [Prerequisite]: Resolve a stable channel identifier using YOUTUBE_GET_CHANNEL_ID_BY_HANDLE (avoid ambiguous targeting and aid retries).",
+            "[Optional (if you need to confirm channel context)] [Step]: Fetch channel details using YOUTUBE_GET_CHANNEL_STATISTICS (sanity-check the target before listing).",
+            "[Required] [Step]: List uploaded/published videos using YOUTUBE_LIST_CHANNEL_VIDEOS (authenticated mode or explicit channel identifier; collect snippet fields and items[].snippet.resourceId.videoId).",
+            "[Optional (if the list is unexpectedly empty/incomplete)] [Step]: Cross-check recent visibility using YOUTUBE_GET_CHANNEL_ACTIVITIES (confirm there are visible uploads before concluding none).",
+            "[Optional (if nextPageToken present)] [Next Step]: Paginate YOUTUBE_LIST_CHANNEL_VIDEOS (use pageToken=nextPageToken from the immediately prior response; stop when absent/falsy or target count reached).",
+            "[Optional (if you need status, duration, thumbnails, or engagement metrics)] [Next Step]: Enrich collected IDs using YOUTUBE_GET_VIDEO_DETAILS_BATCH (batch calls; merge by items[].id; treat missing items as private/removed).",
+            "[Optional (if response is large or needs cleanup)] [Step]: Post-process with COMPOSIO_REMOTE_WORKBENCH (extract fields, de-duplicate, sort).",
+            "[Fallback (if YOUTUBE_LIST_CHANNEL_VIDEOS is empty/blocked/incomplete)] [Fallback]: Enumerate uploads using YOUTUBE_LIST_PLAYLIST_ITEMS (paginate via nextPageToken; extract video IDs, then optionally enrich via YOUTUBE_GET_VIDEO_DETAILS_BATCH)."
+          ],
+          "known_pitfalls": [
+            "[YOUTUBE_GET_CHANNEL_ID_BY_HANDLE] Handle typically must start with '@'; invalid input can yield empty items[] (no items[0].id).",
+            "[YOUTUBE_LIST_CHANNEL_VIDEOS] Returned items are playlistItem-shaped; video ID is at items[].snippet.resourceId.videoId (items[].id is not the video ID) and large payloads may be truncated in previews.",
+            "[YOUTUBE_LIST_CHANNEL_VIDEOS] Authenticated mode can still behave as if a channel identifier is missing\u2014retry with an explicit channel identifier; pageToken misuse can trigger HTTP 400 and tokens may not be reusable across runs.",
+            "[YOUTUBE_GET_VIDEO_DETAILS_BATCH] Limit is ~50 videoIds per call; responses may omit private/removed IDs\u2014diff requested IDs vs items[].id.",
+            "[YOUTUBE_GET_VIDEO_DETAILS_BATCH] statistics values are string-typed and contentDetails.duration is ISO-8601; parse before sorting/aggregating."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract videoId/title/publishedAt from playlistItem-shaped YOUTUBE_LIST_CHANNEL_VIDEOS response.",
+              "code": "```python\nitems=data.get('items',[])\nrows=[{'videoId':(((it.get('snippet') or {}).get('resourceId') or {}).get('videoId')),'title':(it.get('snippet') or {}).get('title'),'publishedAt':(it.get('snippet') or {}).get('publishedAt')} for it in items]\nrows=[r for r in rows if r['videoId']]\n```"
+            },
+            {
+              "description": "Parse YOUTUBE_LIST_PLAYLIST_ITEMS and keep usable video IDs/titles while skipping unavailable placeholders.",
+              "code": "```python\nitems=data.get('items',[])\nout=[]\nfor it in items:\n    vid=((it.get('contentDetails') or {}).get('videoId') or (((it.get('snippet') or {}).get('resourceId') or {}).get('videoId')))\n    title=(it.get('snippet') or {}).get('title')\n    if not vid or not title or title.lower().startswith('deleted'):\n        continue\n    out.append((vid,title))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "YOUTUBE_LIST_CHANNEL_VIDEOS"
+          ],
+          "related_tool_slugs": [
+            "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+            "YOUTUBE_GET_CHANNEL_STATISTICS",
+            "YOUTUBE_LIST_PLAYLIST_ITEMS",
+            "YOUTUBE_GET_CHANNEL_ID_BY_HANDLE",
+            "YOUTUBE_GET_CHANNEL_ACTIVITIES"
+          ],
+          "toolkits": [
+            "youtube"
+          ],
+          "plan_id": "20257b1bee6c421ca3a027b576987263"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "youtube",
+          "has_active_connection": false,
+          "description": "YouTube is a video-sharing platform with user-generated content, live streaming, and monetization opportunities, widely used for marketing, education, and entertainment",
+          "status_message": "No Active connection for toolkit=youtube. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"youtube\") to create a connection BEFORE executing any youtube tools."
+        }
+      ],
+      "tool_schemas": {
+        "YOUTUBE_LIST_CHANNEL_VIDEOS": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_LIST_CHANNEL_VIDEOS",
+          "description": "Lists videos from a specified YouTube channel. This action primarily uses the playlistItems.list endpoint with the channel's uploads playlist, which is the recommended approach by YouTube. The uploads playlist ID is obtained by fetching the channel resource via the Channels API and extracting the playlist ID from contentDetails.relatedPlaylists.uploads field. If the uploads playlist returns a 404 error (which can happen due to a known YouTube API bug where the returned playlist ID doesn't actually exist), the action automatically falls back to the search.list endpoint to retrieve channel videos. Note that the search fallback has higher quota cost (100 units vs 1 unit) and is limited to 500 results. If a channel exists but has no uploads playlist (e.g., brand accounts, channels with all videos deleted, or channels that haven't uploaded any public content), an empty result set is returned instead of an error.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "mine": {
+                "type": "boolean",
+                "description": "Set to true to list videos from the authenticated user's channel. When true, channelId is automatically set to 'me'. Either channelId or mine must be provided."
+              },
+              "part": {
+                "type": "string",
+                "default": "snippet",
+                "examples": [
+                  "snippet"
+                ],
+                "description": "This parameter specifies which parts of the playlist item resource to return. The snippet includes basic video details like ID, title, description, and thumbnails."
+              },
+              "channelId": {
+                "type": "string",
+                "examples": [
+                  "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+                  "@Google",
+                  "me",
+                  "https://www.youtube.com/@Google"
+                ],
+                "maxLength": 2048,
+                "minLength": 1,
+                "description": "The YouTube channel identifier (exactly 24 characters for UC IDs). Accepts: (1) channel ID starting with 'UC' followed by 22 characters (e.g., 'UC_x5XG1OV2P6uZZ5FSM9Ttw'), (2) channel handle starting with '@' (e.g., '@Google'), (3) 'me' for the authenticated user's channel, or (4) YouTube channel URLs with /@handle or /channel/UC... format. Do NOT pass OAuth tokens, API keys, or other credentials here - only channel identifiers. Legacy /user/username URLs are supported but legacy /c/ custom URLs are not. Either channelId or mine must be provided."
+              },
+              "pageToken": {
+                "type": "string",
+                "examples": [
+                  "CAUQAA"
+                ],
+                "description": "Token for pagination; use `nextPageToken` from a previous response for the next page, or `prevPageToken` for the previous page. Page tokens are opaque, ephemeral values that must come directly from a previous LIST_CHANNEL_VIDEOS response and cannot be constructed or reused across different queries."
+              },
+              "maxResults": {
+                "type": "integer",
+                "default": 5,
+                "maximum": 50,
+                "minimum": 1,
+                "examples": [
+                  "5"
+                ],
+                "description": "The maximum number of videos to return per page."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_GET_VIDEO_DETAILS_BATCH": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+          "description": "Retrieves multiple YouTube video resource parts in a single batch call. Use when you need cohort-level metrics for many videos to reduce quota usage and latency.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "hl": {
+                "type": "string",
+                "examples": [
+                  "en"
+                ],
+                "description": "Language for localized metadata (snippet.localized); IETF language tag, e.g., 'en'."
+              },
+              "id": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "dQw4w9WgXcQ",
+                    "eX2qFMC8cFo"
+                  ]
+                ],
+                "minItems": 1,
+                "description": "List of YouTube video IDs to retrieve. At least one video ID is required. Accepts a list or comma-separated string. Also accepts 'videoIds' as an alias. The YouTube API limits each request to 50 video IDs; if more are provided, they will be automatically split into multiple requests and the results merged."
+              },
+              "parts": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "contentDetails",
+                    "fileDetails",
+                    "id",
+                    "liveStreamingDetails",
+                    "localizations",
+                    "paidProductPlacementDetails",
+                    "player",
+                    "processingDetails",
+                    "recordingDetails",
+                    "snippet",
+                    "statistics",
+                    "status",
+                    "suggestions",
+                    "topicDetails"
+                  ],
+                  "type": "string"
+                },
+                "default": [
+                  "snippet",
+                  "statistics"
+                ],
+                "examples": [
+                  [
+                    "snippet",
+                    "statistics"
+                  ],
+                  [
+                    "snippet",
+                    "contentDetails",
+                    "statistics"
+                  ]
+                ],
+                "minItems": 1,
+                "description": "Video resource properties to include. At least one part is required. Accepts a list of parts or a comma-separated string. Also accepts 'part' (singular) as an alias. Valid parts: snippet, contentDetails, statistics, status, player, topicDetails, recordingDetails, fileDetails, processingDetails, suggestions, liveStreamingDetails, localizations, paidProductPlacementDetails, id. Defaults to ['snippet', 'statistics'] if not specified."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_GET_CHANNEL_STATISTICS": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_GET_CHANNEL_STATISTICS",
+          "description": "Gets detailed statistics for YouTube channels including subscriber counts, view counts, and video counts. Channels can be identified using their ID, handle (e.g., @Google), or username.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "examples": [
+                  "UCddiUEpeqJcYeBxX1IVBKvQ",
+                  "UCddiUEpeqJcYeBxX1IVBKvQ,UCK8sQmJBp8GCxrOtXWBpyEA"
+                ],
+                "description": "Comma-separated list of YouTube channel IDs (e.g., 'UCddiUEpeqJcYeBxX1IVBKvQ'). Channel IDs typically start with 'UC'. The YouTube Data API v3 supports up to 50 channel IDs per request; if more than 50 IDs are provided, they will be automatically split into multiple batches and the results will be merged. At least one of 'id', 'forHandle', 'forUsername', or 'mine' must be provided. Do NOT pass 'mine' as the value for this parameter - use the 'mine' boolean parameter instead to fetch the authenticated user's channel."
+              },
+              "mine": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Set to true to retrieve the channel owned by the authenticated user. This is a boolean filter parameter. At least one of 'id', 'forHandle', 'forUsername', or 'mine' must be provided. Cannot be combined with other filter parameters."
+              },
+              "part": {
+                "type": "string",
+                "default": "statistics",
+                "examples": [
+                  "statistics",
+                  "snippet,statistics"
+                ],
+                "description": "Comma-separated list of channel resource properties to include. Use 'statistics' for subscriber count."
+              },
+              "forHandle": {
+                "type": "string",
+                "examples": [
+                  "@Google",
+                  "GoogleDevelopers"
+                ],
+                "description": "YouTube channel handle (e.g., '@Google' or 'GoogleDevelopers'). The '@' symbol is optional. Use this parameter when you know the channel's handle but not its ID. At least one of 'id', 'forHandle', 'forUsername', or 'mine' must be provided."
+              },
+              "forUsername": {
+                "type": "string",
+                "examples": [
+                  "Google"
+                ],
+                "description": "YouTube username to identify the channel. Use this parameter when you know the channel's legacy username but not its ID. At least one of 'id', 'forHandle', 'forUsername', or 'mine' must be provided."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_LIST_PLAYLIST_ITEMS": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_LIST_PLAYLIST_ITEMS",
+          "description": "Tool to list videos in a playlist, with pagination support. Use when walking through a channel's upl...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_LIST_PLAYLIST_ITEMS"
+              ]
+            }
+          }
+        },
+        "YOUTUBE_GET_CHANNEL_ID_BY_HANDLE": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_GET_CHANNEL_ID_BY_HANDLE",
+          "description": "Retrieves the YouTube Channel ID for a specific YouTube channel handle.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_GET_CHANNEL_ID_BY_HANDLE"
+              ]
+            }
+          }
+        },
+        "YOUTUBE_GET_CHANNEL_ACTIVITIES": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_GET_CHANNEL_ACTIVITIES",
+          "description": "Gets recent activities from a YouTube channel including video uploads, playlist additions, likes, an...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_GET_CHANNEL_ACTIVITIES"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:38:02.236Z",
+        "current_time_utc_epoch_seconds": 1786599482,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "tell",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"tell\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_JYbB_pE0ZXzs"
+  }
+}

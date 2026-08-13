@@ -1,0 +1,218 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-086-q1",
+    "workflow_id": 86,
+    "workflow_task": "Retrieve Salesforce CRM report and query data for a business-performance brief, then send Slack notifications with the generated results.",
+    "query": "salesforce report query data retrieval",
+    "intent": "Retrieve report and query data from Salesforce CRM for business performance analysis.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "SALESFORCE_RUN_REPORT"
+        ],
+        "purpose": "Run a Salesforce report synchronously to retrieve performance data"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "SALESFORCE_RUN_SOQL_QUERY",
+          "SALESFORCE_QUERY"
+        ],
+        "purpose": "Execute a SOQL query against Salesforce to retrieve data"
+      }
+    ],
+    "candidate_tools": [
+      "SALESFORCE_GET_REPORT",
+      "SALESFORCE_GET_SUPPORT",
+      "SALESFORCE_QUERY",
+      "SALESFORCE_RUN_REPORT",
+      "SALESFORCE_RUN_SOQL_QUERY",
+      "SLACK_SEND_MESSAGE"
+    ]
+  },
+  "request": {
+    "query": "salesforce report query data retrieval"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "salesforce report query data retrieval",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if report_id unknown)] [Prerequisite]: Locate/confirm the target report using SALESFORCE_LIST_REPORTS (capture report_id).",
+            "[Required] [Step]: Execute the report using SALESFORCE_RUN_REPORT (capture instance/status; inspect allData/hasDetailRows and factMap keys to determine where detail rows vs aggregates live).",
+            "[Required] [Next Step]: Retrieve finalized output using SALESFORCE_GET_REPORT_INSTANCE (poll/retry until completion/success, then extract rows/aggregates from the correct factMap bucket).",
+            "[Optional (if you need stable column labels or a flat table)] [Next Step]: Fetch definition/metadata using SALESFORCE_GET_REPORT (join reportMetadata.detailColumns to reportExtendedMetadata.detailColumnInfo labels; align each row\u2019s dataCells by index; use COMPOSIO_REMOTE_WORKBENCH if JSON is too large/truncated to parse locally).",
+            "[Fallback (if report access is forbidden or results are too nested/truncated or missing required fields)] [Fallback]: Recreate an equivalent dataset using SALESFORCE_RUN_SOQL_QUERY (optionally confirm field API names via SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT; paginate until complete, and split complex filters into simpler queries if needed)."
+          ],
+          "known_pitfalls": [
+            "[SALESFORCE_RUN_REPORT] Inline results can be partial (for example allData=false) or appear truncated/offloaded; don\u2019t infer \u201cno rows\u201d from a preview payload.",
+            "[SALESFORCE_RUN_REPORT] Detail rows and aggregates are split across factMap buckets (often with totals markers); parsing the wrong bucket can look empty.",
+            "[SALESFORCE_RUN_REPORT] rows[*].dataCells frequently contain objects (label/value/record-like) rather than scalars; naive casting can drop values or raise TypeError.",
+            "[SALESFORCE_GET_REPORT_INSTANCE] Polling/parsing before the instance reports success can yield incomplete rows even when a later fetch is complete.",
+            "[SALESFORCE_RUN_SOQL_QUERY] Common HTTP 400s include INVALID_FIELD/MALFORMED_QUERY; large extracts often require pagination (commonly ~2000 records per batch) and overly complex OR-style filters may need splitting."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Inspect a report-run payload to decide whether to poll and which factMap buckets to parse.",
+              "code": "```python\nd=report_result[\"data\"];m=d.get(\"reportMetadata\",{});print(d.get(\"allData\"),m.get(\"hasDetailRows\"),list((d.get(\"factMap\") or {}).keys())[:10])\n```"
+            },
+            {
+              "description": "Flatten detail rows by mapping metadata columns to labels and aligning indices to rows[*].dataCells.",
+              "code": "```python\ndef flatten(report):\n fm=report.get('factMap',{}) or {}\n order=(report.get('reportMetadata',{}) or {}).get('detailColumns',[]) or []\n info=(report.get('reportExtendedMetadata',{}) or {}).get('detailColumnInfo',{}) or {}\n lab=lambda k:(info.get(k,{}) or {}).get('label',k)\n out=[]\n for k,node in fm.items():\n  if not str(k).endswith('!T'): continue\n  for r in (node.get('rows') or []):\n   cells=r.get('dataCells') or []\n   out.append({lab(order[i]):(((cells[i].get('label') if isinstance(cells[i],dict) else None) or (cells[i].get('value') if isinstance(cells[i],dict) else cells[i])) if i<len(cells) else None) for i in range(len(order))})\n return out\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "SALESFORCE_RUN_REPORT",
+            "SALESFORCE_GET_REPORT_INSTANCE"
+          ],
+          "related_tool_slugs": [
+            "SALESFORCE_LIST_REPORTS",
+            "SALESFORCE_RUN_SOQL_QUERY",
+            "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+            "SALESFORCE_GET_REPORT"
+          ],
+          "toolkits": [
+            "salesforce"
+          ],
+          "plan_id": "e0cb566dab124702bb66478688010c23"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "salesforce",
+          "has_active_connection": false,
+          "description": "Salesforce is a leading CRM platform integrating sales, service, marketing, and analytics to build customer relationships and drive business growth",
+          "status_message": "No Active connection for toolkit=salesforce. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"salesforce\") to create a connection BEFORE executing any salesforce tools."
+        }
+      ],
+      "tool_schemas": {
+        "SALESFORCE_RUN_REPORT": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_RUN_REPORT",
+          "description": "Runs a report synchronously (GET /analytics/reports/{id}?includeDetails=true) and returns the results in one call. This does NOT create an asynchronous report instance \u2014 for that, use the async run resource. Results are returned in a nested structure (factMap, reportExtendedMetadata), not a flat record list; an empty factMap/rows is a valid result. Avoid repeated calls when freshness allows.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "report_id"
+            ],
+            "properties": {
+              "report_id": {
+                "type": "string",
+                "examples": [
+                  "00OWd000001GtZ9MAK",
+                  "00OXXXXXXXXXXXXXXX"
+                ],
+                "description": "The Salesforce ID of the report to run."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_GET_REPORT_INSTANCE": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_REPORT_INSTANCE",
+          "description": "Gets the results of a report instance created by running a report. Poll `attributes.status` until it equals 'Success' before parsing results. Response data is nested under `factMap` and `reportExtendedMetadata`; an empty `factMap` or zero rows is a valid successful result, not an error.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "report_id",
+              "instance_id"
+            ],
+            "properties": {
+              "report_id": {
+                "type": "string",
+                "examples": [
+                  "00OWd000001GtZ9MAK",
+                  "00OXXXXXXXXXXXXXXX"
+                ],
+                "description": "The Salesforce ID of the report."
+              },
+              "instance_id": {
+                "type": "string",
+                "examples": [
+                  "0LGWd000000MWUIOA4",
+                  "0LGXXXXXXXXXXXXXXX"
+                ],
+                "description": "The report instance ID returned from running a report."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_LIST_REPORTS": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_LIST_REPORTS",
+          "description": "Lists reports with basic metadata including name, ID, and URLs. Note: the Analytics REST API (GET /analytics/reports) returns only up to ~200 recently-viewed reports, not the org's entire report catalog.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_RUN_SOQL_QUERY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_RUN_SOQL_QUERY",
+          "description": "Executes a SOQL query against Salesforce data. Returns records matching the query with pagination su...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_RUN_SOQL_QUERY"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+          "description": "Retrieves all fields (standard and custom) for a Salesforce object with complete metadata including ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_GET_REPORT": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_REPORT",
+          "description": "Gets detailed metadata for a specific report including its structure, columns, filters, and grouping...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_REPORT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:38:54.414Z",
+        "current_time_utc_epoch_seconds": 1786599534,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "vote",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"vote\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_gCM1xkp-PKH-"
+  }
+}

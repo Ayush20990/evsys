@@ -1,0 +1,505 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-066-q2",
+    "workflow_id": 66,
+    "workflow_task": "Create customized application emails with resume and cover letter PDFs, stage them as Outlook drafts, update attachments and body text, then send the finalized drafts after confirmation.",
+    "query": "create outlook email drafts with body text and attachments",
+    "intent": "Stage the generated PDFs and customized text as drafts within Outlook.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "OUTLOOK_CREATE_DRAFT"
+        ],
+        "purpose": "create outlook email draft with body and attachments"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "OUTLOOK_UPDATE_EMAIL",
+          "OUTLOOK_ADD_MAIL_ATTACHMENT"
+        ],
+        "purpose": "update email message properties and add attachments"
+      }
+    ],
+    "candidate_tools": [
+      "OUTLOOK_ADD_MAIL_ATTACHMENT",
+      "OUTLOOK_CREATE_DRAFT",
+      "OUTLOOK_DELETE_MESSAGE",
+      "OUTLOOK_DELETE_MESSAGE_ATTACHMENT",
+      "OUTLOOK_DOWNLOAD_OUTLOOK_ATTACHMENT",
+      "OUTLOOK_LIST_MESSAGES",
+      "OUTLOOK_LIST_OUTLOOK_ATTACHMENTS",
+      "OUTLOOK_SEND_DRAFT",
+      "OUTLOOK_UPDATE_EMAIL"
+    ]
+  },
+  "request": {
+    "query": "create outlook email drafts with body text and attachments"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create outlook email drafts with body text and attachments",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Create a draft using OUTLOOK_CREATE_DRAFT (set body as HTML with is_html=true; ensure to_recipients is populated; optionally include small attachments at creation; store message_id).",
+            "[Optional (if attachments are needed)] [Step]: Add each attachment using OUTLOOK_ADD_MAIL_ATTACHMENT (reuse message_id; use a tool-accessible file reference or valid contentBytes; for inline images set isInline=true and set contentId to match the HTML cid).",
+            "[Optional (if OUTLOOK_ADD_MAIL_ATTACHMENT fails or files are large)] [Fallback]: Upload via OUTLOOK_CREATE_ATTACHMENT_UPLOAD_SESSION (reuse message_id; follow uploadUrl/nextExpectedRanges until the attachment is committed).",
+            "[Optional (for verification before leaving as draft)] [Next Step]: Retrieve the draft using OUTLOOK_GET_MESSAGE (confirm recipients, body contentType/content, and hasAttachments).",
+            "[Optional (if edits are needed after review)] [Next Step]: Update the existing draft using OUTLOOK_UPDATE_EMAIL (reuse message_id; keep HTML cid references stable if inline items exist).",
+            "[Required (only after user confirmation)] [Step]: Send the finalized draft using OUTLOOK_SEND_DRAFT (use the final message_id)."
+          ],
+          "known_pitfalls": [
+            "[OUTLOOK_CREATE_DRAFT] Using the wrong recipient field (not to_recipients) can create a draft with no usable To recipients.",
+            "[OUTLOOK_GET_MESSAGE] Retrieved HTML may be normalized/wrapped; validate rendering if formatting must be exact.",
+            "[OUTLOOK_ADD_MAIL_ATTACHMENT] May fail with 403-style behavior if the attachment reference is not accessible to the tool runtime.",
+            "[OUTLOOK_ADD_MAIL_ATTACHMENT] Bad Request/HTTP 400 can occur when contentBytes is not valid base64 or the attachment payload shape cannot be deserialized; inline images also break if contentId doesn\u2019t match the HTML cid.",
+            "[OUTLOOK_CREATE_ATTACHMENT_UPLOAD_SESSION] Attachment appears only after upload completes; respect nextExpectedRanges/uploadUrl semantics and exact total size."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "OUTLOOK_CREATE_DRAFT",
+            "OUTLOOK_ADD_MAIL_ATTACHMENT"
+          ],
+          "related_tool_slugs": [
+            "OUTLOOK_LIST_OUTLOOK_ATTACHMENTS",
+            "OUTLOOK_CREATE_ATTACHMENT_UPLOAD_SESSION",
+            "OUTLOOK_SEND_DRAFT",
+            "OUTLOOK_UPDATE_EMAIL",
+            "OUTLOOK_GET_MESSAGE",
+            "OUTLOOK_DELETE_MESSAGE_ATTACHMENT"
+          ],
+          "toolkits": [
+            "outlook"
+          ],
+          "plan_id": "3d70114794404f89815ad5afabf5b519"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "outlook",
+          "has_active_connection": false,
+          "description": "Outlook is Microsoft's email and calendaring platform integrating contacts and scheduling, enabling users to manage communications and events in a unified workspace",
+          "status_message": "No Active connection for toolkit=outlook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"outlook\") to create a connection BEFORE executing any outlook tools."
+        }
+      ],
+      "tool_schemas": {
+        "OUTLOOK_CREATE_DRAFT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_CREATE_DRAFT",
+          "description": "Creates a new Outlook email draft with subject, body, recipients, and an optional attachment. This action creates a standalone draft for new conversations. To create a draft reply to an existing conversation/message, use the OUTLOOK_CREATE_DRAFT_REPLY action instead.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "subject",
+              "body"
+            ],
+            "properties": {
+              "body": {
+                "type": "string",
+                "examples": [
+                  "Let's meet to discuss the project."
+                ],
+                "description": "Content of the email draft; use `is_html` to specify if HTML or plain text."
+              },
+              "is_html": {
+                "type": "boolean",
+                "default": false,
+                "description": "Specifies if the `body` is HTML. If `False`, `body` is plain text. Set to `True` when `body` contains HTML markup; otherwise markup renders as literal text."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Team Meeting"
+                ],
+                "maxLength": 255,
+                "minLength": 1,
+                "description": "Subject line for the email draft."
+              },
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "43f0c14d-bca8-421f-b762-c3d8dd75be1f",
+                  "user@example.com"
+                ],
+                "description": "User ID (GUID) or user principal name (email) for S2S (app-only) authentication. Required when using application permissions. If not provided, defaults to '/me' endpoint for delegated authentication."
+              },
+              "attachment": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "title": "FileUploadable",
+                    "required": [
+                      "name",
+                      "mimetype",
+                      "s3key"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "examples": [
+                          "document.pdf",
+                          "image.jpg",
+                          "report.docx"
+                        ],
+                        "description": "The filename that will be used when uploading the file to the destination service"
+                      },
+                      "s3key": {
+                        "type": "string",
+                        "title": "S3Key",
+                        "examples": [
+                          "47563/gmail/GET_ATTACHMENT/response/12345"
+                        ],
+                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                      },
+                      "mimetype": {
+                        "type": "string",
+                        "title": "Mimetype",
+                        "examples": [
+                          "application/pdf",
+                          "image/jpeg",
+                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        ],
+                        "description": "The MIME type of the file"
+                      }
+                    },
+                    "file_uploadable": true
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "title": "FileUploadable",
+                      "required": [
+                        "name",
+                        "mimetype",
+                        "s3key"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "title": "Name",
+                          "examples": [
+                            "document.pdf",
+                            "image.jpg",
+                            "report.docx"
+                          ],
+                          "description": "The filename that will be used when uploading the file to the destination service"
+                        },
+                        "s3key": {
+                          "type": "string",
+                          "title": "S3Key",
+                          "examples": [
+                            "47563/gmail/GET_ATTACHMENT/response/12345"
+                          ],
+                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                        },
+                        "mimetype": {
+                          "type": "string",
+                          "title": "Mimetype",
+                          "examples": [
+                            "application/pdf",
+                            "image/jpeg",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ],
+                          "description": "The MIME type of the file"
+                        }
+                      },
+                      "file_uploadable": true
+                    }
+                  }
+                ],
+                "description": "Optional file(s) to attach. Accepts a single file or a list of files."
+              },
+              "cc_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "manager@example.com"
+                  ]
+                ],
+                "description": "Optional list of CC (carbon copy) recipient email addresses. Must be provided as an array of strings, e.g., [\"cc@example.com\"]."
+              },
+              "to_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "johndoe@example.com",
+                    "janedoe@example.com"
+                  ]
+                ],
+                "description": "Optional list of primary 'To' recipient email addresses. Must be provided as an array of strings, e.g., [\"user@example.com\"] for a single recipient or [\"user1@example.com\", \"user2@example.com\"] for multiple recipients. Do not pass as a JSON-encoded string. Can be omitted when creating a draft to be completed later. To send the draft, at least one valid address must be present across `to_recipients`, `cc_recipients`, or `bcc_recipients`."
+              },
+              "bcc_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "stakeholder@example.com"
+                  ]
+                ],
+                "description": "Optional list of BCC (blind carbon copy) recipient email addresses. Must be provided as an array of strings, e.g., [\"bcc@example.com\"]."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_ADD_MAIL_ATTACHMENT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_ADD_MAIL_ATTACHMENT",
+          "description": "Tool to add an attachment to an email message. Use when you have a message ID and need to attach a small (<3 MB) file or reference.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_id"
+            ],
+            "properties": {
+              "item": {
+                "type": "object",
+                "description": "Embedded item (e.g., message, event) for itemAttachment; must include its own '@odata.type'.",
+                "additionalProperties": true
+              },
+              "name": {
+                "type": "string",
+                "examples": [
+                  "report.pdf"
+                ],
+                "description": "Display name of the attachment (e.g., file name). Required when using content_bytes. When using the attachment field, the name is automatically inferred."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The user's principal name or 'me' for the authenticated user."
+              },
+              "isInline": {
+                "type": "boolean",
+                "description": "Set to true if the attachment should appear inline in the message body."
+              },
+              "contentId": {
+                "type": "string",
+                "description": "Content ID for inline attachments, used in HTML body references."
+              },
+              "attachment": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "File to attach to the email. Either provide this field OR use 'content_bytes'. Cannot be used together with 'content_bytes'.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "AAMkAGI2TAAA="
+                ],
+                "description": "Unique Microsoft Graph message ID (opaque string like 'AAMkAGI2TAAA='). NOT an email address - this is an internal identifier returned by Microsoft Graph API operations."
+              },
+              "odata_type": {
+                "type": "string",
+                "default": "#microsoft.graph.fileAttachment",
+                "examples": [
+                  "#microsoft.graph.fileAttachment",
+                  "#microsoft.graph.itemAttachment"
+                ],
+                "description": "The OData type of the attachment. Required by Microsoft Graph API. Use '#microsoft.graph.fileAttachment' for file attachments, '#microsoft.graph.itemAttachment' for embedded items (messages, events, contacts)."
+              },
+              "contentType": {
+                "type": "string",
+                "examples": [
+                  "application/pdf"
+                ],
+                "description": "MIME type of the attachment (e.g., 'application/pdf'). Required when using content_bytes. When using the attachment field, the mimetype is automatically inferred."
+              },
+              "contentBytes": {
+                "type": "string",
+                "examples": [
+                  "SGVsbG8gd29ybGQh"
+                ],
+                "description": "Base64-encoded content of the file attachment (max size 3 MB). Either provide this field OR use the 'attachment' field (recommended). Cannot be used together with 'attachment'."
+              },
+              "contentLocation": {
+                "type": "string",
+                "description": "URL location or path for reference attachments."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_LIST_OUTLOOK_ATTACHMENTS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_OUTLOOK_ATTACHMENTS",
+          "description": "Lists metadata (name, size, contentType, isInline \u2014 but not `contentBytes`) for all attachments of a specified Outlook email message. Returns fileAttachment, itemAttachment, and referenceAttachment types; only fileAttachment entries support download via OUTLOOK_DOWNLOAD_OUTLOOK_ATTACHMENT. Results include inline images and signatures \u2014 filter by `isInline == false` and check `contentType` to identify real document attachments. Results are nested under `data.response_data.value`.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_id"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "AdeleV@contoso.onmicrosoft.com"
+                ],
+                "description": "The unique identifier of the user. Use the user's UPN (e.g., 'AdeleV@contoso.onmicrosoft.com') or 'me' for the currently authenticated user. This specifies the mailbox to query."
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "AQMkADAwATM0MDAAMi04OTQ2LTllMjMtMDACLTAwCgBGAAADpmKqHEYNTEGPLqpX05NjpgcAopHWip06p0GbvKmj_O1dLQAAAgEMAAAAopHWip06p0GbvKmj_O1dLQAAAMwwKdcAAAA="
+                ],
+                "description": "The unique identifier of the email message from which to retrieve attachments. Must be a message ID (obtained from OUTLOOK_LIST_MESSAGES or OUTLOOK_SEARCH_EMAILS), not a folder ID or calendar event ID. Folder IDs look similar but will cause an error. When sourcing from OUTLOOK_SEARCH_EMAILS, use `hitId` as the message identifier \u2014 not `resource.id`."
+              },
+              "response_detail": {
+                "enum": [
+                  "minimal",
+                  "full"
+                ],
+                "type": "string",
+                "default": "minimal",
+                "description": "Level of detail in the response. 'minimal' (default) returns only the attachment metadata that exists on the Graph attachment base type (id, name, size, contentType, isInline, lastModifiedDateTime) \u2014 the base64-encoded contentBytes and any fileAttachment-only fields (contentId, contentLocation) are excluded so the heavy file payload never leaves Microsoft Graph. 'full' returns the complete payload including contentBytes for downloading."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_CREATE_ATTACHMENT_UPLOAD_SESSION": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_CREATE_ATTACHMENT_UPLOAD_SESSION",
+          "description": "Tool to create an upload session for large (>3 MB) message attachments. Use when you need to upload ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_CREATE_ATTACHMENT_UPLOAD_SESSION"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_SEND_DRAFT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEND_DRAFT",
+          "description": "Tool to send an existing draft message. Use after creating a draft when you want to deliver it to re...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_SEND_DRAFT"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_UPDATE_EMAIL": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_UPDATE_EMAIL",
+          "description": "Updates specified properties of an existing email message; `message_id` must identify a valid messag...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_UPDATE_EMAIL"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_GET_MESSAGE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_GET_MESSAGE",
+          "description": "Retrieves a specific email message by its ID from the specified user's Outlook mailbox. Use the 'sel...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_GET_MESSAGE"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_DELETE_MESSAGE_ATTACHMENT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_DELETE_MESSAGE_ATTACHMENT",
+          "description": "Tool to delete an attachment from a message in a nested mail folder structure. Use when removing att...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_DELETE_MESSAGE_ATTACHMENT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:36:34.805Z",
+        "current_time_utc_epoch_seconds": 1786599394,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "safe",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"safe\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_lMoEaqZyzAUq"
+  }
+}

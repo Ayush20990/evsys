@@ -1,0 +1,462 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-076-q4",
+    "workflow_id": 76,
+    "workflow_task": "Build a cross-channel marketing and operations report by pulling Meta Ads performance and account status, GA4 funnel and revenue data, Instagram profile/insights, Microsoft Clarity friction metrics, and ClickUp docs/tasks for planning context.",
+    "query": "retrieve microsoft clarity friction metrics",
+    "intent": "Fetch user behavior and friction metrics such as rage clicks and dead clicks from Microsoft Clarity.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "MICROSOFT_CLARITY_DATA_EXPORT"
+        ],
+        "purpose": "retrieve microsoft clarity friction metrics"
+      }
+    ],
+    "candidate_tools": [
+      "CLICKUP_GET_DOC_PAGE_CONTENT",
+      "CLICKUP_GET_DOC_PAGE_LISTING",
+      "CLICKUP_GET_FILTERED_TEAM_TASKS",
+      "CLICKUP_GET_LIST_MEMBERS",
+      "CLICKUP_GET_WORKSPACE_SEATS",
+      "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS",
+      "GOOGLE_ANALYTICS_RUN_REPORT",
+      "INSTAGRAM_GET_USER_INFO",
+      "INSTAGRAM_GET_USER_INSIGHTS",
+      "METAADS_GET_INSIGHTS",
+      "METAADS_GET_OBJECT",
+      "MICROSOFT_CLARITY_DATA_EXPORT"
+    ]
+  },
+  "request": {
+    "query": "retrieve microsoft clarity friction metrics"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "retrieve microsoft clarity friction metrics",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Confirm target page scope and a recent analysis window using MICROSOFT_CLARITY_DATA_EXPORT (run a small export; if prompted, select the intended account/context).",
+            "[Required] [Step]: Export page-level behavior using MICROSOFT_CLARITY_DATA_EXPORT (include a URL/page breakdown so the target page can be isolated).",
+            "[Required] [Step]: Validate the MICROSOFT_CLARITY_DATA_EXPORT payload before parsing (treat non-2xx status_code or http_error in the returned data as a failed export).",
+            "[Required] [Step]: Inspect MICROSOFT_CLARITY_DATA_EXPORT output at data.response_data[]; treat each metricName block as its own table and note payload may appear under response.data vs response.data_preview.",
+            "[Required] [Step]: Filter information[] rows to the target page (null-guard; handle Url/URL/url casing; normalize by stripping query parameters before grouping).",
+            "[Required] [Step]: Compute per-metric summaries from MICROSOFT_CLARITY_DATA_EXPORT (defensively cast numeric strings; avoid summing rates/percentages\u2014use weighted calculations when a count exists).",
+            "[Optional (if you need segment prioritization)] [Next Step]: Re-run MICROSOFT_CLARITY_DATA_EXPORT with an added breakdown (e.g., device) and compare segment aggregates to prioritize UX fixes.",
+            "[Optional (if export payload is too large to process inline)] [Next Step]: Use COMPOSIO_REMOTE_WORKBENCH to flatten response_data[] safely and emit compact per-metric/per-page aggregates.",
+            "[Fallback (if Clarity export fails or is empty)] [Fallback]: Corroborate key trends using GOOGLE_ANALYTICS_GET_METADATA \u2192 GOOGLE_ANALYTICS_CHECK_COMPATIBILITY \u2192 GOOGLE_ANALYTICS_RUN_REPORT (use GOOGLE_ANALYTICS_BATCH_RUN_REPORTS for many comparisons)."
+          ],
+          "known_pitfalls": [
+            "[MICROSOFT_CLARITY_DATA_EXPORT] \"No active connection found\" can persist until the connection is activated; in multi-account contexts selecting the wrong account can still return plausible but irrelevant rows.",
+            "[MICROSOFT_CLARITY_DATA_EXPORT] Tool calls may look successful while embedding errors in the payload (e.g., status_code=500 and/or http_error); treat non-2xx as a failed export.",
+            "[MICROSOFT_CLARITY_DATA_EXPORT] Response is nested as response_data[] metric blocks \u2192 information[] rows; flattening without metricName context mixes unrelated metrics.",
+            "[MICROSOFT_CLARITY_DATA_EXPORT] Different metricName blocks can have different schemas, and some payloads appear under response.data (not response.data_preview); assuming one shape can drop fields silently.",
+            "[MICROSOFT_CLARITY_DATA_EXPORT] Successful responses can still return empty information[] for every metricName; interpret as \u201cno rows available\u201d rather than a parsing error."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "List metric blocks from an export payload (handles alternate payload locations)",
+              "code": "```python\nr=payload.get('results',[{}])[0].get('response',{}).get('data',{})\nblocks=(r.get('response_data') or r.get('data',{}).get('response_data') or r.get('data_preview',{}).get('response_data') or [])\n[b.get('metricName') for b in (blocks or [])]\n```"
+            },
+            {
+              "description": "Flatten metric blocks into per-page aggregates while preserving metricName and normalizing URL keys",
+              "code": "```python\nfrom urllib.parse import urlparse\n\ndef p(u):\n  try:\n    return ((urlparse(u).path or '/').rstrip('/') or '/')\n  except: return '/'\n\ndef blocks(d):\n  r=d.get('results',[{}])[0].get('response',{}).get('data',{})\n  return r.get('response_data') or r.get('data',{}).get('response_data') or r.get('data_preview',{}).get('response_data') or []\n\na={}\nfor b in blocks(payload):\n  m=str(b.get('metricName'))\n  for row in (b.get('information') or []):\n    if not row: continue\n    u=row.get('Url') or row.get('URL') or row.get('url')\n    k=p(u or '')\n    rec=a.setdefault(k,{'page':k})\n    for kk,v in row.items():\n      if v is None or str(kk).lower()=='url': continue\n      try: rec[m]=rec.get(m,0.0)+float(v)\n      except: pass\nrows=list(a.values())\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "MICROSOFT_CLARITY_DATA_EXPORT"
+          ],
+          "related_tool_slugs": [
+            "GOOGLE_ANALYTICS_RUN_REPORT",
+            "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY",
+            "GOOGLE_ANALYTICS_GET_METADATA",
+            "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS"
+          ],
+          "toolkits": [
+            "google_analytics",
+            "microsoft_clarity"
+          ],
+          "plan_id": "3212e229aa9a4b88b1447ee4e1278fae"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "google_analytics",
+          "has_active_connection": false,
+          "description": "Google Analytics tracks and reports website traffic, user behavior, and conversion data, enabling marketers to optimize online performance and customer journeys",
+          "status_message": "No Active connection for toolkit=google_analytics. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"google_analytics\") to create a connection BEFORE executing any google_analytics tools."
+        },
+        {
+          "toolkit": "microsoft_clarity",
+          "has_active_connection": false,
+          "description": "Microsoft Clarity is a free user behavior analytics tool that captures heatmaps, session recordings, and engagement metrics to help improve website experiences",
+          "status_message": "No Active connection for toolkit=microsoft_clarity. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"microsoft_clarity\") to create a connection BEFORE executing any microsoft_clarity tools."
+        }
+      ],
+      "tool_schemas": {
+        "MICROSOFT_CLARITY_DATA_EXPORT": {
+          "toolkit": "MICROSOFT_CLARITY",
+          "tool_slug": "MICROSOFT_CLARITY_DATA_EXPORT",
+          "description": "Export data from Microsoft Clarity.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "numOfDays"
+            ],
+            "properties": {
+              "numOfDays": {
+                "type": "integer",
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "The number of days for the data export since the API call, relating to the last 24, 48, or 72 hours, respectively."
+              },
+              "dimension1": {
+                "type": "string",
+                "examples": [
+                  "Browser",
+                  "Device",
+                  "Country/Region",
+                  "OS",
+                  "Source",
+                  "Medium",
+                  "Campaign",
+                  "Channel",
+                  "URL"
+                ],
+                "description": "The first dimension to break down insights."
+              },
+              "dimension2": {
+                "type": "string",
+                "examples": [
+                  "Browser",
+                  "Device",
+                  "Country/Region",
+                  "OS",
+                  "Source",
+                  "Medium",
+                  "Campaign",
+                  "Channel",
+                  "URL"
+                ],
+                "description": "The second dimension to break down insights."
+              },
+              "dimension3": {
+                "type": "string",
+                "examples": [
+                  "Browser",
+                  "Device",
+                  "Country/Region",
+                  "OS",
+                  "Source",
+                  "Medium",
+                  "Campaign",
+                  "Channel",
+                  "URL"
+                ],
+                "description": "The third dimension to break down insights."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLE_ANALYTICS_RUN_REPORT": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_RUN_REPORT",
+          "description": "Tool to run a customized GA4 data report. Use when you need event data after specifying dimensions, metrics, and date ranges. IMPORTANT - DIMENSION/METRIC COMPATIBILITY: The Google Analytics Data API has strict compatibility rules between dimensions and metrics. Not all combinations are valid. If you receive a 400 error with a message about incompatible dimensions/metrics, use the GOOGLE_ANALYTICS_CHECK_COMPATIBILITY action first to validate your dimension/metric combinations before running reports. Common incompatibilities include: - Demographic dimensions (userAgeBracket, userGender) with session-scoped dimensions/filters (sessionCampaignName, sessionSource) - Certain user-scoped dimensions with event-scoped metrics For complex queries, consider starting with simpler dimension/metric combinations or use CHECK_COMPATIBILITY to pre-validate your request.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "property"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  1000
+                ],
+                "description": "Optional. Number of rows to return. Must be between 1 and 250000."
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0
+                ],
+                "description": "Optional. 0-based start row for pagination. Must be >= 0."
+              },
+              "metrics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "name": "activeUsers"
+                  },
+                  {
+                    "name": "sessions"
+                  },
+                  {
+                    "name": "screenPageViews"
+                  }
+                ],
+                "description": "Optional. The metrics to request and display. Maximum 10 metrics per request. Each metric MUST be an object with a required non-empty 'name' field. Common valid metric names: activeUsers, totalUsers, newUsers, sessions, engagedSessions, screenPageViews, eventCount, conversions, userEngagementDuration, engagementRate, bounceRate, averageSessionDuration, sessionsPerUser, screenPageViewsPerSession, purchaseRevenue, totalRevenue, transactions, ecommercePurchases, publisherAdClicks, publisherAdImpressions, totalAdRevenue. Custom metrics use format 'customEvent:parameter_name'. CRITICAL: 'averageEngagementTime' is NOT a valid metric - use 'userEngagementDuration' or 'averageSessionDuration' instead. 'exits' is NOT a valid metric in GA4."
+              },
+              "orderBys": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "desc": true,
+                    "metric": {
+                      "metricName": "activeUsers"
+                    }
+                  },
+                  {
+                    "desc": false,
+                    "dimension": {
+                      "orderType": "ALPHANUMERIC",
+                      "dimensionName": "country"
+                    }
+                  }
+                ],
+                "description": "Optional. Specify how rows are ordered. Each OrderBy object must have 'desc' (boolean) at the top level and exactly one of: 'metric' (with 'metricName' string), 'dimension' (with 'dimensionName' or 'name' string and optional 'orderType': 'ALPHANUMERIC', 'CASE_INSENSITIVE_ALPHANUMERIC', or 'NUMERIC'), or 'pivot'. Note: For dimension ordering, you can use either 'dimensionName' or 'name' field - both are accepted and normalized. Example for metric ordering: {'desc': true, 'metric': {'metricName': 'activeUsers'}}. Example for dimension ordering: {'desc': false, 'dimension': {'dimensionName': 'country', 'orderType': 'ALPHANUMERIC'}}."
+              },
+              "property": {
+                "type": "string",
+                "examples": [
+                  "properties/123456789"
+                ],
+                "description": "Required. The property resource on which to run the report. Format: properties/{property_id} where property_id must be a numeric ID (e.g., 'properties/123456789')."
+              },
+              "cohortSpec": {
+                "type": "object",
+                "description": "Optional. Cohort specification. Requires requesting the cohort dimension.",
+                "additionalProperties": true
+              },
+              "dateRanges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "endDate": "2023-01-31",
+                    "startDate": "2023-01-01"
+                  }
+                ],
+                "minItems": 1,
+                "description": "The date ranges to read. Required for standard reports. Each range MUST be an object with required 'startDate' and 'endDate' fields (both must be non-empty). Dates can be in YYYY-MM-DD format or special values like 'today', 'yesterday', '7daysAgo', '30daysAgo'. IMPORTANT: For cohort requests (when cohortSpec is provided), dateRanges must be omitted."
+              },
+              "dimensions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  {
+                    "name": "city"
+                  },
+                  {
+                    "name": "date"
+                  },
+                  {
+                    "name": "deviceCategory"
+                  }
+                ],
+                "description": "Optional. The dimensions to request and display. Maximum 9 dimensions per request. Each dimension MUST be an object with a required non-empty 'name' field. Common valid dimension names: date, dateHour, dateHourMinute, year, month, week, day, dayOfWeek, hour, city, cityId, country, countryId, continent, continentId, region, subContinent, deviceCategory, browser, operatingSystem, platform, platformDeviceCategory, screenResolution, sessionSource, sessionMedium, sessionSourceMedium, sessionCampaignName, sessionDefaultChannelGroup, firstUserSource, firstUserMedium, firstUserCampaignName, firstUserDefaultChannelGroup, pagePath, pagePathPlusQueryString, pageTitle, landingPage, hostname, eventName, streamName, userAgeBracket, userGender, language, newVsReturning. Custom dimensions: 'customEvent:parameter_name' or 'customUser:parameter_name'. 'dateRange' is NOT a valid dimension \u2014 use date dimensions (date, dateHour, year, month, etc.) instead. 'exits' is NOT a valid dimension in GA4. COMPATIBILITY: Not all dimensions can be combined with each other or with certain metrics/filters. If you receive a compatibility error, use GOOGLE_ANALYTICS_CHECK_COMPATIBILITY to validate combinations, or see https://developers.google.com/analytics/devguides/reporting/data/v1/compatibility"
+              },
+              "comparisons": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Optional. The comparison configuration. Adds a comparison column to the response."
+              },
+              "currencyCode": {
+                "type": "string",
+                "examples": [
+                  "USD"
+                ],
+                "description": "Optional. The currency code to apply, in ISO 4217 format. Defaults to property currency."
+              },
+              "metricFilter": {
+                "type": "object",
+                "description": "Optional. Filter expression to restrict rows by metric values. Applied after aggregation. IMPORTANT: Only use metric field names here (e.g., 'activeUsers', 'sessions', 'ecommercePurchases', 'purchaseRevenue'). Do NOT use dimension names in metricFilter - if you need to filter by a dimension (e.g., 'country', 'city', 'pagePath'), use dimensionFilter instead. The action validates that only metric names are used in metricFilter and will reject dimension names with a clear error. Structure: {'filter': {'fieldName': '<metric_name>', 'numericFilter': {'operation': 'GREATER_THAN', 'value': {'int64Value': '0'}}}} or use 'andGroup'/'orGroup' for multiple conditions.",
+                "additionalProperties": true
+              },
+              "keepEmptyRows": {
+                "type": "boolean",
+                "description": "Optional. If true, rows with all zero metrics will be returned; otherwise omitted."
+              },
+              "dimensionFilter": {
+                "type": "object",
+                "description": "Optional. Filter expression to restrict rows by dimension values. IMPORTANT: Only use dimension field names here (e.g., 'country', 'city', 'date', 'deviceCategory', 'pagePath'). Do NOT use metric names in dimensionFilter - if you need to filter by a metric (e.g., 'activeUsers', 'sessions', 'ecommercePurchases'), use metricFilter instead. Structure: {'filter': {'fieldName': '<dimension_name>', 'stringFilter': {...}}} or use 'andGroup'/'orGroup' for multiple conditions. COMPATIBILITY WARNING: Dimension filters must be compatible with the dimensions in your request. For example, filtering on 'sessionCampaignName' while using demographic dimensions (userAgeBracket, userGender) will fail. The filter field creates an implicit dimension that must be compatible with all other dimensions and metrics. Use GOOGLE_ANALYTICS_CHECK_COMPATIBILITY to verify your filter dimensions work with your requested dimensions/metrics.",
+                "additionalProperties": true
+              },
+              "metricAggregations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "TOTAL"
+                ],
+                "description": "Optional. Aggregation types to include over metrics, e.g., 'TOTAL', 'MINIMUM', 'MAXIMUM'."
+              },
+              "returnPropertyQuota": {
+                "type": "boolean",
+                "description": "Optional. If true, include the property's current quota state in the response."
+              },
+              "removed_dimensions_internal": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Internal field to store filtered dimension names for execution message. Not sent to API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_CHECK_COMPATIBILITY",
+          "description": "Tool to list dimensions and metrics compatible with a GA4 report request. Use when you need to validate compatibility of chosen dimensions or metrics before running a report.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "property"
+            ],
+            "properties": {
+              "metrics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "The GA4 API name of the metric. MUST use exact API names from the official documentation at https://developers.google.com/analytics/devguides/reporting/data/v1/api-schema. Common valid metric names: Users: 'activeUsers', 'totalUsers', 'newUsers'. Sessions: 'sessions', 'engagedSessions', 'bounceRate', 'engagementRate', 'averageSessionDuration'. Events: 'eventCount', 'eventCountPerUser', 'keyEvents', 'eventValue'. Page/Screen: 'screenPageViews', 'screenPageViewsPerSession'. E-commerce: 'purchaseRevenue', 'totalRevenue', 'transactions', 'itemRevenue'. Conversions: 'conversions', 'userConversionRate' (NOTE: 'conversionRate' is NOT valid - use 'sessionConversionRate' or 'userConversionRate' instead). Custom metrics use format 'customEvent:parameter_name'."
+                    }
+                  },
+                  "description": "Model for a metric in a compatibility check request."
+                },
+                "maxItems": 10,
+                "description": "Optional. List of metrics to check compatibility for. Maximum of 10 metrics allowed per request."
+              },
+              "property": {
+                "type": "string",
+                "pattern": "^properties/[^/]+$",
+                "examples": [
+                  "properties/1234"
+                ],
+                "description": "Required. GA4 property resource name. Format: properties/{property_id}."
+              },
+              "dimensions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "The GA4 API name of the dimension. MUST use exact API names from the official documentation at https://developers.google.com/analytics/devguides/reporting/data/v1/api-schema. Common valid dimension names include: User/Session: 'newVsReturning', 'firstSessionDate'. Time: 'date', 'dateHour', 'day', 'dayOfWeek', 'hour', 'month', 'week', 'year'. Geography: 'country', 'countryId', 'region', 'city', 'continent'. Technology: 'browser', 'operatingSystem', 'deviceCategory', 'platform', 'language', 'screenResolution'. Page/Content: 'pagePath', 'pageTitle', 'pageLocation', 'landingPage', 'hostName'. Traffic Source: 'source', 'medium', 'campaignName', 'defaultChannelGroup', 'manualSource', 'manualMedium' (NOTE: 'trafficSource' is NOT valid - use 'source' or 'medium' instead). Events: 'eventName', 'isKeyEvent'. E-commerce: 'itemId', 'itemName', 'itemBrand', 'itemCategory', 'currencyCode'. Custom dimensions use format 'customUser:parameter_name' or 'customEvent:parameter_name'."
+                    }
+                  },
+                  "description": "Model for a dimension in a compatibility check request."
+                },
+                "description": "Optional. List of dimensions to check compatibility for."
+              },
+              "metricFilter": {
+                "type": "object",
+                "description": "Optional. A FilterExpression for metrics; must follow GA4 FilterExpression JSON schema.",
+                "additionalProperties": true
+              },
+              "dimensionFilter": {
+                "type": "object",
+                "description": "Optional. A FilterExpression for dimensions; must follow GA4 FilterExpression JSON schema.",
+                "additionalProperties": true
+              },
+              "compatibilityFilter": {
+                "enum": [
+                  "COMPATIBILITY_UNSPECIFIED",
+                  "COMPATIBLE",
+                  "INCOMPATIBLE"
+                ],
+                "type": "string",
+                "description": "Compatibility status for dimensions or metrics per Google Analytics Data API v1beta.\nValid values: COMPATIBILITY_UNSPECIFIED, COMPATIBLE, INCOMPATIBLE.\nNote: Values like 'REPORT_COMPATIBLE' are NOT valid - use 'COMPATIBLE' instead."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLE_ANALYTICS_GET_METADATA": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_GET_METADATA",
+          "description": "Tool to get metadata for dimensions, metrics, and comparisons for a GA4 property. Use to discover av...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLE_ANALYTICS_GET_METADATA"
+              ]
+            }
+          }
+        },
+        "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS": {
+          "toolkit": "GOOGLE_ANALYTICS",
+          "tool_slug": "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS",
+          "description": "Tool to return multiple analytics data reports in a batch. Use when you need to fetch multiple repor...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:37:42.250Z",
+        "current_time_utc_epoch_seconds": 1786599462,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "nose",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"nose\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_WR2G5ANq9_zH"
+  }
+}

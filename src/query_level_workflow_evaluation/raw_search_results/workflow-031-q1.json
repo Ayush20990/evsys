@@ -1,0 +1,812 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-031-q1",
+    "workflow_id": 31,
+    "workflow_task": "Monitor and inspect Outlook email messages, summarize or verify their contents, sometimes process attachments or market data, create reminders/tasks, and attempt to send concise notifications through WhatsApp or a Notis channel.",
+    "query": "read and monitor incoming Outlook email messages",
+    "intent": "Retrieve and inspect new emails from an Outlook inbox to monitor their contents.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "OUTLOOK_LIST_MESSAGES",
+          "OUTLOOK_QUERY_EMAILS",
+          "OUTLOOK_SEARCH_MESSAGES"
+        ],
+        "purpose": "Retrieve and list incoming Outlook email messages"
+      }
+    ],
+    "candidate_tools": [
+      "COMPOSIO_SEARCH_FINANCE",
+      "OUTLOOK_DOWNLOAD_OUTLOOK_ATTACHMENT",
+      "OUTLOOK_GET_MAIL_FOLDER_MESSAGE",
+      "OUTLOOK_GET_MESSAGE",
+      "OUTLOOK_GET_PROFILE",
+      "OUTLOOK_LIST_MESSAGES",
+      "OUTLOOK_LIST_OUTLOOK_ATTACHMENTS",
+      "OUTLOOK_QUERY_EMAILS",
+      "OUTLOOK_SEARCH_MESSAGES",
+      "TICKTICK_CREATE_TASK",
+      "TICKTICK_GET_TASK_BY_PROJECT_AND_ID",
+      "TICKTICK_LIST_ALL_TASKS",
+      "WHATSAPP_GET_PHONE_NUMBERS"
+    ]
+  },
+  "request": {
+    "query": "read and monitor incoming Outlook email messages"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "read and monitor incoming Outlook email messages",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if folder_id unknown)] [Prerequisite]: Discover source/destination folders using OUTLOOK_LIST_MAIL_FOLDERS (capture stable folder_id; follow @odata.nextLink pagination).",
+            "[Required] [Step]: Retrieve candidate messages using OUTLOOK_QUERY_EMAILS (minimal select; filter by known sender identifier and unread/recent window; follow @odata.nextLink until complete).",
+            "[Required] [Prerequisite]: Spot-check scope by sampling a few items using OUTLOOK_GET_MESSAGE (confirm sender and key headers) before bulk actions.",
+            "[Fallback (if OUTLOOK_QUERY_EMAILS is too narrow or cross-folder search is required)] [Fallback]: Retrieve candidates using OUTLOOK_SEARCH_MESSAGES, then re-check with OUTLOOK_GET_MESSAGE.",
+            "[Optional (if marking/labeling as processed)] [Step]: Apply message changes using OUTLOOK_BATCH_UPDATE_MESSAGES (send updates[] with {message_id, patch}; chunk small; retry only failed items).",
+            "[Optional (if filing messages)] [Step]: Move selected messages using OUTLOOK_BATCH_MOVE_MESSAGES (chunk ~20 IDs/call; inspect per-item results; avoid concurrent bulk writes; retry failures with OUTLOOK_MOVE_MESSAGE).",
+            "[Optional (to prevent recurrence)] [Next Step]: Review and adjust automation using OUTLOOK_LIST_EMAIL_RULES, then create/modify rules using OUTLOOK_CREATE_EMAIL_RULE (match sender criteria; moveToFolder)."
+          ],
+          "known_pitfalls": [
+            "[OUTLOOK_QUERY_EMAILS] Response items are under value; value can be empty even when the request succeeds, and additional pages may appear via @odata.nextLink.",
+            "[OUTLOOK_BATCH_UPDATE_MESSAGES] Validation error if updates is missing; each entry must include message_id and patch.",
+            "[OUTLOOK_BATCH_UPDATE_MESSAGES] Per-item 400s occur with malformed/incorrect message_id; 404 can occur if the message no longer exists at that id.",
+            "[OUTLOOK_BATCH_UPDATE_MESSAGES] 429 throttling can occur; honor Retry-After/backoff and reduce batch size/parallelism.",
+            "[OUTLOOK_BATCH_MOVE_MESSAGES] Batch size commonly limited to ~20 IDs/call; can be partially successful (including per-item 404/429) and may return 204 with moved_message_id null\u2014don\u2019t chain on new IDs."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Build updates payload for OUTLOOK_BATCH_UPDATE_MESSAGES (chunk to 20)",
+              "code": "```python\ndef chunk(xs,n=20):\n    for i in range(0,len(xs),n):\n        yield xs[i:i+n]\n\ndef build_updates(ids):\n    return [{\"message_id\":mid,\"patch\":{\"isRead\":True}} for mid in ids]\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "OUTLOOK_QUERY_EMAILS",
+            "OUTLOOK_BATCH_UPDATE_MESSAGES",
+            "OUTLOOK_BATCH_MOVE_MESSAGES"
+          ],
+          "related_tool_slugs": [
+            "OUTLOOK_LIST_MAIL_FOLDERS",
+            "OUTLOOK_GET_MESSAGE",
+            "OUTLOOK_MOVE_MESSAGE",
+            "OUTLOOK_SEARCH_MESSAGES",
+            "OUTLOOK_LIST_EMAIL_RULES",
+            "OUTLOOK_CREATE_EMAIL_RULE"
+          ],
+          "toolkits": [
+            "outlook"
+          ],
+          "plan_id": "d30381221c354a5dab7b4cf8267c2a41"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "outlook",
+          "has_active_connection": false,
+          "description": "Outlook is Microsoft's email and calendaring platform integrating contacts and scheduling, enabling users to manage communications and events in a unified workspace",
+          "status_message": "No Active connection for toolkit=outlook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"outlook\") to create a connection BEFORE executing any outlook tools."
+        }
+      ],
+      "tool_schemas": {
+        "OUTLOOK_QUERY_EMAILS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_QUERY_EMAILS",
+          "description": "Query Outlook emails within a SINGLE folder using OData filters. Build precise server-side filters for dates, read status, importance, subjects, attachments, and conversations. Best for structured queries on message metadata within a specific folder. Returns up to 100 messages per request with pagination support. \u2022 Searches SINGLE folder only (inbox, sentitems, etc.) - NOT across all folders \u2022 For cross-folder/mailbox-wide search: Use OUTLOOK_SEARCH_MESSAGES \u2022 Server-side filters: dates, importance, isRead, hasAttachments, subjects, conversationId \u2022 Pagination: use the returned next_page_token (pass it back as page_token) until it is absent \u2022 Limitations: Recipient/body filtering requires OUTLOOK_SEARCH_MESSAGES",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "default": 100,
+                "maximum": 1000,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50,
+                  100,
+                  500
+                ],
+                "description": "Maximum number of messages to return per request (1-1000). Default is 100. IMPORTANT: For large mailboxes, paginate using `next_page_token`. Pagination example: 1) Call with top=100, 2) Read `next_page_token` from the response, 3) If present, call again passing it back as `page_token`, 4) Repeat until `next_page_token` is absent."
+              },
+              "skip": {
+                "type": "integer",
+                "default": 0,
+                "minimum": 0,
+                "examples": [
+                  0,
+                  100,
+                  200
+                ],
+                "description": "Number of messages to skip for pagination. NOTE: For large result sets, prefer the returned `next_page_token` (pass it back as `page_token`) over manual skip."
+              },
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "isRead eq false",
+                  "importance eq 'high'",
+                  "hasAttachments eq true",
+                  "receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "receivedDateTime ge 2025-10-01T00:00:00Z and receivedDateTime lt 2025-10-08T00:00:00Z",
+                  "isRead eq false and receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "importance eq 'high' and hasAttachments eq true",
+                  "startswith(subject, '[Task Update]')",
+                  "startswith(subject, 'Re:') and hasAttachments eq true",
+                  "subject eq 'Weekly Report'",
+                  "conversationId eq 'AQQkADAwATY3ZmYAZS1hYQAzNC1lODkwLTAwAi0wMAoAEADJzjh8m93SQbP6BUCZcIuc'",
+                  "sentDateTime gt 2025-10-01T14:30:00Z and sentDateTime lt 2025-10-01T18:00:00Z",
+                  "isDraft eq false and isRead eq false and importance eq 'high'",
+                  "(isRead eq false or importance eq 'high') and receivedDateTime ge 2025-10-01T00:00:00Z",
+                  "(isRead eq false or importance eq 'high') and hasAttachments eq true",
+                  "from/emailAddress/address eq 'user@example.com'",
+                  "startswith(from/emailAddress/address, 'support@')",
+                  "from/emailAddress/address eq 'boss@company.com' and isRead eq false",
+                  "categories/any(a:a eq 'Priority')",
+                  "categories/any(a:a eq 'Priority') or categories/any(b:b eq 'Urgent')",
+                  "categories/any(a:a eq 'Priority') and isRead eq false"
+                ],
+                "description": "OData $filter query string to filter email messages. Syntax: 'field operator value' combined with 'and', 'or', 'not'.\n\n        **Operators:** eq, ne, lt, le, gt, ge, startswith(), contains(), any()\n\n        **String Functions:**\n        - subject: contains(), startswith()\n        - from/sender: startswith() and eq only. contains() is NOT supported on sender/from fields\n        - endswith() is NOT reliably supported by Microsoft Graph API for message filtering\n\n        **Filterable Fields:**\n        - `isRead` - Boolean: true/false\n        - `importance` - String: 'low', 'normal', 'high'\n        - `subject` - String (exact match or startswith)\n        - `hasAttachments` - Boolean: true/false\n        - `receivedDateTime`, `sentDateTime` - DateTime (ISO 8601: 2025-10-01T00:00:00Z, NOT enclosed in quotes)\n        - `conversationId` - String (exact match)\n        - `categories` - Array (use any() operator: `categories/any(a:a eq 'CategoryName')`)\n        - `isDraft`, `flag/flagStatus` - Boolean/String flags\n        - `from/emailAddress/address`, `sender/emailAddress/address` - Sender email (ONLY 'address' is filterable, NOT 'name')\n\n        **NOT filterable:** toRecipients, ccRecipients, bccRecipients, body/content, id \u2014 use OUTLOOK_SEARCH_MESSAGES for these.\n\n        **Categories Filtering:**\n        - Single: `categories/any(a:a eq 'CategoryName')`\n        - Multiple (OR): Use SEPARATE any() calls: `categories/any(a:a eq 'Cat1') or categories/any(b:b eq 'Cat2')`\n        - For category names containing single quotes, escape them by doubling: `categories/any(a:a eq 'Owner''s Category')`\n\n        **Date Filtering:**\n        - ISO 8601 format: 2025-10-01T00:00:00Z (no quotes around datetime values)\n        - Operators: ge, gt, le, lt\n"
+              },
+              "folder": {
+                "type": "string",
+                "default": "inbox",
+                "examples": [
+                  "inbox",
+                  "sentitems",
+                  "drafts",
+                  "AAMkAGI0ZjExAAA="
+                ],
+                "description": "SINGLE mail folder to search within (cannot search across all folders). Well-known names (case-insensitive): 'inbox', 'sentitems', 'drafts', 'deleteditems', 'outbox', 'junkemail', 'archive', 'clutter', 'recoverableitemsdeletions'. For custom folders (e.g., 'Billing', 'Projects'), you MUST provide the folder ID (a long base64-like string like 'AAMkAGU0NTRiNDA4...'). Use OUTLOOK_LIST_MAIL_FOLDERS to get folder IDs for custom folders. Do NOT pass folder URLs or display names. IMPORTANT: To search across ALL folders, use OUTLOOK_SEARCH_MESSAGES instead (searches entire mailbox without folder restriction). NOTE: This parameter also accepts 'folder_id' as an alias for backwards compatibility."
+              },
+              "select": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "receivedDateTime"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "receivedDateTime",
+                    "webLink"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "toRecipients",
+                    "receivedDateTime",
+                    "hasAttachments",
+                    "webLink"
+                  ],
+                  [
+                    "subject",
+                    "from",
+                    "bodyPreview",
+                    "receivedDateTime",
+                    "internetMessageHeaders"
+                  ],
+                  [
+                    "id",
+                    "subject",
+                    "from",
+                    "body",
+                    "receivedDateTime"
+                  ]
+                ],
+                "description": "List of message properties to include in the response (accepts comma-separated string or list). Field names are automatically normalized to correct camelCase (e.g., 'bodypreview' -> 'bodyPreview', 'hasattachments' -> 'hasAttachments'). Valid fields: id, subject, from, sender, toRecipients, ccRecipients, bccRecipients, replyTo, receivedDateTime, sentDateTime, createdDateTime, lastModifiedDateTime, hasAttachments, importance, isRead, isDraft, body, bodyPreview, uniqueBody, categories, conversationId, conversationIndex, parentFolderId, changeKey, internetMessageId, internetMessageHeaders, webLink, flag, attachments, inferenceClassification, isReadReceiptRequested, isDeliveryReceiptRequested. NOTE: 'inReplyTo' is NOT a valid property for email messages in Microsoft Graph v1.0. When not specified, returns metadata without body. Include 'body' for full content. Pass [] for all fields."
+              },
+              "orderby": {
+                "type": "string",
+                "default": "receivedDateTime desc",
+                "examples": [
+                  "receivedDateTime desc",
+                  "sentDateTime desc",
+                  "subject asc",
+                  "importance desc,receivedDateTime desc",
+                  "receivedDateTime asc"
+                ],
+                "description": "Sort order as comma-separated string or list (accepts 'field asc/desc' format or JSON-serialized arrays). Input is automatically normalized to correct format. Common fields: receivedDateTime, sentDateTime, subject, importance, from. NOTE: Ordering may be automatically disabled by Microsoft Graph API when using certain filters (e.g., subject exact match, conversationId) to avoid 'InefficientFilter' errors. In those cases, results will be unsorted."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "Target user's email or 'me' for authenticated user. IMPORTANT: 'me' uses the currently connected account. For shared or delegated mailbox access, ensure the connected user has mailbox access and the app has Mail.Read.Shared. 403 errors indicate insufficient delegated/application permissions."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend any required identifier fields from the first call (the token supersedes their values). Optional filter, sort and timezone params need not be repeated; the token carries them."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_BATCH_UPDATE_MESSAGES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_BATCH_UPDATE_MESSAGES",
+          "description": "Batch-update up to 20 Outlook messages per call using Microsoft Graph JSON batching. Use when marking multiple messages read/unread or updating other properties to avoid per-message PATCH calls.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "updates"
+            ],
+            "properties": {
+              "updates": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "message_id",
+                    "patch"
+                  ],
+                  "properties": {
+                    "patch": {
+                      "type": "object",
+                      "examples": [
+                        {
+                          "isRead": true
+                        },
+                        {
+                          "isRead": false,
+                          "importance": "high"
+                        },
+                        {
+                          "categories": [
+                            "Work",
+                            "Urgent"
+                          ]
+                        }
+                      ],
+                      "properties": {
+                        "body": {
+                          "type": "object",
+                          "properties": {
+                            "content": {
+                              "type": "string",
+                              "description": "The content of the item body."
+                            },
+                            "contentType": {
+                              "enum": [
+                                "text",
+                                "html"
+                              ],
+                              "type": "string",
+                              "description": "The type of body content."
+                            }
+                          },
+                          "description": "The body of the message.",
+                          "additionalProperties": false
+                        },
+                        "flag": {
+                          "type": "object",
+                          "properties": {
+                            "flagStatus": {
+                              "enum": [
+                                "notFlagged",
+                                "flagged",
+                                "complete"
+                              ],
+                              "type": "string",
+                              "description": "Status for follow-up for an item."
+                            },
+                            "dueDateTime": {
+                              "type": "object",
+                              "properties": {
+                                "dateTime": {
+                                  "type": "string",
+                                  "description": "A single point of time in combined date and time format ({date}T{time}). Example: '2024-01-15T09:00:00.0000000'."
+                                },
+                                "timeZone": {
+                                  "type": "string",
+                                  "description": "The time zone. Example: 'Pacific Standard Time', 'UTC'."
+                                }
+                              },
+                              "description": "Describes the date, time, and time zone of a point in time.",
+                              "additionalProperties": false
+                            },
+                            "startDateTime": {
+                              "type": "object",
+                              "properties": {
+                                "dateTime": {
+                                  "type": "string",
+                                  "description": "A single point of time in combined date and time format ({date}T{time}). Example: '2024-01-15T09:00:00.0000000'."
+                                },
+                                "timeZone": {
+                                  "type": "string",
+                                  "description": "The time zone. Example: 'Pacific Standard Time', 'UTC'."
+                                }
+                              },
+                              "description": "Describes the date, time, and time zone of a point in time.",
+                              "additionalProperties": false
+                            },
+                            "completedDateTime": {
+                              "type": "object",
+                              "properties": {
+                                "dateTime": {
+                                  "type": "string",
+                                  "description": "A single point of time in combined date and time format ({date}T{time}). Example: '2024-01-15T09:00:00.0000000'."
+                                },
+                                "timeZone": {
+                                  "type": "string",
+                                  "description": "The time zone. Example: 'Pacific Standard Time', 'UTC'."
+                                }
+                              },
+                              "description": "Describes the date, time, and time zone of a point in time.",
+                              "additionalProperties": false
+                            }
+                          },
+                          "description": "The flag value that indicates the status, start date, due date, or completion date for the message.",
+                          "additionalProperties": false
+                        },
+                        "from": {
+                          "type": "object",
+                          "properties": {
+                            "emailAddress": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "description": "The display name of the person or entity."
+                                },
+                                "address": {
+                                  "type": "string",
+                                  "description": "The email address of the person or entity."
+                                }
+                              },
+                              "description": "Email address of a contact or message recipient.",
+                              "additionalProperties": false
+                            }
+                          },
+                          "description": "Represents information about a user in the sending or receiving end of a message.",
+                          "additionalProperties": false
+                        },
+                        "isRead": {
+                          "type": "boolean",
+                          "description": "Whether the message has been read."
+                        },
+                        "sender": {
+                          "type": "object",
+                          "properties": {
+                            "emailAddress": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "description": "The display name of the person or entity."
+                                },
+                                "address": {
+                                  "type": "string",
+                                  "description": "The email address of the person or entity."
+                                }
+                              },
+                              "description": "Email address of a contact or message recipient.",
+                              "additionalProperties": false
+                            }
+                          },
+                          "description": "Represents information about a user in the sending or receiving end of a message.",
+                          "additionalProperties": false
+                        },
+                        "replyTo": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "emailAddress": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string",
+                                    "description": "The display name of the person or entity."
+                                  },
+                                  "address": {
+                                    "type": "string",
+                                    "description": "The email address of the person or entity."
+                                  }
+                                },
+                                "description": "Email address of a contact or message recipient.",
+                                "additionalProperties": false
+                              }
+                            },
+                            "description": "Represents information about a user in the sending or receiving end of a message."
+                          },
+                          "description": "The email addresses to use when replying. Only updatable if isDraft=true."
+                        },
+                        "subject": {
+                          "type": "string",
+                          "description": "The subject of the message. Only updatable if isDraft=true."
+                        },
+                        "categories": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "The categories associated with the message."
+                        },
+                        "importance": {
+                          "enum": [
+                            "low",
+                            "normal",
+                            "high"
+                          ],
+                          "type": "string",
+                          "description": "Importance level of the message."
+                        },
+                        "ccRecipients": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "emailAddress": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string",
+                                    "description": "The display name of the person or entity."
+                                  },
+                                  "address": {
+                                    "type": "string",
+                                    "description": "The email address of the person or entity."
+                                  }
+                                },
+                                "description": "Email address of a contact or message recipient.",
+                                "additionalProperties": false
+                              }
+                            },
+                            "description": "Represents information about a user in the sending or receiving end of a message."
+                          },
+                          "description": "The Cc recipients for the message."
+                        },
+                        "toRecipients": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "emailAddress": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string",
+                                    "description": "The display name of the person or entity."
+                                  },
+                                  "address": {
+                                    "type": "string",
+                                    "description": "The email address of the person or entity."
+                                  }
+                                },
+                                "description": "Email address of a contact or message recipient.",
+                                "additionalProperties": false
+                              }
+                            },
+                            "description": "Represents information about a user in the sending or receiving end of a message."
+                          },
+                          "description": "The To recipients for the message."
+                        },
+                        "bccRecipients": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "emailAddress": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string",
+                                    "description": "The display name of the person or entity."
+                                  },
+                                  "address": {
+                                    "type": "string",
+                                    "description": "The email address of the person or entity."
+                                  }
+                                },
+                                "description": "Email address of a contact or message recipient.",
+                                "additionalProperties": false
+                              }
+                            },
+                            "description": "Represents information about a user in the sending or receiving end of a message."
+                          },
+                          "description": "The Bcc recipients for the message."
+                        },
+                        "internetMessageId": {
+                          "type": "string",
+                          "description": "The message ID in RFC2822 format. Only updatable if isDraft=true."
+                        },
+                        "isReadReceiptRequested": {
+                          "type": "boolean",
+                          "description": "Whether a read receipt is requested for the message."
+                        },
+                        "inferenceClassification": {
+                          "enum": [
+                            "focused",
+                            "other"
+                          ],
+                          "type": "string",
+                          "description": "Classification of the message based on inferred relevance or importance."
+                        },
+                        "isDeliveryReceiptRequested": {
+                          "type": "boolean",
+                          "description": "Whether a delivery receipt is requested for the message."
+                        }
+                      },
+                      "description": "Object containing the message properties to update. Include only fields you want to update.",
+                      "additionalProperties": false
+                    },
+                    "message_id": {
+                      "type": "string",
+                      "examples": [
+                        "AAMkAGI2TAAA="
+                      ],
+                      "description": "The unique identifier of the message to update."
+                    }
+                  },
+                  "description": "Represents a single message update operation in the batch."
+                },
+                "maxItems": 20,
+                "minItems": 1,
+                "description": "Array of message updates to perform. Maximum 20 items per batch (Microsoft Graph API limit). For larger workloads, chunk into multiple batch calls and retry any failures."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The UPN (User Principal Name) of the user whose messages to update, or 'me' for the currently authenticated user."
+              },
+              "response_detail": {
+                "enum": [
+                  "minimal",
+                  "full"
+                ],
+                "type": "string",
+                "default": "minimal",
+                "description": "Controls how much each PATCH sub-request returns from Microsoft Graph. 'minimal' (default) sets `Prefer: return=minimal` on each sub-request, so Graph returns 204 No Content per update \u2014 the response stays small even for the maximum 20 HTML messages. The action's response shape (BatchItemResult.status / .success / .error_message) is unchanged. 'full' omits the Prefer header so Graph returns the full updated-message body per sub-request (status 200) \u2014 useful only if you want to inspect the raw Graph response for debugging; otherwise stick with 'minimal' to avoid multi-MB batch responses."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_BATCH_MOVE_MESSAGES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_BATCH_MOVE_MESSAGES",
+          "description": "Batch-move up to 20 Outlook messages to a destination folder in a single Microsoft Graph $batch call. Use when moving multiple messages to avoid per-message move API calls.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_ids",
+              "destination_id"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The UPN (User Principal Name) of the user whose messages to move, or 'me' for the currently authenticated user."
+              },
+              "message_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "minItems": 1,
+                "description": "Array of message IDs to move. Maximum 20 items per batch (Microsoft Graph API limit). Each ID must be complete and untruncated."
+              },
+              "destination_id": {
+                "type": "string",
+                "examples": [
+                  "deleteditems",
+                  "inbox",
+                  "AAMkADhAAAAAAEKAAA="
+                ],
+                "description": "The destination folder ID, or a well-known folder name (e.g., 'inbox', 'deleteditems', 'drafts', 'sentitems'). If using a folder ID, it must be complete and untruncated."
+              },
+              "response_detail": {
+                "enum": [
+                  "minimal",
+                  "full"
+                ],
+                "type": "string",
+                "default": "minimal",
+                "description": "Controls how much each move sub-request returns from Microsoft Graph. 'minimal' (default) sets `Prefer: return=minimal` on each sub-request, so Graph returns 204 No Content per move \u2014 the response stays small even for the maximum 20 HTML messages. In this mode `moved_message_id` in each result is null even on success. 'full' omits the Prefer header so Graph returns the full moved-message body per sub-request and `moved_message_id` is populated. Use 'full' if you need to chain follow-up calls on the new message ID; otherwise stick with 'minimal' to avoid multi-MB batch responses."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_LIST_MAIL_FOLDERS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_MAIL_FOLDERS",
+          "description": "Tool to list a user's top-level mail folders. Use when you need folders like Inbox, Drafts, Sent Items; set include_hidden_folders=True to include hidden folders.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  10,
+                  50,
+                  100
+                ],
+                "description": "Maximum number of items to return per page."
+              },
+              "skip": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0,
+                  10,
+                  20
+                ],
+                "description": "Number of items to skip before returning results."
+              },
+              "count": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include total count of matching items in the response."
+              },
+              "filter": {
+                "type": "string",
+                "examples": [
+                  "displayName eq 'Inbox'",
+                  "isHidden eq false",
+                  "totalItemCount gt 0"
+                ],
+                "description": "OData filter expression to filter mail folders. String values must be enclosed in single quotes (e.g., displayName eq 'Inbox'). WARNING: Microsoft Graph API does not officially document which mailFolder properties support filtering. Known unsupported properties: parentFolderId (causes ErrorInvalidProperty error). To filter by parent folder, use the child folders endpoint instead: GET /me/mailFolders/{parentFolderId}/childFolders. Properties like isHidden may work but are not guaranteed."
+              },
+              "select": {
+                "type": "string",
+                "examples": [
+                  "id,displayName",
+                  "id,displayName,totalItemCount,isHidden"
+                ],
+                "description": "Comma-separated list of mailFolder properties to include in the response. Valid properties: id, displayName, parentFolderId, childFolderCount, unreadItemCount, totalItemCount, isHidden. Note: 'user_id' is NOT a valid mailFolder property and will be automatically removed if included."
+              },
+              "orderby": {
+                "type": "string",
+                "examples": [
+                  "displayName",
+                  "displayName desc",
+                  "totalItemCount desc"
+                ],
+                "description": "Property to sort by, optionally followed by 'asc' or 'desc'."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "User's id, userPrincipalName, or 'me' for the signed-in user."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend any required identifier fields from the first call (the token supersedes their values). Optional filter, sort and timezone params need not be repeated; the token carries them."
+              },
+              "include_hidden_folders": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Include hidden mail folders (isHidden=true) when set to true."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_GET_MESSAGE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_GET_MESSAGE",
+          "description": "Retrieves a specific email message by its ID from the specified user's Outlook mailbox. Use the 'sel...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_GET_MESSAGE"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_MOVE_MESSAGE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_MOVE_MESSAGE",
+          "description": "Move a message to another folder within the specified user's mailbox. Creates a new copy in the dest...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_MOVE_MESSAGE"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_SEARCH_MESSAGES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEARCH_MESSAGES",
+          "description": "Search Outlook messages using powerful KQL syntax. Supports sender (from:), recipient (to:, cc:), su...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_SEARCH_MESSAGES"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_LIST_EMAIL_RULES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_EMAIL_RULES",
+          "description": "List all email rules from inbox. No server-side filtering is supported; all rule narrowing must be d...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_LIST_EMAIL_RULES"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_CREATE_EMAIL_RULE": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_CREATE_EMAIL_RULE",
+          "description": "Create email rule filter with conditions and actions",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_CREATE_EMAIL_RULE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:31:45.688Z",
+        "current_time_utc_epoch_seconds": 1786599105,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "same",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"same\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_PJeGL_HkAX3l"
+  }
+}

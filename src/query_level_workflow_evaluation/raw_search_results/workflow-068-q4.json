@@ -1,0 +1,468 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-068-q4",
+    "workflow_id": 68,
+    "workflow_task": "Modify a GitHub-hosted backend application, add protected console and lead-care functionality, configure deployment/runtime infrastructure, apply database migrations, and verify CI plus hosted deployment status.",
+    "query": "verify CI and hosted deployment status",
+    "intent": "Check the status of continuous integration pipelines and confirm the successful deployment of the application on the hosting environment.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_LIST_CHECK_RUNS_FOR_A_REF",
+          "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY"
+        ],
+        "purpose": "verify CI status and workflow runs"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "VERCEL_GET_DEPLOYMENTS"
+        ],
+        "purpose": "confirm hosted deployment status"
+      }
+    ],
+    "candidate_tools": [
+      "GITHUB_COMMIT_MULTIPLE_FILES",
+      "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+      "GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN",
+      "GITHUB_GET_REPOSITORY_CONTENT",
+      "GITHUB_LIST_CHECK_RUNS_FOR_A_REF",
+      "GITHUB_LIST_CHECK_RUN_ANNOTATIONS",
+      "GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN",
+      "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY",
+      "SUPABASE_BETA_RUN_SQL_QUERY",
+      "SUPABASE_GETS_PROJECT_S_SERVICE_HEALTH_STATUS",
+      "SUPABASE_RUN_READ_ONLY_QUERY",
+      "VERCEL_GET_DEPLOYMENTS",
+      "VERCEL_GET_DEPLOYMENT_LOGS2"
+    ]
+  },
+  "request": {
+    "query": "verify CI and hosted deployment status"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "verify CI and hosted deployment status",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Validate the target revision exists using GITHUB_GET_A_COMMIT (avoid checking the wrong artifact and capture basic metadata).",
+            "[Optional (if commit identifier is unknown)] [Prerequisite]: Resolve the latest revision on the target branch using GITHUB_GET_A_BRANCH (use the resolved SHA for downstream lookups).",
+            "[Required] [Step]: Retrieve status contexts using GITHUB_GET_COMMIT_STATUSES (select the newest entry per context; treat older duplicates as stale).",
+            "[Optional (if statuses are pending/ambiguous)] [Step]: Cross-check CI conclusions using GITHUB_LIST_CHECK_RUNS_FOR_A_REF (confirm the latest run matches the newest status context).",
+            "[Fallback (if no reliable deployment match can be derived from statuses)] [Step]: Locate the matching deployment using VERCEL_GET_DEPLOYMENTS (filter by commit/ref when possible, handle data.pagination, pick newest relevant by time/readyState).",
+            "[Required] [Step]: Confirm deployment outcome using VERCEL_GET_DEPLOYMENT (record readyState/state and any promotion/alias indicators; focus on key fields if payload is huge).",
+            "[Required] [Step]: Determine pass/fail/gated conditions using VERCEL_LIST_DEPLOYMENT_CHECKS (identify specific blocking signals when not successful).",
+            "[Optional (if deployment is not in a final state)] [Next Step]: Poll by re-calling VERCEL_GET_DEPLOYMENT until a terminal readyState is reached, then re-evaluate outcome fields.",
+            "[Optional (if deeper root-cause is needed)] [Next Step]: Retrieve stage-level failure context using VERCEL_GET_DEPLOYMENT_EVENTS2 (pinpoint failing phase)."
+          ],
+          "known_pitfalls": [
+            "[GITHUB_GET_COMMIT_STATUSES] Status entries may be empty even when check runs exist; don\u2019t treat absence as success.",
+            "[GITHUB_GET_COMMIT_STATUSES] The same context can appear multiple times; selecting a non-newest item can report outdated pending/success.",
+            "[VERCEL_GET_DEPLOYMENTS] Results live under data.deployments with a separate data.pagination object; don\u2019t assume a flat list or array order.",
+            "[VERCEL_GET_DEPLOYMENT] Responses can be very large and may be truncated by clients; extract specific fields (readyState/state/related indicators).",
+            "[VERCEL_GET_DEPLOYMENT] Wrong or inaccessible identifiers can return HTTP 404 (not_found); prefer IDs obtained from VERCEL_GET_DEPLOYMENTS."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "GITHUB_GET_COMMIT_STATUSES",
+            "VERCEL_GET_DEPLOYMENTS",
+            "VERCEL_GET_DEPLOYMENT",
+            "VERCEL_LIST_DEPLOYMENT_CHECKS"
+          ],
+          "related_tool_slugs": [
+            "GITHUB_GET_A_BRANCH",
+            "GITHUB_LIST_CHECK_RUNS_FOR_A_REF",
+            "VERCEL_GET_DEPLOYMENT_EVENTS2",
+            "VERCEL_GET_PROJECTS",
+            "GITHUB_GET_A_COMMIT"
+          ],
+          "toolkits": [
+            "github",
+            "vercel"
+          ],
+          "plan_id": "a76f9c4141f04e229e5ef5aa8d0ee669"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "github",
+          "has_active_connection": false,
+          "description": "GitHub is a code hosting platform for version control and collaboration, offering Git-based repository management, issue tracking, and continuous integration features",
+          "status_message": "No Active connection for toolkit=github. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"github\") to create a connection BEFORE executing any github tools."
+        },
+        {
+          "toolkit": "vercel",
+          "has_active_connection": false,
+          "description": "Vercel is a platform for frontend frameworks and static sites, enabling developers to host websites and web services that deploy instantly, scale automatically, and require minimal configuration.",
+          "status_message": "No Active connection for toolkit=vercel. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"vercel\") to create a connection BEFORE executing any vercel tools."
+        }
+      ],
+      "tool_schemas": {
+        "GITHUB_GET_COMMIT_STATUSES": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_COMMIT_STATUSES",
+          "description": "List all statuses for a commit reference (SHA, branch, or tag) in reverse chronological order. Use when you need to check CI/CD status results from various systems for a specific commit.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "ref"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "examples": [
+                  "master",
+                  "main",
+                  "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+                  "heads/main",
+                  "tags/v1.0.0"
+                ],
+                "description": "The commit reference. Can be a commit SHA, branch name (heads/BRANCH_NAME), or tag name (tags/TAG_NAME)."
+              },
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "minimum": 1,
+                "examples": [
+                  1,
+                  2,
+                  3
+                ],
+                "description": "Page number of results to fetch. Default: 1"
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Hello-World",
+                  "vscode"
+                ],
+                "description": "The name of the repository without the .git extension. The name is not case sensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "microsoft"
+                ],
+                "description": "The account owner of the repository. The name is not case sensitive."
+              },
+              "per_page": {
+                "type": "integer",
+                "default": 30,
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  30,
+                  100
+                ],
+                "description": "Number of results per page, maximum 100. Default: 30"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_GET_DEPLOYMENTS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENTS",
+          "description": "Tool to list deployments from Vercel. Use when you need to retrieve deployment information for a project or team.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "to": {
+                "type": "integer",
+                "examples": [
+                  1612948664566
+                ],
+                "description": "Gets the deployment created before this Date timestamp. (default: current time)"
+              },
+              "app": {
+                "type": "string",
+                "examples": [
+                  "docs"
+                ],
+                "description": "Name of the deployment to filter by"
+              },
+              "sha": {
+                "type": "string",
+                "description": "Filter deployments based on the SHA"
+              },
+              "from": {
+                "type": "integer",
+                "examples": [
+                  1612948664566
+                ],
+                "description": "Gets the deployment created after this Date timestamp. (default: current time)"
+              },
+              "slug": {
+                "type": "string",
+                "description": "The Team slug to perform the request on behalf of"
+              },
+              "limit": {
+                "type": "integer",
+                "examples": [
+                  10
+                ],
+                "description": "Maximum number of deployments to list from a request"
+              },
+              "since": {
+                "type": "integer",
+                "examples": [
+                  1540095775941
+                ],
+                "description": "Get Deployments created after this JavaScript timestamp"
+              },
+              "state": {
+                "type": "string",
+                "examples": [
+                  "BUILDING,READY"
+                ],
+                "description": "Filter deployments based on their state (BUILDING, ERROR, INITIALIZING, QUEUED, READY, CANCELED)"
+              },
+              "until": {
+                "type": "integer",
+                "examples": [
+                  1540095775951
+                ],
+                "description": "Get Deployments created before this JavaScript timestamp"
+              },
+              "users": {
+                "type": "string",
+                "examples": [
+                  "kr1PsOIzqEL5Xg6M4VZcZosf,K4amb7K9dAt5R2vBJWF32bmY"
+                ],
+                "description": "Filter out deployments based on users who have created the deployment"
+              },
+              "branch": {
+                "type": "string",
+                "description": "Filter deployments based on the branch name"
+              },
+              "target": {
+                "type": "string",
+                "examples": [
+                  "production"
+                ],
+                "description": "Filter deployments based on the environment"
+              },
+              "teamId": {
+                "type": "string",
+                "description": "The Team identifier to perform the request on behalf of"
+              },
+              "projectId": {
+                "type": "string",
+                "examples": [
+                  "QmXGTs7mvAMMC7WW5ebrM33qKG32QK3h4vmQMjmY"
+                ],
+                "description": "Filter deployments from the given ID or name"
+              },
+              "projectIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "prj_123",
+                    "prj_456"
+                  ]
+                ],
+                "description": "Filter deployments from the given project IDs. Cannot be used when projectId is specified"
+              },
+              "rollbackCandidate": {
+                "type": "boolean",
+                "description": "Filter deployments based on their rollback candidacy"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_GET_DEPLOYMENT": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENT",
+          "description": "Tool to get a deployment by ID or URL. Use when you need to retrieve detailed information about a specific deployment.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "idOrUrl"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string",
+                "description": "The Team slug to perform the request on behalf of."
+              },
+              "teamId": {
+                "type": "string",
+                "description": "The Team identifier to perform the request on behalf of."
+              },
+              "idOrUrl": {
+                "type": "string",
+                "examples": [
+                  "dpl_89qyp1cskzkLrVicDaZoDbjyHuDJ"
+                ],
+                "description": "The unique identifier or hostname of the deployment."
+              },
+              "withGitRepoInfo": {
+                "type": "string",
+                "examples": [
+                  "true"
+                ],
+                "description": "Whether to add in gitRepo information."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_LIST_DEPLOYMENT_CHECKS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_LIST_DEPLOYMENT_CHECKS",
+          "description": "Tool to retrieve a list of checks for a specific deployment. Use after a deployment to inspect check statuses and results.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "deploymentId"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string",
+                "examples": [
+                  "my-team-url-slug"
+                ],
+                "description": "Team slug on whose behalf to perform the request."
+              },
+              "teamId": {
+                "type": "string",
+                "examples": [
+                  "team_1a2b3c4d5e6f7g8h9i0j1k2l"
+                ],
+                "description": "Team ID on whose behalf to perform the request."
+              },
+              "deploymentId": {
+                "type": "string",
+                "examples": [
+                  "dpl_2qn7PZrx89yxY34vEZPD31Y9XVj6"
+                ],
+                "description": "The ID of the deployment to retrieve checks for."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_BRANCH": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_BRANCH",
+          "description": "Retrieves detailed information for a specified branch within a GitHub repository.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "branch"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Hello-World"
+                ],
+                "description": "The name of the repository without the `.git` extension. The name is not case sensitive. "
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat"
+                ],
+                "description": "The account owner of the repository. The name is not case sensitive."
+              },
+              "branch": {
+                "type": "string",
+                "examples": [
+                  "main"
+                ],
+                "description": "The name of the branch. Cannot contain wildcard characters. To use wildcard characters in branch names, use [the GraphQL API](https://docs.github.com/graphql). If 'HEAD' is provided, it will be resolved to the repository's default branch."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_LIST_CHECK_RUNS_FOR_A_REF": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_CHECK_RUNS_FOR_A_REF",
+          "description": "List GitHub check runs for a commit SHA, branch, or tag to assess CI status and conclusions. Use whe...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_LIST_CHECK_RUNS_FOR_A_REF"
+              ]
+            }
+          }
+        },
+        "VERCEL_GET_DEPLOYMENT_EVENTS2": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENT_EVENTS2",
+          "description": "Tool to get deployment events for a specific Vercel deployment by ID or URL. Use when you need to re...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_GET_DEPLOYMENT_EVENTS2"
+              ]
+            }
+          }
+        },
+        "VERCEL_GET_PROJECTS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_PROJECTS",
+          "description": "Tool to retrieve a list of projects from Vercel. Use this to get project information with optional f...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_GET_PROJECTS"
+              ]
+            }
+          }
+        },
+        "GITHUB_GET_A_COMMIT": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_COMMIT",
+          "description": "Retrieves a specific commit from a repository by its owner, name, and a valid commit reference (SHA,...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_A_COMMIT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:36:46.440Z",
+        "current_time_utc_epoch_seconds": 1786599406,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "firm",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"firm\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_X4mpnK8iAz9t"
+  }
+}

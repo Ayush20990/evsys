@@ -1,0 +1,379 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-076-q5",
+    "workflow_id": 76,
+    "workflow_task": "Build a cross-channel marketing and operations report by pulling Meta Ads performance and account status, GA4 funnel and revenue data, Instagram profile/insights, Microsoft Clarity friction metrics, and ClickUp docs/tasks for planning context.",
+    "query": "search clickup docs and tasks for planning context",
+    "intent": "Retrieve strategic planning documents and related tasks from ClickUp.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "CLICKUP_GET_DOC_PAGE_CONTENT"
+        ],
+        "purpose": "search clickup docs"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "CLICKUP_GET_FILTERED_TEAM_TASKS"
+        ],
+        "purpose": "retrieve clickup tasks for planning"
+      }
+    ],
+    "candidate_tools": [
+      "CLICKUP_GET_DOC_PAGE_CONTENT",
+      "CLICKUP_GET_DOC_PAGE_LISTING",
+      "CLICKUP_GET_FILTERED_TEAM_TASKS",
+      "CLICKUP_GET_LIST_MEMBERS",
+      "CLICKUP_GET_WORKSPACE_SEATS",
+      "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS",
+      "GOOGLE_ANALYTICS_RUN_REPORT",
+      "INSTAGRAM_GET_USER_INFO",
+      "INSTAGRAM_GET_USER_INSIGHTS",
+      "METAADS_GET_INSIGHTS",
+      "METAADS_GET_OBJECT",
+      "MICROSOFT_CLARITY_DATA_EXPORT"
+    ]
+  },
+  "request": {
+    "query": "search clickup docs and tasks for planning context"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search clickup docs and tasks for planning context",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite (if scope unknown)]: Discover accessible scope using CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES (choose target workspace/team).",
+            "[Required] [Step]: Find candidate docs by keyword using CLICKUP_SEARCH_DOCS (paginate via next_cursor until missing/empty; collect doc hits/snippets).",
+            "[Required] [Step]: Enumerate tasks using CLICKUP_GET_FILTERED_TEAM_TASKS (page=0.. until data.last_page=true; locally keyword-match on name+description with null-safe handling).",
+            "[Optional (if list identifiers are known and you want a narrower scan)] [Step]: Retrieve list-scoped tasks using CLICKUP_GET_TASKS (paginate until data.last_page=true; locally keyword-match).",
+            "[Optional (if open-only scan yields too few hits)] [Fallback]: Re-run CLICKUP_GET_FILTERED_TEAM_TASKS with closed items included (repeat pagination + local matching).",
+            "[Optional (if matches need confirmation or context may be in discussion)] [Next Step]: Deep-verify shortlisted items using CLICKUP_GET_TASK and CLICKUP_GET_TASK_COMMENTS (paginate comments via start/start_id as needed).",
+            "[Optional (if doc snippets are insufficient or output is truncated)] [Next Step]: Identify pages using CLICKUP_GET_DOC_PAGE_LISTING, fetch targeted text using CLICKUP_GET_DOC_PAGE_CONTENT, and optionally use COMPOSIO_REMOTE_WORKBENCH to chunk/scan/dedupe results."
+          ],
+          "known_pitfalls": [
+            "[CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES] Scope/auth failures may surface as 404 not_found_or_authorized or ToolNotFound-style errors (including code 2401).",
+            "[CLICKUP_SEARCH_DOCS] Pagination may end with next_cursor as an empty string; treat falsey cursor as end-of-results.",
+            "[CLICKUP_GET_FILTERED_TEAM_TASKS] tasks[*].description can be null and some calls return tasks=[]; keep matching null-safe and stop only on data.last_page=true.",
+            "[CLICKUP_GET_FILTERED_TEAM_TASKS] High-volume pagination can trigger HTTP 429; apply backoff/retry and consider narrowing scope (e.g., list-scoped scan).",
+            "[CLICKUP_GET_TASK_COMMENTS] Older-comment pagination uses start/start_id; some tasks legitimately return comments=[]."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Paginate CLICKUP_GET_FILTERED_TEAM_TASKS to completion and filter locally by keyword",
+              "code": "```python\nimport re\nrx=re.compile(r\"KW1|KW2\",re.I)\npage=0\nhits=[]\nwhile True:\n  resp,err=run_composio_tool('CLICKUP_GET_FILTERED_TEAM_TASKS',{'team_Id':'SCOPE','page':page})\n  data=(resp or {}).get('data') or {}\n  for t in (data.get('tasks') or []):\n    hay=((t.get('name') or '')+'\\n'+(t.get('description') or ''))\n    if rx.search(hay): hits.append(t.get('id'))\n  if data.get('last_page'): break\n  page+=1\n```"
+            },
+            {
+              "description": "Normalize text before client-side matching (including removing diacritics)",
+              "code": "```python\nimport re,unicodedata\n\ndef norm(s):\n  s=unicodedata.normalize('NFD',s or '')\n  s=''.join(ch for ch in s if unicodedata.category(ch)!='Mn')\n  return re.sub(r'\\s+',' ',s).lower().strip()\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "CLICKUP_SEARCH_DOCS",
+            "CLICKUP_GET_FILTERED_TEAM_TASKS"
+          ],
+          "related_tool_slugs": [
+            "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES",
+            "CLICKUP_GET_TASK",
+            "CLICKUP_GET_TASK_COMMENTS",
+            "CLICKUP_GET_DOC_PAGE_LISTING",
+            "CLICKUP_GET_DOC_PAGE_CONTENT",
+            "CLICKUP_GET_TASKS"
+          ],
+          "toolkits": [
+            "clickup"
+          ],
+          "plan_id": "2bd7e5d166954571b96b66fd966d23fc"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "clickup",
+          "has_active_connection": false,
+          "description": "ClickUp unifies tasks, docs, goals, and chat in a single platform, allowing teams to plan, organize, and collaborate across projects with customizable workflows",
+          "status_message": "No Active connection for toolkit=clickup. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"clickup\") to create a connection BEFORE executing any clickup tools."
+        }
+      ],
+      "tool_schemas": {
+        "CLICKUP_SEARCH_DOCS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_SEARCH_DOCS",
+          "description": "Tool to search and list Docs metadata in a ClickUp workspace. Use after confirming the workspace ID to quickly locate relevant meeting notes before fetching pages.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "workspace_id"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "description": "Maximum results per page. Default: 50, max: 100."
+              },
+              "cursor": {
+                "type": "string",
+                "description": "Cursor from previous response to fetch next page."
+              },
+              "workspace_id": {
+                "type": "string",
+                "examples": [
+                  "90161390966"
+                ],
+                "description": "ID of the ClickUp Workspace to list Docs from."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_GET_FILTERED_TEAM_TASKS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_FILTERED_TEAM_TASKS",
+          "description": "Retrieves a paginated list of tasks (up to 100 per page) from a specified workspace based on various filter criteria, respecting user access permissions. Unexpectedly missing tasks may indicate permission restrictions rather than filter issues. Task comments are not included; use CLICKUP_GET_TASK_COMMENTS for complete context. No keyword/text search is supported; filter client-side on returned results.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "team_Id"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer",
+                "description": "Page to fetch (starts at 0). Increment until the response's `last_page` field is true or the returned tasks list is empty to avoid silently missing tasks."
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Filter by tag names."
+              },
+              "parent": {
+                "type": "string",
+                "description": "Filter by parent task ID to retrieve its subtasks."
+              },
+              "reverse": {
+                "type": "boolean",
+                "description": "If true, tasks are displayed in reverse order."
+              },
+              "team_Id": {
+                "type": "string",
+                "description": "The Workspace ID (called 'team_id' in ClickUp API v2). This is a numeric string. To find your Workspace ID, use the 'Get Authorized Teams (Workspaces)' endpoint or check Settings > Workspace Settings in the ClickUp UI."
+              },
+              "team_id": {
+                "type": "string",
+                "description": "Team ID, required if `custom_task_ids` is true, for custom task ID context. Distinct from the required `team_Id` path parameter (Workspace ID); do not confuse these \u2014 this optional numeric string is only used for custom task ID resolution. Example: '9001'."
+              },
+              "list_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Filter by List IDs. Must be numeric IDs (e.g., '123456789'). You can get numeric List IDs from the Get Lists endpoint."
+              },
+              "order_by": {
+                "enum": [
+                  "id",
+                  "created",
+                  "updated",
+                  "due_date"
+                ],
+                "type": "string",
+                "description": "Order tasks by this field. Default: `created`."
+              },
+              "statuses": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Filter by task statuses (e.g., 'to do', 'in progress'). Values must exactly match workspace-configured status strings; mismatches silently return empty results."
+              },
+              "subtasks": {
+                "type": "boolean",
+                "description": "If true, include subtasks. Excluded by default."
+              },
+              "assignees": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Filter by assignee User IDs. Must be numeric IDs (e.g., '123456789'). You can get numeric User IDs from endpoints like Get List Members or Get Task Members."
+              },
+              "space_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Filter by Space IDs. Must be numeric IDs (e.g., '123456789'). You can get numeric Space IDs from the Get Spaces endpoint."
+              },
+              "due_date_gt": {
+                "type": "integer",
+                "description": "Filter by due date greater than this Unix timestamp (milliseconds)."
+              },
+              "due_date_lt": {
+                "type": "integer",
+                "description": "Filter by due date less than this Unix timestamp (milliseconds)."
+              },
+              "project_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Filter by Folder (Project) IDs. Must be numeric IDs (e.g., '123456789'). You can get numeric Folder IDs from the Get Folders endpoint."
+              },
+              "custom_items": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "description": "Filter by custom item types (e.g., 0 for tasks, 1 for Milestones, other numbers for custom types defined in Workspace)."
+              },
+              "date_done_gt": {
+                "type": "integer",
+                "description": "Filter by completion date greater than this Unix timestamp (milliseconds)."
+              },
+              "date_done_lt": {
+                "type": "integer",
+                "description": "Filter by completion date less than this Unix timestamp (milliseconds)."
+              },
+              "custom_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Filter by custom fields. Each string in the list is a JSON object defining a single filter condition. Example for one string in the list: '''{\"field_id\": \"unique_field_id\", \"operator\": \"=\", \"value\": \"desired_value\"}'''. Incorrect `field_id` values or unsupported operator strings produce 400 errors or silently empty results; retrieve valid `field_id`s from workspace custom field configuration."
+              },
+              "include_closed": {
+                "type": "boolean",
+                "description": "If true, include closed tasks. Excluded by default."
+              },
+              "custom_task_ids": {
+                "type": "boolean",
+                "description": "Set to true to use custom task IDs in filters instead of global task IDs. Requires `team_id` for context."
+              },
+              "date_created_gt": {
+                "type": "integer",
+                "description": "Filter by creation date greater than this Unix timestamp (milliseconds)."
+              },
+              "date_created_lt": {
+                "type": "integer",
+                "description": "Filter by creation date less than this Unix timestamp (milliseconds)."
+              },
+              "date_updated_gt": {
+                "type": "integer",
+                "description": "Filter by update date greater than this Unix timestamp (milliseconds)."
+              },
+              "date_updated_lt": {
+                "type": "integer",
+                "description": "Filter by update date less than this Unix timestamp (milliseconds)."
+              },
+              "include_markdown_description": {
+                "type": "boolean",
+                "description": "If true, return task descriptions in Markdown format."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES",
+          "description": "Retrieves a list of Workspaces (Teams) the authenticated user can access.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_GET_TASK": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_TASK",
+          "description": "Retrieves comprehensive details for a ClickUp task by its ID, supporting standard or custom task IDs...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_TASK"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_TASK_COMMENTS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_TASK_COMMENTS",
+          "description": "Retrieves up to 25 comments for a specified task, supporting pagination using `start` and `start_id`...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_TASK_COMMENTS"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_DOC_PAGE_LISTING": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_DOC_PAGE_LISTING",
+          "description": "Tool to fetch the page listing structure of a ClickUp Doc by workspace_id and doc_id. Use when you n...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_DOC_PAGE_LISTING"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_DOC_PAGE_CONTENT": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_DOC_PAGE_CONTENT",
+          "description": "Tool to fetch a single ClickUp Doc page's content and metadata by workspace_id + doc_id + page_id (v...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_DOC_PAGE_CONTENT"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_TASKS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_TASKS",
+          "description": "Retrieves tasks from a specified ClickUp list; only tasks whose home is the given list_id are return...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_TASKS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:37:44.687Z",
+        "current_time_utc_epoch_seconds": 1786599464,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "girl",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"girl\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_BmjDxRs_DJSL"
+  }
+}

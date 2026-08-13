@@ -1,0 +1,637 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-052-q2",
+    "workflow_id": 52,
+    "workflow_task": "Migrate a user's memory data from Mem0 into Zep, inspect existing Zep context, attempt to organize migrated content by project-like scopes, and verify that the imported content is searchable.",
+    "query": "add memories to Zep and group by project scope",
+    "intent": "Import the exported memory data into Zep and organize the content into project-like scopes.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "ZEP_CREATE_GRAPH"
+        ],
+        "purpose": "Add memory data to Zep graph and organize it"
+      }
+    ],
+    "candidate_tools": [
+      "MEM0_GET_MEMORIES_BY_ENTITY",
+      "ZEP_CREATE_GRAPH",
+      "ZEP_GET_PROJECT_INFO",
+      "ZEP_GET_USER_NODE",
+      "ZEP_GRAPH_SEARCH",
+      "ZEP_LIST_GROUPS_ORDERED"
+    ]
+  },
+  "request": {
+    "query": "add memories to Zep and group by project scope"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "add memories to Zep and group by project scope",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Create a durable note or structured record with metadata using ZEP_CREATE_GRAPH (persist into the graph for later retrieval).",
+            "[Optional (if storing as conversation history)] [Prerequisite]: Create a conversation container using ZEP_CREATE_THREAD (obtain a thread reference for message ingestion).",
+            "[Optional (if using the thread container)] [Step]: Add the note as message-style memory with metadata using ZEP_ADD_THREAD_MESSAGES (attach to the thread reference).",
+            "[Optional (if memory should be scoped only to a short-lived context)] [Step]: Store temporary/session memory with metadata using ZEP_ADD_SESSION_MEMORY (avoid durable graph storage).",
+            "[Optional (if modeling explicit relationships)] [Next Step]: Write a subject\u2013predicate\u2013object fact with metadata using ZEP_ADD_FACT_TRIPLE, then wait for completion using ZEP_GET_TASK_STATUS (handle async writes).",
+            "[Optional (for verification/troubleshooting)] [Next Step]: Confirm the record is discoverable using ZEP_GRAPH_SEARCH, then inspect a node using ZEP_GET_USER_NODE and validate links using ZEP_GET_NODE_EDGES (ensure the intended entity/edges were written)."
+          ],
+          "known_pitfalls": [
+            "[ZEP_CREATE_THREAD] Thread ingestion requires a valid thread reference; skipping creation can cause ZEP_ADD_THREAD_MESSAGES to fail.",
+            "[ZEP_CREATE_GRAPH] Writes may show as unprocessed initially; immediate reads/search can look missing until ingestion completes.",
+            "[ZEP_CREATE_GRAPH] Inconsistent payload shape or missing/incorrect association identifiers can lead to rejected or mis-filed entries.",
+            "[ZEP_ADD_FACT_TRIPLE] Fact creation can be asynchronous; reads may not reflect the relationship until ZEP_GET_TASK_STATUS reports completion.",
+            "[ZEP_GET_USER_NODE] Node lookups can be ambiguous; verify you selected the intended node before checking connections via ZEP_GET_NODE_EDGES."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "ZEP_ADD_THREAD_MESSAGES",
+            "ZEP_CREATE_GRAPH",
+            "ZEP_ADD_FACT_TRIPLE",
+            "ZEP_ADD_SESSION_MEMORY"
+          ],
+          "related_tool_slugs": [
+            "ZEP_CREATE_THREAD",
+            "ZEP_GRAPH_SEARCH",
+            "ZEP_GET_USER_NODE",
+            "ZEP_GET_TASK_STATUS",
+            "ZEP_GET_NODE_EDGES"
+          ],
+          "toolkits": [
+            "zep"
+          ],
+          "plan_id": "ea935bbf4ac34a8da99967a92535f036"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "zep",
+          "has_active_connection": false,
+          "description": "The Foundational Memory Layer for AI. Equip your agents with the knowledge to complete tasks, from the mundane to monumental.",
+          "status_message": "No Active connection for toolkit=zep. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"zep\") to create a connection BEFORE executing any zep tools."
+        }
+      ],
+      "tool_schemas": {
+        "ZEP_ADD_THREAD_MESSAGES": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_ADD_THREAD_MESSAGES",
+          "description": "Tool to add chat messages to a thread in Zep and ingest them into the user knowledge graph. Use when you need to add conversation history to a thread - for best results, add messages on every chat turn in the order they were created.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "messages"
+            ],
+            "properties": {
+              "messages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "role",
+                    "role_type",
+                    "content"
+                  ],
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "examples": [
+                        "John Doe",
+                        "customer_service_agent",
+                        "user_123"
+                      ],
+                      "description": "The name/role of the message sender (e.g., user's real name or identifier)."
+                    },
+                    "uuid": {
+                      "type": "string",
+                      "examples": [
+                        "d028ef58-5b35-46a2-b146-5fbe2eadbec9"
+                      ],
+                      "description": "The unique identifier of the message."
+                    },
+                    "content": {
+                      "type": "string",
+                      "examples": [
+                        "Hello, this is a test message",
+                        "How can I help you today?"
+                      ],
+                      "description": "The message content/text."
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "examples": [
+                        {
+                          "source": "web_chat",
+                          "priority": 1,
+                          "sentiment": "positive"
+                        }
+                      ],
+                      "description": "A dictionary containing metadata associated with the message for storing additional information like sentiment scores, source identifiers, processing flags, or other custom data.",
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "role_type": {
+                      "enum": [
+                        "user",
+                        "assistant",
+                        "tool",
+                        "ai",
+                        "human"
+                      ],
+                      "type": "string",
+                      "examples": [
+                        "user",
+                        "assistant",
+                        "tool"
+                      ],
+                      "description": "The type of role - must be one of: 'user', 'assistant', or 'tool'. Legacy values 'human' and 'ai' are also accepted and will be mapped to 'user' and 'assistant' respectively."
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "examples": [
+                        "2023-12-20T10:30:00Z",
+                        "2024-01-15T14:25:30Z"
+                      ],
+                      "description": "Timestamp in RFC3339 format representing when the message was originally sent by the user."
+                    },
+                    "token_count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "examples": [
+                        10,
+                        25,
+                        100
+                      ],
+                      "description": "The number of tokens in the message."
+                    }
+                  },
+                  "description": "Message object to add to a thread."
+                },
+                "minItems": 1,
+                "description": "A list of message objects in chat message format to add to the thread. For best results, add chat history on every chat turn, including both AI and human messages in a single operation and in the order that the messages were created."
+              },
+              "thread_id": {
+                "type": "string",
+                "examples": [
+                  "test-thread-12345",
+                  "20edc83e-1a6e-4be7-a218-5cc8dfae85b0"
+                ],
+                "description": "The ID of the thread to which messages should be added."
+              },
+              "ignore_roles": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "user",
+                    "assistant",
+                    "tool",
+                    "ai",
+                    "human"
+                  ],
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "assistant"
+                  ],
+                  [
+                    "tool"
+                  ],
+                  [
+                    "assistant",
+                    "tool"
+                  ]
+                ],
+                "description": "Optional list of role types to ignore when adding messages to graph memory. The message itself will still be added, retained and used as context for messages that are added to a user's graph. Valid values: 'user', 'assistant', 'tool'. Legacy values 'ai' and 'human' are also accepted."
+              },
+              "return_context": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Set to true to optionally return a context block relevant to the most recent messages. For latency sensitive applications, this makes the add operation return a context block in the same way that thread.get_user_context does."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZEP_CREATE_GRAPH": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_CREATE_GRAPH",
+          "description": "Tool to create a new graph by adding data to Zep. Use when you need to add text, message, or JSON data to a user's graph or a specific graph. The data is processed and an episode node is created in the graph.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "data",
+              "type"
+            ],
+            "properties": {
+              "data": {
+                "type": "string",
+                "examples": [
+                  "The user prefers dark mode and likes to receive notifications in the morning."
+                ],
+                "maxLength": 10000,
+                "description": "The content to add to the graph. Maximum 10,000 characters per request."
+              },
+              "type": {
+                "enum": [
+                  "message",
+                  "text",
+                  "json"
+                ],
+                "type": "string",
+                "examples": [
+                  "text",
+                  "message",
+                  "json"
+                ],
+                "description": "The data type - one of 'message', 'text', or 'json'"
+              },
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "test-user-context-001",
+                  "user-12345"
+                ],
+                "description": "The user ID to associate the data with a user graph. One of user_id or graph_id should be provided."
+              },
+              "graph_id": {
+                "type": "string",
+                "examples": [
+                  "graph-456"
+                ],
+                "description": "The graph ID to add data to a specific graph. One of user_id or graph_id should be provided."
+              },
+              "created_at": {
+                "type": "string",
+                "examples": [
+                  "2024-01-15T10:30:00Z"
+                ],
+                "description": "ISO 8601 timestamp for when the data was created. Optional field."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZEP_ADD_FACT_TRIPLE": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_ADD_FACT_TRIPLE",
+          "description": "Tool to add a manually specified fact triple (subject-predicate-object) to the Zep knowledge graph. Use when you need to add explicit relationships between entities. Returns a task_id to monitor processing status.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "fact",
+              "fact_name",
+              "target_node_name"
+            ],
+            "properties": {
+              "fact": {
+                "type": "string",
+                "examples": [
+                  "Alice works with Bob on the project"
+                ],
+                "maxLength": 50,
+                "description": "The fact relating the two nodes that this edge represents"
+              },
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "test-user-001"
+                ],
+                "description": "Add data to a user graph by providing a user_id"
+              },
+              "graph_id": {
+                "type": "string",
+                "examples": [
+                  "graph-12345"
+                ],
+                "description": "The graph ID to add data to (alternative to user_id/group_id)"
+              },
+              "group_id": {
+                "type": "string",
+                "examples": [
+                  "group-12345"
+                ],
+                "description": "Add data to a group graph by providing a group_id"
+              },
+              "valid_at": {
+                "type": "string",
+                "examples": [
+                  "2024-01-15T10:30:00Z"
+                ],
+                "description": "The time when the fact becomes valid (ISO 8601 format)"
+              },
+              "fact_name": {
+                "type": "string",
+                "examples": [
+                  "WORKS_WITH",
+                  "RELATES_TO"
+                ],
+                "maxLength": 50,
+                "minLength": 1,
+                "description": "The name of the edge to add. Should be all caps using snake case (e.g., RELATES_TO, WORKS_WITH)"
+              },
+              "fact_uuid": {
+                "type": "string",
+                "examples": [
+                  "123e4567-e89b-12d3-a456-426614174000"
+                ],
+                "description": "The UUID of the edge to add"
+              },
+              "created_at": {
+                "type": "string",
+                "examples": [
+                  "2024-01-15T10:30:00Z"
+                ],
+                "description": "The timestamp when the edge was created (ISO 8601 format)"
+              },
+              "expired_at": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31T23:59:59Z"
+                ],
+                "description": "The time (if any) at which the edge expires (ISO 8601 format)"
+              },
+              "invalid_at": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31T23:59:59Z"
+                ],
+                "description": "The time (if any) at which the fact stops being true (ISO 8601 format)"
+              },
+              "source_node_name": {
+                "type": "string",
+                "examples": [
+                  "Alice"
+                ],
+                "maxLength": 50,
+                "description": "The name of the source node to add"
+              },
+              "source_node_uuid": {
+                "type": "string",
+                "examples": [
+                  "123e4567-e89b-12d3-a456-426614174001"
+                ],
+                "description": "UUID of the source node"
+              },
+              "target_node_name": {
+                "type": "string",
+                "examples": [
+                  "Bob",
+                  "Project"
+                ],
+                "maxLength": 50,
+                "description": "The name of the target node to add"
+              },
+              "target_node_uuid": {
+                "type": "string",
+                "examples": [
+                  "123e4567-e89b-12d3-a456-426614174002"
+                ],
+                "description": "UUID of the target node"
+              },
+              "source_node_summary": {
+                "type": "string",
+                "examples": [
+                  "Alice is a senior developer working on the project"
+                ],
+                "maxLength": 500,
+                "description": "The summary of the source node to add"
+              },
+              "target_node_summary": {
+                "type": "string",
+                "examples": [
+                  "Bob is a team member collaborating on the project"
+                ],
+                "maxLength": 500,
+                "description": "The summary of the target node to add"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZEP_ADD_SESSION_MEMORY": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_ADD_SESSION_MEMORY",
+          "description": "Tool to add memory messages to a specified Zep session. Use when you need to store conversation history or context in a session.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "session_id",
+              "messages"
+            ],
+            "properties": {
+              "messages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "content",
+                    "role_type"
+                  ],
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "description": "Customizable role of the sender, if different from role_type."
+                    },
+                    "uuid": {
+                      "type": "string",
+                      "description": "Unique message identifier."
+                    },
+                    "content": {
+                      "type": "string",
+                      "examples": [
+                        "Hello, I am testing the Zep API endpoint for adding session memory."
+                      ],
+                      "description": "The message text content."
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "description": "Custom key-value pairs for additional message metadata.",
+                      "additionalProperties": true
+                    },
+                    "processed": {
+                      "type": "boolean",
+                      "description": "Processing status flag for the message."
+                    },
+                    "role_type": {
+                      "enum": [
+                        "norole",
+                        "system",
+                        "assistant",
+                        "user",
+                        "function",
+                        "tool"
+                      ],
+                      "type": "string",
+                      "examples": [
+                        "user",
+                        "assistant"
+                      ],
+                      "description": "Role type of the message sender. Must be one of: norole, system, assistant, user, function, tool."
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "description": "ISO 8601 timestamp of message creation."
+                    }
+                  },
+                  "description": "Message object to add to session memory."
+                },
+                "minItems": 1,
+                "description": "Collection of message objects to add to the session."
+              },
+              "session_id": {
+                "type": "string",
+                "examples": [
+                  "test_session_curl_20231220"
+                ],
+                "description": "The ID of the session to which memory should be added."
+              },
+              "ignore_roles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Optional list of role types to ignore when adding messages."
+              },
+              "return_context": {
+                "type": "boolean",
+                "description": "When enabled, instructs the API to return memory context relevant to the most recent messages in the response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZEP_CREATE_THREAD": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_CREATE_THREAD",
+          "description": "Tool to create a new thread in Zep for a specific user. Use when you need to start a new conversation thread. The user must be created first before creating a thread. Zep automatically warms the cache for that user's graph data in the background to improve query latency.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "user_id"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "test-user-001",
+                  "user_67890"
+                ],
+                "description": "The unique identifier of the user associated with the thread. The user must already exist before creating a thread."
+              },
+              "thread_id": {
+                "type": "string",
+                "examples": [
+                  "test-thread-001",
+                  "thread_12345"
+                ],
+                "maxLength": 500,
+                "description": "The unique identifier of the thread. This is an arbitrary identifier that you can map to relevant business objects in your app."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZEP_GRAPH_SEARCH": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_GRAPH_SEARCH",
+          "description": "Tool to perform hybrid graph search combining semantic similarity and BM25 full-text search across t...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZEP_GRAPH_SEARCH"
+              ]
+            }
+          }
+        },
+        "ZEP_GET_USER_NODE": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_GET_USER_NODE",
+          "description": "Tool to retrieve a user's graph node and summary from Zep. Use when you need to access the user summ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZEP_GET_USER_NODE"
+              ]
+            }
+          }
+        },
+        "ZEP_GET_TASK_STATUS": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_GET_TASK_STATUS",
+          "description": "Tool to check the status of asynchronous operations in Zep. Use when monitoring batch adds, clone op...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZEP_GET_TASK_STATUS"
+              ]
+            }
+          }
+        },
+        "ZEP_GET_NODE_EDGES": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_GET_NODE_EDGES",
+          "description": "Tool to retrieve all entity edges for a specific node in the Zep knowledge graph. Use when you need ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZEP_GET_NODE_EDGES"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:35:02.173Z",
+        "current_time_utc_epoch_seconds": 1786599302,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "ring",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"ring\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_ehl2Hg1CEhVo"
+  }
+}

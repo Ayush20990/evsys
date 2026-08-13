@@ -1,0 +1,354 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-052-q3",
+    "workflow_id": 52,
+    "workflow_task": "Migrate a user's memory data from Mem0 into Zep, inspect existing Zep context, attempt to organize migrated content by project-like scopes, and verify that the imported content is searchable.",
+    "query": "search Zep user context and verify imported memories",
+    "intent": "Perform a search query against Zep to verify that the newly imported memories are successfully indexed and searchable.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "ZEP_GRAPH_SEARCH"
+        ],
+        "purpose": "Search Zep knowledge graph to verify imported memories"
+      }
+    ],
+    "candidate_tools": [
+      "MEM0_GET_MEMORIES_BY_ENTITY",
+      "ZEP_CREATE_GRAPH",
+      "ZEP_GET_PROJECT_INFO",
+      "ZEP_GET_USER_NODE",
+      "ZEP_GRAPH_SEARCH",
+      "ZEP_LIST_GROUPS_ORDERED"
+    ]
+  },
+  "request": {
+    "query": "search Zep user context and verify imported memories"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search Zep user context and verify imported memories",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "Optional (if you need a quick synopsis first) [Prerequisite]: Retrieve a user summary using ZEP_GET_USER_NODE (anchor high-level context before searching).",
+            "Required [Step 1]: Query the knowledge graph using ZEP_GRAPH_SEARCH (use a focused query and pick a scope suited to concise relations vs longer narrative context).",
+            "Optional (if you need more detail on a specific hit) [Next Step]: Drill into the selected relationship or neighborhood using ZEP_GET_EDGE or ZEP_GET_NODE_EDGES (validate the chosen edge/node before expanding).",
+            "Optional (if the request is tied to a specific conversation) [Next Step]: Pull recent contextual memory using ZEP_GET_THREAD_USER_CONTEXT or ZEP_GET_SESSION_MEMORY (augment graph hits with conversation context).",
+            "Optional (if results are too broad or too large to review) [Fallback]: Re-run ZEP_GRAPH_SEARCH (tighten query terms, reduce limit, and/or switch scope to control payload size and relevance)."
+          ],
+          "known_pitfalls": [
+            "[ZEP_GRAPH_SEARCH] Requires exactly one scoping identifier; providing multiple scopes can fail or return unintended results.",
+            "[ZEP_GRAPH_SEARCH] Broad queries can produce oversized payloads and truncated outputs; keep queries specific and limits conservative (often capped at 50).",
+            "[ZEP_GRAPH_SEARCH] Episode-style scope can return very large text blobs; prefer edge/relationship scope when you only need concise facts.",
+            "[ZEP_GRAPH_SEARCH] When multiple searches are performed, results are separated per call; ensure you read the intended result object before extracting edges vs episodes.",
+            "[ZEP_GET_NODE_EDGES] Expanding a highly connected node can balloon response size; expand only after selecting the most relevant node from search results."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "ZEP_GRAPH_SEARCH"
+          ],
+          "related_tool_slugs": [
+            "ZEP_GET_USER_NODE",
+            "ZEP_GET_EDGE",
+            "ZEP_GET_NODE_EDGES",
+            "ZEP_GET_THREAD_USER_CONTEXT",
+            "ZEP_GET_SESSION_MEMORY"
+          ],
+          "toolkits": [
+            "zep"
+          ],
+          "plan_id": "2a0442cd6a004da2ab092476c463a9ee"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "zep",
+          "has_active_connection": false,
+          "description": "The Foundational Memory Layer for AI. Equip your agents with the knowledge to complete tasks, from the mundane to monumental.",
+          "status_message": "No Active connection for toolkit=zep. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"zep\") to create a connection BEFORE executing any zep tools."
+        }
+      ],
+      "tool_schemas": {
+        "ZEP_GRAPH_SEARCH": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_GRAPH_SEARCH",
+          "description": "Tool to perform hybrid graph search combining semantic similarity and BM25 full-text search across the Zep knowledge graph. Use when you need to search for entities, relationships, or episodes within a user, group, or specific graph. Supports various reranking methods and filtering options.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "maximum": 50,
+                "minimum": 1,
+                "examples": [
+                  10,
+                  25,
+                  50
+                ],
+                "description": "Maximum number of results to return (default: 10, max: 50)"
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "test search query",
+                  "user preferences"
+                ],
+                "description": "The search text/query string (max 256-400 characters)"
+              },
+              "scope": {
+                "enum": [
+                  "edges",
+                  "nodes",
+                  "episodes"
+                ],
+                "type": "string",
+                "examples": [
+                  "edges",
+                  "nodes",
+                  "episodes"
+                ],
+                "description": "Search target scope - 'edges' (relationships and facts, default), 'nodes' (entities), or 'episodes' (individual messages/chunks)"
+              },
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "test-user-001",
+                  "user-12345"
+                ],
+                "description": "Search within a specific user's graph. One of user_id, group_id, or graph_id must be provided."
+              },
+              "graph_id": {
+                "type": "string",
+                "examples": [
+                  "graph-456"
+                ],
+                "description": "The graph_id to search in. One of user_id, group_id, or graph_id must be provided."
+              },
+              "group_id": {
+                "type": "string",
+                "examples": [
+                  "group-123"
+                ],
+                "description": "Search within a group graph. One of user_id, group_id, or graph_id must be provided."
+              },
+              "reranker": {
+                "enum": [
+                  "rrf",
+                  "mmr",
+                  "node_distance",
+                  "episode_mentions",
+                  "cross_encoder"
+                ],
+                "type": "string",
+                "examples": [
+                  "rrf",
+                  "mmr",
+                  "cross_encoder"
+                ],
+                "description": "Reranking method - 'rrf' (Reciprocal Rank Fusion, default), 'mmr' (Maximal Marginal Relevance), 'node_distance', 'episode_mentions', or 'cross_encoder'"
+              },
+              "mmr_lambda": {
+                "type": "number",
+                "maximum": 1,
+                "minimum": 0,
+                "examples": [
+                  0.5,
+                  0.7
+                ],
+                "description": "Diversity vs relevance balance for MMR reranker (required when using mmr reranker)"
+              },
+              "search_filters": {
+                "type": "object",
+                "properties": {
+                  "valid_at": {
+                    "type": "object",
+                    "description": "Filter by fact validity start time (edges scope only)",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "created_at": {
+                    "type": "object",
+                    "description": "Filter by edge creation time (edges scope only)",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "edge_types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Filter by edge types/relation names"
+                  },
+                  "expired_at": {
+                    "type": "object",
+                    "description": "Filter by fact expiration time (edges scope only)",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "invalid_at": {
+                    "type": "object",
+                    "description": "Filter by fact invalidity time (edges scope only)",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "node_labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Filter by node labels/types"
+                  }
+                },
+                "description": "Model for search filters.",
+                "additionalProperties": false
+              },
+              "min_fact_rating": {
+                "type": "number",
+                "maximum": 1,
+                "minimum": 0,
+                "examples": [
+                  0.5,
+                  0.7
+                ],
+                "description": "Minimum fact rating filter (edges scope only, 0.0-1.0)"
+              },
+              "center_node_uuid": {
+                "type": "string",
+                "examples": [
+                  "58a49167-ba9e-4e39-aec0-813d6b918b83"
+                ],
+                "description": "Center node UUID for distance-based reranking (required when using node_distance reranker)"
+              },
+              "bfs_origin_node_uuids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "58a49167-ba9e-4e39-aec0-813d6b918b83"
+                  ]
+                ],
+                "description": "Node UUIDs for breadth-first search seeding"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZEP_GET_USER_NODE": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_GET_USER_NODE",
+          "description": "Tool to retrieve a user's graph node and summary from Zep. Use when you need to access the user summary generated from instructions, build custom context blocks, or retrieve facts and information associated with a specific user.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "user_id"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "demo-graph-715b",
+                  "user-12345"
+                ],
+                "description": "The user_id of the user to get the node for. This is a path parameter that must be included in the URL."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZEP_GET_EDGE": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_GET_EDGE",
+          "description": "Tool to retrieve a specific edge by its UUID from the Zep knowledge graph. Use when you need to fetch detailed information about a relationship between nodes, including the semantic fact, connected nodes, and temporal metadata.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "edge_uuid"
+            ],
+            "properties": {
+              "edge_uuid": {
+                "type": "string",
+                "examples": [
+                  "5beb7be5-333d-40db-9482-d5efdc33f118"
+                ],
+                "description": "The UUID of the edge to retrieve"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZEP_GET_NODE_EDGES": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_GET_NODE_EDGES",
+          "description": "Tool to retrieve all entity edges for a specific node in the Zep knowledge graph. Use when you need ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZEP_GET_NODE_EDGES"
+              ]
+            }
+          }
+        },
+        "ZEP_GET_THREAD_USER_CONTEXT": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_GET_THREAD_USER_CONTEXT",
+          "description": "Tool to retrieve the most relevant user context from the user graph based on thread messages. Use wh...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZEP_GET_THREAD_USER_CONTEXT"
+              ]
+            }
+          }
+        },
+        "ZEP_GET_SESSION_MEMORY": {
+          "toolkit": "ZEP",
+          "tool_slug": "ZEP_GET_SESSION_MEMORY",
+          "description": "Tool to retrieve memory for a given session including relevant facts and entities. Use when you need...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZEP_GET_SESSION_MEMORY"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:35:04.888Z",
+        "current_time_utc_epoch_seconds": 1786599304,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "pair",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"pair\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_leu1AEXJ0WT6"
+  }
+}

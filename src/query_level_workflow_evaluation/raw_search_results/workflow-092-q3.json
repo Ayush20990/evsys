@@ -1,0 +1,598 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-092-q3",
+    "workflow_id": 92,
+    "workflow_task": "Migrate active Todoist projects, sections, tasks, subtasks, labels, due dates, priorities, durations, and assignment metadata into a private ClickUp Space, then verify the migration without modifying Todoist source data.",
+    "query": "create ClickUp folders lists sections tasks subtasks labels custom fields due dates priorities durations and assignments",
+    "intent": "Recreate the Todoist project hierarchy, tasks, subtasks, and all associated metadata within the new ClickUp Space.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "CLICKUP_CREATE_FOLDER"
+        ],
+        "purpose": "create ClickUp folders"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "CLICKUP_CREATE_LIST"
+        ],
+        "purpose": "create ClickUp lists"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "CLICKUP_CREATE_TASK"
+        ],
+        "purpose": "create ClickUp tasks and subtasks"
+      }
+    ],
+    "candidate_tools": [
+      "CLICKUP_CREATE_FOLDER",
+      "CLICKUP_CREATE_LIST",
+      "CLICKUP_CREATE_SPACE",
+      "CLICKUP_CREATE_SPACE_TAG",
+      "CLICKUP_CREATE_TASK",
+      "CLICKUP_GET_AUTHORIZED_TEAMS_WORKSPACES",
+      "CLICKUP_GET_FILTERED_TEAM_TASKS",
+      "CLICKUP_GET_FOLDERS",
+      "CLICKUP_GET_LISTS",
+      "CLICKUP_GET_SPACE",
+      "CLICKUP_GET_SPACES",
+      "CLICKUP_GET_SPACE_TAGS",
+      "CLICKUP_GET_TASK",
+      "CLICKUP_UPDATE_SPACE",
+      "CLICKUP_UPDATE_TASK",
+      "CLICKUP_UPDATE_WORKSPACE_ACL",
+      "TODOIST_GET_ALL_PROJECTS",
+      "TODOIST_GET_ALL_TASKS",
+      "TODOIST_LIST_SECTIONS"
+    ]
+  },
+  "request": {
+    "query": "create ClickUp folders lists sections tasks subtasks labels custom fields due dates priorities durations and assignments"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create ClickUp folders lists sections tasks subtasks labels custom fields due dates priorities durations and assignments",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step 1]: Create the space using CLICKUP_CREATE_SPACE (start with minimal payload; capture space identifier; if custom statuses are needed, retry without them if validation fails).",
+            "[Required] [Step 2]: Create folders in the space using CLICKUP_CREATE_FOLDER (capture a folder identifier per folder; batch/parallelize when many).",
+            "[Required] [Step 3]: Create lists in folders using CLICKUP_CREATE_LIST (requires folder identifier; capture a list identifier per list).",
+            "[Required] [Step 4]: Create tasks in each list using CLICKUP_CREATE_TASK (requires list identifier; parallelize after identifiers are known; persist full results so task identifiers are recoverable).",
+            "[Optional (if you must map dropdown/options for later updates)] [Next Step]: Discover custom-field and option identifiers using CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS (record option identifiers for target fields).",
+            "[Optional (if task fields need adjustment after create)] [Next Step]: Modify tasks after creation using CLICKUP_UPDATE_TASK (use captured task identifiers).",
+            "[Required] [Fallback (if lists must live outside folders or folder creation is skipped)] [Fallback]: Create a list directly under the space using CLICKUP_CREATE_FOLDERLESS_LIST (capture list identifier, then proceed with CLICKUP_CREATE_TASK)."
+          ],
+          "known_pitfalls": [
+            "[CLICKUP_CREATE_SPACE] Including custom statuses/features at create time can fail validation; retry with a minimal payload and add advanced configuration later if supported.",
+            "[CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS] Field listings can be large and appear truncated; extract identifiers/options from the full JSON response.",
+            "[CLICKUP_UPDATE_TASK] Dropdown-style updates typically require option identifiers (not labels) sourced from CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS.",
+            "[CLICKUP_CREATE_TASK] Bulk create responses can be large/truncated in previews; persist the full payload to reliably capture created task identifiers."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse a saved bulk task-create result JSON to extract task identifiers and titles",
+              "code": "```python\nimport json,sys\nobj=json.load(sys.stdin)\nrows=[{\"id\":r[\"response\"][\"data\"][\"id\"],\"name\":r[\"response\"][\"data\"][\"name\"]} for r in obj[\"results\"]]\nprint(\"\\n\".join(f\"{x['id']}\\t{x['name']}\" for x in rows))\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "CLICKUP_CREATE_SPACE",
+            "CLICKUP_CREATE_FOLDER",
+            "CLICKUP_CREATE_LIST",
+            "CLICKUP_CREATE_TASK"
+          ],
+          "related_tool_slugs": [
+            "CLICKUP_GET_FOLDERS",
+            "CLICKUP_GET_LISTS",
+            "CLICKUP_GET_LIST",
+            "CLICKUP_CREATE_FOLDERLESS_LIST",
+            "CLICKUP_UPDATE_TASK",
+            "CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS"
+          ],
+          "toolkits": [
+            "clickup"
+          ],
+          "plan_id": "2e6c855f74304e0a87a28384d13bbe88"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "clickup",
+          "has_active_connection": false,
+          "description": "ClickUp unifies tasks, docs, goals, and chat in a single platform, allowing teams to plan, organize, and collaborate across projects with customizable workflows",
+          "status_message": "No Active connection for toolkit=clickup. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"clickup\") to create a connection BEFORE executing any clickup tools."
+        }
+      ],
+      "tool_schemas": {
+        "CLICKUP_CREATE_SPACE": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_CREATE_SPACE",
+          "description": "Creates a new ClickUp Space within a specified Workspace, allowing feature configuration which defaults to Workspace settings if unspecified.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "team_id",
+              "name",
+              "multiple_assignees"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Marketing Q3 Campaign"
+                ],
+                "description": "Name for the new Space."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "123456"
+                ],
+                "description": "Numeric ID of the Workspace (Team) for the new Space."
+              },
+              "multiple_assignees": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable multiple assignees for tasks in this Space."
+              },
+              "features__tags__enabled": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable Tags. Defaults to Workspace setting if `None`."
+              },
+              "features__checklists__enabled": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable Checklists. Defaults to Workspace setting if `None`."
+              },
+              "features__due__dates__enabled": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable Due Dates. Defaults to Workspace setting if `None`."
+              },
+              "features__portfolios__enabled": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable Portfolios. Defaults to Workspace setting if `None`."
+              },
+              "features__custom__fields__enabled": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable Custom Fields. Defaults to Workspace setting if `None`."
+              },
+              "features__due__dates__start__date": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable Start Date for Due Dates (if Due Dates enabled). Defaults to Workspace setting if `None`."
+              },
+              "features__time__tracking__enabled": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable Time Tracking. Defaults to Workspace setting if `None`."
+              },
+              "features__time__estimates__enabled": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable Time Estimates. Defaults to Workspace setting if `None`."
+              },
+              "features__dependency__warning__enabled": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable Dependency Warning (shows conflict warnings). Defaults to Workspace setting if `None`."
+              },
+              "features__remap__dependencies__enabled": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable Remap Dependencies (auto-adjusts task dates). Defaults to Workspace setting if `None`."
+              },
+              "features__due__dates__remap__due__dates": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Enable/disable subtask due date remapping (if Due Dates enabled). Defaults to Workspace setting if `None`."
+              },
+              "features__due__dates__remap__closed__due__date": {
+                "type": "boolean",
+                "examples": [
+                  false
+                ],
+                "description": "Enable/disable closed subtask due date remapping (if Due Dates & subtask remapping enabled). Defaults to Workspace setting if `None`."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_CREATE_FOLDER": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_CREATE_FOLDER",
+          "description": "Creates a new ClickUp Folder within the specified Space, which must exist and be accessible.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "space_id",
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "New Project Folder"
+                ],
+                "description": "The name of the Folder to be created."
+              },
+              "space_id": {
+                "type": "string",
+                "examples": [
+                  "12345678"
+                ],
+                "description": "Numerical ID of the Space in which to create the Folder."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_CREATE_LIST": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_CREATE_LIST",
+          "description": "Creates a new list in ClickUp within an existing folder. This action requires a folder_id - lists cannot be created directly in a Space using this action. If you need to create a list directly in a Space (without placing it in a folder), use the 'CLICKUP_CREATE_FOLDERLESS_LIST' action with space_id instead.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "folder_id",
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Q3 Marketing Plan",
+                  "Project Alpha Tasks"
+                ],
+                "description": "The name to be assigned to the new list."
+              },
+              "status": {
+                "type": "string",
+                "examples": [
+                  "red",
+                  "blue",
+                  "custom_color_status"
+                ],
+                "description": "Optional. Defines the list's color in the ClickUp UI (e.g., 'red', 'blue'). **Important:** This 'status' refers to the visual color of the list itself, not the workflow statuses (like 'To Do', 'In Progress') of tasks within the list."
+              },
+              "content": {
+                "type": "string",
+                "examples": [
+                  "Detailed plan for all Q3 marketing activities.",
+                  "Tasks related to the initial phase of Project Alpha."
+                ],
+                "description": "Optional descriptive content or notes for the list."
+              },
+              "assignee": {
+                "type": "integer",
+                "examples": [
+                  "9876543"
+                ],
+                "description": "Optional. Numerical user ID of the assignee."
+              },
+              "due_date": {
+                "type": "integer",
+                "examples": [
+                  "1695110307000"
+                ],
+                "description": "Optional due date for the list, represented as a POSIX timestamp in milliseconds. For example, `1695110307000` for September 19, 2023, 07:58:27 AM GMT."
+              },
+              "priority": {
+                "type": "integer",
+                "examples": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "description": "Optional priority level for the list. Integer values map to: 1 (Urgent), 2 (High), 3 (Normal), 4 (Low)."
+              },
+              "folder_id": {
+                "type": "string",
+                "examples": [
+                  "123456789"
+                ],
+                "description": "The unique numerical identifier of the folder where the new list will be created. Note: This action creates a list within an existing folder. A folder_id is required and space_id cannot be used. If you want to create a list directly in a Space (without a folder), use the 'CLICKUP_CREATE_FOLDERLESS_LIST' action instead."
+              },
+              "due_date_time": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Optional. A boolean flag indicating whether the `due_date` includes a specific time. If `True`, the time component of `due_date` is respected. If `False` or not provided, the list is considered due on the entire day specified by `due_date`."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_CREATE_TASK": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_CREATE_TASK",
+          "description": "Creates a new ClickUp task in a specific list, optionally as a subtask if a `parent` task ID (which cannot be a subtask itself and must be in the same list) is provided.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "list_id",
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Implement user authentication module"
+                ],
+                "description": "The name of the new task."
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "important",
+                  "backend_dev"
+                ],
+                "description": "Tag names to apply."
+              },
+              "parent": {
+                "type": "string",
+                "description": "ID of an existing task to be the parent (creating a subtask). Parent must not be a subtask and must be in the same list."
+              },
+              "status": {
+                "type": "string",
+                "description": "Status name for the task. IMPORTANT: Each ClickUp list has its own unique status configuration. Common names like 'todo', 'done', or 'in progress' often do NOT exist - you must use the exact status names (case-sensitive) configured in the target list. To get valid statuses, call GET /list/{list_id} and check the 'statuses' array in the response for available status names. If omitted, uses the list's default status (recommended when valid statuses are unknown)."
+              },
+              "list_id": {
+                "type": "string",
+                "examples": [
+                  "901234567890"
+                ],
+                "description": "The ID of the list where the task will be created."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "123456789"
+                ],
+                "description": "Team ID, required only if `custom_task_ids` is `true`."
+              },
+              "due_date": {
+                "type": "integer",
+                "examples": [
+                  "1700000000000"
+                ],
+                "description": "Due date as a Unix timestamp in milliseconds."
+              },
+              "links_to": {
+                "type": "string",
+                "description": "ID of an existing task to link as a dependency."
+              },
+              "priority": {
+                "type": "integer",
+                "examples": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ],
+                "description": "Priority level: 1 (Urgent), 2 (High), 3 (Normal), 4 (Low)."
+              },
+              "assignees": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "examples": [
+                  "183",
+                  "281"
+                ],
+                "description": "User IDs to assign to the task."
+              },
+              "notify_all": {
+                "type": "boolean",
+                "description": "`True` to send notifications to all task watchers, including the creator."
+              },
+              "start_date": {
+                "type": "integer",
+                "examples": [
+                  "1690000000000"
+                ],
+                "description": "Start date as a Unix timestamp in milliseconds."
+              },
+              "description": {
+                "type": "string",
+                "description": "Task's detailed description."
+              },
+              "custom_fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "description": "Custom fields to apply. See ClickUp API for structure."
+              },
+              "due_date_time": {
+                "type": "boolean",
+                "description": "`True` if `due_date` includes a specific time, `false` if it's an all-day task."
+              },
+              "time_estimate": {
+                "type": "integer",
+                "examples": [
+                  "3600000"
+                ],
+                "description": "Estimated time to complete, in milliseconds."
+              },
+              "custom_item_id": {
+                "type": "integer",
+                "description": "Custom task type ID. Omit or use `null` for standard tasks (recommended). Custom task types including Milestones (ID `1`) are subject to workspace plan quotas. Only specify a custom_item_id if you have confirmed the workspace has available quota for that task type. Use GET /team/{team_id}/custom_item to check available custom task types and their quotas."
+              },
+              "custom_task_ids": {
+                "type": "boolean",
+                "description": "Enables referencing tasks by custom task ID; requires `team_id` if `true`."
+              },
+              "start_date_time": {
+                "type": "boolean",
+                "description": "`True` if `start_date` includes a specific time, `false` if it's an all-day task."
+              },
+              "check_required_custom_fields": {
+                "type": "boolean",
+                "description": "`True` to enforce filling all required Custom Fields upon creation."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_GET_FOLDERS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_FOLDERS",
+          "description": "Retrieves Folders within a specified ClickUp Space, ensuring `space_id` is valid, with an option to filter by archived status.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "space_id"
+            ],
+            "properties": {
+              "archived": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Filter Folders by archived status. `True` for archived, `False` for unarchived. Omit to return both."
+              },
+              "space_id": {
+                "type": "string",
+                "examples": [
+                  "1234567",
+                  "9876543"
+                ],
+                "description": "The unique numeric identifier of the Space from which to retrieve Folders."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "CLICKUP_GET_LISTS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_LISTS",
+          "description": "Retrieves all lists within a specified, existing ClickUp folder, optionally filtering by archived st...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_LISTS"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_LIST": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_LIST",
+          "description": "Retrieves detailed information for an existing List in ClickUp, identified by its unique `list_id`.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_LIST"
+              ]
+            }
+          }
+        },
+        "CLICKUP_CREATE_FOLDERLESS_LIST": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_CREATE_FOLDERLESS_LIST",
+          "description": "Creates a new folderless list (a list not part of any Folder) directly within a specified ClickUp Sp...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_CREATE_FOLDERLESS_LIST"
+              ]
+            }
+          }
+        },
+        "CLICKUP_UPDATE_TASK": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_UPDATE_TASK",
+          "description": "Updates attributes of an existing task; `team_id` is required if `custom_task_ids` is true, use a si...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_UPDATE_TASK"
+              ]
+            }
+          }
+        },
+        "CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS": {
+          "toolkit": "CLICKUP",
+          "tool_slug": "CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS",
+          "description": "Retrieves all accessible Custom Field definitions for a specified ClickUp List using its `list_id`.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "CLICKUP_GET_ACCESSIBLE_CUSTOM_FIELDS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:39:22.907Z",
+        "current_time_utc_epoch_seconds": 1786599562,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "crew",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"crew\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_DDf3VaO_J362"
+  }
+}

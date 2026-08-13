@@ -1,0 +1,537 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-016-q5",
+    "workflow_id": 16,
+    "workflow_task": "Audit analytics and search performance for a website, inspect and modify its source repository, create pull requests with SEO, tracking, caching, routing, and accessibility fixes, and investigate hosting/deployment state.",
+    "query": "investigate hosting and deployment status",
+    "intent": "This query searches for a deployment management tool to check server status, logs, and hosting configurations.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_GET_THE_COMBINED_STATUS_FOR_A_SPECIFIC_REFERENCE"
+        ],
+        "purpose": "check deployment status and checks for a reference"
+      }
+    ],
+    "candidate_tools": [
+      "CLOUDFLARE_LIST_ACCOUNTS",
+      "CLOUDFLARE_LIST_DNS_RECORDS",
+      "CLOUDFLARE_LIST_ZONES",
+      "GITHUB_COMMIT_MULTIPLE_FILES",
+      "GITHUB_CREATE_AN_ISSUE",
+      "GITHUB_CREATE_A_PULL_REQUEST",
+      "GITHUB_GET_A_BRANCH",
+      "GITHUB_GET_A_PULL_REQUEST",
+      "GITHUB_GET_A_REPOSITORY",
+      "GITHUB_GET_A_TREE",
+      "GITHUB_GET_RAW_REPOSITORY_CONTENT",
+      "GITHUB_GET_REPOSITORY_CONTENT",
+      "GITHUB_GET_THE_COMBINED_STATUS_FOR_A_SPECIFIC_REFERENCE",
+      "GITHUB_LIST_BRANCHES",
+      "GITHUB_LIST_COMMITS",
+      "GITHUB_LIST_PULL_REQUESTS",
+      "GITHUB_LIST_PULL_REQUESTS_FILES",
+      "GITHUB_LIST_REPOSITORIES_FOR_A_USER",
+      "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+      "GITHUB_MERGE_A_BRANCH",
+      "GITHUB_SEARCH_CODE",
+      "GITHUB_UPDATE_A_PULL_REQUEST",
+      "GOOGLE_ANALYTICS_LIST_DATA_STREAMS",
+      "GOOGLE_ANALYTICS_RUN_REPORT",
+      "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY"
+    ]
+  },
+  "request": {
+    "query": "investigate hosting and deployment status"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "investigate hosting and deployment status",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "=== HOSTINGER WORKFLOW ===",
+            "[Required] [Step]: Fetch subscriptions using HOSTINGER_LIST_SUBSCRIPTIONS (primary read to confirm the account is reachable and identify active services).",
+            "[Required] [Next Step]: List domain assets using HOSTINGER_LIST_DOMAINS (build an asset inventory to relate to subscriptions where possible).",
+            "[Optional (if subscription-to-asset mapping is unclear)] [Next Step]: List sites using HOSTINGER_LIST_WEBSITES (cross-check domain\u2194site relationships; paginate with page/per_page until complete).",
+            "[Optional (if DNS inspection is needed for a selected domain)] [Next Step]: Retrieve DNS configuration using HOSTINGER_GET_DNS_RECORDS (validate current zone state for troubleshooting).",
+            "[Optional (if billing/order context is needed)] [Next Step]: List purchases using HOSTINGER_LIST_ORDERS (add order-level context for renewals and service correlation).",
+            "[Fallback (if a domain appears inaccessible or DNS data is unexpectedly empty)] [Fallback]: Check access state using HOSTINGER_VERIFY_DOMAIN_OWNERSHIP (confirm is_accessible before concluding misconfiguration).",
+            "=== VERCEL WORKFLOW ===",
+            "[Optional (if project context is ambiguous)] [Prerequisite]: Action using VERCEL_GET_PROJECT2 (confirm the canonical project); if lookup fails or scope is unclear, discover candidates using VERCEL_GET_PROJECTS.",
+            "[Required] [Step]: Action using VERCEL_GET_DEPLOYMENTS (list recent deployments for the project; follow pagination.next as needed) and select a target deployment uid plus high-level state.",
+            "[Required] [Step]: Action using VERCEL_GET_DEPLOYMENT (confirm authoritative status/readyState and capture error indicators and promotion signals such as aliasAssigned).",
+            "[Required (if readyState is non-terminal)] [Next Step]: Action using VERCEL_GET_DEPLOYMENT (poll until readyState becomes terminal, then record the final outcome, including READY/ERROR/CANCELED).",
+            "[Required] [Step]: Action using VERCEL_GET_DEPLOYMENT_LOGS2 (retrieve a small runtime log tail first via maxLogs to reduce truncation/timeouts; increase only if needed).",
+            "[Fallback (if logs are empty, time out, or are not diagnostic)] [Fallback]: Action using VERCEL_GET_DEPLOYMENT_EVENTS2 (fetch a bounded event slice to pinpoint the failing stage and extract actionable lines); if rollout looks gated, confirm via VERCEL_LIST_DEPLOYMENT_CHECKS."
+          ],
+          "known_pitfalls": [
+            "=== HOSTINGER PITFALLS ===",
+            "[HOSTINGER_LIST_SUBSCRIPTIONS] Output may lack asset identifiers needed to link services to specific domains/sites without additional inventory calls.",
+            "[HOSTINGER_LIST_DOMAINS] Domain inventory can include items not tied to an active subscription; treat as a catalog, not an active-only view.",
+            "[HOSTINGER_LIST_DOMAINS] The domain list may contain multiple entries for the same domain with different type/status; deduplicate before downstream joins.",
+            "[HOSTINGER_LIST_WEBSITES] per_page is capped (max 100) and full results may require paging; rely on response meta (e.g., current_page/total) to stop.",
+            "[HOSTINGER_VERIFY_DOMAIN_OWNERSHIP] txt_to_verify can be empty when already accessible; use is_accessible rather than assuming a TXT challenge is always provided.",
+            "=== VERCEL PITFALLS ===",
+            "[VERCEL_GET_PROJECT2] Wrong scope commonly yields 403 Forbidden; downstream deployment/log calls may also fail until the correct scope is used.",
+            "[VERCEL_GET_PROJECTS] The limit parameter may validate as a string; type mismatches can trigger request validation errors.",
+            "[VERCEL_GET_DEPLOYMENT] Using an incorrect idOrUrl can return 404 not_found; source identifiers from VERCEL_GET_DEPLOYMENTS.",
+            "[VERCEL_GET_DEPLOYMENT_LOGS2] Can return logs=[] or intermittently fail with HTTP 500 read timeout on large output.",
+            "[VERCEL_GET_DEPLOYMENT_EVENTS2] Payloads can be very large (e.g., requesting unbounded limits); keep limit/window tight and ensure parameter types validate."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Get the newest deployment identifier from a loosely nested deployments payload",
+              "code": "```python\ndeps=(resp.get('deployments') or resp.get('data',{}).get('deployments') or resp.get('results',[{}])[0].get('response',{}).get('data',{}).get('deployments') or [])\nuid=(deps[0] or {}).get('uid') if deps else None\n```"
+            },
+            {
+              "description": "Remove ANSI escape codes from event/log text before searching",
+              "code": "```python\nimport re\ntext=re.sub(r\"\\x1b\\[[0-9;]*m\",\"\",text)\n```"
+            }
+          ],
+          "primary_tool_slugs": [
+            "HOSTINGER_LIST_SUBSCRIPTIONS",
+            "HOSTINGER_LIST_DOMAINS",
+            "HOSTINGER_LIST_WEBSITES",
+            "VERCEL_GET_DEPLOYMENTS",
+            "VERCEL_GET_DEPLOYMENT",
+            "VERCEL_GET_DEPLOYMENT_LOGS2"
+          ],
+          "related_tool_slugs": [
+            "HOSTINGER_GET_DNS_RECORDS",
+            "HOSTINGER_VERIFY_DOMAIN_OWNERSHIP",
+            "HOSTINGER_LIST_ORDERS",
+            "VERCEL_GET_PROJECT2",
+            "VERCEL_LIST_DEPLOYMENT_CHECKS",
+            "VERCEL_GET_PROJECTS",
+            "VERCEL_GET_DEPLOYMENT_EVENTS2"
+          ],
+          "toolkits": [
+            "hostinger",
+            "vercel"
+          ],
+          "plan_id": "1197bb63de504d1cb8f66f1d2bae72ec,f1632f124b6e4e1c8bdcb2603b65ac80"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "hostinger",
+          "has_active_connection": false,
+          "description": "Web hosting and domain management platform with APIs for billing, domains, DNS, and VPS management",
+          "status_message": "No Active connection for toolkit=hostinger. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"hostinger\") to create a connection BEFORE executing any hostinger tools."
+        },
+        {
+          "toolkit": "vercel",
+          "has_active_connection": false,
+          "description": "Vercel is a platform for frontend frameworks and static sites, enabling developers to host websites and web services that deploy instantly, scale automatically, and require minimal configuration.",
+          "status_message": "No Active connection for toolkit=vercel. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"vercel\") to create a connection BEFORE executing any vercel tools."
+        }
+      ],
+      "tool_schemas": {
+        "HOSTINGER_LIST_SUBSCRIPTIONS": {
+          "toolkit": "HOSTINGER",
+          "tool_slug": "HOSTINGER_LIST_SUBSCRIPTIONS",
+          "description": "Get subscription list. Retrieve a list of all subscriptions associated with your account. Use this endpoint to monitor active services and billing status.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "HOSTINGER_LIST_DOMAINS": {
+          "toolkit": "HOSTINGER",
+          "tool_slug": "HOSTINGER_LIST_DOMAINS",
+          "description": "Get domain list. Retrieve all domains associated with your account. Use this endpoint to view user's domain portfolio.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "HOSTINGER_LIST_WEBSITES": {
+          "toolkit": "HOSTINGER",
+          "tool_slug": "HOSTINGER_LIST_WEBSITES",
+          "description": "List websites. Retrieve a paginated list of websites (main and addon types) accessible to the authenticated client. This endpoint returns websites from your hosting accounts as well as websites from other client hosting accounts that have shared access with you. Use the available query parameters to filter results by username, order ID, enabled status, or domain name for more targeted results.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "examples": [
+                  1
+                ],
+                "description": "Page number for pagination"
+              },
+              "domain": {
+                "type": "string",
+                "examples": [
+                  "example.com"
+                ],
+                "description": "Filter by domain name (exact match)"
+              },
+              "order_id": {
+                "type": "integer",
+                "examples": [
+                  123
+                ],
+                "description": "Filter by order ID"
+              },
+              "per_page": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  25
+                ],
+                "description": "Number of items per page (1-100). If not specified, the server's default will be used"
+              },
+              "username": {
+                "type": "string",
+                "examples": [
+                  "cl_user123"
+                ],
+                "description": "Filter by specific username"
+              },
+              "is_enabled": {
+                "type": "boolean",
+                "examples": [
+                  true
+                ],
+                "description": "Filter by enabled status"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_GET_DEPLOYMENTS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENTS",
+          "description": "Tool to list deployments from Vercel. Use when you need to retrieve deployment information for a project or team.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "to": {
+                "type": "integer",
+                "examples": [
+                  1612948664566
+                ],
+                "description": "Gets the deployment created before this Date timestamp. (default: current time)"
+              },
+              "app": {
+                "type": "string",
+                "examples": [
+                  "docs"
+                ],
+                "description": "Name of the deployment to filter by"
+              },
+              "sha": {
+                "type": "string",
+                "description": "Filter deployments based on the SHA"
+              },
+              "from": {
+                "type": "integer",
+                "examples": [
+                  1612948664566
+                ],
+                "description": "Gets the deployment created after this Date timestamp. (default: current time)"
+              },
+              "slug": {
+                "type": "string",
+                "description": "The Team slug to perform the request on behalf of"
+              },
+              "limit": {
+                "type": "integer",
+                "examples": [
+                  10
+                ],
+                "description": "Maximum number of deployments to list from a request"
+              },
+              "since": {
+                "type": "integer",
+                "examples": [
+                  1540095775941
+                ],
+                "description": "Get Deployments created after this JavaScript timestamp"
+              },
+              "state": {
+                "type": "string",
+                "examples": [
+                  "BUILDING,READY"
+                ],
+                "description": "Filter deployments based on their state (BUILDING, ERROR, INITIALIZING, QUEUED, READY, CANCELED)"
+              },
+              "until": {
+                "type": "integer",
+                "examples": [
+                  1540095775951
+                ],
+                "description": "Get Deployments created before this JavaScript timestamp"
+              },
+              "users": {
+                "type": "string",
+                "examples": [
+                  "kr1PsOIzqEL5Xg6M4VZcZosf,K4amb7K9dAt5R2vBJWF32bmY"
+                ],
+                "description": "Filter out deployments based on users who have created the deployment"
+              },
+              "branch": {
+                "type": "string",
+                "description": "Filter deployments based on the branch name"
+              },
+              "target": {
+                "type": "string",
+                "examples": [
+                  "production"
+                ],
+                "description": "Filter deployments based on the environment"
+              },
+              "teamId": {
+                "type": "string",
+                "description": "The Team identifier to perform the request on behalf of"
+              },
+              "projectId": {
+                "type": "string",
+                "examples": [
+                  "QmXGTs7mvAMMC7WW5ebrM33qKG32QK3h4vmQMjmY"
+                ],
+                "description": "Filter deployments from the given ID or name"
+              },
+              "projectIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "prj_123",
+                    "prj_456"
+                  ]
+                ],
+                "description": "Filter deployments from the given project IDs. Cannot be used when projectId is specified"
+              },
+              "rollbackCandidate": {
+                "type": "boolean",
+                "description": "Filter deployments based on their rollback candidacy"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_GET_DEPLOYMENT": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENT",
+          "description": "Tool to get a deployment by ID or URL. Use when you need to retrieve detailed information about a specific deployment.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "idOrUrl"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string",
+                "description": "The Team slug to perform the request on behalf of."
+              },
+              "teamId": {
+                "type": "string",
+                "description": "The Team identifier to perform the request on behalf of."
+              },
+              "idOrUrl": {
+                "type": "string",
+                "examples": [
+                  "dpl_89qyp1cskzkLrVicDaZoDbjyHuDJ"
+                ],
+                "description": "The unique identifier or hostname of the deployment."
+              },
+              "withGitRepoInfo": {
+                "type": "string",
+                "examples": [
+                  "true"
+                ],
+                "description": "Whether to add in gitRepo information."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_GET_DEPLOYMENT_LOGS2": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENT_LOGS2",
+          "description": "Tool to retrieve runtime logs for a specific Vercel deployment by project and deployment ID. Use when you need to debug or monitor deployment execution with detailed runtime information.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "projectId",
+              "deploymentId"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string",
+                "examples": [
+                  "my-team-url-slug"
+                ],
+                "description": "Team slug to perform the request on behalf of"
+              },
+              "teamId": {
+                "type": "string",
+                "examples": [
+                  "team_1a2b3c4d5e6f7g8h9i0j1k2l"
+                ],
+                "description": "Team identifier to perform the request on behalf of"
+              },
+              "maxLogs": {
+                "type": "integer",
+                "default": 100,
+                "examples": [
+                  100,
+                  50
+                ],
+                "description": "Maximum number of log entries to return (default: 100). The endpoint streams logs, so this limits how many to collect."
+              },
+              "projectId": {
+                "type": "string",
+                "examples": [
+                  "prj_bbWjGhjWw7PcjuQVY5kKRQk7YgtK"
+                ],
+                "description": "The unique identifier of the project"
+              },
+              "deploymentId": {
+                "type": "string",
+                "examples": [
+                  "dpl_AvQBURNeTtcU6pyWp1ZHNoEYT7yD"
+                ],
+                "description": "The unique identifier of the deployment"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HOSTINGER_GET_DNS_RECORDS": {
+          "toolkit": "HOSTINGER",
+          "tool_slug": "HOSTINGER_GET_DNS_RECORDS",
+          "description": "Tool to retrieve DNS records for a domain. Use this endpoint to view current DNS configuration for domain management purposes. Example use cases: - Review current DNS settings before making changes - Check propagation status after DNS updates - Audit DNS configuration for a domain",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "domain"
+            ],
+            "properties": {
+              "domain": {
+                "type": "string",
+                "examples": [
+                  "mydomain.tld"
+                ],
+                "description": "The domain name for which to retrieve DNS records"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HOSTINGER_VERIFY_DOMAIN_OWNERSHIP": {
+          "toolkit": "HOSTINGER",
+          "tool_slug": "HOSTINGER_VERIFY_DOMAIN_OWNERSHIP",
+          "description": "Verify ownership of a single domain and return the verification status. Use this endpoint to check i...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HOSTINGER_VERIFY_DOMAIN_OWNERSHIP"
+              ]
+            }
+          }
+        },
+        "HOSTINGER_LIST_ORDERS": {
+          "toolkit": "HOSTINGER",
+          "tool_slug": "HOSTINGER_LIST_ORDERS",
+          "description": "Tool to list hosting orders. Retrieve a paginated list of orders accessible to the authenticated cli...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HOSTINGER_LIST_ORDERS"
+              ]
+            }
+          }
+        },
+        "VERCEL_GET_PROJECT2": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_PROJECT2",
+          "description": "Tool to find a project by ID or name with comprehensive details. Use when you need complete project ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_GET_PROJECT2"
+              ]
+            }
+          }
+        },
+        "VERCEL_LIST_DEPLOYMENT_CHECKS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_LIST_DEPLOYMENT_CHECKS",
+          "description": "Tool to retrieve a list of checks for a specific deployment. Use after a deployment to inspect check...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_LIST_DEPLOYMENT_CHECKS"
+              ]
+            }
+          }
+        },
+        "VERCEL_GET_PROJECTS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_PROJECTS",
+          "description": "Tool to retrieve a list of projects from Vercel. Use this to get project information with optional f...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_GET_PROJECTS"
+              ]
+            }
+          }
+        },
+        "VERCEL_GET_DEPLOYMENT_EVENTS2": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENT_EVENTS2",
+          "description": "Tool to get deployment events for a specific Vercel deployment by ID or URL. Use when you need to re...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_GET_DEPLOYMENT_EVENTS2"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:29:40.587Z",
+        "current_time_utc_epoch_seconds": 1786598980,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "over",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"over\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_xy1GeT5BWgBG"
+  }
+}

@@ -1,0 +1,362 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-030-q3",
+    "workflow_id": 30,
+    "workflow_task": "Generate recurring daily activity summaries by collecting recent email activity, social page activity, and Fireflies meeting transcripts for a local-day reporting window.",
+    "query": "retrieve Fireflies meeting transcripts",
+    "intent": "Gather all recorded meeting transcripts from Fireflies for the designated local-day reporting window.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "FIREFLIES_GET_TRANSCRIPTS"
+        ],
+        "purpose": "retrieve Fireflies meeting transcripts"
+      }
+    ],
+    "candidate_tools": [
+      "FACEBOOK_GET_PAGE_CONVERSATIONS",
+      "FACEBOOK_GET_PAGE_POSTS",
+      "FACEBOOK_GET_PAGE_TAGGED_POSTS",
+      "FIREFLIES_GET_TRANSCRIPTS",
+      "FIREFLIES_GET_TRANSCRIPT_BY_ID",
+      "OUTLOOK_GET_MESSAGE",
+      "OUTLOOK_GET_PROFILE",
+      "OUTLOOK_QUERY_EMAILS",
+      "OUTLOOK_SEARCH_MESSAGES",
+      "PIPEDRIVE_SEARCH_DEALS",
+      "PIPEDRIVE_SEARCH_ORGANIZATIONS",
+      "PIPEDRIVE_SEARCH_PERSONS"
+    ]
+  },
+  "request": {
+    "query": "retrieve Fireflies meeting transcripts"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "retrieve Fireflies meeting transcripts",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: List recent transcript metadata using FIREFLIES_GET_TRANSCRIPTS (use timezone-aware ISO datetimes for from_date/to_date; keep include_summary=false and include_sentences=false) and return a compact shortlist (id, title, time, duration, link if present).",
+            "[Optional (if results are empty/too few or window is uncertain)] [Step]: Re-run FIREFLIES_GET_TRANSCRIPTS with a broader window (normalize timezone if needed) and apply the final cutoff client-side.",
+            "[Optional (if many results)] [Step]: Paginate FIREFLIES_GET_TRANSCRIPTS with skip/limit until a page is empty or returned count < limit; merge and de-duplicate by transcript id.",
+            "[Optional (if filtering by organizer/participants but identifiers are unclear)] [Prerequisite]: Resolve identities using FIREFLIES_GET_USERS, then re-run FIREFLIES_GET_TRANSCRIPTS with organizer/participant filters (null-safe attendee handling).",
+            "[Optional (if details are needed for selected items)] [Next Step]: For chosen ids, call FIREFLIES_GET_TRANSCRIPT_BY_ID and extract only required fields; if response is preview/offloaded, parse via COMPOSIO_REMOTE_WORKBENCH.",
+            "[Optional (if AI artifacts or Q&A are needed for selected items)] [Next Step]: Use FIREFLIES_FETCH_AI_APP_OUTPUTS2 and/or FIREFLIES_CREATE_ASK_FRED_THREAD then FIREFLIES_GET_ASK_FRED_THREAD; if outputs are preview/offloaded, parse via COMPOSIO_REMOTE_WORKBENCH.",
+            "[Fallback (if list/detail calls are inconsistent or repeated server errors occur)] [Fallback]: Use FIREFLIES_GRAPHQL_QUERY to fetch minimal per-transcript fields (or summary-only) to surface raw errors, then retry FIREFLIES_GET_TRANSCRIPTS or FIREFLIES_GET_TRANSCRIPT_BY_ID on a narrowed subset."
+          ],
+          "known_pitfalls": [
+            "[FIREFLIES_GET_TRANSCRIPTS] from_date/to_date must be full ISO 8601 datetime with timezone (date-only can fail); limit must be <100.",
+            "[FIREFLIES_GET_TRANSCRIPTS] Response nesting varies (response.data vs response.data_preview vs top-level) and individual transcript entries/fields can be null; parse defensively.",
+            "[FIREFLIES_GET_TRANSCRIPTS] Time fields may be epoch-milliseconds and/or ISO strings; normalize before sorting/filtering.",
+            "[FIREFLIES_GET_TRANSCRIPTS] include_summary=true and/or include_sentences=true can balloon payloads causing preview/truncation/offload; some items may have summary=null if not ready.",
+            "[FIREFLIES_GET_TRANSCRIPT_BY_ID] Wrong input key can trigger validation errors like missing required field {'id'}; ensure the request uses id exactly."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Safely extract transcripts array across common FIREFLIES_GET_TRANSCRIPTS response nestings.",
+              "code": "```python\nresp=payload['results'][0]['response'];c=(resp.get('data') or resp.get('data_preview') or resp);transcripts=c.get('transcripts') or []\n```"
+            },
+            {
+              "description": "Extract compact fields from FIREFLIES_GET_TRANSCRIPT_BY_ID without pulling full text.",
+              "code": "```python\nresp=payload['results'][0]['response'];d=(resp.get('data') or resp.get('data_preview') or {});s=d.get('summary') or {};out={'title':d.get('title'),'timestamp':d.get('dateString') or d.get('date'),'overview':s.get('overview'),'notes':s.get('notes'),'action_items':s.get('action_items'),'gist':s.get('gist')}\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "FIREFLIES_GET_TRANSCRIPTS"
+          ],
+          "related_tool_slugs": [
+            "FIREFLIES_GET_TRANSCRIPT_BY_ID",
+            "FIREFLIES_GRAPHQL_QUERY",
+            "FIREFLIES_GET_USERS",
+            "FIREFLIES_FETCH_AI_APP_OUTPUTS2",
+            "FIREFLIES_CREATE_ASK_FRED_THREAD",
+            "FIREFLIES_GET_ASK_FRED_THREAD"
+          ],
+          "toolkits": [
+            "fireflies"
+          ],
+          "plan_id": "229a619d0c5046c8aec5a2ad7095c190"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "fireflies",
+          "has_active_connection": false,
+          "description": "Fireflies.ai helps your team transcribe, summarize, search, and analyze voice conversations.",
+          "status_message": "No Active connection for toolkit=fireflies. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"fireflies\") to create a connection BEFORE executing any fireflies tools."
+        }
+      ],
+      "tool_schemas": {
+        "FIREFLIES_GET_TRANSCRIPTS": {
+          "toolkit": "FIREFLIES",
+          "tool_slug": "FIREFLIES_GET_TRANSCRIPTS",
+          "description": "Fetches a list of transcripts against input filters. Metadata filters (title, host_email, organizers, participants) match transcript metadata only, not spoken content. Pagination via skip/limit may trigger HTTP 429 on rapid requests; use backoff between pages.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "skip": {
+                "type": "integer",
+                "description": "Number of transcripts to skip. Use with limit for pagination; stop when returned count is less than limit."
+              },
+              "limit": {
+                "type": "integer",
+                "maximum": 50,
+                "minimum": 1,
+                "description": "Maximum number of transcripts to fetch. Maximum allowed value is 50."
+              },
+              "title": {
+                "type": "string",
+                "description": "Title of the meeting. Matches meeting metadata title only, not spoken content."
+              },
+              "to_date": {
+                "type": "string",
+                "examples": [
+                  "2024-08-26T23:59:59Z",
+                  "2024-08-26T23:59:59+00:00"
+                ],
+                "description": "End date for filtering transcripts. Must be in ISO 8601 datetime format with timezone (e.g., '2024-08-26T23:59:59Z' or '2024-08-26T23:59:59+00:00'). Date-only formats are not accepted."
+              },
+              "user_id": {
+                "type": "string",
+                "description": "The User ID to fetch the transcripts of."
+              },
+              "from_date": {
+                "type": "string",
+                "examples": [
+                  "2024-08-16T00:00:00Z",
+                  "2024-08-16T00:00:00+00:00"
+                ],
+                "description": "Start date for filtering transcripts. Must be in ISO 8601 datetime format with timezone (e.g., '2024-08-16T00:00:00Z' or '2024-08-16T00:00:00+00:00'). Date-only formats are not accepted. Must be earlier than to_date. Filters are evaluated in UTC \u2014 convert local date ranges to UTC to avoid silently omitting meetings."
+              },
+              "host_email": {
+                "type": "string",
+                "examples": [
+                  "user@example.com"
+                ],
+                "description": "Email address of the host of the meeting. Must be a plain email address without markup or 'mailto:' prefix. Example: 'user@example.com'."
+              },
+              "organizers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "organizer1@example.com",
+                    "organizer2@example.com"
+                  ]
+                ],
+                "description": "List of organizer email addresses to filter transcripts by."
+              },
+              "participants": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "participant1@example.com",
+                    "participant2@example.com"
+                  ]
+                ],
+                "description": "List of participant email addresses to filter transcripts by."
+              },
+              "include_summary": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include AI-generated summary (action items, keywords, overview, notes, etc.) in response. Can significantly increase response size. summary.action_items may be a single formatted string rather than a list \u2014 split by newline rather than iterating as an array."
+              },
+              "organizer_email": {
+                "type": "string",
+                "description": "DEPRECATED: Use 'organizers' instead. Email of the organizer of the meeting."
+              },
+              "include_analytics": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include analytics data (sentiments, categories, speaker stats) in response. Requires Pro+ plan. If your plan doesn't support this, the request may fail with a generic error."
+              },
+              "include_audio_url": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include audio_url field in response. Requires Pro+ plan. If your plan doesn't support this, the request may fail with a generic error."
+              },
+              "include_sentences": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include sentences array (transcript text with speaker/timing info) in response. Can produce very large responses - a single transcript may contain hundreds of sentences. Each sentence object contains speaker_name, text, start_time, end_time fields. Some transcripts may return null or empty sentences array."
+              },
+              "include_video_url": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include video_url field in response. Requires Business+ plan. If your plan doesn't support this, the request may fail with a generic error."
+              },
+              "participant_email": {
+                "type": "string",
+                "description": "DEPRECATED: Use 'participants' instead. Email of a participant in the meeting."
+              },
+              "include_apps_preview": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include apps_preview (AI app outputs) in response."
+              },
+              "include_user_details": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include detailed user information with nested user_groups and members. When False, only basic user fields (user_id, email, name) are returned."
+              },
+              "include_meeting_attendees": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include detailed meeting_attendees array (display names, emails, phone numbers) in response."
+              },
+              "include_meeting_attendance": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include meeting_attendance array (join/leave timestamps for participants) in response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FIREFLIES_GET_TRANSCRIPT_BY_ID": {
+          "toolkit": "FIREFLIES",
+          "tool_slug": "FIREFLIES_GET_TRANSCRIPT_BY_ID",
+          "description": "Fetches details for a specific Fireflies transcript ID. Requires a paid Fireflies plan. Response is nested at data.outputs.data.transcript; fields like sentences and attendees can be null \u2014 handle gracefully. transcript.summary.action_items may be a single newline-delimited string rather than an array \u2014 split by line breaks instead of iterating as an array. Limit concurrent calls to ~3 and apply exponential backoff on 429 responses, respecting Retry-After headers.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The unique identifier of the transcript to fetch. This is the Fireflies transcript ID returned when listing transcripts or from the transcript_url. Only call with IDs whose transcript status is 'completed'; incomplete transcripts return partial or missing content."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FIREFLIES_GRAPHQL_QUERY": {
+          "toolkit": "FIREFLIES",
+          "tool_slug": "FIREFLIES_GRAPHQL_QUERY",
+          "description": "Execute an authenticated, read-only Fireflies GraphQL operation (query) and return the full raw GraphQL response (data+errors) for reliable fallback and debugging. Use when higher-level tools fail due to schema mismatches or to access raw error details.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "query { transcripts(limit: 10) { id title date } }",
+                  "query GetUser($userId: String!) { user(id: $userId) { name email } }"
+                ],
+                "description": "GraphQL query document (read-only operations only). Must contain only 'query' operations. Mutations and subscriptions are not allowed."
+              },
+              "variables": {
+                "type": "object",
+                "examples": [
+                  {
+                    "limit": 10,
+                    "userId": "user_123"
+                  }
+                ],
+                "description": "GraphQL variables as a JSON object. Used to pass dynamic values to parameterized queries.",
+                "additionalProperties": true
+              },
+              "operationName": {
+                "type": "string",
+                "examples": [
+                  "GetUser",
+                  "ListTranscripts"
+                ],
+                "description": "Operation name to execute when multiple operations are present in the query document."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "FIREFLIES_GET_USERS": {
+          "toolkit": "FIREFLIES",
+          "tool_slug": "FIREFLIES_GET_USERS",
+          "description": "Fetches a list of all users within the team, including their full email addresses. Use to resolve co...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FIREFLIES_GET_USERS"
+              ]
+            }
+          }
+        },
+        "FIREFLIES_FETCH_AI_APP_OUTPUTS2": {
+          "toolkit": "FIREFLIES",
+          "tool_slug": "FIREFLIES_FETCH_AI_APP_OUTPUTS2",
+          "description": "Tool to fetch AI App outputs for specific apps or transcripts. Use when you need to retrieve AI-gene...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FIREFLIES_FETCH_AI_APP_OUTPUTS2"
+              ]
+            }
+          }
+        },
+        "FIREFLIES_CREATE_ASK_FRED_THREAD": {
+          "toolkit": "FIREFLIES",
+          "tool_slug": "FIREFLIES_CREATE_ASK_FRED_THREAD",
+          "description": "Tool to start a new AskFred conversation thread with a question about meetings. Use when you need to...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FIREFLIES_CREATE_ASK_FRED_THREAD"
+              ]
+            }
+          }
+        },
+        "FIREFLIES_GET_ASK_FRED_THREAD": {
+          "toolkit": "FIREFLIES",
+          "tool_slug": "FIREFLIES_GET_ASK_FRED_THREAD",
+          "description": "Tool to get a specific AskFred conversation thread with full history. Use when retrieving a particul...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "FIREFLIES_GET_ASK_FRED_THREAD"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:31:42.806Z",
+        "current_time_utc_epoch_seconds": 1786599102,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "shoe",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"shoe\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_GZ3zjdY4zR0f"
+  }
+}

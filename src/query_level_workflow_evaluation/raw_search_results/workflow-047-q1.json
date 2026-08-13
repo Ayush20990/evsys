@@ -1,0 +1,470 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-047-q1",
+    "workflow_id": 47,
+    "workflow_task": "Duplicate an existing Meta Ads campaign using the Meta Marketing API copies capability.",
+    "query": "get details of existing meta ads campaign",
+    "intent": "Retrieve the configuration and settings of the source Meta Ads campaign that needs to be duplicated.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "METAADS_GET_OBJECT"
+        ],
+        "purpose": "Retrieve configuration and settings of the source Meta Ads campaign"
+      }
+    ],
+    "candidate_tools": [
+      "METAADS_CREATE_AD",
+      "METAADS_CREATE_AD_SET",
+      "METAADS_CREATE_CAMPAIGN",
+      "METAADS_DELETE_CAMPAIGN",
+      "METAADS_GET_AD_CREATIVE",
+      "METAADS_GET_INSIGHTS",
+      "METAADS_GET_OBJECT",
+      "METAADS_LIST_ADS",
+      "METAADS_READ_ADSETS",
+      "METAADS_UPDATE_CAMPAIGN"
+    ]
+  },
+  "request": {
+    "query": "get details of existing meta ads campaign"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "get details of existing meta ads campaign",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Confirm the campaign identifier and whether \u201cdetails\u201d means configuration, performance, or both; for METAADS_GET_INSIGHTS choose exactly one window method (date_preset OR time_range).",
+            "[Optional (if access scope is unclear)] [Prerequisite]: Enumerate accessible ad accounts using METAADS_GET_AD_ACCOUNTS (follow paging cursors/next) to confirm the campaign is in-scope.",
+            "[Required] [Step]: Fetch campaign configuration and delivery context using METAADS_GET_OBJECT (minimal fields such as status/effective_status/objective/budget-related fields/start-stop/buying_type).",
+            "[Required (if performance is requested)] [Step]: Retrieve campaign KPIs using METAADS_GET_INSIGHTS at level=\"campaign\" (request only needed metrics; include actions/action_values only when lead/conversion detail is required).",
+            "[Optional (if lead/conversion counts are required)] [Next Step]: Derive lead-related totals from METAADS_GET_INSIGHTS by scanning the actions array for relevant action_type values (don\u2019t assume a single fixed key).",
+            "[Required] [Next Step]: If METAADS_GET_INSIGHTS returns paging (paging.cursors.after or paging.next), request subsequent pages and aggregate rows; if breakdowns are used, roll totals up to avoid double counting.",
+            "[Optional (if delivery debugging or inventory is needed)] [Next Step]: Inspect structure using METAADS_READ_ADSETS and METAADS_LIST_ADS; corroborate assets with METAADS_LIST_AD_CREATIVES when ads appear missing or mismatched.",
+            "[Fallback (if insights are empty or error)] [Fallback]: Re-check dates/config via METAADS_GET_OBJECT and re-run METAADS_GET_INSIGHTS with a reporting window aligned to the campaign\u2019s active period."
+          ],
+          "known_pitfalls": [
+            "[METAADS_GET_OBJECT] 401 OAuthException code 190 with subcode 463 indicates an expired token/session; re-auth then retry.",
+            "[METAADS_GET_OBJECT] GraphMethodException code 100 with subcode 33 commonly indicates an invalid/inaccessible campaign identifier or missing permissions.",
+            "[METAADS_GET_OBJECT] Successful responses may omit requested fields (e.g., budget fields when budgeting is set lower in the hierarchy); treat missing keys as \u201cnot set\u201d.",
+            "[METAADS_GET_INSIGHTS] Metrics such as spend/clicks/impressions are often returned as strings; cast before computing derived values.",
+            "[METAADS_GET_INSIGHTS] action metrics are arrays of objects (actions/action_values) and may include extra attribution-window keys; parse defensively by action_type."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse insights rows and extract nested actions/action_values by action_type for derived KPIs.",
+              "code": "```python\nrows=[]\nfor r in insights_rows:\n    spend=float(r.get('spend',0) or 0)\n    purchases=sum(float(a.get('value',0) or 0) for a in (r.get('actions') or []) if a.get('action_type')=='purchase')\n    value=sum(float(a.get('value',0) or 0) for a in (r.get('action_values') or []) if a.get('action_type')=='purchase')\n    roas=(value/spend) if spend else 0\n    rows.append((r.get('campaign_id'), spend, purchases, value, roas))\n```"
+            },
+            {
+              "description": "Extract a single action_type value from insights arrays (e.g., actions, cost_per_action_type).",
+              "code": "```python\ndef get_action_value(items, action_type):\n    if not items:\n        return 0.0\n    for it in items:\n        if it.get('action_type') == action_type:\n            return float(it.get('value', 0) or 0)\n    return 0.0\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "METAADS_GET_OBJECT"
+          ],
+          "related_tool_slugs": [
+            "METAADS_GET_AD_ACCOUNTS",
+            "METAADS_READ_ADSETS",
+            "METAADS_LIST_ADS",
+            "METAADS_GET_INSIGHTS",
+            "METAADS_LIST_AD_CREATIVES"
+          ],
+          "toolkits": [
+            "metaads"
+          ],
+          "plan_id": "001e2d96336b498d83fc37504c4a9235"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "metaads",
+          "has_active_connection": false,
+          "description": "Create, edit and get insights from ads across Meta technologies, including Facebook, Instagram, Messenger, WhatsApp and more.",
+          "status_message": "No Active connection for toolkit=metaads. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"metaads\") to create a connection BEFORE executing any metaads tools."
+        }
+      ],
+      "tool_schemas": {
+        "METAADS_GET_OBJECT": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_GET_OBJECT",
+          "description": "Tool to retrieve data for any Meta Marketing API object by its ID. Use when you need to get information about a specific ad account, campaign, ad set, ad, ad creative, page, user, or other Meta object. Supports flexible field selection to retrieve only the data you need.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "object_id"
+            ],
+            "properties": {
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "name",
+                    "status"
+                  ],
+                  [
+                    "id",
+                    "name",
+                    "asset_feed_spec"
+                  ],
+                  [
+                    "id",
+                    "name",
+                    "ad_account_promotable_objects"
+                  ]
+                ],
+                "description": "List of specific fields to retrieve from the object. If not specified, only basic fields (id, name) will be returned. Available fields depend on the object type. Common fields include: id, name, status, account_id, created_time, updated_time. For ads: campaign_id, adset_id, creative. For campaigns: objective, buying_type, daily_budget. For ad creatives: asset_feed_spec, object_story_spec, image_url, video_id, title, body, link_url, call_to_action_type. For users: email, first_name, last_name. Note: For ad account objects, use 'ad_account_promotable_objects' to retrieve promotable objects - the field name 'promotable_objects' (without prefix) is not valid for ad accounts."
+              },
+              "object_id": {
+                "type": "string",
+                "examples": [
+                  "1813929979241149",
+                  "act_123456789",
+                  "23456789",
+                  "me"
+                ],
+                "description": "The numeric ID of the Facebook Graph API object (e.g., '123456789012345'). Must be a numeric Facebook ID, not an image hash or other non-numeric identifier. Can be an ad account ID (with or without 'act_' prefix), campaign ID, ad set ID, ad ID, ad creative ID, page ID, user ID, or any other Meta Marketing API object ID. For user info, use 'me' as the object_id."
+              },
+              "time_range": {
+                "type": "object",
+                "required": [
+                  "since",
+                  "until"
+                ],
+                "properties": {
+                  "since": {
+                    "type": "string",
+                    "examples": [
+                      "2024-01-01"
+                    ],
+                    "description": "Start date in YYYY-MM-DD format"
+                  },
+                  "until": {
+                    "type": "string",
+                    "examples": [
+                      "2024-12-31"
+                    ],
+                    "description": "End date in YYYY-MM-DD format"
+                  }
+                },
+                "description": "Custom date range for aggregating insights metrics.",
+                "additionalProperties": false
+              },
+              "date_preset": {
+                "enum": [
+                  "today",
+                  "yesterday",
+                  "this_month",
+                  "last_month",
+                  "this_quarter",
+                  "maximum",
+                  "last_3d",
+                  "last_7d",
+                  "last_14d",
+                  "last_28d",
+                  "last_30d",
+                  "last_90d",
+                  "last_week_mon_sun",
+                  "last_week_sun_sat",
+                  "last_quarter",
+                  "last_year",
+                  "this_week_mon_today",
+                  "this_week_sun_today",
+                  "this_year"
+                ],
+                "type": "string",
+                "description": "Predefined date range options for aggregating insights metrics."
+              },
+              "updated_since": {
+                "type": "integer",
+                "examples": [
+                  1609459200
+                ],
+                "description": "Unix timestamp to retrieve only objects updated since this time. Useful for incremental syncs and fetching recent changes."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "METAADS_GET_AD_ACCOUNTS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_GET_AD_ACCOUNTS",
+          "description": "Tool to retrieve all ad account IDs accessible to the authenticated user from Meta Ads. Use when you need to get a user's ad account information including account IDs, names, and other account details.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 1000,
+                "minimum": 1,
+                "examples": [
+                  25
+                ],
+                "description": "Maximum number of ad accounts to return (default 25)"
+              },
+              "fields": {
+                "type": "string",
+                "default": "id,account_id,name",
+                "examples": [
+                  "id,account_id,name,currency,account_status"
+                ],
+                "description": "Comma-separated list of fields to retrieve. Common fields: id, name, account_id, currency, timezone_name, account_status, business_name, business. The 'id' field returns the ad account ID prefixed with 'act_', while 'account_id' returns the numeric ID without prefix."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "METAADS_READ_ADSETS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_READ_ADSETS",
+          "description": "Retrieve ad sets from a Meta ad account using the Marketing API. Returns information about the ad sets including their status, targeting, and other properties.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ad_account_id"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 50,
+                "maximum": 1000,
+                "minimum": 1,
+                "description": "Maximum number of adsets to return"
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "account_id",
+                    "adlabels",
+                    "adset_schedule",
+                    "asset_feed_id",
+                    "attribution_spec",
+                    "bid_adjustments",
+                    "bid_amount",
+                    "bid_constraints",
+                    "bid_info",
+                    "bid_strategy",
+                    "billing_event",
+                    "brand_safety_config",
+                    "budget_remaining",
+                    "campaign",
+                    "campaign_active_time",
+                    "campaign_attribution",
+                    "campaign_id",
+                    "configured_status",
+                    "created_time",
+                    "creative_sequence",
+                    "daily_budget",
+                    "daily_min_spend_target",
+                    "daily_spend_cap",
+                    "destination_type",
+                    "dsa_beneficiary",
+                    "dsa_payor",
+                    "effective_status",
+                    "end_time",
+                    "existing_customer_budget_percentage",
+                    "frequency_control_specs",
+                    "full_funnel_exploration_mode",
+                    "id",
+                    "instagram_actor_id",
+                    "is_dynamic_creative",
+                    "issues_info",
+                    "learning_stage_info",
+                    "lifetime_budget",
+                    "lifetime_imps",
+                    "lifetime_min_spend_target",
+                    "lifetime_spend_cap",
+                    "multi_optimization_goal_weight",
+                    "name",
+                    "optimization_goal",
+                    "optimization_sub_event",
+                    "pacing_type",
+                    "promoted_object",
+                    "recommendations",
+                    "recurring_budget_semantics",
+                    "review_feedback",
+                    "rf_prediction_id",
+                    "source_adset",
+                    "source_adset_id",
+                    "start_time",
+                    "status",
+                    "targeting",
+                    "targeting_optimization_types",
+                    "time_based_ad_rotation_id_blocks",
+                    "time_based_ad_rotation_intervals",
+                    "updated_time",
+                    "use_new_app_click"
+                  ],
+                  "type": "string",
+                  "description": "Valid fields that can be requested for an AdSet from Meta's Marketing API."
+                },
+                "default": [
+                  "name",
+                  "id",
+                  "status"
+                ],
+                "examples": [
+                  [
+                    "name",
+                    "id",
+                    "status",
+                    "daily_budget",
+                    "targeting"
+                  ]
+                ],
+                "description": "Fields to return for each ad set. Select from the AdSetField enum values (e.g., name, id, status, daily_budget, targeting, campaign_id, effective_status). Defaults to name, id, and status if not specified."
+              },
+              "date_preset": {
+                "enum": [
+                  "today",
+                  "yesterday",
+                  "this_month",
+                  "last_month",
+                  "this_quarter",
+                  "maximum",
+                  "data_maximum",
+                  "last_3d",
+                  "last_7d",
+                  "last_14d",
+                  "last_28d",
+                  "last_30d",
+                  "last_90d",
+                  "last_week_mon_sun",
+                  "last_week_sun_sat",
+                  "last_quarter",
+                  "last_year",
+                  "this_week_mon_today",
+                  "this_week_sun_today",
+                  "this_year"
+                ],
+                "type": "string",
+                "description": "Predefined date range used to aggregate insights metrics. Values are case-insensitive (e.g., 'this_year' or 'THIS_YEAR')."
+              },
+              "is_completed": {
+                "type": "boolean",
+                "description": "Filter adsets by completed status"
+              },
+              "ad_account_id": {
+                "type": "string",
+                "examples": [
+                  "act_123456789"
+                ],
+                "description": "ID of the ad account to fetch adsets from"
+              },
+              "updated_since": {
+                "type": "integer",
+                "description": "Time since the Adset has been updated (in seconds)"
+              },
+              "effective_status": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "ACTIVE",
+                    "PAUSED",
+                    "DELETED",
+                    "PENDING_REVIEW",
+                    "DISAPPROVED",
+                    "PREAPPROVED",
+                    "PENDING_BILLING_INFO",
+                    "CAMPAIGN_PAUSED",
+                    "ARCHIVED",
+                    "ADSET_PAUSED",
+                    "IN_PROCESS",
+                    "WITH_ISSUES"
+                  ],
+                  "type": "string"
+                },
+                "description": "Filter adsets by their effective status. Values are case-insensitive (e.g., 'active' or 'ACTIVE')."
+              },
+              "time_range_since": {
+                "type": "string",
+                "examples": [
+                  "2023-01-01"
+                ],
+                "description": "Start date in YYYY-MM-DD format for custom date range"
+              },
+              "time_range_until": {
+                "type": "string",
+                "examples": [
+                  "2023-12-31"
+                ],
+                "description": "End date in YYYY-MM-DD format for custom date range"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "METAADS_LIST_ADS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_LIST_ADS",
+          "description": "Tool to list all ads under an ad account using the Meta Marketing API. Use when you need to retrieve...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_LIST_ADS"
+              ]
+            }
+          }
+        },
+        "METAADS_GET_INSIGHTS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_GET_INSIGHTS",
+          "description": "Get insights data for a Meta Ads object (ad account, campaign, ad set, or ad) using the Meta Marketi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_GET_INSIGHTS"
+              ]
+            }
+          }
+        },
+        "METAADS_LIST_AD_CREATIVES": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_LIST_AD_CREATIVES",
+          "description": "Tool to list all ad creatives under an ad account. Use when you need to retrieve multiple ad creativ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_LIST_AD_CREATIVES"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:34:19.441Z",
+        "current_time_utc_epoch_seconds": 1786599259,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "grew",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"grew\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_OTVpeqkYP5rN"
+  }
+}

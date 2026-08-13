@@ -1,0 +1,495 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-091-q1",
+    "workflow_id": 91,
+    "workflow_task": "Manage Meta ads reporting and campaign status, and handle Facebook Page inbox workflows including reading conversations and sending private replies or bulk follow-up messages.",
+    "query": "manage Meta ads reporting and campaign status",
+    "intent": "This query retrieves campaign performance metrics and updates the active status of Meta advertising campaigns.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "METAADS_GET_INSIGHTS"
+        ],
+        "purpose": "retrieve campaign performance insights"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "METAADS_GET_OBJECT"
+        ],
+        "purpose": "retrieve campaign status and details"
+      }
+    ],
+    "candidate_tools": [
+      "FACEBOOK_GET_CONVERSATION_MESSAGES",
+      "FACEBOOK_GET_PAGE_CONVERSATIONS",
+      "FACEBOOK_GET_PAGE_DETAILS",
+      "FACEBOOK_LIST_MANAGED_PAGES",
+      "FACEBOOK_SEND_MESSAGE",
+      "METAADS_GET_INSIGHTS",
+      "METAADS_GET_OBJECT"
+    ]
+  },
+  "request": {
+    "query": "manage Meta ads reporting and campaign status"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "manage Meta ads reporting and campaign status",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if token/permissions are uncertain)] [Prerequisite]: Action using METAADS_GET_USER (validate auth with minimal fields; if fields-as-list fails, retry with fields as a string).",
+            "[Required (if reporting account is unknown)] [Prerequisite]: Action using METAADS_GET_AD_ACCOUNTS (enumerate accessible accounts; keep the exact identifier format returned; paginate paging cursors/next to completion).",
+            "[Optional (if direct accounts are empty or access is business-managed)] [Prerequisite]: Action using METAADS_LIST_OWNED_BUSINESSES (locate a business container), then METAADS_LIST_BUSINESS_AD_ACCOUNTS (select a reportable ad account).",
+            "[Required] [Prerequisite]: Action using METAADS_GET_INSIGHTS (smoke-test at level=\"account\" with minimal KPIs and a short window; use date_preset OR time_range).",
+            "[Required] [Step]: Action using METAADS_GET_INSIGHTS (pull campaign-level rows with campaign identifiers/names + core KPIs; include actions/action_values only if needed; chunk long time_range windows if large/spotty).",
+            "[Required (if response includes paging)] [Step]: Action using METAADS_GET_INSIGHTS (paginate until exhausted; stop if cursor stops advancing; append then de-dupe/aggregate by campaign identifier; Optional: COMPOSIO_REMOTE_WORKBENCH for large transforms).",
+            "[Optional (if non-insights fields are needed or insights are empty unexpectedly)] [Fallback]: Action using METAADS_GET_OBJECT (fetch minimal valid metadata for the relevant object IDs), then re-run METAADS_GET_INSIGHTS with corrected level/object and reduced fields."
+          ],
+          "known_pitfalls": [
+            "[METAADS_GET_AD_ACCOUNTS] Auth can fail with OAuthException code=190 (subcodes 463/464/460), code=200 (HTTP 403 missing permissions), or code=2500; code=100 may indicate appsecret_proof is required.",
+            "[METAADS_GET_USER] Some connections reject fields when passed as a list (must be a string), and requested fields may be absent even on success.",
+            "[METAADS_GET_INSIGHTS] Strict validation: do not mix date_preset with time_range; mismatching level vs object context or requesting invalid fields/breakdowns can raise OAuthException code=100 (HTTP 400) or return empty data.",
+            "[METAADS_GET_INSIGHTS] KPI values may arrive as strings; actions/action_values/cost_per_action_type often arrive as arrays of {action_type,value} (sometimes with attribution-window keys) and must be normalized before KPI math.",
+            "[METAADS_GET_OBJECT] Unsupported fields or wrong-type object IDs can raise OAuthException/GraphMethodException code=100 (incl. subcode 33) or permission code=10; remove offending fields and retry."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Normalize action arrays into a numeric map and safely cast KPIs",
+              "code": "```python\ndef action_map(arr):\n  out={}\n  for a in (arr or []):\n    k=(a or {}).get('action_type'); v=(a or {}).get('value')\n    if not k or v is None: continue\n    try: out[k]=out.get(k,0.0)+float(v)\n    except Exception: pass\n  return out\n\ndef cast_float(x,d=0.0):\n  try: return float(x)\n  except Exception: return d\n```"
+            },
+            {
+              "description": "Robustly ensure numeric KPI columns exist before aggregation",
+              "code": "```python\nimport pandas as pd\n\ndef ensure_cols(df, cols, default=0.0):\n  for c in cols:\n    if c not in df.columns: df[c]=default\n  return df\n\ndef to_num(s):\n  return pd.to_numeric(s, errors='coerce').fillna(0.0)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "METAADS_GET_AD_ACCOUNTS",
+            "METAADS_GET_INSIGHTS"
+          ],
+          "related_tool_slugs": [
+            "METAADS_GET_OBJECT",
+            "METAADS_LIST_OWNED_BUSINESSES",
+            "METAADS_LIST_BUSINESS_AD_ACCOUNTS",
+            "METAADS_GET_USER",
+            "METAADS_LIST_ADS"
+          ],
+          "toolkits": [
+            "metaads"
+          ],
+          "plan_id": "dd2efcb75cb048bab282f3a9a617dfa0"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "metaads",
+          "has_active_connection": false,
+          "description": "Create, edit and get insights from ads across Meta technologies, including Facebook, Instagram, Messenger, WhatsApp and more.",
+          "status_message": "No Active connection for toolkit=metaads. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"metaads\") to create a connection BEFORE executing any metaads tools."
+        }
+      ],
+      "tool_schemas": {
+        "METAADS_GET_AD_ACCOUNTS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_GET_AD_ACCOUNTS",
+          "description": "Tool to retrieve all ad account IDs accessible to the authenticated user from Meta Ads. Use when you need to get a user's ad account information including account IDs, names, and other account details.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 1000,
+                "minimum": 1,
+                "examples": [
+                  25
+                ],
+                "description": "Maximum number of ad accounts to return (default 25)"
+              },
+              "fields": {
+                "type": "string",
+                "default": "id,account_id,name",
+                "examples": [
+                  "id,account_id,name,currency,account_status"
+                ],
+                "description": "Comma-separated list of fields to retrieve. Common fields: id, name, account_id, currency, timezone_name, account_status, business_name, business. The 'id' field returns the ad account ID prefixed with 'act_', while 'account_id' returns the numeric ID without prefix."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "METAADS_GET_INSIGHTS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_GET_INSIGHTS",
+          "description": "Get insights data for a Meta Ads object (ad account, campaign, ad set, or ad) using the Meta Marketing API. Supports various metrics, breakdowns, and filtering options with flexible date ranges. Results are paginated; follow `paging.cursors.after` or `paging.next` to retrieve all rows. Missing metric values in results should not be assumed to be zero.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "object_id"
+            ],
+            "properties": {
+              "sort": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "reach_descending",
+                    "impressions_ascending"
+                  ]
+                ],
+                "description": "Fields to sort by with direction (_ascending or _descending suffix)"
+              },
+              "after": {
+                "type": "string",
+                "description": "Cursor for the next page of results, usually taken from paging.cursors.after in the previous response."
+              },
+              "level": {
+                "enum": [
+                  "account",
+                  "campaign",
+                  "adset",
+                  "ad"
+                ],
+                "type": "string",
+                "default": "account",
+                "description": "Level at which to aggregate the data Must match the type of object referenced by `object_id` (e.g., 'account' for 'act_...' IDs, 'campaign' for campaign IDs, 'adset' for ad set IDs, 'ad' for ad IDs); mismatches return empty or misleading metrics. Allowed values: 'account', 'campaign', 'adset', 'ad'."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum number of insight rows to return for this page. Use paging.cursors.after or paging.cursors.before from the response to request another page."
+              },
+              "before": {
+                "type": "string",
+                "description": "Cursor for the previous page of results, usually taken from paging.cursors.before in the previous response."
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [
+                  "impressions",
+                  "clicks",
+                  "spend"
+                ],
+                "examples": [
+                  [
+                    "impressions",
+                    "clicks",
+                    "spend",
+                    "reach",
+                    "actions",
+                    "action_values"
+                  ]
+                ],
+                "description": "List of metric fields to include in the response. Valid standalone fields include: impressions, clicks, spend, reach, cpc, cpm, ctr, frequency, account_name, account_id, campaign_name, campaign_id, adset_name, adset_id, ad_name, ad_id, objective, buying_type, date_start, date_stop. For conversion/action metrics: 'actions' (returns all action types with counts), 'action_values' (returns monetary values for all actions), 'conversions' (returns conversion-specific actions), 'conversion_values' (returns monetary values for conversions). Breakdown dimensions such as publisher_platform, platform_position, impression_device, age, gender, and country should be supplied through breakdowns; if included here they are moved automatically. Do NOT use 'conversion_value' (singular) as it is not a valid field - use 'action_values' or 'conversion_values' instead."
+              },
+              "filtering": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "examples": [
+                  [
+                    {
+                      "field": "ad.effective_status",
+                      "value": [
+                        "ACTIVE"
+                      ],
+                      "operator": "IN"
+                    }
+                  ]
+                ],
+                "description": "Filters to apply to the data"
+              },
+              "object_id": {
+                "type": "string",
+                "examples": [
+                  "act_123456789",
+                  "23456789"
+                ],
+                "description": "ID of the object to get insights for (ad account, campaign, ad set, or ad). For ad accounts, the ID must include the act_ prefix (e.g., act_123456789). Campaign, ad set, and ad IDs are numeric only."
+              },
+              "breakdowns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "publisher_platform",
+                    "platform_position"
+                  ]
+                ],
+                "description": "List of breakdown dimensions to apply to the data, such as publisher_platform, platform_position, impression_device, age, gender, country, region, or device_platform."
+              },
+              "time_range": {
+                "type": "object",
+                "required": [
+                  "since",
+                  "until"
+                ],
+                "properties": {
+                  "since": {
+                    "type": "string",
+                    "examples": [
+                      "2024-01-01"
+                    ],
+                    "description": "Start date in YYYY-MM-DD format. Must be within the last 37 months from the current date (Meta API limitation)."
+                  },
+                  "until": {
+                    "type": "string",
+                    "examples": [
+                      "2024-01-31"
+                    ],
+                    "description": "End date in YYYY-MM-DD format"
+                  }
+                },
+                "description": "Custom date range for the insights. If provided, date_preset should be set to null/None to use this custom range instead. Must be a dict with keys `since` and `until` in YYYY-MM-DD format (e.g., {'since': '2024-01-01', 'until': '2024-01-31'}). Never provide both time_range and date_preset simultaneously.",
+                "additionalProperties": false
+              },
+              "date_preset": {
+                "enum": [
+                  "today",
+                  "yesterday",
+                  "last_7d",
+                  "last_30d",
+                  "this_month",
+                  "last_month",
+                  "this_quarter"
+                ],
+                "type": "string",
+                "default": "last_30d",
+                "examples": [
+                  "last_30d",
+                  "this_month"
+                ],
+                "description": "Predefined date range for the insights. Defaults to 'last_30d' if neither date_preset nor time_range is specified. Allowed values: 'today', 'yesterday', 'last_7d', 'last_30d', 'this_month', 'last_month', 'this_quarter'. Case-insensitive (e.g., 'LAST_30D' is normalized to 'last_30d'). Set to null/None only if you provide a custom time_range."
+              },
+              "date_range_defaulted": {
+                "type": "boolean",
+                "description": "Internal field to track if date_preset was defaulted. Do not set this manually."
+              },
+              "field_transformations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Internal field to track any field transformations made. Do not set this manually."
+              },
+              "breakdown_transformations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Internal field to track breakdown fields moved out of fields. Do not set this manually."
+              },
+              "action_attribution_windows": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "1d_click",
+                    "7d_click",
+                    "1d_view"
+                  ],
+                  "type": "string"
+                },
+                "default": [
+                  "7d_click"
+                ],
+                "description": "Attribution windows for conversion metrics. Defaults to `[7d_click]` to match Meta's unified attribution default; add `VIEW_1D`/`CLICK_28D`/etc. explicitly if you need legacy multi-window behavior. Different window values yield significantly different conversion counts; use consistent windows when comparing across campaigns or time periods."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "METAADS_GET_OBJECT": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_GET_OBJECT",
+          "description": "Tool to retrieve data for any Meta Marketing API object by its ID. Use when you need to get information about a specific ad account, campaign, ad set, ad, ad creative, page, user, or other Meta object. Supports flexible field selection to retrieve only the data you need.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "object_id"
+            ],
+            "properties": {
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "name",
+                    "status"
+                  ],
+                  [
+                    "id",
+                    "name",
+                    "asset_feed_spec"
+                  ],
+                  [
+                    "id",
+                    "name",
+                    "ad_account_promotable_objects"
+                  ]
+                ],
+                "description": "List of specific fields to retrieve from the object. If not specified, only basic fields (id, name) will be returned. Available fields depend on the object type. Common fields include: id, name, status, account_id, created_time, updated_time. For ads: campaign_id, adset_id, creative. For campaigns: objective, buying_type, daily_budget. For ad creatives: asset_feed_spec, object_story_spec, image_url, video_id, title, body, link_url, call_to_action_type. For users: email, first_name, last_name. Note: For ad account objects, use 'ad_account_promotable_objects' to retrieve promotable objects - the field name 'promotable_objects' (without prefix) is not valid for ad accounts."
+              },
+              "object_id": {
+                "type": "string",
+                "examples": [
+                  "1813929979241149",
+                  "act_123456789",
+                  "23456789",
+                  "me"
+                ],
+                "description": "The numeric ID of the Facebook Graph API object (e.g., '123456789012345'). Must be a numeric Facebook ID, not an image hash or other non-numeric identifier. Can be an ad account ID (with or without 'act_' prefix), campaign ID, ad set ID, ad ID, ad creative ID, page ID, user ID, or any other Meta Marketing API object ID. For user info, use 'me' as the object_id."
+              },
+              "time_range": {
+                "type": "object",
+                "required": [
+                  "since",
+                  "until"
+                ],
+                "properties": {
+                  "since": {
+                    "type": "string",
+                    "examples": [
+                      "2024-01-01"
+                    ],
+                    "description": "Start date in YYYY-MM-DD format"
+                  },
+                  "until": {
+                    "type": "string",
+                    "examples": [
+                      "2024-12-31"
+                    ],
+                    "description": "End date in YYYY-MM-DD format"
+                  }
+                },
+                "description": "Custom date range for aggregating insights metrics.",
+                "additionalProperties": false
+              },
+              "date_preset": {
+                "enum": [
+                  "today",
+                  "yesterday",
+                  "this_month",
+                  "last_month",
+                  "this_quarter",
+                  "maximum",
+                  "last_3d",
+                  "last_7d",
+                  "last_14d",
+                  "last_28d",
+                  "last_30d",
+                  "last_90d",
+                  "last_week_mon_sun",
+                  "last_week_sun_sat",
+                  "last_quarter",
+                  "last_year",
+                  "this_week_mon_today",
+                  "this_week_sun_today",
+                  "this_year"
+                ],
+                "type": "string",
+                "description": "Predefined date range options for aggregating insights metrics."
+              },
+              "updated_since": {
+                "type": "integer",
+                "examples": [
+                  1609459200
+                ],
+                "description": "Unix timestamp to retrieve only objects updated since this time. Useful for incremental syncs and fetching recent changes."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "METAADS_LIST_OWNED_BUSINESSES": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_LIST_OWNED_BUSINESSES",
+          "description": "Tool to retrieve businesses owned by a parent Business Manager from Meta Marketing API. Use when you...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_LIST_OWNED_BUSINESSES"
+              ]
+            }
+          }
+        },
+        "METAADS_LIST_BUSINESS_AD_ACCOUNTS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_LIST_BUSINESS_AD_ACCOUNTS",
+          "description": "Tool to retrieve all ad accounts owned by a specific Business Manager. Use when you need to get ad a...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_LIST_BUSINESS_AD_ACCOUNTS"
+              ]
+            }
+          }
+        },
+        "METAADS_GET_USER": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_GET_USER",
+          "description": "Tool to retrieve information about the authenticated user from Meta (Facebook) Graph API. Use when y...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_GET_USER"
+              ]
+            }
+          }
+        },
+        "METAADS_LIST_ADS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_LIST_ADS",
+          "description": "Tool to list all ads under an ad account using the Meta Marketing API. Use when you need to retrieve...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_LIST_ADS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:39:10.425Z",
+        "current_time_utc_epoch_seconds": 1786599550,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "wait",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"wait\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_2xCDhMCAyD43"
+  }
+}

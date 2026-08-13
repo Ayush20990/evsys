@@ -1,0 +1,529 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-048-q2",
+    "workflow_id": 48,
+    "workflow_task": "Generate and post-process a long text-to-speech audio asset, upload it to cloud storage, research YouTube content opportunities and comments, then update YouTube channel branding metadata.",
+    "query": "upload file to cloud storage bucket",
+    "intent": "Upload the processed audio asset to cloud storage.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLEDRIVE_RESUMABLE_UPLOAD"
+        ],
+        "purpose": "Upload file to cloud storage bucket via Google Drive resumable upload"
+      }
+    ],
+    "candidate_tools": [
+      "ELEVENLABS_GET_USER_SUBSCRIPTION_INFO",
+      "ELEVENLABS_TEXT_TO_SPEECH",
+      "GOOGLEDRIVE_CREATE_FOLDER",
+      "GOOGLEDRIVE_RESUMABLE_UPLOAD",
+      "YOUTUBE_GET_CHANNEL_STATISTICS",
+      "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+      "YOUTUBE_LIST_COMMENT_THREADS2",
+      "YOUTUBE_SEARCH_YOU_TUBE",
+      "YOUTUBE_UPDATE_CHANNEL"
+    ]
+  },
+  "request": {
+    "query": "upload file to cloud storage bucket"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "upload file to cloud storage bucket",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Choose provider, destination container (Drive parent vs OneDrive path), and overwrite vs new; optionally package/build content in COMPOSIO_REMOTE_WORKBENCH to produce an uploadable object key.",
+            "[Optional (if uploading to OneDrive and the folder path may not exist)] [Prerequisite]: Create the destination folder path using ONE_DRIVE_ONEDRIVE_CREATE_FOLDER (ensure the upload target is valid).",
+            "[Optional (if uploading to Drive and avoiding name collisions/targeting an existing item)] [Prerequisite]: Locate the existing file using GOOGLEDRIVE_FIND_FILE (constrain by parent and follow nextPageToken) and capture the file identifier.",
+            "[Required] [Step]: Upload the binary content using GOOGLEDRIVE_UPLOAD_FILE or ONE_DRIVE_ONEDRIVE_UPLOAD_FILE and store the returned file identifier/link.",
+            "[Optional (if Drive upload is large/unstable or fails mid-transfer)] [Fallback]: Complete the transfer using GOOGLEDRIVE_RESUMABLE_UPLOAD (continue the same resumable session) and persist the final file identifier/link.",
+            "[Optional (for Drive verification)] [Next Step]: Confirm size/type/parents/link using GOOGLEDRIVE_GET_FILE_METADATA.",
+            "[Optional (if sharing is required)] [Next Step]: Grant access using GOOGLEDRIVE_CREATE_PERMISSION only after explicit confirmation of sharing scope."
+          ],
+          "known_pitfalls": [
+            "[GOOGLEDRIVE_FIND_FILE] Results may paginate; ignoring nextPageToken or not constraining by parent can select the wrong item.",
+            "[GOOGLEDRIVE_UPLOAD_FILE] Requires an uploadable object key (not a local path); may return 429/503 during heavy transfers\u2014use backoff.",
+            "[GOOGLEDRIVE_RESUMABLE_UPLOAD] Must reuse the same resumable session to avoid orphaned/duplicate uploads.",
+            "[GOOGLEDRIVE_UPLOAD_FILE] 403 PERMISSION_DENIED (including ACCESS_TOKEN_SCOPE_INSUFFICIENT) indicates missing write scopes\u2014reauthorize before retrying.",
+            "[COMPOSIO_REMOTE_WORKBENCH] FileNotFoundError occurs if the referenced sandbox path does not exist; prefer stable artifact keys over assuming an external fetch will succeed."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Create a zip artifact in workbench and upload it to obtain an uploadable object reference",
+              "code": "```python\nimport os,zipfile\nsrc=os.environ[\"SRC_DIR\"]\ndst=os.environ[\"ZIP_PATH\"]\nwith zipfile.ZipFile(dst,\"w\",zipfile.ZIP_DEFLATED) as z:\n  for r,_,fs in os.walk(src):\n    for n in fs:\n      p=os.path.join(r,n)\n      z.write(p,os.path.relpath(p,os.path.dirname(src)))\nres,err=upload_local_file(dst)\nif err: raise Exception(err)\noutput={\"object_ref\":res.get(\"s3_url\")}\n\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLEDRIVE_UPLOAD_FILE",
+            "ONE_DRIVE_ONEDRIVE_UPLOAD_FILE"
+          ],
+          "related_tool_slugs": [
+            "GOOGLEDRIVE_RESUMABLE_UPLOAD",
+            "GOOGLEDRIVE_FIND_FILE",
+            "GOOGLEDRIVE_GET_FILE_METADATA",
+            "GOOGLEDRIVE_CREATE_PERMISSION",
+            "ONE_DRIVE_ONEDRIVE_CREATE_FOLDER"
+          ],
+          "toolkits": [
+            "googledrive",
+            "one_drive"
+          ],
+          "plan_id": "6724d98581564a6fa937dcf080cd3b70"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledrive",
+          "has_active_connection": false,
+          "description": "Google Drive is a cloud storage solution for uploading, sharing, and collaborating on files across devices, with robust search and offline access. Special usecases: Sharing google sheets/docs or any G-Suite files with specific emails.",
+          "status_message": "No Active connection for toolkit=googledrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledrive\") to create a connection BEFORE executing any googledrive tools."
+        },
+        {
+          "toolkit": "one_drive",
+          "has_active_connection": false,
+          "description": "OneDrive is Microsoft\u2019s cloud storage solution enabling users to store, sync, and share files across devices, offering offline access, real-time collaboration, and enterprise-grade security",
+          "status_message": "No Active connection for toolkit=one_drive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"one_drive\") to create a connection BEFORE executing any one_drive tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLEDRIVE_UPLOAD_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_UPLOAD_FILE",
+          "description": "Uploads a file (max 5MB) to Google Drive, placing it in the specified folder or root if no valid folder ID is provided. Always creates a new file (never updates existing); use GOOGLEDRIVE_EDIT_FILE to update with a stable file_id. Uploaded files are private by default; configure sharing via GOOGLEDRIVE_ADD_FILE_SHARING_PREFERENCE.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "file_to_upload"
+            ],
+            "properties": {
+              "file_to_upload": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "File to upload to Google Drive (max 5MB). Use a clear filename and accurate MIME type, for example `application/pdf`; incorrect values can cause Drive to convert or misrender the file.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "folder_to_upload_to": {
+                "type": "string",
+                "examples": [
+                  "1duXYCvYC5tIp5B_B1HWLq8LyDYXfMhPU"
+                ],
+                "description": "Optional ID of the target Google Drive folder; can be obtained using 'Find Folder' or similar actions. Invalid or missing IDs silently fall back to Drive root with no error \u2014 resolve the correct folder ID first using GOOGLEDRIVE_FIND_FILE."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_ONEDRIVE_UPLOAD_FILE": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_ONEDRIVE_UPLOAD_FILE",
+          "description": "Uploads a file to a specified OneDrive folder, automatically creating the destination folder if it doesn't exist, renaming on conflict, and supporting large files via chunking.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "The file to be uploaded, including its name and access to its binary content. Required if source_url is not provided.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "folder": {
+                "type": "string",
+                "default": "/",
+                "examples": [
+                  "/Documents/Projects",
+                  "folder_id_example"
+                ],
+                "description": "Destination folder path from root (e.g., '/Documents/Reports') or a unique folder ID. If the folder path doesn't exist, it will be created automatically (including any intermediate folders in the path)."
+              },
+              "site_id": {
+                "type": "string",
+                "examples": [
+                  "contoso.sharepoint.com,024d491a-4d09-4194-ae1f-7413535507dc,024d491a-4d09-4194-ae1f-7413535507dc"
+                ],
+                "description": "The unique identifier of the SharePoint site to upload to. If provided, uses /sites/{siteId}/drive. Mutually exclusive with drive_id."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "testuser@contoso.com",
+                  "00000000-0000-0000-0000-000000000000"
+                ],
+                "description": "User ID (e.g., user_principal_name, unique GUID) or 'me' for the authenticated user, determining the target OneDrive."
+              },
+              "drive_id": {
+                "type": "string",
+                "examples": [
+                  "b!C3NkF4b2GU2msLpLqgZ4oYd_S4P0S6_FhG0bS-WpTkYwGVc_FmBYSZ7d0x_ZJpG-"
+                ],
+                "description": "The unique identifier of the drive to upload to. If not provided, uses the default drive of the user_id. Mutually exclusive with site_id."
+              },
+              "file_name": {
+                "type": "string",
+                "examples": [
+                  "report.pdf",
+                  "presentation.pptx",
+                  "data.csv"
+                ],
+                "description": "Name for the file in OneDrive when using source_url, including extension (e.g., 'report.pdf', 'image.png'). If not provided when using source_url, the filename will be extracted from the URL or Content-Disposition header. Ignored when using file parameter (filename comes from file.name)."
+              },
+              "source_url": {
+                "type": "string",
+                "examples": [
+                  "https://example.com/document.pdf",
+                  "https://cdn.example.com/image.png"
+                ],
+                "description": "Public HTTPS URL of the file to download and upload to OneDrive. Custom source headers are not supported. Required if file is not provided."
+              },
+              "verify_ssl": {
+                "type": "boolean",
+                "default": true,
+                "description": "Deprecated. SSL verification is always required for source_url downloads."
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "Project proposal for Q1 2024"
+                ],
+                "description": "A user-visible description of the file. Only supported on OneDrive Personal."
+              },
+              "defer_commit": {
+                "type": "boolean",
+                "description": "If true, the final file creation is deferred until an explicit completion request is made. Useful for large files where you want to control when the upload is finalized."
+              },
+              "if_match_etag": {
+                "type": "string",
+                "examples": [
+                  "aQzlGRDlBMjdBRDQ5RUVCOTE3LjA"
+                ],
+                "description": "An ETag value to prevent lost updates. If provided, the upload will only proceed if the folder/parent's ETag matches this value. Returns 412 error if it doesn't match."
+              },
+              "source_headers": {
+                "type": "object",
+                "examples": [
+                  {
+                    "Authorization": "Bearer token123"
+                  },
+                  {
+                    "X-Custom-Header": "value"
+                  }
+                ],
+                "description": "Deprecated. Custom HTTP headers are not supported when downloading from source_url.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "file_system_info": {
+                "type": "object",
+                "properties": {
+                  "createdDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "examples": [
+                      "2023-01-15T10:30:00Z"
+                    ],
+                    "description": "The UTC date and time the file was created on a client. ISO 8601 format."
+                  },
+                  "lastAccessedDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "examples": [
+                      "2023-01-21T08:00:00Z"
+                    ],
+                    "description": "The UTC date and time the file was last accessed. ISO 8601 format."
+                  },
+                  "lastModifiedDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "examples": [
+                      "2023-01-20T15:45:00Z"
+                    ],
+                    "description": "The UTC date and time the file was last modified on a client. ISO 8601 format."
+                  }
+                },
+                "description": "File system information on client.",
+                "additionalProperties": false
+              },
+              "conflict_behavior": {
+                "enum": [
+                  "rename",
+                  "fail",
+                  "replace"
+                ],
+                "type": "string",
+                "default": "rename",
+                "examples": [
+                  "rename",
+                  "fail",
+                  "replace"
+                ],
+                "description": "How to handle file name conflicts. 'rename' automatically renames the file if it exists (default), 'fail' returns an error, 'replace' overwrites the existing file. When renamed, the actual filename in the response may differ (e.g., suffixed with a number); use the response `id` or `webUrl` for follow-up operations."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDRIVE_RESUMABLE_UPLOAD": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_RESUMABLE_UPLOAD",
+          "description": "Tool to start and complete a Google Drive resumable upload session. Use for files larger than ~5 MB to avoid timeouts or size-limit failures. HTTP 308 means continue the session from the correct byte offset; HTTP 410 means the session expired and a full restart with a new session is required.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "file_to_upload"
+            ],
+            "properties": {
+              "file_id": {
+                "type": "string",
+                "description": "Optional file ID if updating an existing file instead of creating a new one."
+              },
+              "metadata": {
+                "type": "object",
+                "description": "JSON metadata for the Drive File resource (e.g., {'name': 'photo.jpg', 'parents': ['folderId']}). To convert to a Google Docs MIME type, set metadata.mimeType to the target Docs type but send the real file MIME type as the upload content type \u2014 using the Docs MIME type as upload content type causes invalidContentType errors.",
+                "additionalProperties": true
+              },
+              "chunkSize": {
+                "type": "integer",
+                "default": 262144,
+                "minimum": 262144,
+                "examples": [
+                  262144
+                ],
+                "description": "Chunk size in bytes; must be a multiple of 256 KB."
+              },
+              "queryParams": {
+                "type": "object",
+                "properties": {
+                  "uploadType": {
+                    "type": "string",
+                    "const": "resumable",
+                    "default": "resumable",
+                    "description": "Must be 'resumable'."
+                  },
+                  "ocrLanguage": {
+                    "type": "string",
+                    "description": "ISO 639-1 code to hint OCR during image import."
+                  },
+                  "includeLabels": {
+                    "type": "string",
+                    "description": "Comma-separated label IDs to include in labelInfo."
+                  },
+                  "supportsAllDrives": {
+                    "type": "boolean",
+                    "description": "Whether the app supports both My Drive and shared drives."
+                  },
+                  "keepRevisionForever": {
+                    "type": "boolean",
+                    "description": "Whether to set keepForever on the new head revision."
+                  },
+                  "ignoreDefaultVisibility": {
+                    "type": "boolean",
+                    "description": "Bypass domain default visibility for the created file."
+                  },
+                  "includePermissionsForView": {
+                    "type": "string",
+                    "const": "published",
+                    "description": "Which additional view's permissions to include; only 'published' supported."
+                  },
+                  "useContentAsIndexableText": {
+                    "type": "boolean",
+                    "description": "Whether to use uploaded content as indexable text."
+                  }
+                },
+                "description": "Optional Drive query parameters.",
+                "additionalProperties": false
+              },
+              "file_to_upload": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "mimetype",
+                  "s3key"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "examples": [
+                      "document.pdf",
+                      "image.jpg",
+                      "report.docx"
+                    ],
+                    "description": "The filename that will be used when uploading the file to the destination service"
+                  },
+                  "s3key": {
+                    "type": "string",
+                    "examples": [
+                      "47563/gmail/GET_ATTACHMENT/response/12345"
+                    ],
+                    "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                  },
+                  "mimetype": {
+                    "type": "string",
+                    "examples": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    ],
+                    "description": "The MIME type of the file"
+                  }
+                },
+                "description": "File to upload to Google Drive via resumable upload.",
+                "file_uploadable": true,
+                "additionalProperties": false
+              },
+              "folder_to_upload_to": {
+                "type": "string",
+                "description": "Optional folder ID where NEW files should be uploaded. Only used during file creation, not updates. Will be added to metadata.parents. Must reference a valid, non-trashed folder ID; invalid or trashed IDs silently place files at root."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDRIVE_FIND_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_FIND_FILE",
+          "description": "The comprehensive Google Drive search tool that handles all file and folder discovery needs. Use thi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_FIND_FILE"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_GET_FILE_METADATA": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_GET_FILE_METADATA",
+          "description": "Tool to get a file's metadata by ID. Use to verify `mimeType`, `parents`, and `trashed` status befor...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_GET_FILE_METADATA"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_CREATE_PERMISSION": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_CREATE_PERMISSION",
+          "description": "Tool to create a permission for a file or shared drive. Use when you need to share a file or folder ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_CREATE_PERMISSION"
+              ]
+            }
+          }
+        },
+        "ONE_DRIVE_ONEDRIVE_CREATE_FOLDER": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_ONEDRIVE_CREATE_FOLDER",
+          "description": "Creates a new folder in the user's OneDrive with configurable conflict behavior, optionally within a...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_ONEDRIVE_CREATE_FOLDER"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:34:25.019Z",
+        "current_time_utc_epoch_seconds": 1786599265,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "wind",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"wind\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_mP1KIjrFfacn"
+  }
+}

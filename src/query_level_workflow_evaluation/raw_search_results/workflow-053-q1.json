@@ -1,0 +1,1632 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-053-q1",
+    "workflow_id": 53,
+    "workflow_task": "Audit a short-link inventory by finding an existing spreadsheet registry, reading help-center mapping tabs, listing existing short links, and attempting to compare them with live public website article URLs and redirects.",
+    "query": "spreadsheet registry and help center mapping tabs",
+    "intent": "Find and read the spreadsheet registry and help-center mapping tabs containing the short-link inventory.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLESHEETS_SEARCH_SPREADSHEETS"
+        ],
+        "purpose": "Find the spreadsheet registry"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLESHEETS_GET_SHEET_NAMES"
+        ],
+        "purpose": "Discover worksheet names for mapping tabs"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLESHEETS_VALUES_GET"
+        ],
+        "purpose": "Read data from the spreadsheet tabs"
+      }
+    ],
+    "candidate_tools": [
+      "BROWSER_TOOL_CREATE_TASK",
+      "BROWSER_TOOL_GET_SESSION",
+      "BROWSER_TOOL_STOP_TASK",
+      "BROWSER_TOOL_WATCH_TASK",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+      "GOOGLESHEETS_VALUES_GET",
+      "TINYURL_LIST_URLS"
+    ]
+  },
+  "request": {
+    "query": "spreadsheet registry and help center mapping tabs"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "spreadsheet registry and help center mapping tabs",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if starting from scratch)] [Prerequisite]: Create a new spreadsheet using GOOGLESHEETS_CREATE_GOOGLE_SHEET1 (store the spreadsheet identifier).",
+            "[Optional (if tab names/order or sheet ids are unclear)] [Prerequisite]: Inspect tabs/metadata using GOOGLESHEETS_GET_SHEET_NAMES or GOOGLESHEETS_GET_SPREADSHEET_INFO (avoid writing/formatting the wrong tab).",
+            "[Required] [Step]: Create the needed tabs using GOOGLESHEETS_ADD_SHEET (create sequentially if tab order matters; capture returned identifiers).",
+            "[Required] [Next Step]: Write headers/seed data (and formulas) using GOOGLESHEETS_UPDATE_VALUES_BATCH (tab-qualified A1 ranges, 2D arrays); use GOOGLESHEETS_VALUES_UPDATE for a single contiguous range.",
+            "[Required] [Step]: Apply header/body styling and number formats using GOOGLESHEETS_FORMAT_CELL (target explicit ranges or index bounds).",
+            "[Optional (for verification or copying an existing style)] [Next Step]: Read back a small window using GOOGLESHEETS_VALUES_GET, or fetch effective formatting via GOOGLESHEETS_GET_SPREADSHEET_INFO (keep ranges narrow) before reapplying with GOOGLESHEETS_FORMAT_CELL.",
+            "[Optional (if freezing headers or renaming/updating tab properties)] [Next Step]: Update tab metadata using GOOGLESHEETS_UPDATE_SHEET_PROPERTIES.",
+            "[Fallback (if a tab name/id mismatch causes mis-targeted writes or formats)] [Fallback]: Re-check with GOOGLESHEETS_GET_SHEET_NAMES or GOOGLESHEETS_GET_SPREADSHEET_INFO, then retry the failed GOOGLESHEETS_VALUES_UPDATE/GOOGLESHEETS_UPDATE_VALUES_BATCH or GOOGLESHEETS_FORMAT_CELL with corrected tab-qualified ranges."
+          ],
+          "known_pitfalls": [
+            "[GOOGLESHEETS_ADD_SHEET] New tabs may default to a smaller grid (often rowCount=100, columnCount=26), causing out-of-bounds writes unless the target range fits.",
+            "[GOOGLESHEETS_UPDATE_VALUES_BATCH] Write-heavy runs can hit Sheets write-per-minute quotas; consolidate edits into fewer batch calls.",
+            "[GOOGLESHEETS_VALUES_UPDATE] The API may auto-adjust the effective updated range to match the provided values shape; don\u2019t assume the exact A1 range was written.",
+            "[GOOGLESHEETS_UPDATE_SHEET_PROPERTIES] Request validation can fail if field names don\u2019t match the expected schema (for example differing identifier key styles).",
+            "[GOOGLESHEETS_GET_SPREADSHEET_INFO] include_grid_data formatting reads can be very large; keep ranges tight and fields masks minimal to avoid size/offload issues."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLESHEETS_ADD_SHEET",
+            "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+            "GOOGLESHEETS_FORMAT_CELL"
+          ],
+          "related_tool_slugs": [
+            "GOOGLESHEETS_GET_SHEET_NAMES",
+            "GOOGLESHEETS_VALUES_GET",
+            "GOOGLESHEETS_VALUES_UPDATE",
+            "GOOGLESHEETS_UPDATE_SHEET_PROPERTIES",
+            "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+            "GOOGLESHEETS_CREATE_GOOGLE_SHEET1"
+          ],
+          "toolkits": [
+            "googlesheets"
+          ],
+          "plan_id": "65894746549d4aa7886c0a0809489cff"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googlesheets",
+          "has_active_connection": false,
+          "description": "Google Sheets is a cloud-based spreadsheet tool enabling real-time collaboration, data analysis, and integration with other Google Workspace apps. STRICT RATE LIMITS apply - max 60 reads/minute and 60 writes/minute. Exceeding this causes errors.",
+          "status_message": "No Active connection for toolkit=googlesheets. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesheets\") to create a connection BEFORE executing any googlesheets tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLESHEETS_ADD_SHEET": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_ADD_SHEET",
+          "description": "Adds a new sheet to a spreadsheet. Supports three sheet types: GRID, OBJECT, and DATA_SOURCE. SHEET TYPES: - GRID (default): Standard spreadsheet with rows/columns. Use properties to set dimensions, tab color, etc. - OBJECT: Sheet containing a chart. Requires objectSheetConfig with chartSpec (basicChart or pieChart). - DATA_SOURCE: Sheet connected to BigQuery. Requires dataSourceConfig with bigQuery spec and bigquery.readonly OAuth scope. OTHER NOTES: - Sheet names must be unique; use forceUnique=true to auto-append suffix (_2, _3) if name exists - For tab colors, use EITHER rgbColor OR themeColor, not both - Avoid 'index' when creating sheets in parallel (causes errors) - OBJECT sheets are created via addChart with position.newSheet=true - DATA_SOURCE sheets require bigquery.readonly OAuth scope Use cases: Add standard grid sheet, create chart on dedicated sheet, connect to BigQuery data source.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "The name for the new sheet tab. Must be unique within the spreadsheet. Example: \"Q3 Report\", \"Sales Data 2025\". This is a convenience parameter - alternatively, you can set this via properties.title. Note: sheet_name is also accepted as an alias for title."
+              },
+              "properties": {
+                "type": "object",
+                "properties": {
+                  "index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "The zero-based index where the sheet should be inserted. Must be less than or equal to the current number of sheets. If not set, the sheet will be added at the end. Example: 0 for the first position. CONCURRENCY WARNING: Do not use 'index' when creating multiple sheets in parallel - this causes 'index is too high' errors. For parallel creation, omit this field and let sheets be added at the end."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "The name of the sheet. Must be unique within the spreadsheet. Example: \"Q3 Report\", \"Sales Data 2025\""
+                  },
+                  "hidden": {
+                    "type": "boolean",
+                    "description": "True if the sheet is hidden in the UI, false if it's visible."
+                  },
+                  "sheetId": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "The ID of the sheet. If not set, an ID will be randomly generated. Must be non-negative and unique within the spreadsheet. WARNING: Avoid setting this unless you need a specific ID."
+                  },
+                  "sheetType": {
+                    "enum": [
+                      "GRID"
+                    ],
+                    "type": "string",
+                    "default": "GRID",
+                    "description": "Sheet type enum for AddSheetRequest.\n\nIMPORTANT: AddSheetRequest only supports creating GRID sheets.\n- For OBJECT sheets: Use 'Create Chart' action with position.newSheet=true\n- For DATA_SOURCE sheets: Use AddDataSourceRequest (requires extra scopes/permissions)"
+                  },
+                  "rightToLeft": {
+                    "type": "boolean",
+                    "description": "True if the sheet is an RTL sheet, false if it's LTR."
+                  },
+                  "tabColorStyle": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "title": "_RgbColorVariant",
+                        "required": [
+                          "rgbColor"
+                        ],
+                        "properties": {
+                          "rgbColor": {
+                            "type": "object",
+                            "title": "Color",
+                            "properties": {
+                              "red": {
+                                "anyOf": [
+                                  {
+                                    "type": "number",
+                                    "maximum": 1,
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "title": "Red",
+                                "default": null,
+                                "description": "The amount of red in the color as a value in the interval [0, 1].",
+                                "human_parameter_name": "Red",
+                                "human_parameter_description": "The amount of red in the color as a value in the interval [0, 1]."
+                              },
+                              "blue": {
+                                "anyOf": [
+                                  {
+                                    "type": "number",
+                                    "maximum": 1,
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "title": "Blue",
+                                "default": null,
+                                "description": "The amount of blue in the color as a value in the interval [0, 1].",
+                                "human_parameter_name": "Blue",
+                                "human_parameter_description": "The amount of blue in the color (0.0-1.0)."
+                              },
+                              "alpha": {
+                                "anyOf": [
+                                  {
+                                    "type": "number",
+                                    "maximum": 1,
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "title": "Alpha",
+                                "default": null,
+                                "description": "The fraction of this color that should be applied to the pixel. E.g. 0.5 for 50% transparent.",
+                                "human_parameter_name": "Alpha",
+                                "human_parameter_description": "The transparency of the color (0.0-1.0)."
+                              },
+                              "green": {
+                                "anyOf": [
+                                  {
+                                    "type": "number",
+                                    "maximum": 1,
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "title": "Green",
+                                "default": null,
+                                "description": "The amount of green in the color as a value in the interval [0, 1].",
+                                "human_parameter_name": "Green",
+                                "human_parameter_description": "The amount of green in the color (0.0-1.0)."
+                              }
+                            },
+                            "description": "RGB color. Provide values for red, green, blue (0.0-1.0).",
+                            "human_parameter_name": "Rgb Color",
+                            "human_parameter_description": "RGB color. Provide values for red, green, blue (0.0-1.0)."
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "title": "_ThemeColorVariant",
+                        "required": [
+                          "themeColor"
+                        ],
+                        "properties": {
+                          "themeColor": {
+                            "enum": [
+                              "THEME_COLOR_TYPE_UNSPECIFIED",
+                              "TEXT",
+                              "BACKGROUND",
+                              "ACCENT1",
+                              "ACCENT2",
+                              "ACCENT3",
+                              "ACCENT4",
+                              "ACCENT5",
+                              "ACCENT6",
+                              "LINK"
+                            ],
+                            "type": "string",
+                            "title": "ThemeColorType",
+                            "description": "Theme color. Use predefined theme colors like ACCENT1, TEXT, BACKGROUND, etc.",
+                            "human_parameter_name": "Theme Color",
+                            "human_parameter_description": "A predefined theme color like ACCENT1, TEXT, or BACKGROUND."
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ],
+                    "description": "Either {rgbColor: {...}} or {themeColor: \"...\"}, never both."
+                  },
+                  "gridProperties": {
+                    "type": "object",
+                    "properties": {
+                      "rowCount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "The number of rows in the sheet. Defaults to 100 rows if not specified (to conserve cell quota). Google Sheets has a 10M cell workbook limit."
+                      },
+                      "columnCount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "The number of columns in the sheet. Defaults to 26 columns if not specified. Google Sheets has a 10M cell workbook limit."
+                      },
+                      "hideGridlines": {
+                        "type": "boolean",
+                        "description": "True if the gridlines are hidden, false if they are shown."
+                      },
+                      "frozenRowCount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "The number of rows that are frozen in the sheet."
+                      },
+                      "frozenColumnCount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "The number of columns that are frozen in the sheet."
+                      },
+                      "rowGroupControlAfter": {
+                        "type": "boolean",
+                        "description": "True if the row group control toggle is shown after the group, false if before."
+                      },
+                      "columnGroupControlAfter": {
+                        "type": "boolean",
+                        "description": "True if the column group control toggle is shown after the group, false if before."
+                      }
+                    },
+                    "description": "Additional properties of the sheet if it's a grid sheet.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Advanced sheet properties (grid dimensions, tab color, position, etc.). For simple cases, just use the 'title' parameter directly. Use this for additional customization.",
+                "additionalProperties": false
+              },
+              "force_unique": {
+                "type": "boolean",
+                "default": true,
+                "description": "When True (default), automatically ensures the sheet name is unique by appending a numeric suffix (e.g., '_2', '_3') if the requested name already exists. This makes the action resilient to retries and parallel workflows. When False, the action fails with an error if a sheet with the same name already exists."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "minLength": 1,
+                "description": "REQUIRED. Cannot be empty. The ID of the target spreadsheet where the new sheet will be added. This is the long alphanumeric string in the Google Sheet URL (e.g., '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms'). Use 'Search Spreadsheets' action to find the spreadsheet ID by name if you don't have it."
+              },
+              "data_source_config": {
+                "type": "object",
+                "required": [
+                  "dataSourceSpec"
+                ],
+                "properties": {
+                  "dataSourceSpec": {
+                    "type": "object",
+                    "required": [
+                      "bigQuery"
+                    ],
+                    "properties": {
+                      "bigQuery": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "title": "_BigQueryQuerySpecVariant",
+                            "required": [
+                              "projectId",
+                              "querySpec"
+                            ],
+                            "properties": {
+                              "projectId": {
+                                "type": "string",
+                                "title": "Projectid",
+                                "minLength": 1,
+                                "description": "The ID of a BigQuery-enabled Google Cloud project with billing attached.",
+                                "human_parameter_name": "Project ID",
+                                "human_parameter_description": "Your Google Cloud project ID with BigQuery enabled."
+                              },
+                              "querySpec": {
+                                "type": "object",
+                                "title": "BigQueryQuerySpec",
+                                "required": [
+                                  "rawQuery"
+                                ],
+                                "properties": {
+                                  "rawQuery": {
+                                    "type": "string",
+                                    "title": "Rawquery",
+                                    "minLength": 1,
+                                    "description": "The raw SQL query to execute in BigQuery.",
+                                    "human_parameter_name": "Raw Query",
+                                    "human_parameter_description": "The BigQuery SQL query to execute."
+                                  }
+                                },
+                                "description": "Configuration for a custom BigQuery SQL query."
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "title": "_BigQueryTableSpecVariant",
+                            "required": [
+                              "projectId",
+                              "tableSpec"
+                            ],
+                            "properties": {
+                              "projectId": {
+                                "type": "string",
+                                "title": "Projectid",
+                                "minLength": 1,
+                                "description": "The ID of a BigQuery-enabled Google Cloud project with billing attached.",
+                                "human_parameter_name": "Project ID",
+                                "human_parameter_description": "Your Google Cloud project ID with BigQuery enabled."
+                              },
+                              "tableSpec": {
+                                "type": "object",
+                                "title": "BigQueryTableSpec",
+                                "required": [
+                                  "datasetId",
+                                  "tableId"
+                                ],
+                                "properties": {
+                                  "tableId": {
+                                    "type": "string",
+                                    "title": "Tableid",
+                                    "minLength": 1,
+                                    "description": "The BigQuery table ID."
+                                  },
+                                  "datasetId": {
+                                    "type": "string",
+                                    "title": "Datasetid",
+                                    "minLength": 1,
+                                    "description": "The BigQuery dataset ID containing the table."
+                                  },
+                                  "tableProjectId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "title": "Tableprojectid",
+                                    "default": null,
+                                    "description": "The Google Cloud project ID containing the table (defaults to the spreadsheet's project)."
+                                  }
+                                },
+                                "description": "Configuration for accessing a specific BigQuery table."
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        ],
+                        "description": "BigQuery data source configuration. Requires the bigquery.readonly OAuth scope."
+                      }
+                    },
+                    "description": "The data source specification (currently supports BigQuery).",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Configuration for creating a DATA_SOURCE sheet.\n\nDATA_SOURCE sheets connect to external data sources like BigQuery.\nThe API uses addDataSource request which automatically creates the associated sheet.\n\nIMPORTANT: Requires additional OAuth scope: bigquery.readonly",
+                "additionalProperties": false
+              },
+              "object_sheet_config": {
+                "type": "object",
+                "required": [
+                  "chartSpec"
+                ],
+                "properties": {
+                  "chartSpec": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "title": "_BasicChartVariant",
+                        "required": [
+                          "basicChart"
+                        ],
+                        "properties": {
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Title",
+                            "default": null,
+                            "description": "The title of the chart."
+                          },
+                          "subtitle": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Subtitle",
+                            "default": null,
+                            "description": "The subtitle of the chart."
+                          },
+                          "basicChart": {
+                            "type": "object",
+                            "title": "BasicChartSpec",
+                            "required": [
+                              "chartType",
+                              "domains",
+                              "series"
+                            ],
+                            "properties": {
+                              "series": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "title": "BasicChartSeries",
+                                  "required": [
+                                    "series"
+                                  ],
+                                  "properties": {
+                                    "series": {
+                                      "type": "object",
+                                      "title": "ChartData",
+                                      "required": [
+                                        "sourceRange"
+                                      ],
+                                      "properties": {
+                                        "sourceRange": {
+                                          "type": "object",
+                                          "title": "ChartSourceRange",
+                                          "required": [
+                                            "sources"
+                                          ],
+                                          "properties": {
+                                            "sources": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "object",
+                                                "title": "GridRange",
+                                                "required": [
+                                                  "sheetId",
+                                                  "startRowIndex",
+                                                  "endRowIndex",
+                                                  "startColumnIndex",
+                                                  "endColumnIndex"
+                                                ],
+                                                "properties": {
+                                                  "sheetId": {
+                                                    "type": "integer",
+                                                    "title": "Sheetid",
+                                                    "description": "The sheet ID containing the data (0 for first sheet)."
+                                                  },
+                                                  "endRowIndex": {
+                                                    "type": "integer",
+                                                    "title": "Endrowindex",
+                                                    "minimum": 1,
+                                                    "description": "The end row (0-indexed, exclusive)."
+                                                  },
+                                                  "startRowIndex": {
+                                                    "type": "integer",
+                                                    "title": "Startrowindex",
+                                                    "minimum": 0,
+                                                    "description": "The start row (0-indexed, inclusive)."
+                                                  },
+                                                  "endColumnIndex": {
+                                                    "type": "integer",
+                                                    "title": "Endcolumnindex",
+                                                    "minimum": 1,
+                                                    "description": "The end column (0-indexed, exclusive). Column B = 2."
+                                                  },
+                                                  "startColumnIndex": {
+                                                    "type": "integer",
+                                                    "title": "Startcolumnindex",
+                                                    "minimum": 0,
+                                                    "description": "The start column (0-indexed, inclusive). Column A = 0."
+                                                  }
+                                                },
+                                                "description": "A range on a sheet specified by sheetId and row/column indices."
+                                              },
+                                              "title": "Sources",
+                                              "minItems": 1,
+                                              "description": "The ranges of data for a chart."
+                                            }
+                                          },
+                                          "description": "The source ranges of the data."
+                                        }
+                                      },
+                                      "description": "The data being visualized in this series."
+                                    },
+                                    "targetAxis": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "title": "Targetaxis",
+                                      "default": null,
+                                      "description": "The axis this series maps to. Usually LEFT_AXIS or RIGHT_AXIS."
+                                    }
+                                  },
+                                  "description": "A single series of data in a chart."
+                                },
+                                "title": "Series",
+                                "minItems": 1,
+                                "description": "The series (Y-axis values) data for the chart."
+                              },
+                              "domains": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "title": "BasicChartDomain",
+                                  "required": [
+                                    "domain"
+                                  ],
+                                  "properties": {
+                                    "domain": {
+                                      "type": "object",
+                                      "title": "ChartData",
+                                      "required": [
+                                        "sourceRange"
+                                      ],
+                                      "properties": {
+                                        "sourceRange": {
+                                          "type": "object",
+                                          "title": "ChartSourceRange",
+                                          "required": [
+                                            "sources"
+                                          ],
+                                          "properties": {
+                                            "sources": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "object",
+                                                "title": "GridRange",
+                                                "required": [
+                                                  "sheetId",
+                                                  "startRowIndex",
+                                                  "endRowIndex",
+                                                  "startColumnIndex",
+                                                  "endColumnIndex"
+                                                ],
+                                                "properties": {
+                                                  "sheetId": {
+                                                    "type": "integer",
+                                                    "title": "Sheetid",
+                                                    "description": "The sheet ID containing the data (0 for first sheet)."
+                                                  },
+                                                  "endRowIndex": {
+                                                    "type": "integer",
+                                                    "title": "Endrowindex",
+                                                    "minimum": 1,
+                                                    "description": "The end row (0-indexed, exclusive)."
+                                                  },
+                                                  "startRowIndex": {
+                                                    "type": "integer",
+                                                    "title": "Startrowindex",
+                                                    "minimum": 0,
+                                                    "description": "The start row (0-indexed, inclusive)."
+                                                  },
+                                                  "endColumnIndex": {
+                                                    "type": "integer",
+                                                    "title": "Endcolumnindex",
+                                                    "minimum": 1,
+                                                    "description": "The end column (0-indexed, exclusive). Column B = 2."
+                                                  },
+                                                  "startColumnIndex": {
+                                                    "type": "integer",
+                                                    "title": "Startcolumnindex",
+                                                    "minimum": 0,
+                                                    "description": "The start column (0-indexed, inclusive). Column A = 0."
+                                                  }
+                                                },
+                                                "description": "A range on a sheet specified by sheetId and row/column indices."
+                                              },
+                                              "title": "Sources",
+                                              "minItems": 1,
+                                              "description": "The ranges of data for a chart."
+                                            }
+                                          },
+                                          "description": "The source ranges of the data."
+                                        }
+                                      },
+                                      "description": "The data of the domain (X-axis labels)."
+                                    }
+                                  },
+                                  "description": "The domain of a chart (typically X-axis data)."
+                                },
+                                "title": "Domains",
+                                "minItems": 1,
+                                "description": "The domain (X-axis) data for the chart."
+                              },
+                              "chartType": {
+                                "enum": [
+                                  "BAR",
+                                  "LINE",
+                                  "AREA",
+                                  "COLUMN",
+                                  "SCATTER",
+                                  "COMBO",
+                                  "STEPPED_AREA",
+                                  "PIE"
+                                ],
+                                "type": "string",
+                                "title": "ChartType",
+                                "description": "The type of chart (BAR, LINE, COLUMN, SCATTER, etc.)."
+                              },
+                              "headerCount": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "title": "Headercount",
+                                "default": null,
+                                "description": "The number of rows or columns in the data that are headers."
+                              },
+                              "stackedType": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "title": "Stackedtype",
+                                "default": null,
+                                "description": "For stacked charts: NOT_STACKED, STACKED, or PERCENT_STACKED."
+                              },
+                              "legendPosition": {
+                                "anyOf": [
+                                  {
+                                    "enum": [
+                                      "LEGEND_POSITION_UNSPECIFIED",
+                                      "BOTTOM_LEGEND",
+                                      "LEFT_LEGEND",
+                                      "RIGHT_LEGEND",
+                                      "TOP_LEGEND",
+                                      "NO_LEGEND"
+                                    ],
+                                    "type": "string",
+                                    "title": "LegendPosition",
+                                    "description": "Position of the chart legend."
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": "BOTTOM_LEGEND",
+                                "description": "Where the legend should be positioned."
+                              }
+                            },
+                            "description": "A basic chart specification (BAR, LINE, COLUMN, etc.)."
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "title": "_PieChartVariant",
+                        "required": [
+                          "pieChart"
+                        ],
+                        "properties": {
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Title",
+                            "default": null,
+                            "description": "The title of the chart."
+                          },
+                          "pieChart": {
+                            "type": "object",
+                            "title": "PieChartSpec",
+                            "required": [
+                              "domain",
+                              "series"
+                            ],
+                            "properties": {
+                              "domain": {
+                                "type": "object",
+                                "title": "ChartData",
+                                "required": [
+                                  "sourceRange"
+                                ],
+                                "properties": {
+                                  "sourceRange": {
+                                    "type": "object",
+                                    "title": "ChartSourceRange",
+                                    "required": [
+                                      "sources"
+                                    ],
+                                    "properties": {
+                                      "sources": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "title": "GridRange",
+                                          "required": [
+                                            "sheetId",
+                                            "startRowIndex",
+                                            "endRowIndex",
+                                            "startColumnIndex",
+                                            "endColumnIndex"
+                                          ],
+                                          "properties": {
+                                            "sheetId": {
+                                              "type": "integer",
+                                              "title": "Sheetid",
+                                              "description": "The sheet ID containing the data (0 for first sheet)."
+                                            },
+                                            "endRowIndex": {
+                                              "type": "integer",
+                                              "title": "Endrowindex",
+                                              "minimum": 1,
+                                              "description": "The end row (0-indexed, exclusive)."
+                                            },
+                                            "startRowIndex": {
+                                              "type": "integer",
+                                              "title": "Startrowindex",
+                                              "minimum": 0,
+                                              "description": "The start row (0-indexed, inclusive)."
+                                            },
+                                            "endColumnIndex": {
+                                              "type": "integer",
+                                              "title": "Endcolumnindex",
+                                              "minimum": 1,
+                                              "description": "The end column (0-indexed, exclusive). Column B = 2."
+                                            },
+                                            "startColumnIndex": {
+                                              "type": "integer",
+                                              "title": "Startcolumnindex",
+                                              "minimum": 0,
+                                              "description": "The start column (0-indexed, inclusive). Column A = 0."
+                                            }
+                                          },
+                                          "description": "A range on a sheet specified by sheetId and row/column indices."
+                                        },
+                                        "title": "Sources",
+                                        "minItems": 1,
+                                        "description": "The ranges of data for a chart."
+                                      }
+                                    },
+                                    "description": "The source ranges of the data."
+                                  }
+                                },
+                                "description": "The data for the slice labels."
+                              },
+                              "series": {
+                                "type": "object",
+                                "title": "ChartData",
+                                "required": [
+                                  "sourceRange"
+                                ],
+                                "properties": {
+                                  "sourceRange": {
+                                    "type": "object",
+                                    "title": "ChartSourceRange",
+                                    "required": [
+                                      "sources"
+                                    ],
+                                    "properties": {
+                                      "sources": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "title": "GridRange",
+                                          "required": [
+                                            "sheetId",
+                                            "startRowIndex",
+                                            "endRowIndex",
+                                            "startColumnIndex",
+                                            "endColumnIndex"
+                                          ],
+                                          "properties": {
+                                            "sheetId": {
+                                              "type": "integer",
+                                              "title": "Sheetid",
+                                              "description": "The sheet ID containing the data (0 for first sheet)."
+                                            },
+                                            "endRowIndex": {
+                                              "type": "integer",
+                                              "title": "Endrowindex",
+                                              "minimum": 1,
+                                              "description": "The end row (0-indexed, exclusive)."
+                                            },
+                                            "startRowIndex": {
+                                              "type": "integer",
+                                              "title": "Startrowindex",
+                                              "minimum": 0,
+                                              "description": "The start row (0-indexed, inclusive)."
+                                            },
+                                            "endColumnIndex": {
+                                              "type": "integer",
+                                              "title": "Endcolumnindex",
+                                              "minimum": 1,
+                                              "description": "The end column (0-indexed, exclusive). Column B = 2."
+                                            },
+                                            "startColumnIndex": {
+                                              "type": "integer",
+                                              "title": "Startcolumnindex",
+                                              "minimum": 0,
+                                              "description": "The start column (0-indexed, inclusive). Column A = 0."
+                                            }
+                                          },
+                                          "description": "A range on a sheet specified by sheetId and row/column indices."
+                                        },
+                                        "title": "Sources",
+                                        "minItems": 1,
+                                        "description": "The ranges of data for a chart."
+                                      }
+                                    },
+                                    "description": "The source ranges of the data."
+                                  }
+                                },
+                                "description": "The data for the slice sizes."
+                              },
+                              "pieHole": {
+                                "anyOf": [
+                                  {
+                                    "type": "number",
+                                    "maximum": 1,
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "title": "Piehole",
+                                "default": null,
+                                "description": "The size of the hole in the pie chart (0.0-1.0 for donut chart)."
+                              },
+                              "legendPosition": {
+                                "anyOf": [
+                                  {
+                                    "enum": [
+                                      "LEGEND_POSITION_UNSPECIFIED",
+                                      "BOTTOM_LEGEND",
+                                      "LEFT_LEGEND",
+                                      "RIGHT_LEGEND",
+                                      "TOP_LEGEND",
+                                      "NO_LEGEND"
+                                    ],
+                                    "type": "string",
+                                    "title": "LegendPosition",
+                                    "description": "Position of the chart legend."
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": "RIGHT_LEGEND",
+                                "description": "Where the legend should be positioned."
+                              },
+                              "threeDimensional": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "title": "Threedimensional",
+                                "default": null,
+                                "description": "Whether the pie chart should be 3D."
+                              }
+                            },
+                            "description": "A pie chart specification."
+                          },
+                          "subtitle": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Subtitle",
+                            "default": null,
+                            "description": "The subtitle of the chart."
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ],
+                    "description": "The chart specification. Must include either basicChart or pieChart configuration."
+                  }
+                },
+                "description": "Configuration for creating an OBJECT sheet (a sheet containing a chart).\n\nTo create an OBJECT sheet, you must provide chart configuration.\nThe API uses addChart with position.newSheet=true to create the chart on its own sheet.",
+                "additionalProperties": false
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_UPDATE_VALUES_BATCH": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_UPDATE_VALUES_BATCH",
+          "description": "Tool to set values in one or more ranges of a spreadsheet. Use when you need to update multiple ranges in a single operation for better performance.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id",
+              "valueInputOption",
+              "data"
+            ],
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "range",
+                    "values"
+                  ],
+                  "properties": {
+                    "range": {
+                      "type": "string",
+                      "examples": [
+                        "Sheet1!A1:B2",
+                        "Sheet1!D1:E2"
+                      ],
+                      "description": "The A1 notation of the range to update (e.g., 'Sheet1!A1:B2', 'Sheet1!C:C', or 'A1:D5'). The range must specify which cells to update."
+                    },
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "examples": [
+                        [
+                          [
+                            "Name",
+                            "Score"
+                          ],
+                          [
+                            "Alice",
+                            "95"
+                          ]
+                        ]
+                      ],
+                      "description": "The data to write. This is an array of arrays, the outer array representing all the data and each inner array representing a major dimension. Each item in the inner array corresponds with one cell. Supports string, number, boolean, and null values."
+                    },
+                    "majorDimension": {
+                      "enum": [
+                        "ROWS",
+                        "COLUMNS"
+                      ],
+                      "type": "string",
+                      "examples": [
+                        "ROWS"
+                      ],
+                      "description": "The major dimension of the values. ROWS (default) means each inner array is a row of values. COLUMNS means each inner array is a column of values."
+                    }
+                  },
+                  "description": "Data within a range of the spreadsheet."
+                },
+                "minItems": 1,
+                "description": "The new values to apply to the spreadsheet. Each ValueRange specifies a range and the values to write to that range. Multiple ranges can be updated in a single request."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "examples": [
+                  "16k0mZLTGKySpihrjTycQalUVQQwq4SuLSdD3r_T164A"
+                ],
+                "description": "The ID of the spreadsheet to update. This ID can be found in the URL of the spreadsheet (e.g., https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit). Must be a valid Google Sheets spreadsheet ID."
+              },
+              "valueInputOption": {
+                "enum": [
+                  "INPUT_VALUE_OPTION_UNSPECIFIED",
+                  "RAW",
+                  "USER_ENTERED"
+                ],
+                "type": "string",
+                "examples": [
+                  "USER_ENTERED"
+                ],
+                "description": "How the input data should be interpreted. RAW: Values are stored exactly as entered, without parsing. USER_ENTERED: Values are parsed as if typed by a user (numbers stay numbers, strings prefixed with '=' become formulas, etc.). INPUT_VALUE_OPTION_UNSPECIFIED: Default input value option is not specified."
+              },
+              "includeValuesInResponse": {
+                "type": "boolean",
+                "examples": [
+                  false
+                ],
+                "description": "Determines if the update response should include the values of the cells that were updated. By default, responses do not include the updated values."
+              },
+              "responseValueRenderOption": {
+                "enum": [
+                  "FORMATTED_VALUE",
+                  "UNFORMATTED_VALUE",
+                  "FORMULA"
+                ],
+                "type": "string",
+                "examples": [
+                  "FORMATTED_VALUE"
+                ],
+                "description": "Determines how values in the response should be rendered. Only used if includeValuesInResponse is true. FORMATTED_VALUE (default): Values are formatted as displayed in the UI. UNFORMATTED_VALUE: Values are unformatted. FORMULA: Formulas are not evaluated."
+              },
+              "responseDateTimeRenderOption": {
+                "enum": [
+                  "SERIAL_NUMBER",
+                  "FORMATTED_STRING"
+                ],
+                "type": "string",
+                "examples": [
+                  "SERIAL_NUMBER"
+                ],
+                "description": "Determines how dates, times, and durations in the response should be rendered. Only used if includeValuesInResponse is true. SERIAL_NUMBER (default): Dates are returned as numbers. FORMATTED_STRING: Dates are returned as formatted strings."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_FORMAT_CELL": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_FORMAT_CELL",
+          "description": "Applies text and background cell formatting to a specified range in a Google Sheets worksheet.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id"
+            ],
+            "properties": {
+              "red": {
+                "type": "number",
+                "default": 0.9,
+                "maximum": 1,
+                "minimum": 0,
+                "examples": [
+                  "0.0",
+                  "0.5",
+                  "1.0"
+                ],
+                "description": "Red component of the background color (0.0-1.0)."
+              },
+              "blue": {
+                "type": "number",
+                "default": 0.9,
+                "maximum": 1,
+                "minimum": 0,
+                "examples": [
+                  "0.0",
+                  "0.5",
+                  "1.0"
+                ],
+                "description": "Blue component of the background color (0.0-1.0)."
+              },
+              "bold": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Apply bold formatting."
+              },
+              "green": {
+                "type": "number",
+                "default": 0.9,
+                "maximum": 1,
+                "minimum": 0,
+                "examples": [
+                  "0.0",
+                  "0.5",
+                  "1.0"
+                ],
+                "description": "Green component of the background color (0.0-1.0)."
+              },
+              "range": {
+                "type": "string",
+                "examples": [
+                  "A1",
+                  "F9",
+                  "B2:D4",
+                  "C1:C10",
+                  "A:C",
+                  "I:J",
+                  "1:5",
+                  "Sheet1!A1:E1"
+                ],
+                "description": "OPTION 1: Cell range in A1 notation (RECOMMENDED). Supports: single cells ('A1', 'F9'), cell ranges ('A1:B5'), entire columns ('A', 'I:J'), entire rows ('1', '1:5'). Also accepts sheet-prefixed ranges ('Sheet1!A1', 'Instagram Calendar!A1:E1') for convenience - if provided, the sheet prefix is stripped and ignored. The actual sheet used is determined by the sheet_name or worksheet_id parameter. Provide EITHER this field OR all four index fields below, not both."
+              },
+              "italic": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Apply italic formatting."
+              },
+              "font_size": {
+                "type": "integer",
+                "default": 10,
+                "minimum": 1,
+                "examples": [
+                  "10",
+                  "12",
+                  "14"
+                ],
+                "description": "Font size in points."
+              },
+              "text_link": {
+                "type": "string",
+                "examples": [
+                  "https://example.com"
+                ],
+                "description": "Cell-level text link URI. Must include a URI scheme, such as 'https://' or 'mailto:'."
+              },
+              "underline": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Apply underline formatting."
+              },
+              "sheet_name": {
+                "type": "string",
+                "examples": [
+                  "Sheet1",
+                  "Q3 Report",
+                  "Customer Data"
+                ],
+                "description": "The worksheet name/title (e.g., 'Sheet1', 'Q3 Report'). Provide either this field OR worksheet_id, not both. If both are provided, sheet_name takes precedence and will be resolved to worksheet_id."
+              },
+              "text_color": {
+                "type": "string",
+                "examples": [
+                  "#000000",
+                  "#1a73e8",
+                  "#ffffff"
+                ],
+                "description": "Text color as 6-digit hex."
+              },
+              "font_family": {
+                "type": "string",
+                "examples": [
+                  "Arial",
+                  "Roboto",
+                  "Courier New"
+                ],
+                "description": "Font family."
+              },
+              "padding_top": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  "4",
+                  "8"
+                ],
+                "description": "Top padding in pixels."
+              },
+              "border_color": {
+                "type": "string",
+                "examples": [
+                  "#000000",
+                  "#1a73e8",
+                  "#ffffff"
+                ],
+                "description": "Border color as 6-digit hex."
+              },
+              "border_style": {
+                "enum": [
+                  "DOTTED",
+                  "DASHED",
+                  "SOLID",
+                  "SOLID_MEDIUM",
+                  "SOLID_THICK",
+                  "NONE",
+                  "DOUBLE"
+                ],
+                "type": "string",
+                "examples": [
+                  "SOLID",
+                  "SOLID_THICK",
+                  "DASHED",
+                  "NONE"
+                ],
+                "description": "Border styles supported by Google Sheets."
+              },
+              "padding_left": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  "4",
+                  "8"
+                ],
+                "description": "Left padding in pixels."
+              },
+              "worksheet_id": {
+                "type": "integer",
+                "default": 0,
+                "examples": [
+                  0,
+                  1534097477
+                ],
+                "description": "The worksheet identifier. Accepts EITHER: (1) The sheetId from the Google Sheets API (a large number like 1534097477, obtainable via GOOGLESHEETS_GET_SPREADSHEET_INFO), OR (2) The 0-based positional index of the worksheet (0 for first sheet, 1 for second, etc.). The action will first try to match by sheetId, then fall back to matching by index. Defaults to 0 (first sheet). Provide either this field OR sheet_name, not both."
+              },
+              "end_row_index": {
+                "type": "integer",
+                "examples": [
+                  1,
+                  9
+                ],
+                "description": "OPTION 2: 0-based index of the row AFTER the last row (exclusive). Required if 'range' is not provided. Must provide ALL four index fields together."
+              },
+              "padding_right": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  "4",
+                  "8"
+                ],
+                "description": "Right padding in pixels."
+              },
+              "strikethrough": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Apply strikethrough formatting."
+              },
+              "wrap_strategy": {
+                "enum": [
+                  "OVERFLOW_CELL",
+                  "LEGACY_WRAP",
+                  "CLIP",
+                  "WRAP"
+                ],
+                "type": "string",
+                "examples": [
+                  "WRAP",
+                  "OVERFLOW_CELL",
+                  "CLIP"
+                ],
+                "description": "How text wraps within cells."
+              },
+              "padding_bottom": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  "4",
+                  "8"
+                ],
+                "description": "Bottom padding in pixels."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "your_spreadsheet_id"
+                ],
+                "description": "Identifier of the Google Sheets spreadsheet."
+              },
+              "text_direction": {
+                "enum": [
+                  "LEFT_TO_RIGHT",
+                  "RIGHT_TO_LEFT"
+                ],
+                "type": "string",
+                "examples": [
+                  "LEFT_TO_RIGHT",
+                  "RIGHT_TO_LEFT"
+                ],
+                "description": "Text direction in a cell."
+              },
+              "start_row_index": {
+                "type": "integer",
+                "examples": [
+                  0,
+                  8
+                ],
+                "description": "OPTION 2: 0-based row index (row 1 = index 0, row 9 = index 8). Required if 'range' is not provided. Must provide ALL four index fields together."
+              },
+              "background_alpha": {
+                "type": "number",
+                "maximum": 1,
+                "minimum": 0,
+                "examples": [
+                  "0.5",
+                  "1.0"
+                ],
+                "description": "Background alpha from 0.0 to 1.0."
+              },
+              "background_color": {
+                "type": "string",
+                "examples": [
+                  "#ffffff",
+                  "#fbbc04",
+                  "#e8f0fe"
+                ],
+                "description": "Background color as 6-digit hex."
+              },
+              "end_column_index": {
+                "type": "integer",
+                "examples": [
+                  1,
+                  2,
+                  6
+                ],
+                "description": "OPTION 2: 0-based index of the column AFTER the last column (exclusive). Required if 'range' is not provided. Must provide ALL four index fields together."
+              },
+              "number_format_type": {
+                "enum": [
+                  "TEXT",
+                  "NUMBER",
+                  "PERCENT",
+                  "CURRENCY",
+                  "DATE",
+                  "TIME",
+                  "DATE_TIME",
+                  "SCIENTIFIC"
+                ],
+                "type": "string",
+                "examples": [
+                  "NUMBER",
+                  "CURRENCY",
+                  "DATE",
+                  "PERCENT"
+                ],
+                "description": "How number values should be represented to the user."
+              },
+              "start_column_index": {
+                "type": "integer",
+                "examples": [
+                  0,
+                  1,
+                  5
+                ],
+                "description": "OPTION 2: 0-based column index (A = 0, B = 1, F = 5). Required if 'range' is not provided. Must provide ALL four index fields together."
+              },
+              "vertical_alignment": {
+                "enum": [
+                  "TOP",
+                  "MIDDLE",
+                  "BOTTOM"
+                ],
+                "type": "string",
+                "examples": [
+                  "TOP",
+                  "MIDDLE",
+                  "BOTTOM"
+                ],
+                "description": "Vertical alignment of text in a cell."
+              },
+              "text_rotation_angle": {
+                "type": "integer",
+                "maximum": 90,
+                "minimum": -90,
+                "examples": [
+                  "45",
+                  "-45",
+                  "90"
+                ],
+                "description": "Text rotation angle from -90 to 90."
+              },
+              "horizontal_alignment": {
+                "enum": [
+                  "LEFT",
+                  "CENTER",
+                  "RIGHT"
+                ],
+                "type": "string",
+                "examples": [
+                  "LEFT",
+                  "CENTER",
+                  "RIGHT"
+                ],
+                "description": "Horizontal alignment of text in a cell."
+              },
+              "number_format_pattern": {
+                "type": "string",
+                "examples": [
+                  "#,##0.0000",
+                  "$#,##0.00",
+                  "yyyy-mm-dd"
+                ],
+                "description": "Optional number/date pattern."
+              },
+              "hyperlink_display_type": {
+                "enum": [
+                  "LINKED",
+                  "PLAIN_TEXT"
+                ],
+                "type": "string",
+                "examples": [
+                  "LINKED",
+                  "PLAIN_TEXT"
+                ],
+                "description": "How a hyperlink should be displayed in a cell."
+              },
+              "text_rotation_vertical": {
+                "type": "boolean",
+                "examples": [
+                  "true"
+                ],
+                "description": "Make text read top to bottom."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_GET_SHEET_NAMES": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_GET_SHEET_NAMES",
+          "description": "Lists all worksheet names from a specified Google Spreadsheet (which must exist), useful for discovering sheets before further operations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "spreadsheet_id"
+            ],
+            "properties": {
+              "exclude_hidden": {
+                "type": "boolean",
+                "default": false,
+                "description": "When True, hidden sheets will be excluded from the results. When False (default), all sheets including hidden ones are returned. Hidden sheets are sheets that have been hidden via the 'Hide sheet' option in Google Sheets UI."
+              },
+              "spreadsheet_id": {
+                "type": "string",
+                "examples": [
+                  "1qpyC0XzvTcKT6EISywY_7H7D7No1tpxEXAMPLE_ID"
+                ],
+                "description": "The unique identifier of the Google Spreadsheet (alphanumeric string, typically 44 characters). Extract only the ID portion from URLs - do not include leading/trailing slashes, '/edit' suffixes, query parameters, or URL fragments. From 'https://docs.google.com/spreadsheets/d/1qpyC0XzvTcKT6EISywY/edit#gid=0', use only '1qpyC0XzvTcKT6EISywY'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESHEETS_VALUES_GET": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_VALUES_GET",
+          "description": "Returns a range of values from a spreadsheet. Use when you need to read data from specific cells or ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_VALUES_GET"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_VALUES_UPDATE": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_VALUES_UPDATE",
+          "description": "Tool to set values in a range of a Google Spreadsheet. Use when you need to update or overwrite exis...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_VALUES_UPDATE"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_UPDATE_SHEET_PROPERTIES": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_UPDATE_SHEET_PROPERTIES",
+          "description": "Tool to update properties of a sheet (worksheet) within a Google Spreadsheet, such as its title, ind...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_UPDATE_SHEET_PROPERTIES"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_GET_SPREADSHEET_INFO": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_GET_SPREADSHEET_INFO",
+          "description": "Retrieves metadata for a Google Spreadsheet using its ID. By default, returns essential information ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_GET_SPREADSHEET_INFO"
+              ]
+            }
+          }
+        },
+        "GOOGLESHEETS_CREATE_GOOGLE_SHEET1": {
+          "toolkit": "GOOGLESHEETS",
+          "tool_slug": "GOOGLESHEETS_CREATE_GOOGLE_SHEET1",
+          "description": "Creates a new Google Spreadsheet in Google Drive. If a title is provided, the spreadsheet will be cr...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLESHEETS_CREATE_GOOGLE_SHEET1"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:35:07.898Z",
+        "current_time_utc_epoch_seconds": 1786599307,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "rope",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"rope\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_dnCHAeA5ljod"
+  }
+}

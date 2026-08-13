@@ -1,0 +1,468 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-073-q2",
+    "workflow_id": 73,
+    "workflow_task": "Manage a large operational workflow across Google Tasks, Xero, and Notion: update and move task records, create and revise invoices, record payments, consolidate Notion rules, and track operational follow-ups.",
+    "query": "create and revise invoices in Xero",
+    "intent": "Generate new invoices and modify existing ones within the Xero accounting platform.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "XERO_CREATE_INVOICE"
+        ],
+        "purpose": "Create a new invoice"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "XERO_POST_INVOICE_UPDATE"
+        ],
+        "purpose": "Revise/update an existing invoice"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+      "GOOGLETASKS_DELETE_TASK",
+      "GOOGLETASKS_INSERT_TASK",
+      "GOOGLETASKS_LIST_TASKS",
+      "GOOGLETASKS_PATCH_TASK",
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_FETCH_BLOCK_CONTENTS",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_REPLACE_PAGE_CONTENT",
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_SEARCH_NOTION_PAGE",
+      "XERO_CREATE_CONTACT",
+      "XERO_CREATE_INVOICE",
+      "XERO_CREATE_PAYMENT",
+      "XERO_GET_CONTACTS",
+      "XERO_GET_INVOICE",
+      "XERO_LIST_INVOICES",
+      "XERO_POST_INVOICE_UPDATE"
+    ]
+  },
+  "request": {
+    "query": "create and revise invoices in Xero"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "create and revise invoices in Xero",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if multiple organisations or tenant unknown)] [Prerequisite]: Select the correct organisation using XERO_GET_CONNECTIONS (capture tenant_id for all later calls).",
+            "[Required] [Prerequisite]: Find the billing party using XERO_GET_CONTACTS (handle multiple matches; capture ContactID).",
+            "[Optional (if no matching contact)] [Fallback]: Create the billing party using XERO_CREATE_CONTACT (store returned ContactID).",
+            "[Optional (if revenue/expense or tax codes uncertain)] [Prerequisite]: Fetch valid posting and tax codes using XERO_LIST_ACCOUNTS and XERO_LIST_TAX_RATES (choose ACTIVE codes appropriate for each line item).",
+            "[Required] [Step]: Create a draft billing document using XERO_CREATE_INVOICE (set Type/Status, include tenant_id, ContactID, currency, dates, reference, and LineItems with Quantity/UnitAmount/AccountCode/TaxType).",
+            "[Optional (for verification or sharing)] [Next Step]: Confirm totals and line details using XERO_GET_INVOICE (check Status, SubTotal/Total/TotalTax, and line breakdown).",
+            "[Optional (if adjustments are needed after creation)] [Next Step]: Modify allowed fields using XERO_POST_INVOICE_UPDATE (avoid duplicating by recreating)."
+          ],
+          "known_pitfalls": [
+            "[XERO_GET_CONNECTIONS] Using the wrong tenant_id writes into the wrong books; invoice creation can be blocked if there is no active connection.",
+            "[XERO_GET_CONTACTS] Searches can return close matches; rely on ContactID rather than display names to avoid mis-billing.",
+            "[XERO_LIST_ACCOUNTS] Responses can be very large (200+); pick an ACTIVE AccountCode that matches the line item type.",
+            "[XERO_CREATE_INVOICE] 400 ValidationException if ContactID is not in the selected tenant, dates are not YYYY-MM-DD, or AccountCode/TaxType is incompatible; recreating can produce extra drafts.",
+            "[XERO_CREATE_INVOICE] Providing a contact name instead of ContactID may implicitly create a new contact, increasing duplicate-contact risk."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "XERO_GET_CONTACTS",
+            "XERO_CREATE_INVOICE"
+          ],
+          "related_tool_slugs": [
+            "XERO_CREATE_CONTACT",
+            "XERO_GET_CONNECTIONS",
+            "XERO_LIST_TAX_RATES",
+            "XERO_POST_INVOICE_UPDATE",
+            "XERO_LIST_ACCOUNTS",
+            "XERO_GET_INVOICE"
+          ],
+          "toolkits": [
+            "xero"
+          ],
+          "plan_id": "393dff765aee4896adeae4ff70d0b004"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "xero",
+          "has_active_connection": false,
+          "description": "Xero is a cloud-based accounting software for small businesses, providing invoicing, bank reconciliation, bookkeeping, and financial reporting in real time",
+          "status_message": "No Active connection for toolkit=xero. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"xero\") to create a connection BEFORE executing any xero tools."
+        }
+      ],
+      "tool_schemas": {
+        "XERO_GET_CONTACTS": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_GET_CONTACTS",
+          "description": "Tool to retrieve a list of contacts. Use when you need up-to-date contact information with filtering, paging, or incremental updates.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "IDs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  "uuid1,uuid2,uuid3"
+                ],
+                "description": "Comma-separated list of ContactIDs to filter by."
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Page number for paginated results (requires pageSize). Iterate incrementing page until an empty result is returned to exhaust all records."
+              },
+              "order": {
+                "type": "string",
+                "description": "Sort by field, e.g. UpdatedDateUTC DESC."
+              },
+              "where": {
+                "type": "string",
+                "description": "OData-style filter for querying contacts. Optimized fields: Name, EmailAddress, AccountNumber, TaxNumber, ContactStatus, City, Country, IsCustomer, IsSupplier. Note: On high-volume accounts, some filters (e.g., IsCustomer, IsSupplier) may be rejected by Xero. If a filter fails on high-volume accounts, use searchTerm, page/pageSize pagination, or remove the where filter."
+              },
+              "pageSize": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Number of contacts per page (requires page)."
+              },
+              "ContactID": {
+                "type": "string",
+                "examples": [
+                  "bd2270c3-8706-4c11-9cfb-000b551c3f51"
+                ],
+                "description": "Xero ContactID. If provided, fetches a single contact at /Contacts/{ContactID}."
+              },
+              "searchTerm": {
+                "type": "string",
+                "examples": [
+                  "peter"
+                ],
+                "description": "Case-insensitive search across Name, FirstName, LastName, ContactNumber, CompanyNumber, EmailAddress."
+              },
+              "summaryOnly": {
+                "type": "boolean",
+                "description": "Return a lightweight summary-only response when true."
+              },
+              "includeArchived": {
+                "type": "boolean",
+                "description": "Include archived contacts when true."
+              },
+              "If-Modified-Since": {
+                "type": "string",
+                "format": "date-time",
+                "examples": [
+                  "2009-11-12T00:00:00"
+                ],
+                "description": "UTC timestamp (YYYY-MM-DDThh:mm:ss) to set as the If-Modified-Since header; returns only contacts created or modified since this timestamp."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "XERO_CREATE_INVOICE": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_CREATE_INVOICE",
+          "description": "Create a new invoice in Xero. Supports both sales invoices (ACCREC) and bills (ACCPAY).",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "Type",
+              "LineItems"
+            ],
+            "properties": {
+              "Date": {
+                "type": "string",
+                "description": "Invoice date in YYYY-MM-DD format."
+              },
+              "Type": {
+                "enum": [
+                  "ACCREC",
+                  "ACCPAY"
+                ],
+                "type": "string",
+                "description": "Invoice type: ACCREC (accounts receivable/sales) or ACCPAY (accounts payable/bills)."
+              },
+              "Status": {
+                "enum": [
+                  "DRAFT",
+                  "SUBMITTED",
+                  "AUTHORISED"
+                ],
+                "type": "string",
+                "description": "Invoice status."
+              },
+              "DueDate": {
+                "type": "string",
+                "description": "Due date in YYYY-MM-DD format."
+              },
+              "ContactID": {
+                "type": "string",
+                "description": "Xero Contact ID (UUID). At least one of contact_id or contact_name must be provided."
+              },
+              "LineItems": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "TaxType": {
+                      "type": "string",
+                      "description": "Tax type from TaxRates."
+                    },
+                    "ItemCode": {
+                      "type": "string",
+                      "description": "Item code reference."
+                    },
+                    "Quantity": {
+                      "type": "number",
+                      "description": "LineItem quantity."
+                    },
+                    "Tracking": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "Name": {
+                            "type": "string",
+                            "description": "Name of the tracking category."
+                          },
+                          "Option": {
+                            "type": "string",
+                            "description": "Selected tracking option."
+                          }
+                        },
+                        "description": "Tracking category for line items."
+                      },
+                      "description": "Optional tracking categories; maximum 2 elements per line item."
+                    },
+                    "AccountID": {
+                      "type": "string",
+                      "description": "Associated account ID (UUID) related to line item."
+                    },
+                    "TaxAmount": {
+                      "type": "number",
+                      "description": "Auto-calculated tax percentage; can be overridden if incorrect."
+                    },
+                    "LineAmount": {
+                      "type": "number",
+                      "description": "Can provide when Quantity or UnitAmount omitted; reflects discounted price."
+                    },
+                    "LineItemID": {
+                      "type": "string",
+                      "description": "LineItem unique ID (UUID)."
+                    },
+                    "UnitAmount": {
+                      "type": "number",
+                      "description": "LineItem unit amount."
+                    },
+                    "AccountCode": {
+                      "type": "string",
+                      "description": "Account code reference."
+                    },
+                    "Description": {
+                      "type": "string",
+                      "description": "Line item description. Must be at least 1 char long. Can create line item with just description."
+                    },
+                    "DiscountRate": {
+                      "type": "number",
+                      "description": "Percentage discount (ACCREC invoices only)."
+                    },
+                    "DiscountAmount": {
+                      "type": "number",
+                      "description": "Discount amount (ACCREC invoices and quotes only)."
+                    }
+                  },
+                  "description": "Line item for an invoice."
+                },
+                "description": "List of line items for the invoice."
+              },
+              "Reference": {
+                "type": "string",
+                "description": "Reference or purchase order number."
+              },
+              "tenant_id": {
+                "type": "string",
+                "description": "Xero tenant/organization ID. If not provided, uses the first connected tenant. In multi-org setups, pass the same tenant_id consistently across all Xero tool calls."
+              },
+              "ContactName": {
+                "type": "string",
+                "maxLength": 255,
+                "description": "Contact name. At least one of contact_id or contact_name must be provided."
+              },
+              "CurrencyCode": {
+                "type": "string",
+                "description": "Currency code (e.g., USD, EUR)."
+              },
+              "InvoiceNumber": {
+                "type": "string",
+                "description": "Invoice number (auto-generated if not provided). WARNING: If this matches an existing invoice number, Xero will attempt to UPDATE that invoice instead of creating a new one. Omit this field to ensure a new invoice is created, or ensure the number is unique."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "XERO_CREATE_CONTACT": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_CREATE_CONTACT",
+          "description": "Create a new contact in Xero. Contacts can be customers, suppliers, or both.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "Name"
+            ],
+            "properties": {
+              "Name": {
+                "type": "string",
+                "description": "Full name of the contact or organization."
+              },
+              "Website": {
+                "type": "string",
+                "description": "Website URL of the contact."
+              },
+              "LastName": {
+                "type": "string",
+                "description": "Last name of the contact person."
+              },
+              "FirstName": {
+                "type": "string",
+                "description": "First name of the contact person."
+              },
+              "TaxNumber": {
+                "type": "string",
+                "description": "Tax number (VAT/ABN/GST number)."
+              },
+              "tenant_id": {
+                "type": "string",
+                "description": "Xero tenant/organization ID. If not provided, uses the first connected tenant."
+              },
+              "IsCustomer": {
+                "type": "boolean",
+                "description": "Mark as customer when true."
+              },
+              "IsSupplier": {
+                "type": "boolean",
+                "description": "Mark as supplier when true."
+              },
+              "EmailAddress": {
+                "type": "string",
+                "description": "Email address of the contact."
+              },
+              "phone_number": {
+                "type": "string",
+                "description": "Primary phone number (will be added as DEFAULT phone type)."
+              },
+              "AccountNumber": {
+                "type": "string",
+                "description": "Account reference number for the contact."
+              },
+              "mobile_number": {
+                "type": "string",
+                "description": "Mobile phone number (will be added as MOBILE phone type)."
+              },
+              "DefaultCurrency": {
+                "type": "string",
+                "description": "Default currency code (e.g., USD, EUR)."
+              },
+              "BankAccountDetails": {
+                "type": "string",
+                "description": "Bank account details for the contact."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "XERO_GET_CONNECTIONS": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_GET_CONNECTIONS",
+          "description": "Tool to list active Xero connections. Use to retrieve all current tenant connections for the authent...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "XERO_GET_CONNECTIONS"
+              ]
+            }
+          }
+        },
+        "XERO_LIST_TAX_RATES": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_LIST_TAX_RATES",
+          "description": "Retrieve tax rates from Xero. Shows available tax codes and rates for the organization. Use returned...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "XERO_LIST_TAX_RATES"
+              ]
+            }
+          }
+        },
+        "XERO_POST_INVOICE_UPDATE": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_POST_INVOICE_UPDATE",
+          "description": "Tool to update an existing invoice. Use when you need to modify the details of an invoice after it's...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "XERO_POST_INVOICE_UPDATE"
+              ]
+            }
+          }
+        },
+        "XERO_LIST_ACCOUNTS": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_LIST_ACCOUNTS",
+          "description": "Retrieve chart of accounts from Xero. Returns all accounting codes used for categorizing transaction...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "XERO_LIST_ACCOUNTS"
+              ]
+            }
+          }
+        },
+        "XERO_GET_INVOICE": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_GET_INVOICE",
+          "description": "Retrieve a specific invoice by ID from Xero. Returns full invoice details including line items and s...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "XERO_GET_INVOICE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:37:09.751Z",
+        "current_time_utc_epoch_seconds": 1786599429,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "thou",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"thou\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_k4TBxTMi8Krt"
+  }
+}

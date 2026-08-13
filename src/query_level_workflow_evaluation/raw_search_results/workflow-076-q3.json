@@ -1,0 +1,336 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-076-q3",
+    "workflow_id": 76,
+    "workflow_task": "Build a cross-channel marketing and operations report by pulling Meta Ads performance and account status, GA4 funnel and revenue data, Instagram profile/insights, Microsoft Clarity friction metrics, and ClickUp docs/tasks for planning context.",
+    "query": "get instagram profile details and content insights",
+    "intent": "Retrieve Instagram profile metrics and post performance insights.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "INSTAGRAM_GET_USER_INFO"
+        ],
+        "purpose": "get instagram profile details"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "INSTAGRAM_GET_USER_INSIGHTS"
+        ],
+        "purpose": "retrieve instagram content insights"
+      }
+    ],
+    "candidate_tools": [
+      "CLICKUP_GET_DOC_PAGE_CONTENT",
+      "CLICKUP_GET_DOC_PAGE_LISTING",
+      "CLICKUP_GET_FILTERED_TEAM_TASKS",
+      "CLICKUP_GET_LIST_MEMBERS",
+      "CLICKUP_GET_WORKSPACE_SEATS",
+      "GOOGLE_ANALYTICS_BATCH_RUN_REPORTS",
+      "GOOGLE_ANALYTICS_RUN_REPORT",
+      "INSTAGRAM_GET_USER_INFO",
+      "INSTAGRAM_GET_USER_INSIGHTS",
+      "METAADS_GET_INSIGHTS",
+      "METAADS_GET_OBJECT",
+      "MICROSOFT_CLARITY_DATA_EXPORT"
+    ]
+  },
+  "request": {
+    "query": "get instagram profile details and content insights"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "get instagram profile details and content insights",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if the correct managed professional account is unknown)] [Prerequisite]: Discover accessible assets using METAADS_LIST_OWNED_INSTAGRAM_ASSETS (select the asset to query downstream).",
+            "[Required] [Step]: Fetch the authenticated profile snapshot using INSTAGRAM_GET_USER_INFO (capture available profile fields and the current follower count; prefer self-lookup when supported).",
+            "[Required] [Step]: Pull bounded-window daily KPIs using INSTAGRAM_GET_USER_INSIGHTS (use one consistent period, start with a small metric set, and summarize only metrics actually returned).",
+            "[Optional (if audience/demographic breakdowns are requested)] [Next Step]: Request compatible breakdown or totals-style demographics metrics using INSTAGRAM_GET_USER_INSIGHTS (accept empty results as \u201cnot available\u201d).",
+            "[Fallback (if metrics are omitted/partial or data is empty)] [Fallback]: Re-run INSTAGRAM_GET_USER_INSIGHTS with a reduced metric list (down to one metric per call) to isolate unsupported/no-data metrics; report missing as unavailable (not 0) while preserving partial returns.",
+            "[Optional (if post-level performance is needed)] [Next Step]: Drill into recent content using INSTAGRAM_GET_IG_USER_MEDIA (paginate via paging.cursors.after), then fetch per-item KPIs using INSTAGRAM_GET_IG_MEDIA_INSIGHTS and optionally enrich with INSTAGRAM_GET_IG_MEDIA before joining results."
+          ],
+          "known_pitfalls": [
+            "[INSTAGRAM_GET_USER_INFO] Results can be limited/null if the authenticated context doesn\u2019t match the selected managed asset; fix asset selection before retrying.",
+            "[INSTAGRAM_GET_USER_INSIGHTS] Successful calls may silently omit requested metrics or return data=[]; treat omissions/empty as unavailable rather than 0.",
+            "[INSTAGRAM_GET_USER_INSIGHTS] Some metric+period+breakdown combinations are incompatible and often yield empty results without errors; avoid inferring zeros.",
+            "[INSTAGRAM_GET_USER_INSIGHTS] Time series can be sparse versus the requested window and values are keyed by UTC end_time; don\u2019t assume one value per day or local-day boundaries.",
+            "[INSTAGRAM_GET_IG_USER_MEDIA] Avoid persisting/echoing paging.next URLs; paginate using paging.cursors.after instead."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Convert INSTAGRAM_GET_USER_INSIGHTS metric rows into a simple metric\u2192value dict (supports totals-style or time-series shapes).",
+              "code": "```python\nrows=((resp.get('data') or {}).get('data') or []);out={}\nfor r in rows:\n  n=r.get('name');v=(r.get('total_value') or {}).get('value')\n  if v is None: v=((r.get('values') or [{}])[0].get('value'))\n  if n: out[n]=v\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "INSTAGRAM_GET_USER_INFO",
+            "INSTAGRAM_GET_USER_INSIGHTS"
+          ],
+          "related_tool_slugs": [
+            "INSTAGRAM_GET_IG_USER_MEDIA",
+            "INSTAGRAM_GET_IG_MEDIA_INSIGHTS",
+            "METAADS_LIST_OWNED_INSTAGRAM_ASSETS",
+            "INSTAGRAM_GET_IG_MEDIA"
+          ],
+          "toolkits": [
+            "instagram",
+            "metaads"
+          ],
+          "plan_id": "6f29a7e4f5c34ad5ad4abdd2e7a361af"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "instagram",
+          "has_active_connection": false,
+          "description": "Instagram is a social media platform for sharing photos, videos, and stories. Only supports Instagram Business and Creator accounts, not Instagram Personal accounts.",
+          "status_message": "No Active connection for toolkit=instagram. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"instagram\") to create a connection BEFORE executing any instagram tools."
+        },
+        {
+          "toolkit": "metaads",
+          "has_active_connection": false,
+          "description": "Create, edit and get insights from ads across Meta technologies, including Facebook, Instagram, Messenger, WhatsApp and more.",
+          "status_message": "No Active connection for toolkit=metaads. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"metaads\") to create a connection BEFORE executing any metaads tools."
+        }
+      ],
+      "tool_schemas": {
+        "INSTAGRAM_GET_USER_INFO": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_USER_INFO",
+          "description": "Get Instagram Business Account info including profile details and statistics. Use \"me\" to query your own authenticated account, or provide the numeric Business Account ID of an account you manage. NOTE: followers_count and follows_count are returned for your own profile (ig_user_id=\"me\"). For other accounts, follower/follow counts are surfaced through the business_discovery edge rather than this direct-node action, so they may be null here.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "ig_user_id": {
+                "type": "string",
+                "description": "Instagram Business Account ID. IMPORTANT: You can only query Business/Creator accounts that you manage through Facebook Business Manager. Use \"me\" to query your own authenticated account. To query other accounts you manage, provide their numeric Business Account ID. Arbitrary public accounts cannot be queried. If not provided, defaults to \"me\"."
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "The Facebook Graph API version to use for the request."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_GET_USER_INSIGHTS": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_USER_INSIGHTS",
+          "description": "Get Instagram account-level insights and analytics (profile views, reach, follower count, etc.). Requires a Business or Creator account; personal accounts are not supported. Returned timestamps are in UTC. metric_type (time_series or total_value): When set to total_value, the API returns a total_value object instead of values. breakdown: Only applicable when metric_type=total_value and only for supported metrics. timeframe: Required for demographics-related metrics and overrides since/until for those metrics.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "since": {
+                "type": "integer",
+                "description": "Start of time range (inclusive) as a Unix timestamp (seconds). Also accepts date strings (YYYY-MM-DD or ISO 8601 format) which will be converted to timestamps."
+              },
+              "until": {
+                "type": "integer",
+                "description": "End of time range (inclusive) as a Unix timestamp (seconds). Also accepts date strings (YYYY-MM-DD or ISO 8601 format) which will be converted to timestamps."
+              },
+              "metric": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "reach",
+                    "follower_count",
+                    "online_followers",
+                    "accounts_engaged",
+                    "total_interactions",
+                    "likes",
+                    "comments",
+                    "shares",
+                    "saves",
+                    "replies",
+                    "follows_and_unfollows",
+                    "profile_links_taps",
+                    "views",
+                    "profile_views",
+                    "website_clicks",
+                    "engaged_audience_demographics",
+                    "reached_audience_demographics",
+                    "follower_demographics",
+                    "reposts",
+                    "threads_likes",
+                    "threads_replies",
+                    "threads_followers",
+                    "threads_follower_demographics",
+                    "threads_views",
+                    "threads_clicks",
+                    "threads_reposts",
+                    "quotes",
+                    "content_views"
+                  ],
+                  "type": "string",
+                  "description": "Valid metrics for Instagram account-level insights.\n\nCore: reach, follower_count, online_followers.\nEngagement: accounts_engaged, total_interactions, likes, comments, shares, saves,\nreplies. Activity: follows_and_unfollows, profile_links_taps, views, profile_views,\nwebsite_clicks. Demographics (need timeframe): engaged_audience_demographics,\nreached_audience_demographics, follower_demographics. Also: reposts.\nThreads (served by this endpoint too): threads_likes, threads_replies,\nthreads_followers, threads_follower_demographics, threads_views, threads_clicks,\nthreads_reposts, quotes, content_views.\n\nA metric may return an EMPTY result instead of an error when the account has no such\ndata (follower_count/online_followers are suppressed under 100 followers; Threads\nmetrics need a linked Threads profile). Empty is valid, not a failure.\n\nRejected by Meta - do not request: impressions, email_contacts, phone_call_clicks,\ntext_message_clicks, get_directions_clicks."
+                },
+                "description": "List or comma-separated metrics. Valid: reach, follower_count, online_followers, accounts_engaged, total_interactions, likes, comments, shares, saves, replies, follows_and_unfollows, profile_links_taps, views, profile_views, website_clicks, reposts, threads_likes, threads_replies, threads_followers, threads_views, threads_clicks, threads_reposts, quotes, content_views, and the demographics metrics engaged_audience_demographics, reached_audience_demographics, follower_demographics, and threads_follower_demographics. All demographics metrics require `timeframe`. All metrics in one call must share a period. Empty results are valid when data is unavailable (follower_count/online_followers require 100 followers; Threads metrics require a linked Threads profile). Rejected by Meta, do not request: impressions, email_contacts, phone_call_clicks, text_message_clicks, get_directions_clicks, audience_*."
+              },
+              "period": {
+                "enum": [
+                  "day",
+                  "lifetime"
+                ],
+                "type": "string",
+                "default": "day",
+                "description": "Valid period values for Instagram user insights aggregation.\n\nAvailable periods:\n- day: Daily aggregation (time-series metrics)\n- lifetime: Lifetime aggregation (for audience/demographics metrics)\n\nNote: 'week' and 'days_28' are no longer supported for IG user insights."
+              },
+              "breakdown": {
+                "type": "string",
+                "description": "Breakdown to use when metric_type=total_value. Allowed values: contact_button_type, follow_type, media_product_type, age, city, country, gender."
+              },
+              "timeframe": {
+                "enum": [
+                  "this_month",
+                  "this_week"
+                ],
+                "type": "string",
+                "description": "Valid timeframe values for demographics-related Instagram user insights.\n\nRequired for engaged_audience_demographics, reached_audience_demographics,\nfollower_demographics, and threads_follower_demographics metrics. Overrides\nsince/until parameters when specified.\n\nNote: As of 2025, Instagram deprecated the following timeframe values for demographics metrics:\nlast_14_days, last_30_days, last_90_days, and prev_month. Only this_week and this_month are\ncurrently supported by the Instagram Graph API.\n\nAll demographics metrics use period=lifetime and require the timeframe parameter."
+              },
+              "ig_user_id": {
+                "type": "string",
+                "description": "Instagram Business Account ID - must be a numeric ID (e.g., '17841400008460056'). Content API IDs with 'ca_' prefix are not supported. Optional, defaults to current user."
+              },
+              "metric_type": {
+                "type": "string",
+                "description": "Aggregation type for results. Allowed values: time_series, total_value."
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "The Facebook Graph API version to use for the request."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_GET_IG_USER_MEDIA": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_IG_USER_MEDIA",
+          "description": "Get Instagram user's media collection (posts, photos, videos, reels, carousels). Use when you need to retrieve all media published by an Instagram Business or Creator account with support for pagination and time-based filtering.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ig_user_id"
+            ],
+            "properties": {
+              "after": {
+                "type": "string",
+                "description": "Cursor for forward pagination - retrieve media after this cursor Value comes from paging.cursors.after in the response; stopping at the first page silently omits older posts."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 100,
+                "minimum": 1,
+                "description": "Number of media items to return per page (default: 25, max: 100)"
+              },
+              "since": {
+                "type": "integer",
+                "description": "Unix timestamp - filter results to media created after this time. If both 'since' and 'until' are provided, 'since' must be less than 'until'."
+              },
+              "until": {
+                "type": "integer",
+                "description": "Unix timestamp - filter results to media created before this time. If both 'since' and 'until' are provided, 'since' must be less than 'until'."
+              },
+              "before": {
+                "type": "string",
+                "description": "Cursor for backward pagination - retrieve media before this cursor"
+              },
+              "fields": {
+                "type": "string",
+                "default": "id,caption,media_type,media_url,permalink,thumbnail_url,timestamp,username,legacy_instagram_media_id,alt_text,is_ai_generated,is_shared_to_feed,media_audio_type,view_count,reposts_count,saved_count,shares_count,total_like_count,total_comments_count,total_views_count",
+                "description": "Comma-separated list of fields to return. Available fields: id, caption, media_type, media_url, permalink, thumbnail_url, timestamp, username, comments_count, like_count, legacy_instagram_media_id, is_comment_enabled, owner, shortcode, media_product_type, alt_text, is_ai_generated, is_shared_to_feed, media_audio_type, view_count, reposts_count, saved_count, shares_count, total_like_count, total_comments_count, total_views_count, children{media_url,media_type,thumbnail_url} Reels appear as media_type=VIDEO and media_product_type=REELS; filter both fields to identify reels. media_url is a direct file URL; permalink is the user-facing share link. Optional fields like caption and like_count may be null or absent in the response."
+              },
+              "ig_user_id": {
+                "type": "string",
+                "examples": [
+                  "me",
+                  "17841405793187218"
+                ],
+                "minLength": 2,
+                "description": "Instagram Business or Creator Account ID. Use 'me' for the authenticated user, or provide the numeric IG User ID obtained from the Instagram Graph API (typically 17 digits, e.g., '17841405793187218'). Facebook Page IDs are not supported or automatically converted."
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "Instagram Graph API version to use (e.g., 'v21.0')"
+              },
+              "auto_resolve_fb_page_id": {
+                "type": "boolean",
+                "default": true,
+                "description": "Deprecated no-op retained for backwards compatibility. On Instagram Login the host follows the token (graph.instagram.com) and Facebook Page IDs are not resolved. Provide an Instagram Business or Creator Account ID directly (or 'me')."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_GET_IG_MEDIA_INSIGHTS": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_IG_MEDIA_INSIGHTS",
+          "description": "Tool to get insights and metrics for Instagram media objects (photos, videos, reels, carousel albums...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_GET_IG_MEDIA_INSIGHTS"
+              ]
+            }
+          }
+        },
+        "METAADS_LIST_OWNED_INSTAGRAM_ASSETS": {
+          "toolkit": "METAADS",
+          "tool_slug": "METAADS_LIST_OWNED_INSTAGRAM_ASSETS",
+          "description": "Tool to list Instagram accounts/assets owned by a Meta Business. Use when you need to retrieve the I...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "METAADS_LIST_OWNED_INSTAGRAM_ASSETS"
+              ]
+            }
+          }
+        },
+        "INSTAGRAM_GET_IG_MEDIA": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_IG_MEDIA",
+          "description": "Get a published Instagram Media object (photo, video, story, reel, or carousel). Use when you need t...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_GET_IG_MEDIA"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:37:39.302Z",
+        "current_time_utc_epoch_seconds": 1786599459,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "baby",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"baby\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_Mxak_UAh0yI0"
+  }
+}

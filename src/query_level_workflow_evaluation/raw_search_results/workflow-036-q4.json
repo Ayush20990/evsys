@@ -1,0 +1,393 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-036-q4",
+    "workflow_id": 36,
+    "workflow_task": "Manage a GitHub repository workflow: authenticate, inspect organization/repository access, create and label pull requests, inspect CI and workflow logs, merge approved changes, dispatch build/deploy/destroy workflows, and troubleshoot deployment failures.",
+    "query": "inspect CI workflow run logs and status",
+    "intent": "Retrieve continuous integration execution status and detailed logs for troubleshooting.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_WORKFLOW"
+        ],
+        "purpose": "list workflow runs to inspect CI execution status"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "GITHUB_LIST_CHECK_RUNS_FOR_A_REF"
+        ],
+        "purpose": "list check runs for a ref to assess CI status and conclusions"
+      }
+    ],
+    "candidate_tools": [
+      "GITHUB_ADD_LABELS_TO_AN_ISSUE",
+      "GITHUB_CREATE_A_PULL_REQUEST",
+      "GITHUB_CREATE_A_REFERENCE",
+      "GITHUB_CREATE_A_WORKFLOW_DISPATCH_EVENT",
+      "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+      "GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN",
+      "GITHUB_FIND_REPOSITORIES",
+      "GITHUB_GET_A_BRANCH",
+      "GITHUB_GET_A_COMMIT",
+      "GITHUB_GET_A_PULL_REQUEST",
+      "GITHUB_GET_A_REFERENCE",
+      "GITHUB_GET_A_REPOSITORY",
+      "GITHUB_GET_RAW_REPOSITORY_CONTENT",
+      "GITHUB_GET_REPOSITORY_CONTENT",
+      "GITHUB_LIST_CHECK_RUNS_FOR_A_REF",
+      "GITHUB_LIST_COMMITS",
+      "GITHUB_LIST_ISSUE_COMMENTS",
+      "GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN",
+      "GITHUB_LIST_LABELS_FOR_A_REPOSITORY",
+      "GITHUB_LIST_ORGANIZATIONS_FOR_THE_AUTHENTICATED_USER",
+      "GITHUB_LIST_ORGANIZATION_REPOSITORIES",
+      "GITHUB_LIST_PULL_REQUESTS",
+      "GITHUB_LIST_PULL_REQUESTS_FILES",
+      "GITHUB_LIST_REPOSITORIES_FOR_A_USER",
+      "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_WORKFLOW",
+      "GITHUB_MERGE_A_PULL_REQUEST",
+      "GITHUB_SEARCH_CODE",
+      "GITHUB_SEARCH_REPOSITORIES"
+    ]
+  },
+  "request": {
+    "query": "inspect CI workflow run logs and status"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "inspect CI workflow run logs and status",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if run identifier or repository context is unknown)] [Prerequisite]: Locate a relevant run using GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY (paginate/filter; capture workflow_runs[].id).",
+            "[Optional (if run listing is empty but you still need CI signal for a ref)] [Prerequisite]: Query check results using GITHUB_LIST_CHECK_RUNS_FOR_A_REF (identify candidate failures to target).",
+            "[Required] [Step]: Fetch and verify run metadata using GITHUB_GET_A_WORKFLOW_RUN (confirm status/conclusion, ref/commit, run_attempt).",
+            "[Optional (if a specific retry attempt must be debugged)] [Next Step]: Fetch attempt-scoped metadata using GITHUB_GET_A_WORKFLOW_RUN_ATTEMPT (confirm the attempt context).",
+            "[Required] [Step]: Enumerate jobs using GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN (paginate; use jobs[].conclusion/name and step summaries when present; capture jobs[].id).",
+            "[Required] [Step]: Download selected job logs using GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN (scan for the first actionable failure marker and nearby context).",
+            "[Optional (if logs are huge/noisy or client truncates)] [Step]: Extract a small failure window using COMPOSIO_REMOTE_WORKBENCH (return only the most relevant error region).",
+            "[Optional (if diagnostics are emitted as artifacts)] [Next Step]: List run artifacts using GITHUB_LIST_WORKFLOW_RUN_ARTIFACTS (find reports/outputs not visible in console logs).",
+            "[Fallback (if per-job logs are missing/empty/404 or not actionable)] [Fallback]: Download whole-run logs using GITHUB_DOWNLOAD_WORKFLOW_RUN_LOGS (offline inspection)."
+          ],
+          "known_pitfalls": [
+            "[GITHUB_GET_A_WORKFLOW_RUN] 404 Not Found can occur when a valid run identifier is queried against the wrong repository context; confirm by listing runs first.",
+            "[GITHUB_GET_A_WORKFLOW_RUN] conclusion may be null while status indicates the run is still in progress; avoid treating results as final until completed.",
+            "[GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN] Some completed jobs can return an empty steps array; rely on job conclusion plus GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN for step-level details.",
+            "[GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN] details text may include a UTF-8 BOM and ANSI escape codes; normalize before searching for error markers.",
+            "[GITHUB_DOWNLOAD_WORKFLOW_RUN_LOGS] downloads are often short-lived and may intermittently 404/410; the archive can also be large and inconvenient to handle inline."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Normalize BOM/ANSI and extract small windows around likely failure markers from GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN details text",
+              "code": "```python\nimport re\n\ndef extract_error_windows(details,max_hits=3):\n    t=(details or '').replace('\\ufeff','').replace('\\xef\\xbb\\xbf','')\n    t=re.sub(r'\\x1b\\[[0-9;]*m','',t)\n    keys=('##[error]','FAIL','AssertionError','Error:','exit code','Traceback','ImportError')\n    lines=t.splitlines(); hits=[]\n    for i,l in enumerate(lines):\n        if any(k in l for k in keys):\n            hits.append('\\n'.join(lines[max(0,i-5):min(len(lines),i+15)]))\n            if len(hits)>=max_hits: break\n    return '\\n---\\n'.join(hits)\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GITHUB_GET_A_WORKFLOW_RUN",
+            "GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN",
+            "GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN"
+          ],
+          "related_tool_slugs": [
+            "GITHUB_DOWNLOAD_WORKFLOW_RUN_LOGS",
+            "GITHUB_GET_A_WORKFLOW_RUN_ATTEMPT",
+            "GITHUB_LIST_WORKFLOW_RUN_ARTIFACTS",
+            "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY",
+            "GITHUB_LIST_CHECK_RUNS_FOR_A_REF"
+          ],
+          "toolkits": [
+            "github"
+          ],
+          "plan_id": "cdef56caefd54eb7ab8321d1555ca1cb"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "github",
+          "has_active_connection": false,
+          "description": "GitHub is a code hosting platform for version control and collaboration, offering Git-based repository management, issue tracking, and continuous integration features",
+          "status_message": "No Active connection for toolkit=github. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"github\") to create a connection BEFORE executing any github tools."
+        }
+      ],
+      "tool_schemas": {
+        "GITHUB_GET_A_WORKFLOW_RUN": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_WORKFLOW_RUN",
+          "description": "Gets a specific workflow run by its ID from a GitHub repository.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "run_id"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Spoon-Knife",
+                  "my-awesome-project"
+                ],
+                "description": "Name of the repository (case-insensitive, without .git extension)."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "my-organization"
+                ],
+                "description": "The username or organization name that owns the repository (not case-sensitive)."
+              },
+              "run_id": {
+                "type": "integer",
+                "examples": [
+                  "123456789",
+                  "987654321"
+                ],
+                "description": "Unique ID of the workflow run."
+              },
+              "exclude_pull_requests": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "If true, excludes pull request data; the `pull_requests` array in the response will be empty."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_JOBS_FOR_A_WORKFLOW_RUN",
+          "description": "Lists jobs for a specific workflow run in a GitHub repository.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "run_id"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer",
+                "default": 1,
+                "examples": [
+                  1,
+                  2,
+                  5
+                ],
+                "description": "The page number of the results to fetch. For more details, see \"[Using pagination in the REST API](https://docs.github.com/rest/using-the-rest-api/using-pagination-in-the-rest-api).\""
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Spoon-Knife",
+                  "my-awesome-project"
+                ],
+                "description": "The name of the repository, without the .git extension. This field is not case-sensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "my-organization"
+                ],
+                "description": "The username or organization name that owns the repository. This field is not case-sensitive."
+              },
+              "filter": {
+                "enum": [
+                  "latest",
+                  "all"
+                ],
+                "type": "string",
+                "default": "latest",
+                "examples": [
+                  "latest",
+                  "all"
+                ],
+                "description": "Filters jobs by their `completed_at` timestamp. `latest` returns jobs from the most recent execution attempt of the workflow run. `all` returns all jobs for a workflow run, including from previous execution attempts."
+              },
+              "run_id": {
+                "type": "integer",
+                "examples": [
+                  123456789
+                ],
+                "description": "The unique identifier of the workflow run for which jobs are to be listed."
+              },
+              "per_page": {
+                "type": "integer",
+                "default": 30,
+                "examples": [
+                  30,
+                  50,
+                  100
+                ],
+                "description": "The number of results to return per page, with a maximum of 100. For more details, see \"[Using pagination in the REST API](https://docs.github.com/rest/using-the-rest-api/using-pagination-in-the-rest-api).\""
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN",
+          "description": "Downloads logs for a specific job in a GitHub Actions workflow run, contingent on the repository's existence and the job ID being valid and having produced logs.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "job_id"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Spoon-Knife",
+                  "docs"
+                ],
+                "description": "The name of the repository, without the `.git` extension. This name is not case-sensitive. "
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "github"
+                ],
+                "description": "The account owner of the repository (e.g., user or organization). This name is not case-sensitive."
+              },
+              "job_id": {
+                "type": "integer",
+                "examples": [
+                  54370757583,
+                  61392620969
+                ],
+                "description": "The unique identifier of the job for which to download logs. You can obtain this from the 'List jobs for a workflow run' endpoint."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_DOWNLOAD_WORKFLOW_RUN_LOGS": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_DOWNLOAD_WORKFLOW_RUN_LOGS",
+          "description": "Downloads logs for a specific GitHub Actions workflow run as a ZIP archive containing log files for each job in the workflow.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "owner",
+              "repo",
+              "run_id"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "Hello-World",
+                  "octocat.github.io"
+                ],
+                "description": "The name of the repository (e.g., 'Spoon-Knife') without the `.git` extension. This name is not case-sensitive."
+              },
+              "owner": {
+                "type": "string",
+                "examples": [
+                  "octocat",
+                  "github"
+                ],
+                "description": "The account owner of the repository (e.g., 'octocat'). This name is not case-sensitive."
+              },
+              "run_id": {
+                "type": "integer",
+                "examples": [
+                  1616202549,
+                  3043364204
+                ],
+                "description": "The unique identifier of the workflow run (e.g., 12345)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GITHUB_GET_A_WORKFLOW_RUN_ATTEMPT": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_GET_A_WORKFLOW_RUN_ATTEMPT",
+          "description": "Retrieves detailed information for a specific attempt of a workflow run in a GitHub repository, incl...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_GET_A_WORKFLOW_RUN_ATTEMPT"
+              ]
+            }
+          }
+        },
+        "GITHUB_LIST_WORKFLOW_RUN_ARTIFACTS": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_WORKFLOW_RUN_ARTIFACTS",
+          "description": "Lists artifacts (e.g., build outputs, test results) for a specific workflow run in a GitHub reposito...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_LIST_WORKFLOW_RUN_ARTIFACTS"
+              ]
+            }
+          }
+        },
+        "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY",
+          "description": "Lists workflow runs for a repository, allowing filtering by actor, branch, event, status, creation d...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY"
+              ]
+            }
+          }
+        },
+        "GITHUB_LIST_CHECK_RUNS_FOR_A_REF": {
+          "toolkit": "GITHUB",
+          "tool_slug": "GITHUB_LIST_CHECK_RUNS_FOR_A_REF",
+          "description": "List GitHub check runs for a commit SHA, branch, or tag to assess CI status and conclusions. Use whe...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GITHUB_LIST_CHECK_RUNS_FOR_A_REF"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:32:36.484Z",
+        "current_time_utc_epoch_seconds": 1786599156,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "pipe",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"pipe\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_zqwLqG2uPQnM"
+  }
+}

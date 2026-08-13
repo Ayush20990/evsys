@@ -1,0 +1,310 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-087-q2",
+    "workflow_id": 87,
+    "workflow_task": "Set up and reorganize business lead-tracking and governance records in Notion, after initially exploring tools for social posting, web research, CRM lead handling, and website publishing.",
+    "query": "search and manage Notion records",
+    "intent": "Set up and reorganize business lead-tracking and governance records within Notion.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "NOTION_CREATE_NOTION_PAGE",
+          "NOTION_INSERT_ROW_DATABASE",
+          "NOTION_QUERY_DATABASE",
+          "NOTION_UPDATE_ROW_DATABASE"
+        ],
+        "purpose": "Manage and update Notion records and databases"
+      }
+    ],
+    "candidate_tools": [
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_CREATE_NOTION_PAGE",
+      "NOTION_DELETE_BLOCK",
+      "NOTION_FETCH_ALL_BLOCK_CONTENTS",
+      "NOTION_FETCH_DATA",
+      "NOTION_FETCH_DATABASE",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_INSERT_ROW_DATABASE",
+      "NOTION_QUERY_DATABASE",
+      "NOTION_UPDATE_ROW_DATABASE"
+    ]
+  },
+  "request": {
+    "query": "search and manage Notion records"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search and manage Notion records",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Discover candidate pages/databases using NOTION_SEARCH_NOTION_PAGE (use focused keywords; paginate with has_more/next_cursor via start_cursor and de-dupe by id; if empty/incomplete, broaden/blank query and, if still missing, enumerate via NOTION_FETCH_DATA and filter client-side).",
+            "[Optional (if multiple similar hits or page-vs-database is unclear)] [Next Step]: Validate a shortlisted item using NOTION_RETRIEVE_PAGE (confirm accessible object type/parent before deeper reads).",
+            "[Optional (if the target is a database or you need rows)] [Step]: Confirm schema/options using NOTION_FETCH_DATABASE, then retrieve matching rows using NOTION_QUERY_DATABASE_WITH_FILTER (page_size<=100; paginate start_cursor=next_cursor; keep row page ids for reading).",
+            "[Required] [Step]: Extract readable body text using NOTION_GET_PAGE_MARKDOWN (for selected page ids including row pages; verify data.markdown is non-empty and data.truncated is false).",
+            "[Optional (if markdown is empty/truncated or nested content is missing)] [Fallback]: Traverse full structure using NOTION_FETCH_ALL_BLOCK_CONTENTS and rebuild plain text locally.",
+            "[Optional (if responses are large or need heavy filtering/scoring)] [Step]: Use COMPOSIO_REMOTE_WORKBENCH to normalize titles/markdown/blocks to plain text and rank matches."
+          ],
+          "known_pitfalls": [
+            "[NOTION_SEARCH_NOTION_PAGE] results=[] can reflect missing share/access or incomplete indexing rather than true absence; recovery may require broader/blank queries or an inventory pass.",
+            "[NOTION_SEARCH_NOTION_PAGE] has_more=true requires looping with start_cursor=next_cursor; broad listings (especially databases with many properties) can create oversized/truncated payloads.",
+            "[NOTION_FETCH_DATA] fetch_type is required (otherwise validation error) and returned lists may appear under response.data.results or response.data.values.",
+            "[NOTION_QUERY_DATABASE_WITH_FILTER] 400 validation_error if filters don\u2019t match property types or a select option label doesn\u2019t exist; confirm types/options via NOTION_FETCH_DATABASE first (and page_size must be <= 100).",
+            "[NOTION_GET_PAGE_MARKDOWN] 404/object_not_found or \u201cInvalid page_id format\u201d occurs when the page isn\u2019t shared/accessible or the identifier isn\u2019t a valid page id; some pages return empty/placeholder markdown, requiring block traversal."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract a display title by scanning properties for the first entry with type==\"title\".",
+              "code": "```python\ndef extract_title(obj):\n    p=obj.get(\"properties\") or {}\n    for v in p.values():\n        if isinstance(v,dict) and v.get(\"type\")==\"title\":\n            t=v.get(\"title\") or []\n            return \"\".join(x.get(\"plain_text\",\"\") for x in t if isinstance(x,dict)).strip()\n    return \"\"\n```"
+            },
+            {
+              "description": "Unwrap item lists from common tool wrappers (results vs values).",
+              "code": "```python\ndef unwrap_items(out):\n    r=out.get(\"response\",{}).get(\"data\",{}) if isinstance(out,dict) else {}\n    return r.get(\"results\") or r.get(\"values\") or []\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "NOTION_SEARCH_NOTION_PAGE"
+          ],
+          "related_tool_slugs": [
+            "NOTION_FETCH_DATA",
+            "NOTION_RETRIEVE_PAGE",
+            "NOTION_QUERY_DATABASE_WITH_FILTER",
+            "NOTION_FETCH_DATABASE",
+            "NOTION_GET_PAGE_MARKDOWN",
+            "NOTION_FETCH_ALL_BLOCK_CONTENTS"
+          ],
+          "toolkits": [
+            "notion"
+          ],
+          "plan_id": "09dc31ce60e04fea861a272798720232"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "notion",
+          "has_active_connection": false,
+          "description": "Notion centralizes notes, docs, wikis, and tasks in a unified workspace, letting teams build custom workflows for collaboration and knowledge management",
+          "status_message": "No Active connection for toolkit=notion. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"notion\") to create a connection BEFORE executing any notion tools."
+        }
+      ],
+      "tool_schemas": {
+        "NOTION_SEARCH_NOTION_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_SEARCH_NOTION_PAGE",
+          "description": "Searches Notion pages and databases by title. Use specific search terms to find items by title (primary approach). KNOWN LIMITATIONS: (1) Search indexing is not immediate - recently shared items may not appear. (2) Search is not exhaustive - results may be incomplete. (3) Database pages return all custom properties with full nested structures, which can create large responses for databases with many properties - use filter_properties to reduce response size. FALLBACK STRATEGY: If a specific title search returns empty results despite knowing items exist, try an empty query to list all accessible items and filter client-side.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "default": "",
+                "description": "Text to search for in page and database titles. Use specific search terms to find items by title (primary approach). Note: Notion's search has known limitations - indexing is not immediate and recently shared items may not appear. If a specific query returns empty results, try an empty query as a fallback to list all accessible items and filter client-side."
+              },
+              "direction": {
+                "type": "string",
+                "examples": [
+                  "ascending",
+                  "descending"
+                ],
+                "description": "Specifies the sort direction for the results. Required if `timestamp` is provided. Valid values are `ascending` or `descending`."
+              },
+              "page_size": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 100,
+                "minimum": 1,
+                "description": "The number of items to include in the response. Must be an integer between 1 and 100, inclusive. Defaults to 25."
+              },
+              "timestamp": {
+                "type": "string",
+                "description": "The timestamp field to sort the results by. Currently, the only supported value is `last_edited_time`. If provided, `direction` must also be specified."
+              },
+              "filter_value": {
+                "enum": [
+                  "page",
+                  "database"
+                ],
+                "type": "string",
+                "default": "page",
+                "examples": [
+                  "page",
+                  "database"
+                ],
+                "description": "Filters results by object type: 'page' or 'database'. Note: When searching databases, Notion's search may not find recently shared or newly created databases due to indexing delays. If specific database searches return empty results, try an empty query with filter_value='database' as a fallback to list all accessible databases."
+              },
+              "start_cursor": {
+                "type": "string",
+                "description": "An opaque cursor value from a previous response's `next_cursor` field. Must be exactly as returned by the API - do not pass page IDs, database IDs, or any other identifiers. If `None`, empty, or invalid, results start from the beginning."
+              },
+              "filter_property": {
+                "type": "string",
+                "default": "object",
+                "examples": [
+                  "object"
+                ],
+                "description": "The property to filter the search results by. Currently, the only supported value is `object`, which filters by the type specified in `filter_value`. Defaults to `object`."
+              },
+              "filter_properties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "List of property names to include in the response for page results. When specified, only these properties will be returned in each page's 'properties' object, reducing response size. Useful for database pages with many custom properties. If not specified, all properties are returned. Note: This filter is applied client-side after receiving the API response."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_FETCH_DATA": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_DATA",
+          "description": "Fetches Notion items (pages and/or databases) from the Notion workspace, use this to get minimal data about the items in the workspace with a query or list all items in the workspace with minimal data",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "fetch_type"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Quarterly Report",
+                  "User Research Notes"
+                ],
+                "description": "An optional search query to filter pages and/or databases by their title or content. If not provided (None or empty string), all accessible items matching the selected type (pages, databases, or both) are returned."
+              },
+              "page_size": {
+                "type": "integer",
+                "default": 100,
+                "minimum": 1,
+                "description": "The maximum number of items per page (1-100). IMPORTANT: Notion API enforces a hard maximum of 100 items per request - values above 100 will be automatically capped to 100. To retrieve more than 100 items, use pagination by passing the returned 'next_cursor' value in subsequent requests. Defaults to 100."
+              },
+              "fetch_type": {
+                "enum": [
+                  "pages",
+                  "databases",
+                  "all"
+                ],
+                "type": "string",
+                "description": "Specifies what type of Notion data to fetch. Use 'pages' to fetch only pages, 'databases' to fetch only databases, or 'all' to fetch both pages and databases."
+              },
+              "start_cursor": {
+                "type": "string",
+                "description": "Pagination cursor to fetch the next page of results. Pass the 'next_cursor' value from a previous response to retrieve the next page. When null or not provided, the first page is returned."
+              },
+              "original_page_size": {
+                "type": "integer",
+                "description": "The original page size value before it was capped."
+              },
+              "page_size_was_capped": {
+                "type": "boolean",
+                "default": false,
+                "description": "Indicates whether the page size was capped to the maximum allowed value."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_RETRIEVE_PAGE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_RETRIEVE_PAGE",
+          "description": "Retrieve a Notion page's properties/metadata (not block content) by page_id. Use when you have a page URL/ID and need to access its properties; for page content use block-children tools.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "page_id"
+            ],
+            "properties": {
+              "page_id": {
+                "type": "string",
+                "examples": [
+                  "6c6a9b6c-12a4-4c3e-98e2-3c7a1e4f2d2a",
+                  "6c6a9b6c12a44c3e98e23c7a1e4f2d2a"
+                ],
+                "description": "The UUID of the Notion page to retrieve. Accepts both hyphenated (8-4-4-4-12) and unhyphenated (32 characters) UUID formats. IMPORTANT: Must be a PAGE ID, not a database ID. If you have a database ID, use NOTION_FETCH_DATABASE instead. This endpoint returns page properties and metadata, not page content (use block-children tools for content). For pages with properties containing more than 25 references, use NOTION_GET_PAGE_PROPERTY_ACTION to retrieve complete property values."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "NOTION_QUERY_DATABASE_WITH_FILTER": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_QUERY_DATABASE_WITH_FILTER",
+          "description": "Tool to query a Notion database with server-side filtering, sorting, and pagination. Use when you ne...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_QUERY_DATABASE_WITH_FILTER"
+              ]
+            }
+          }
+        },
+        "NOTION_FETCH_DATABASE": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_DATABASE",
+          "description": "Fetches a Notion database's structural metadata (properties, title, etc.) via its `database_id`, not...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_FETCH_DATABASE"
+              ]
+            }
+          }
+        },
+        "NOTION_GET_PAGE_MARKDOWN": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_GET_PAGE_MARKDOWN",
+          "description": "Retrieve a Notion page's full content rendered as Notion-flavored Markdown in a single API call. Use...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_GET_PAGE_MARKDOWN"
+              ]
+            }
+          }
+        },
+        "NOTION_FETCH_ALL_BLOCK_CONTENTS": {
+          "toolkit": "NOTION",
+          "tool_slug": "NOTION_FETCH_ALL_BLOCK_CONTENTS",
+          "description": "Tool to fetch all child blocks for a given Notion block. Use when you need a complete listing of a b...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "NOTION_FETCH_ALL_BLOCK_CONTENTS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:38:59.703Z",
+        "current_time_utc_epoch_seconds": 1786599539,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "roar",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"roar\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_FmvFaQGDCn47"
+  }
+}

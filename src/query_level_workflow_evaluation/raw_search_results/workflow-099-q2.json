@@ -1,0 +1,290 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-099-q2",
+    "workflow_id": 99,
+    "workflow_task": "Maintain and review a Notion-based project task page and append-only log for a technical project, including reading state, posting review/decision rows, updating task-page checklists, and inspecting a Supabase schema to support implementation decisions.",
+    "query": "inspect supabase database schema",
+    "intent": "Examine the Supabase schema structure to gather technical context required for implementation decisions.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "SUPABASE_LIST_TABLES",
+          "SUPABASE_RUN_READ_ONLY_QUERY"
+        ],
+        "purpose": "inspect supabase database schema and structure"
+      }
+    ],
+    "candidate_tools": [
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_DELETE_BLOCK",
+      "NOTION_FETCH_ALL_BLOCK_CONTENTS",
+      "NOTION_FETCH_BLOCK_CONTENTS",
+      "NOTION_FETCH_BLOCK_METADATA",
+      "NOTION_FETCH_DATABASE",
+      "NOTION_FETCH_ROW",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_INSERT_ROW_DATABASE",
+      "NOTION_PROXY_EXECUTE",
+      "NOTION_QUERY_DATABASE",
+      "NOTION_QUERY_DATABASE_WITH_FILTER",
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_SEARCH_NOTION_PAGE",
+      "NOTION_UPDATE_BLOCK",
+      "NOTION_UPDATE_PAGE",
+      "NOTION_UPDATE_ROW_DATABASE",
+      "NOTION_UPSERT_ROW_DATABASE",
+      "SUPABASE_LIST_TABLES",
+      "SUPABASE_RUN_READ_ONLY_QUERY"
+    ]
+  },
+  "request": {
+    "query": "inspect supabase database schema"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "inspect supabase database schema",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if project reference unknown)] [Prerequisite]: Identify the target project using SUPABASE_LIST_ALL_PROJECTS (select the intended project reference for downstream calls).",
+            "[Required] [Prerequisite]: Enumerate schemas/tables/views using SUPABASE_LIST_TABLES (build inventory from response.data.schemas[].tables[].full_name, not a flat tables list).",
+            "[Required] [Step]: Fetch columns/types/primary keys/relationships using SUPABASE_GET_TABLE_SCHEMAS (pass schema-qualified table_names; batch small, e.g., <=20 per call, and retry only failed tables).",
+            "[Fallback (if inventory/details are empty, partial, or truncated/previewed)] [Fallback]: Backfill/verify tables/columns/constraints/relationships using SUPABASE_RUN_READ_ONLY_QUERY (query system catalogs for authoritative metadata).",
+            "[Optional (if validating data-level shape)] [Next Step]: Spot-check a few rows using SUPABASE_SELECT_FROM_TABLE (explicit select + small LIMIT to confirm nullability/types match metadata).",
+            "[Optional (if you need generated types for application code)] [Next Step]: Generate typed definitions using SUPABASE_GENERATE_TYPESCRIPT_TYPES (cross-check key tables against SUPABASE_GET_TABLE_SCHEMAS output)."
+          ],
+          "known_pitfalls": [
+            "[SUPABASE_LIST_TABLES] response.data.tables can be null while objects exist under response.data.schemas[].tables[]; also watch response.data.query_metadata.errors (e.g., HTTP 502/544) for incomplete inventory.",
+            "[SUPABASE_GET_TABLE_SCHEMAS] Large multi-table requests can return truncated or preview-only payloads and/or per-table failures (e.g., \"Unauthorized\"); retry only failed table_names in smaller batches.",
+            "[SUPABASE_GET_TABLE_SCHEMAS] foreign_keys commonly use source_column/target_schema/target_table/target_column; assuming different field names breaks relationship mapping.",
+            "[SUPABASE_SELECT_FROM_TABLE] Missing required \"select\" can error; complex expressions may 400 (failed to parse select) and schema-qualified resolution can 404 (schema cache)\u2014use SUPABASE_RUN_READ_ONLY_QUERY for complex SQL.",
+            "[SUPABASE_RUN_READ_ONLY_QUERY] Catalog queries may legitimately return zero rows when schemas contain no user objects; treat as empty inventory, not an execution failure."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse SUPABASE_GET_TABLE_SCHEMAS payload(s), summarize tables, and derive FK edges using observed foreign_keys field names (handle data_preview vs data).",
+              "code": "```python\ndef _tables(r):\n  d=(r.get('response',{}) or {}).get('data') or (r.get('response',{}) or {}).get('data_preview') or {}\n  return d.get('tables') or []\n\ndef summarize(payload):\n  out=[]\n  for r in payload.get('results',[]) or []:\n    for t in _tables(r):\n      out.append((t.get('full_name'),len(t.get('columns') or []),len(t.get('foreign_keys') or [])))\n  return out\n\ndef fk_edges(payload):\n  out=[]\n  for r in payload.get('results',[]) or []:\n    for t in _tables(r):\n      src=t.get('full_name')\n      for fk in (t.get('foreign_keys') or []):\n        out.append({'from_table':src,'from_column':fk.get('source_column'),'to_table':str(fk.get('target_schema'))+'.'+str(fk.get('target_table')),'to_column':fk.get('target_column'),'constraint_name':fk.get('constraint_name')})\n  return out\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "SUPABASE_LIST_TABLES",
+            "SUPABASE_GET_TABLE_SCHEMAS"
+          ],
+          "related_tool_slugs": [
+            "SUPABASE_LIST_ALL_PROJECTS",
+            "SUPABASE_RUN_READ_ONLY_QUERY",
+            "SUPABASE_SELECT_FROM_TABLE",
+            "SUPABASE_GENERATE_TYPESCRIPT_TYPES"
+          ],
+          "toolkits": [
+            "supabase"
+          ],
+          "plan_id": "673d3bbc136847ffa7d2c7e78d3866bb"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "supabase",
+          "has_active_connection": false,
+          "description": "Supabase is an open-source backend-as-a-service providing a Postgres database, authentication, storage, and real-time subscription APIs for building modern applications",
+          "status_message": "No Active connection for toolkit=supabase. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"supabase\") to create a connection BEFORE executing any supabase tools."
+        }
+      ],
+      "tool_schemas": {
+        "SUPABASE_LIST_TABLES": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_LIST_TABLES",
+          "description": "Lists all tables and views in specified database schemas, providing a quick overview of database structure to help identify available tables before fetching detailed schemas.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "project_ref"
+            ],
+            "properties": {
+              "schemas": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  null,
+                  [
+                    "public"
+                  ],
+                  [
+                    "public",
+                    "auth",
+                    "storage"
+                  ]
+                ],
+                "description": "List of schemas to search for tables (maximum 10). If not provided, lists tables from all non-system schemas. Specify schema names to limit the search to specific schemas."
+              },
+              "project_ref": {
+                "type": "string",
+                "pattern": "^[a-z]+$",
+                "examples": [
+                  "huqmqtilymjtstzxbuww",
+                  "abcdefghijklmnopqrst"
+                ],
+                "maxLength": 20,
+                "minLength": 20,
+                "description": "The unique reference ID of the Supabase project. Must be exactly 20 lowercase letters (a-z only, no numbers or hyphens). This is visible in your Supabase project URL (e.g., https://supabase.com/dashboard/project/{project_ref})."
+              },
+              "include_views": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include views along with tables in the results"
+              },
+              "include_metadata": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include basic metadata like estimated row count and table size"
+              },
+              "include_system_schemas": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to include system schemas (pg_catalog, information_schema, etc.) when listing all schemas. When set to false, temporary and internal schemas such as pg_temp_*, pg_toast_temp_* and pgbouncer are excluded from the results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SUPABASE_GET_TABLE_SCHEMAS": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_GET_TABLE_SCHEMAS",
+          "description": "Retrieves column details, types, and constraints for multiple database tables to help debug schema issues and write accurate SQL queries. Use the SUPABASE_LIST_TABLES action first to discover available tables, the fetch their detailed schemas.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "project_ref",
+              "table_names"
+            ],
+            "properties": {
+              "project_ref": {
+                "type": "string",
+                "examples": [
+                  "huqmqtilymjtstzxbuww",
+                  "abcdefghijklmnopqrst"
+                ],
+                "description": "The unique reference ID of the Supabase project. This is visible in your Supabase project URL (e.g., https://supabase.com/dashboard/project/{project_ref})."
+              },
+              "table_names": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "users",
+                    "posts",
+                    "comments"
+                  ],
+                  [
+                    "operations.call_queue_items",
+                    "public.profiles"
+                  ],
+                  [
+                    "auth.users",
+                    "storage.objects"
+                  ]
+                ],
+                "maxItems": 20,
+                "minItems": 1,
+                "description": "List of table names to retrieve schemas for. At least one table name is required (empty lists are not allowed). Tables can be from different schemas (e.g., 'public.users', 'operations.call_queue_items'). Without schema prefix, 'public' is assumed. Maximum 20 tables per request."
+              },
+              "include_indexes": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include index information in the response"
+              },
+              "exclude_null_values": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to exclude properties with null values from the response for cleaner output"
+              },
+              "include_relationships": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include foreign key relationships in the response"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SUPABASE_LIST_ALL_PROJECTS": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_LIST_ALL_PROJECTS",
+          "description": "Retrieves a list of all Supabase projects, including their ID, name, region, and status, for the authenticated user. Authentication: - Requires a valid Bearer token in the Authorization header. - Token format: 'Bearer <access_token>' where access_token is either: - A Personal Access Token (PAT) generated from https://supabase.com/dashboard/account/tokens - An OAuth2 access token with the 'Projects.Read' scope Required Scope: - Projects.Read: Allows retrieval of project metadata. Returns: List of Project objects containing id, name, organization_id, region, status, database info, and created_at.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "SUPABASE_RUN_READ_ONLY_QUERY": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_RUN_READ_ONLY_QUERY",
+          "description": "[Beta] Run a SQL query as supabase_read_only_user. Use when you need to safely execute SELECT querie...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SUPABASE_RUN_READ_ONLY_QUERY"
+              ]
+            }
+          }
+        },
+        "SUPABASE_SELECT_FROM_TABLE": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_SELECT_FROM_TABLE",
+          "description": "Tool to select rows from a Supabase/PostgREST table. Use for read-only queries with filtering, sorti...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SUPABASE_SELECT_FROM_TABLE"
+              ]
+            }
+          }
+        },
+        "SUPABASE_GENERATE_TYPESCRIPT_TYPES": {
+          "toolkit": "SUPABASE",
+          "tool_slug": "SUPABASE_GENERATE_TYPESCRIPT_TYPES",
+          "description": "Generates and retrieves TypeScript types from a Supabase project's database; any schemas specified i...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SUPABASE_GENERATE_TYPESCRIPT_TYPES"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:40:11.283Z",
+        "current_time_utc_epoch_seconds": 1786599611,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "test",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"test\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_5YlvbetcSe1V"
+  }
+}

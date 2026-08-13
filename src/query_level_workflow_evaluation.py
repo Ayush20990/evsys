@@ -73,7 +73,7 @@ RAW_DIR = OUTPUT_DIR / "raw_search_results"
 CACHE_PATH = OUTPUT_DIR / "generation_cache.json"
 TOOL_CATALOG_CACHE_PATH = OUTPUT_DIR / "tool_catalog_cache.json"
 
-MAX_USE_CASES = 10          # lower for an inexpensive smoke test
+MAX_USE_CASES = 100          # lower for an inexpensive smoke test
 MIN_QUERIES_FLOOR = 2       # every workflow gets at least this many queries
 MAX_QUERIES_CEILING = 10    # hard cap regardless of pool size, to bound cost
 TOOLS_PER_QUERY_TARGET = 2.5  # ~1 query per this many candidate tools
@@ -119,6 +119,20 @@ def to_plain(value: Any) -> Any:
     return vars(value) if hasattr(value, "__dict__") else value
 
 
+class QuotaExhaustedError(RuntimeError):
+    """Raised instead of retrying when an error looks like an exhausted API
+    quota or rate limit -- retrying that with backoff just wastes wall-clock
+    time against a dead quota for every remaining call in the run."""
+
+
+QUOTA_ERROR_MARKERS = ("resource_exhausted", "quota", "429", "rate limit")
+
+
+def is_quota_error(error: BaseException) -> bool:
+    text = str(error).lower()
+    return any(marker in text for marker in QUOTA_ERROR_MARKERS)
+
+
 def retry(call, *args, timed=False, max_retries=4, base_delay=2.0, **kwargs):
     last_error = None
     for attempt in range(max_retries):
@@ -126,6 +140,8 @@ def retry(call, *args, timed=False, max_retries=4, base_delay=2.0, **kwargs):
             started = time.monotonic(); value = call(*args, **kwargs)
             return (value, time.monotonic() - started) if timed else value
         except Exception as error:
+            if is_quota_error(error):
+                raise QuotaExhaustedError(f"looks like an exhausted quota/rate limit, aborting retries: {error!r}") from error
             last_error = error
             if attempt < max_retries - 1:
                 delay = base_delay * 2 ** attempt + random.random()
@@ -173,6 +189,8 @@ def fetch_tool_catalog(composio: Composio, slugs: list[str]) -> dict[str, str]:
                     found.add(name)
             for slug in chunk:
                 if slug not in found: cache[slug] = ""  # not resolvable; labeler treats as unknown
+        except QuotaExhaustedError:
+            save_json(TOOL_CATALOG_CACHE_PATH, cache); raise
         except Exception as error:
             print(f"  [catalog] fetch failed for this chunk: {error!r}")
             for slug in chunk: cache.setdefault(slug, "")
@@ -240,6 +258,8 @@ def generate_decomposition(client, limiter, case: UseCase, min_q: int, max_q: in
     try:
         raw = retry(call, max_retries=5, base_delay=3.0)
         return json.loads(strip_json(raw)), raw
+    except QuotaExhaustedError:
+        raise
     except Exception as error:
         return None, repr(error)
 
@@ -268,6 +288,8 @@ def generate_labels(client, limiter, case: UseCase, queries: list[dict[str, Any]
     try:
         raw = retry(call, max_retries=5, base_delay=3.0)
         return json.loads(strip_json(raw)), raw
+    except QuotaExhaustedError:
+        raise
     except Exception as error:
         return None, repr(error)
 
@@ -297,29 +319,36 @@ def build_ground_truth(cases: list[UseCase], client, catalog: dict[str, str]) ->
         min_q, max_q = query_count_range(len(case.candidate_tools))
         cache_key = str(case.id)
         entry = cache.get(cache_key, {})
+        try:
+            if "decompose" in entry:
+                decompose_payload, decompose_raw = entry["decompose"]["payload"], entry["decompose"]["raw"]
+            else:
+                print(f"[decompose] workflow {case.id} (pool={len(case.candidate_tools)}, target {min_q}-{max_q} queries, blind)")
+                decompose_payload, decompose_raw = generate_decomposition(client, limiter, case, min_q, max_q)
+                entry["decompose"] = {"payload": decompose_payload, "raw": decompose_raw}
+                cache[cache_key] = entry; save_json(CACHE_PATH, cache)
 
-        if "decompose" in entry:
-            decompose_payload, decompose_raw = entry["decompose"]["payload"], entry["decompose"]["raw"]
-        else:
-            print(f"[decompose] workflow {case.id} (pool={len(case.candidate_tools)}, target {min_q}-{max_q} queries, blind)")
-            decompose_payload, decompose_raw = generate_decomposition(client, limiter, case, min_q, max_q)
-            entry["decompose"] = {"payload": decompose_payload, "raw": decompose_raw}
-            cache[cache_key] = entry; save_json(CACHE_PATH, cache)
+            decompose_rejection = "generation error" if decompose_payload is None else validate_decomposition(decompose_payload, min_q, max_q)
+            if decompose_rejection:
+                audit.append({"use_case": asdict(case), "stage": "decompose", "query_range": [min_q, max_q], "gemini_raw_response": decompose_raw, "generated": decompose_payload, "rejection_reason": decompose_rejection})
+                print(f"  rejected at decompose: {decompose_rejection}"); continue
 
-        decompose_rejection = "generation error" if decompose_payload is None else validate_decomposition(decompose_payload, min_q, max_q)
-        if decompose_rejection:
-            audit.append({"use_case": asdict(case), "stage": "decompose", "query_range": [min_q, max_q], "gemini_raw_response": decompose_raw, "generated": decompose_payload, "rejection_reason": decompose_rejection})
-            print(f"  rejected at decompose: {decompose_rejection}"); continue
-
-        queries = decompose_payload["queries"]
-        allowed = set(case.candidate_tools)
-        if "label" in entry:
-            label_payload, label_raw = entry["label"]["payload"], entry["label"]["raw"]
-        else:
-            print(f"[label] workflow {case.id} ({len(queries)} queries, grounded in {len(allowed)} tool descriptions)")
-            label_payload, label_raw = generate_labels(client, limiter, case, queries, catalog)
-            entry["label"] = {"payload": label_payload, "raw": label_raw}
-            cache[cache_key] = entry; save_json(CACHE_PATH, cache)
+            queries = decompose_payload["queries"]
+            allowed = set(case.candidate_tools)
+            if "label" in entry:
+                label_payload, label_raw = entry["label"]["payload"], entry["label"]["raw"]
+            else:
+                print(f"[label] workflow {case.id} ({len(queries)} queries, grounded in {len(allowed)} tool descriptions)")
+                label_payload, label_raw = generate_labels(client, limiter, case, queries, catalog)
+                entry["label"] = {"payload": label_payload, "raw": label_raw}
+                cache[cache_key] = entry; save_json(CACHE_PATH, cache)
+        except QuotaExhaustedError as error:
+            print(f"\n[ABORTED at workflow {case.id}] {error}\n"
+                  f"Stopping generation early -- {len({row['workflow_id'] for row in accepted})} workflows / "
+                  f"{len(accepted)} queries already accepted are kept and will still be searched+scored below. "
+                  f"Already-generated workflows are cached in {CACHE_PATH.name}; re-run this script later "
+                  f"(after the quota resets) to continue from workflow {case.id} onward.\n")
+            break
 
         label_rejection = "generation error" if label_payload is None else validate_labels(label_payload, queries, allowed)
         audit.append({"use_case": asdict(case), "stage": "label", "query_range": [min_q, max_q], "decompose_generated": decompose_payload, "gemini_raw_response": label_raw, "generated": label_payload, "rejection_reason": label_rejection})
@@ -356,6 +385,8 @@ def score_query(session, row: dict[str, Any], raw_dir: Path) -> dict[str, Any]:
     try:
         response, api_latency = retry(session.execute, "COMPOSIO_SEARCH_TOOLS", arguments={"query": row["query"]}, timed=True)
         end_to_end = time.monotonic() - started; plan = extract_results(response)
+    except QuotaExhaustedError:
+        raise
     except Exception as exc:
         end_to_end = time.monotonic() - started; error = repr(exc); traceback.print_exc()
     groups = row["requirement_groups"]
@@ -445,6 +476,8 @@ def judge_unmet_groups(client, limiter, row: dict[str, Any]) -> dict[str, Any]:
         total = len(groups)
         judged_recall = round((sum(satisfied_any) + newly_satisfied) / total, 4) if total else 0.0
         return {"judged_recall": judged_recall, "judged_notes": "; ".join(notes), "was_judged": True}
+    except QuotaExhaustedError:
+        raise
     except Exception as error:
         return {"judged_recall": row["recall"], "judged_notes": f"judge error: {error!r}", "was_judged": True}
 
@@ -495,18 +528,40 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True); RAW_DIR.mkdir(exist_ok=True); random.seed(RANDOM_SEED)
     cases = parse_use_cases(USE_CASES_FILE); composio, client = Composio(api_key=COMPOSIO_API_KEY), genai.Client(api_key=GEMINI_API_KEY)
     all_slugs = sorted({slug for case in cases[:MAX_USE_CASES] for slug in case.candidate_tools})
-    catalog = fetch_tool_catalog(composio, all_slugs)
+    try:
+        catalog = fetch_tool_catalog(composio, all_slugs)
+    except QuotaExhaustedError as error:
+        print(f"\n[ABORTED before generation started] {error}\nNothing to save yet -- re-run once the quota resets.")
+        return
+
+    # build_ground_truth already catches QuotaExhaustedError internally and returns whatever it accumulated,
+    # so no try/except needed here -- proceeding to search with a partial ground truth is fine and expected.
     ground_truth, unlabelable, audit = build_ground_truth(cases, client, catalog)
     save_json(GROUND_TRUTH_PATH, {"generated_at_utc": datetime.now(timezone.utc).isoformat(), "queries": ground_truth, "unlabelable": unlabelable})
     save_json(AUDIT_PATH, {"generated_at_utc": datetime.now(timezone.utc).isoformat(), "attempts": audit})
+    if not ground_truth:
+        print("No ground truth accepted; nothing to search."); return
+
     session = composio.create(user_id=USER_ID); rows = []
-    for index, row in enumerate(ground_truth, 1):
-        print(f"[search] {index}/{len(ground_truth)} {row['query_id']}"); rows.append(score_query(session, row, RAW_DIR)); time.sleep(SEARCH_DELAY_SEC)
+    try:
+        for index, row in enumerate(ground_truth, 1):
+            print(f"[search] {index}/{len(ground_truth)} {row['query_id']}"); rows.append(score_query(session, row, RAW_DIR)); time.sleep(SEARCH_DELAY_SEC)
+    except QuotaExhaustedError as error:
+        print(f"\n[ABORTED during search, {len(rows)}/{len(ground_truth)} queries done] {error}\n"
+              f"Saving completed results now; re-run later to search the rest (ground truth is already saved, "
+              f"so nothing generated is lost).\n")
+        write_csv(rows, RESULTS_PATH); write_report(rows, ground_truth, unlabelable, audit)
+        return
+
     judge_limiter = RateLimiter(GEMINI_RPM)
     to_judge = [row for row in rows if not row["error"] and row["recall"] < 1]
-    for index, row in enumerate(to_judge, 1):
-        print(f"[judge] {index}/{len(to_judge)} {row['query_id']}")
-        row.update(judge_unmet_groups(client, judge_limiter, row))
+    try:
+        for index, row in enumerate(to_judge, 1):
+            print(f"[judge] {index}/{len(to_judge)} {row['query_id']}")
+            row.update(judge_unmet_groups(client, judge_limiter, row))
+    except QuotaExhaustedError as error:
+        print(f"\n[ABORTED during judging] {error}\nStrict-recall results are complete and saved; remaining "
+              f"queries keep judged_recall == strict recall as a conservative fallback rather than a real judgment.\n")
     write_csv(rows, RESULTS_PATH); write_report(rows, ground_truth, unlabelable, audit)
 
 

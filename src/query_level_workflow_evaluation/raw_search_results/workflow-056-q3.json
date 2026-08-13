@@ -1,0 +1,891 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-056-q3",
+    "workflow_id": 56,
+    "workflow_task": "Clean up and enrich HubSpot CRM records by listing contacts and companies, matching contacts to companies, assigning segmentation values from job title and company industry, creating required CRM properties, updating contacts in bulk, creating associations, and attempting a later bulk import of companies and contacts.",
+    "query": "update HubSpot contacts in bulk with associations",
+    "intent": "Perform bulk updates on contact records, match them to their respective companies, and establish associations.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "HUBSPOT_UPDATE_CONTACTS",
+          "HUBSPOT_UPDATE_BATCH_OF_OBJECTS_BY_IDOR_PROPERTY_VALUES"
+        ],
+        "purpose": "update contacts in bulk"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "HUBSPOT_CREATE_OBJECT_ASSOCIATION"
+        ],
+        "purpose": "create associations"
+      }
+    ],
+    "candidate_tools": [
+      "HUBSPOT_CREATE_COMPANIES",
+      "HUBSPOT_CREATE_CONTACTS",
+      "HUBSPOT_CREATE_OBJECT_ASSOCIATION",
+      "HUBSPOT_CREATE_PROPERTY_FOR_SPECIFIED_OBJECT_TYPE",
+      "HUBSPOT_LIST_ASSOCIATION_TYPES",
+      "HUBSPOT_LIST_COMPANIES",
+      "HUBSPOT_LIST_CONTACTS",
+      "HUBSPOT_LIST_CONTACT_PROPERTIES",
+      "HUBSPOT_READ_ALL_PROPERTIES_FOR_OBJECT_TYPE",
+      "HUBSPOT_UPDATE_BATCH_OF_OBJECTS_BY_IDOR_PROPERTY_VALUES",
+      "HUBSPOT_UPDATE_CONTACTS"
+    ]
+  },
+  "request": {
+    "query": "update HubSpot contacts in bulk with associations"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "update HubSpot contacts in bulk with associations",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if target contact IDs are unknown)] [Prerequisite]: Build the contact ID list using HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA (collect results[].id; paginate with the after cursor).",
+            "[Optional (if custom property internal name, options, or writability are unknown)] [Prerequisite]: Validate the property using HUBSPOT_LIST_CONTACT_PROPERTIES and HUBSPOT_READ_A_CRM_PROPERTY_BY_NAME (confirm it is not calculated/read-only).",
+            "[Required (before irreversible writes)] [Prerequisite]: Confirm final cohort size plus the exact property key/value and intended payload location (properties vs custom_properties).",
+            "[Required] [Step]: Batch update using HUBSPOT_UPDATE_CONTACTS (send inputs[].id with the custom property payload; chunk large cohorts), or use HUBSPOT_UPDATE_BATCH_OF_OBJECTS_BY_IDOR_PROPERTY_VALUES when matching by an alternate unique field.",
+            "[Optional (for verification)] [Next Step]: Spot-check updated records using HUBSPOT_READ_CONTACTS (confirm the specific updated key/value).",
+            "[Fallback (if batch fails validation or partially fails)] [Fallback]: Remove/adjust the invalid field (then re-run the batch) and retry only failed records using HUBSPOT_UPDATE_CONTACT."
+          ],
+          "known_pitfalls": [
+            "[HUBSPOT_UPDATE_CONTACTS] HTTP 400 VALIDATION_ERROR (READ_ONLY_VALUE) can occur if you try to set a calculated/read-only property; remove that field from the payload and retry.",
+            "[HUBSPOT_READ_A_CRM_PROPERTY_BY_NAME] calculated=true and/or modificationMetadata.readOnlyValue=true indicates the property cannot be written via updates.",
+            "[HUBSPOT_UPDATE_CONTACTS] Some custom fields only apply when placed under inputs[].custom_properties; using only inputs[].properties may return success without changing the intended field.",
+            "[HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA] Use results[].id as the canonical identifier for updates; don\u2019t rely on IDs embedded in arbitrary returned properties.",
+            "[HUBSPOT_UPDATE_CONTACT] Responses can include many system-managed properties; verify the intended field specifically in data.properties."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "HUBSPOT_UPDATE_CONTACTS",
+            "HUBSPOT_UPDATE_CONTACT"
+          ],
+          "related_tool_slugs": [
+            "HUBSPOT_READ_A_CRM_PROPERTY_BY_NAME",
+            "HUBSPOT_LIST_CONTACT_PROPERTIES",
+            "HUBSPOT_READ_CONTACTS",
+            "HUBSPOT_UPDATE_BATCH_OF_OBJECTS_BY_IDOR_PROPERTY_VALUES",
+            "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA"
+          ],
+          "toolkits": [
+            "hubspot"
+          ],
+          "plan_id": "3ca22f42bb47405eae9721918d4d8857"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "hubspot",
+          "has_active_connection": false,
+          "description": "HubSpot is an inbound marketing, sales, and customer service platform integrating CRM, email automation, and analytics to facilitate lead nurturing and seamless customer experiences",
+          "status_message": "No Active connection for toolkit=hubspot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"hubspot\") to create a connection BEFORE executing any hubspot tools."
+        }
+      ],
+      "tool_schemas": {
+        "HUBSPOT_UPDATE_CONTACTS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_UPDATE_CONTACTS",
+          "description": "Updates multiple HubSpot contacts in a single batch operation.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "inputs"
+            ],
+            "properties": {
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "examples": [
+                        "512481",
+                        "1002042"
+                      ],
+                      "description": "The VID (HubSpot Contact ID) of the contact to be updated."
+                    },
+                    "properties": {
+                      "type": "object",
+                      "properties": {
+                        "fax": {
+                          "type": "string",
+                          "description": "Fax number."
+                        },
+                        "zip": {
+                          "type": "string",
+                          "description": "Postal/ZIP code of residence."
+                        },
+                        "city": {
+                          "type": "string",
+                          "description": "City of residence."
+                        },
+                        "email": {
+                          "type": "string",
+                          "description": "Primary email address (HubSpot unique identifier by default)."
+                        },
+                        "phone": {
+                          "type": "string",
+                          "description": "Primary phone number."
+                        },
+                        "photo": {
+                          "type": "string",
+                          "description": "URL to photo/avatar."
+                        },
+                        "state": {
+                          "type": "string",
+                          "description": "State/region of residence."
+                        },
+                        "degree": {
+                          "type": "string",
+                          "description": "Highest educational degree."
+                        },
+                        "gender": {
+                          "type": "string",
+                          "description": "Gender (e.g., 'Male', 'Female', 'Other')."
+                        },
+                        "school": {
+                          "type": "string",
+                          "description": "School name attended/attending."
+                        },
+                        "address": {
+                          "type": "string",
+                          "description": "Full street address."
+                        },
+                        "company": {
+                          "type": "string",
+                          "description": "Company name."
+                        },
+                        "country": {
+                          "type": "string",
+                          "description": "Country of residence."
+                        },
+                        "ip_city": {
+                          "type": "string",
+                          "description": "City from IP address (recent interaction)."
+                        },
+                        "message": {
+                          "type": "string",
+                          "description": "General message/note, often from form submission."
+                        },
+                        "website": {
+                          "type": "string",
+                          "description": "Personal or company website URL."
+                        },
+                        "industry": {
+                          "type": "string",
+                          "description": "Industry of contact or company."
+                        },
+                        "ip_state": {
+                          "type": "string",
+                          "description": "State/region from IP address."
+                        },
+                        "jobtitle": {
+                          "type": "string",
+                          "description": "Job title."
+                        },
+                        "lastname": {
+                          "type": "string",
+                          "description": "Last name."
+                        },
+                        "closedate": {
+                          "type": "string",
+                          "description": "Close date of associated deal (YYYY-MM-DD or Unix milliseconds)."
+                        },
+                        "firstname": {
+                          "type": "string",
+                          "description": "First name."
+                        },
+                        "ip_latlon": {
+                          "type": "string",
+                          "description": "Approximate latitude,longitude from IP address."
+                        },
+                        "num_notes": {
+                          "type": "string",
+                          "description": "Total associated notes (numeric value as string)."
+                        },
+                        "ownername": {
+                          "type": "string",
+                          "description": "Full name of owning HubSpot user."
+                        },
+                        "seniority": {
+                          "type": "string",
+                          "description": "Seniority level (e.g., 'Entry-level', 'Manager', 'VP')."
+                        },
+                        "createdate": {
+                          "type": "string",
+                          "description": "Record creation date (ISO 8601 or Unix milliseconds)."
+                        },
+                        "ip_country": {
+                          "type": "string",
+                          "description": "Country from IP address."
+                        },
+                        "ip_zipcode": {
+                          "type": "string",
+                          "description": "Postal/ZIP code from IP address."
+                        },
+                        "owneremail": {
+                          "type": "string",
+                          "description": "Email address of owning HubSpot user."
+                        },
+                        "salutation": {
+                          "type": "string",
+                          "description": "Salutation (e.g., 'Mr.', 'Ms.', 'Dr.')."
+                        },
+                        "start_date": {
+                          "type": "string",
+                          "description": "Start date (job/program, e.g., 'YYYY-MM-DD')."
+                        },
+                        "twitterbio": {
+                          "type": "string",
+                          "description": "Twitter profile biography."
+                        },
+                        "work_email": {
+                          "type": "string",
+                          "description": "Work email address."
+                        },
+                        "linkedinbio": {
+                          "type": "string",
+                          "description": "LinkedIn profile biography."
+                        },
+                        "mobilephone": {
+                          "type": "string",
+                          "description": "Mobile phone number."
+                        },
+                        "company_size": {
+                          "type": "string",
+                          "description": "Company size (e.g., '1-10 employees', '500+ employees')."
+                        },
+                        "hubspotscore": {
+                          "type": "string",
+                          "description": "HubSpot lead score (numeric value as string)."
+                        },
+                        "job_function": {
+                          "type": "string",
+                          "description": "Job function or department (e.g., 'Marketing', 'Sales', 'Engineering')."
+                        },
+                        "numemployees": {
+                          "type": "string",
+                          "description": "Number of employees in company (numeric value as string)."
+                        },
+                        "annualrevenue": {
+                          "type": "string",
+                          "description": "Annual revenue (numeric value stored as string)."
+                        },
+                        "date_of_birth": {
+                          "type": "string",
+                          "description": "Date of birth (e.g., 'YYYY-MM-DD')."
+                        },
+                        "days_to_close": {
+                          "type": "string",
+                          "description": "Days to close associated deal (numeric value as string)."
+                        },
+                        "followercount": {
+                          "type": "string",
+                          "description": "Social media follower count (numeric value as string)."
+                        },
+                        "ip_state_code": {
+                          "type": "string",
+                          "description": "State/region code from IP address (e.g., 'CA', 'NY')."
+                        },
+                        "total_revenue": {
+                          "type": "string",
+                          "description": "Total revenue from associated deals (numeric value as string)."
+                        },
+                        "twitterhandle": {
+                          "type": "string",
+                          "description": "Twitter username (handle), without '@'."
+                        },
+                        "field_of_study": {
+                          "type": "string",
+                          "description": "Primary field of academic study."
+                        },
+                        "hs_lead_status": {
+                          "type": "string",
+                          "description": "Lead status indicating the current state of the lead. Valid values (case-sensitive, must be uppercase): NEW, OPEN, IN_PROGRESS, OPEN_DEAL, UNQUALIFIED, ATTEMPTED_TO_CONTACT, CONNECTED, BAD_TIMING. Input is automatically converted to uppercase."
+                        },
+                        "lifecyclestage": {
+                          "type": "string",
+                          "examples": [
+                            "subscriber",
+                            "lead",
+                            "marketingqualifiedlead",
+                            "salesqualifiedlead",
+                            "opportunity",
+                            "customer",
+                            "evangelist",
+                            "other"
+                          ],
+                          "description": "Current marketing/sales funnel stage. Must be a valid lifecycle stage in your HubSpot instance."
+                        },
+                        "marital_status": {
+                          "type": "string",
+                          "description": "Marital status (e.g., 'Single', 'Married')."
+                        },
+                        "graduation_date": {
+                          "type": "string",
+                          "description": "Graduation date (e.g., 'YYYY-MM-DD')."
+                        },
+                        "hs_all_team_ids": {
+                          "type": "string",
+                          "description": "Semicolon-separated IDs of all teams the contact is a member of or assigned to."
+                        },
+                        "hubspot_team_id": {
+                          "type": "string",
+                          "description": "ID of the HubSpot team for the contact or owner."
+                        },
+                        "ip_country_code": {
+                          "type": "string",
+                          "description": "Country code from IP address (e.g., 'US', 'GB')."
+                        },
+                        "military_status": {
+                          "type": "string",
+                          "description": "Military status."
+                        },
+                        "hs_all_owner_ids": {
+                          "type": "string",
+                          "description": "Semicolon-separated IDs of all assigned owners."
+                        },
+                        "hubspot_owner_id": {
+                          "type": "string",
+                          "description": "ID of the HubSpot user owning this contact."
+                        },
+                        "lastmodifieddate": {
+                          "type": "string",
+                          "description": "Record last modification date (ISO 8601 or Unix milliseconds)."
+                        },
+                        "kloutscoregeneral": {
+                          "type": "string",
+                          "description": "Klout score, if available (numeric value as string)."
+                        },
+                        "notes_last_updated": {
+                          "type": "string",
+                          "description": "Timestamp of last note update (often Unix milliseconds)."
+                        },
+                        "recent_deal_amount": {
+                          "type": "string",
+                          "description": "Amount of most recent associated deal (numeric value as string)."
+                        },
+                        "associatedcompanyid": {
+                          "type": "string",
+                          "description": "ID of the primary associated company."
+                        },
+                        "currentlyinworkflow": {
+                          "type": "string",
+                          "description": "Boolean (as string 'true'/'false') indicating if currently in any HubSpot workflow."
+                        },
+                        "hs_all_contact_vids": {
+                          "type": "string",
+                          "description": "Semicolon-separated known associated HubSpot contact IDs (VIDs), e.g., if merged."
+                        },
+                        "hs_analytics_source": {
+                          "type": "string",
+                          "description": "Original contact source (e.g., 'Organic Search', 'Paid Social', 'Direct Traffic')."
+                        },
+                        "linkedinconnections": {
+                          "type": "string",
+                          "description": "Number of LinkedIn connections (numeric value as string)."
+                        },
+                        "num_contacted_notes": {
+                          "type": "string",
+                          "description": "Number of notes about contacting this contact (numeric value as string)."
+                        },
+                        "relationship_status": {
+                          "type": "string",
+                          "description": "Relationship status (e.g. 'Single', 'In a relationship')."
+                        },
+                        "twitterprofilephoto": {
+                          "type": "string",
+                          "description": "URL to Twitter profile photo."
+                        },
+                        "hs_additional_emails": {
+                          "type": "string",
+                          "description": "Semicolon-separated additional email addresses (e.g., 'email1@example.com;email2@example.com')."
+                        },
+                        "hs_analytics_revenue": {
+                          "type": "string",
+                          "description": "Revenue attributed via HubSpot analytics (numeric value as string)."
+                        },
+                        "notes_last_contacted": {
+                          "type": "string",
+                          "description": "Timestamp of last logged contact (often Unix milliseconds)."
+                        },
+                        "num_associated_deals": {
+                          "type": "string",
+                          "description": "Number of currently associated deals (numeric value as string)."
+                        },
+                        "first_conversion_date": {
+                          "type": "string",
+                          "description": "Timestamp of first conversion (often Unix milliseconds)."
+                        },
+                        "hs_analytics_last_url": {
+                          "type": "string",
+                          "description": "Last URL visited during most recent session."
+                        },
+                        "num_conversion_events": {
+                          "type": "string",
+                          "description": "Total recorded conversion events (numeric value as string)."
+                        },
+                        "hs_analytics_first_url": {
+                          "type": "string",
+                          "description": "First URL visited on your website."
+                        },
+                        "recent_conversion_date": {
+                          "type": "string",
+                          "description": "Timestamp of most recent conversion (often Unix milliseconds)."
+                        },
+                        "recent_deal_close_date": {
+                          "type": "string",
+                          "description": "Close date of most recent deal (Unix ms or YYYY-MM-DD)."
+                        },
+                        "first_deal_created_date": {
+                          "type": "string",
+                          "description": "Timestamp of first deal creation (often Unix milliseconds)."
+                        },
+                        "hs_analytics_num_visits": {
+                          "type": "string",
+                          "description": "Total website sessions (visits) (numeric value as string)."
+                        },
+                        "webinareventlastupdated": {
+                          "type": "string",
+                          "description": "Timestamp of last webinar platform event update (often Unix milliseconds)."
+                        },
+                        "notes_next_activity_date": {
+                          "type": "string",
+                          "description": "Timestamp of next scheduled activity (often Unix milliseconds)."
+                        },
+                        "hs_all_accessible_team_ids": {
+                          "type": "string",
+                          "description": "Semicolon-separated IDs of all teams with access to the contact record."
+                        },
+                        "hs_analytics_last_referrer": {
+                          "type": "string",
+                          "description": "Last external referrer URL before most recent session/conversion."
+                        },
+                        "hs_analytics_source_data_1": {
+                          "type": "string",
+                          "description": "Additional source data (e.g., specific campaign name or search term)."
+                        },
+                        "hs_analytics_source_data_2": {
+                          "type": "string",
+                          "description": "Further additional source data (e.g., ad group or specific link clicked)."
+                        },
+                        "hubspot_owner_assigneddate": {
+                          "type": "string",
+                          "description": "Timestamp of HubSpot owner assignment (often Unix milliseconds)."
+                        },
+                        "first_conversion_event_name": {
+                          "type": "string",
+                          "description": "Event name for first conversion (e.g., form name)."
+                        },
+                        "hs_analytics_first_referrer": {
+                          "type": "string",
+                          "description": "First external referrer URL."
+                        },
+                        "hs_analytics_last_timestamp": {
+                          "type": "string",
+                          "description": "Timestamp of most recent interaction with website/tracked assets (often Unix milliseconds)."
+                        },
+                        "hs_analytics_num_page_views": {
+                          "type": "string",
+                          "description": "Total page views across all sessions (numeric value as string)."
+                        },
+                        "associatedcompanylastupdated": {
+                          "type": "string",
+                          "description": "Timestamp of last update to primary associated company (often Unix milliseconds)."
+                        },
+                        "hs_analytics_first_timestamp": {
+                          "type": "string",
+                          "description": "Timestamp of first interaction with website/tracked assets (often Unix milliseconds)."
+                        },
+                        "num_unique_conversion_events": {
+                          "type": "string",
+                          "description": "Number of unique types of conversion events (numeric value as string)."
+                        },
+                        "recent_conversion_event_name": {
+                          "type": "string",
+                          "description": "Event name for most recent conversion."
+                        },
+                        "surveymonkeyeventlastupdated": {
+                          "type": "string",
+                          "description": "Timestamp of last SurveyMonkey event update (often Unix milliseconds)."
+                        },
+                        "engagements_last_meeting_booked": {
+                          "type": "string",
+                          "description": "Timestamp of last booked meeting (often Unix milliseconds)."
+                        },
+                        "hs_analytics_average_page_views": {
+                          "type": "string",
+                          "description": "Average page views per session (numeric value as string)."
+                        },
+                        "hs_all_assigned_business_unit_ids": {
+                          "type": "string",
+                          "description": "Semicolon-separated IDs of all assigned business units."
+                        },
+                        "hs_analytics_last_visit_timestamp": {
+                          "type": "string",
+                          "description": "Timestamp of most recent website visit (often Unix milliseconds)."
+                        },
+                        "hs_analytics_first_visit_timestamp": {
+                          "type": "string",
+                          "description": "Timestamp of first website visit (often Unix milliseconds)."
+                        },
+                        "hs_analytics_num_event_completions": {
+                          "type": "string",
+                          "description": "Total HubSpot marketing events completed (numeric value as string)."
+                        },
+                        "engagements_last_meeting_booked_medium": {
+                          "type": "string",
+                          "description": "Medium for last booked meeting (e.g., 'email', 'organic')."
+                        },
+                        "engagements_last_meeting_booked_source": {
+                          "type": "string",
+                          "description": "Source for last booked meeting (e.g., 'Forms', 'Meetings')."
+                        },
+                        "engagements_last_meeting_booked_campaign": {
+                          "type": "string",
+                          "description": "Campaign GUID for last booked meeting."
+                        },
+                        "hs_analytics_last_touch_converting_campaign": {
+                          "type": "string",
+                          "description": "GUID of HubSpot campaign for last touch conversion."
+                        },
+                        "hs_analytics_first_touch_converting_campaign": {
+                          "type": "string",
+                          "description": "GUID of HubSpot campaign for first touch conversion."
+                        }
+                      },
+                      "description": "Standard HubSpot contact properties to update. Use typed fields like firstname, lastname, email, phone, company, lifecyclestage, hs_lead_status, etc. Only include the properties you want to change.",
+                      "additionalProperties": false
+                    },
+                    "custom_properties": {
+                      "type": "object",
+                      "description": "Custom HubSpot properties to update. Use this for any custom properties you've created in your HubSpot account. Keys must be the internal property names (e.g., 'my_custom_field'). Values must be strings. Use HUBSPOT_LIST_CONTACT_PROPERTIES with custom_only=true to discover available custom property names. These are merged with standard properties before sending to the API.",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "description": "Individual contact update definition for a batch operation."
+                },
+                "examples": [
+                  "[{'id': '512481', 'properties': {'firstname': 'UpdatedFirstName', 'lifecyclestage': 'customer'}}, {'id': '623452', 'properties': {'email': 'new.email@example.com'}}]"
+                ],
+                "description": "List of contact update operations, each specifying contact 'id' (VID) and 'properties' with new values."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_UPDATE_CONTACT": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_UPDATE_CONTACT",
+          "description": "Updates properties for an existing HubSpot contact.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "contactId"
+            ],
+            "properties": {
+              "contactId": {
+                "type": "string",
+                "examples": [
+                  "12345",
+                  "50021"
+                ],
+                "description": "Unique HubSpot identifier for the contact to be partially updated. Can also be provided as 'contact_id' (snake_case)."
+              },
+              "properties": {
+                "type": "object",
+                "properties": {
+                  "fax": {
+                    "type": "string",
+                    "description": "Fax number."
+                  },
+                  "zip": {
+                    "type": "string",
+                    "description": "Postal/ZIP code of residence."
+                  },
+                  "city": {
+                    "type": "string",
+                    "description": "City of residence."
+                  },
+                  "email": {
+                    "type": "string",
+                    "description": "Primary email address (HubSpot unique identifier by default)."
+                  },
+                  "phone": {
+                    "type": "string",
+                    "description": "Primary phone number."
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "State/region of residence."
+                  },
+                  "degree": {
+                    "type": "string",
+                    "description": "Highest educational degree."
+                  },
+                  "gender": {
+                    "type": "string",
+                    "description": "Gender (e.g., 'Male', 'Female', 'Other')."
+                  },
+                  "school": {
+                    "type": "string",
+                    "description": "School name attended/attending."
+                  },
+                  "address": {
+                    "type": "string",
+                    "description": "Full street address."
+                  },
+                  "company": {
+                    "type": "string",
+                    "description": "Company name."
+                  },
+                  "country": {
+                    "type": "string",
+                    "description": "Country of residence."
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "General message/note, often from form submission."
+                  },
+                  "website": {
+                    "type": "string",
+                    "description": "Personal or company website URL."
+                  },
+                  "industry": {
+                    "type": "string",
+                    "description": "Industry of contact or company."
+                  },
+                  "jobtitle": {
+                    "type": "string",
+                    "description": "Job title."
+                  },
+                  "lastname": {
+                    "type": "string",
+                    "description": "Last name."
+                  },
+                  "firstname": {
+                    "type": "string",
+                    "description": "First name."
+                  },
+                  "seniority": {
+                    "type": "string",
+                    "description": "Seniority level (e.g., 'Entry-level', 'Manager', 'VP')."
+                  },
+                  "salutation": {
+                    "type": "string",
+                    "description": "Salutation (e.g., 'Mr.', 'Ms.', 'Dr.')."
+                  },
+                  "work_email": {
+                    "type": "string",
+                    "description": "Work email address."
+                  },
+                  "mobilephone": {
+                    "type": "string",
+                    "description": "Mobile phone number."
+                  },
+                  "company_size": {
+                    "type": "string",
+                    "description": "Company size (e.g., '1-10 employees', '500+ employees')."
+                  },
+                  "job_function": {
+                    "type": "string",
+                    "description": "Job function or department (e.g., 'Marketing', 'Sales', 'Engineering')."
+                  },
+                  "numemployees": {
+                    "type": "string",
+                    "description": "Number of employees in company (numeric value as string)."
+                  },
+                  "annualrevenue": {
+                    "type": "string",
+                    "description": "Annual revenue (numeric value stored as string)."
+                  },
+                  "date_of_birth": {
+                    "type": "string",
+                    "description": "Date of birth (e.g., 'YYYY-MM-DD')."
+                  },
+                  "field_of_study": {
+                    "type": "string",
+                    "description": "Primary field of academic study."
+                  },
+                  "hs_lead_status": {
+                    "type": "string",
+                    "description": "Lead status. Valid values: NEW, OPEN, IN_PROGRESS, OPEN_DEAL, UNQUALIFIED, ATTEMPTED_TO_CONTACT, CONNECTED, BAD_TIMING."
+                  },
+                  "lifecyclestage": {
+                    "type": "string",
+                    "examples": [
+                      "subscriber",
+                      "lead",
+                      "marketingqualifiedlead",
+                      "salesqualifiedlead",
+                      "opportunity",
+                      "customer",
+                      "evangelist",
+                      "other"
+                    ],
+                    "description": "Current lifecycle stage. Valid values: subscriber, lead, marketingqualifiedlead, salesqualifiedlead, opportunity, customer, evangelist, other."
+                  },
+                  "marital_status": {
+                    "type": "string",
+                    "description": "Marital status (e.g., 'Single', 'Married')."
+                  },
+                  "graduation_date": {
+                    "type": "string",
+                    "description": "Graduation date (e.g., 'YYYY-MM-DD')."
+                  },
+                  "hubspot_owner_id": {
+                    "type": "string",
+                    "description": "ID of the HubSpot user owning this contact."
+                  },
+                  "hs_additional_emails": {
+                    "type": "string",
+                    "description": "Semicolon-separated additional email addresses."
+                  }
+                },
+                "description": "Standard HubSpot contact properties. Use these for common contact fields.",
+                "additionalProperties": false
+              },
+              "custom_properties": {
+                "type": "object",
+                "description": "Custom HubSpot properties to update. Use this for any custom properties you've created in your HubSpot account. Keys must be the internal property names (e.g., 'my_custom_field'). Values must be strings. Use HUBSPOT_LIST_CONTACT_PROPERTIES with custom_only=true to discover available custom property names. These are merged with standard properties before sending to the API.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_READ_A_CRM_PROPERTY_BY_NAME": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_A_CRM_PROPERTY_BY_NAME",
+          "description": "Reads a specific CRM property definition for a given HubSpot object type by its internal name.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "objectType",
+              "propertyName"
+            ],
+            "properties": {
+              "archived": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, retrieves an archived property definition; retrieves active property definitions by default."
+              },
+              "objectType": {
+                "type": "string",
+                "examples": [
+                  "contacts",
+                  "deals",
+                  "companies",
+                  "tickets",
+                  "custom_object_type_id"
+                ],
+                "description": "Specifies the CRM object type (e.g., 'contacts', 'deals') for which the property is retrieved."
+              },
+              "properties": {
+                "type": "string",
+                "description": "Optional comma-separated list of additional property attributes to return; consult HubSpot API documentation for available attributes and format."
+              },
+              "propertyName": {
+                "type": "string",
+                "examples": [
+                  "firstname",
+                  "dealname",
+                  "hs_object_id",
+                  "custom_property_internal_name"
+                ],
+                "description": "The internal, unique name of the property to retrieve (e.g., 'firstname', 'dealname')."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_LIST_CONTACT_PROPERTIES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_LIST_CONTACT_PROPERTIES",
+          "description": "Lists all contact properties in your HubSpot account, including custom properties you've created. Us...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_LIST_CONTACT_PROPERTIES"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_READ_CONTACTS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_READ_CONTACTS",
+          "description": "Batch read multiple HubSpot contacts by their IDs or custom identifier property. This action retriev...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_READ_CONTACTS"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_UPDATE_BATCH_OF_OBJECTS_BY_IDOR_PROPERTY_VALUES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_UPDATE_BATCH_OF_OBJECTS_BY_IDOR_PROPERTY_VALUES",
+          "description": "Performs a batch update on a valid `objectType` where properties are writeable and any `idProperty` ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_UPDATE_BATCH_OF_OBJECTS_BY_IDOR_PROPERTY_VALUES"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+          "description": "Searches for HubSpot contacts using a text query, specific filter criteria (filters in a group are A...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:35:34.443Z",
+        "current_time_utc_epoch_seconds": 1786599334,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "face",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"face\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_LAdc4NX_XMRZ"
+  }
+}

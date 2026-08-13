@@ -1,0 +1,814 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-066-q3",
+    "workflow_id": 66,
+    "workflow_task": "Create customized application emails with resume and cover letter PDFs, stage them as Outlook drafts, update attachments and body text, then send the finalized drafts after confirmation.",
+    "query": "send finalized outlook email drafts after user confirmation",
+    "intent": "Send out the staged email drafts once confirmation is received.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "OUTLOOK_SEND_DRAFT"
+        ],
+        "purpose": "send existing outlook email draft"
+      }
+    ],
+    "candidate_tools": [
+      "OUTLOOK_ADD_MAIL_ATTACHMENT",
+      "OUTLOOK_CREATE_DRAFT",
+      "OUTLOOK_DELETE_MESSAGE",
+      "OUTLOOK_DELETE_MESSAGE_ATTACHMENT",
+      "OUTLOOK_DOWNLOAD_OUTLOOK_ATTACHMENT",
+      "OUTLOOK_LIST_MESSAGES",
+      "OUTLOOK_LIST_OUTLOOK_ATTACHMENTS",
+      "OUTLOOK_SEND_DRAFT",
+      "OUTLOOK_UPDATE_EMAIL"
+    ]
+  },
+  "request": {
+    "query": "send finalized outlook email drafts after user confirmation"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "send finalized outlook email drafts after user confirmation",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if you don\u2019t need a draft/review)] [Step]: Send the email directly using OUTLOOK_SEND_EMAIL (confirm final to/cc, subject, body, and whether content is HTML).",
+            "[Optional (if you want deliverability/recipient warnings before sending)] [Prerequisite]: Check recipient guidance using OUTLOOK_GET_MAIL_TIPS (review tips and adjust recipients if needed).",
+            "[Required (if message_id is unknown and you need an existing draft)] [Prerequisite]: Locate Drafts using OUTLOOK_GET_DRAFTS_MAIL_FOLDER then use OUTLOOK_LIST_MAIL_FOLDER_MESSAGES (follow @odata.nextLink pagination) to find the right draft and capture message_id.",
+            "[Fallback (if draft lookup fails or no suitable draft exists)] [Fallback]: Create a new draft using OUTLOOK_CREATE_DRAFT (capture returned message_id).",
+            "[Optional (if recipients/subject/body need changes or attachments must be added)] [Next Step]: Update the draft using OUTLOOK_UPDATE_EMAIL and/or add files using OUTLOOK_ADD_MAIL_ATTACHMENT (apply to the message_id you will send).",
+            "[Required (only after explicit user confirmation)] [Step]: Send the chosen draft using OUTLOOK_SEND_DRAFT (use final message_id; if a 404 occurs, re-locate the draft via OUTLOOK_GET_DRAFTS_MAIL_FOLDER + OUTLOOK_LIST_MAIL_FOLDER_MESSAGES and re-confirm before retrying)."
+          ],
+          "known_pitfalls": [
+            "[OUTLOOK_SEND_EMAIL] Success may be HTTP 202 with null/minimal body; treat as success and don\u2019t retry (duplicate-send risk).",
+            "[OUTLOOK_SEND_DRAFT] Success may return {} or minimal content; rely on HTTP success and avoid blind retries; invalid/expired message_id may surface as 404.",
+            "[OUTLOOK_SEND_EMAIL] Validation errors if required recipient field isn\u2019t `to`; `to` should be a string (not a list) to avoid \u201cInput should be a valid string\u201d.",
+            "[OUTLOOK_SEND_EMAIL] If sending HTML, set the HTML flag correctly or recipients may see raw markup.",
+            "[OUTLOOK_CREATE_DRAFT] Drafts may be created without recipients; ensure recipients exist before attempting delivery (update draft or use OUTLOOK_SEND_EMAIL)."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "OUTLOOK_SEND_DRAFT",
+            "OUTLOOK_SEND_EMAIL"
+          ],
+          "related_tool_slugs": [
+            "OUTLOOK_UPDATE_EMAIL",
+            "OUTLOOK_ADD_MAIL_ATTACHMENT",
+            "OUTLOOK_GET_DRAFTS_MAIL_FOLDER",
+            "OUTLOOK_LIST_MAIL_FOLDER_MESSAGES",
+            "OUTLOOK_GET_MAIL_TIPS",
+            "OUTLOOK_CREATE_DRAFT"
+          ],
+          "toolkits": [
+            "outlook"
+          ],
+          "plan_id": "7444aa7722334c979b5284795f8b8e30"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "outlook",
+          "has_active_connection": false,
+          "description": "Outlook is Microsoft's email and calendaring platform integrating contacts and scheduling, enabling users to manage communications and events in a unified workspace",
+          "status_message": "No Active connection for toolkit=outlook. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"outlook\") to create a connection BEFORE executing any outlook tools."
+        }
+      ],
+      "tool_schemas": {
+        "OUTLOOK_SEND_DRAFT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEND_DRAFT",
+          "description": "Tool to send an existing draft message. Use after creating a draft when you want to deliver it to recipients immediately. Example: Send a draft message with ID 'AAMkAG\u2026'.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_id"
+            ],
+            "properties": {
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "user@example.com"
+                ],
+                "description": "The user's email address or 'me' to represent the authenticated user."
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "AAMkAGVi..."
+                ],
+                "description": "The unique identifier of the draft message to send."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_SEND_EMAIL": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_SEND_EMAIL",
+          "description": "Sends an email with subject, body, recipients, and optional attachments via Microsoft Graph API. Supports comma-separated email addresses in the to_email field for multiple recipients. Accepts either a single file or a list of files as attachments. Attachments require a non-empty file with valid name and mimetype.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "subject",
+              "body",
+              "to"
+            ],
+            "properties": {
+              "to": {
+                "type": "string",
+                "examples": [
+                  "recipient@example.com",
+                  "john.doe@company.com",
+                  "alice@example.com, bob@example.com"
+                ],
+                "description": "The primary recipient's email address(es). You can provide a single email or multiple emails separated by commas. Valid email addresses will be extracted from strings containing extra text. Format: name@domain.com"
+              },
+              "body": {
+                "type": "string",
+                "examples": [
+                  "Hello team, please find the attached report.",
+                  "<h1>Project Phoenix</h1><p>Initial proposal attached.</p>"
+                ],
+                "description": "The content of the email body as a plain string (plain text or HTML based on `is_html`). Do not pass structured objects; provide only the raw text/HTML content."
+              },
+              "is_html": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Specifies if the email body is HTML; `True` for HTML, `False` for plain text."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Project Update",
+                  "Important Announcement"
+                ],
+                "maxLength": 255,
+                "minLength": 1,
+                "description": "The subject line of the email."
+              },
+              "to_name": {
+                "type": "string",
+                "examples": [
+                  "Valued Customer",
+                  "John Doe"
+                ],
+                "description": "The display name of the primary recipient."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "specific.user@example.com"
+                ],
+                "description": "The user's email address or the alias 'me' to represent the authenticated user."
+              },
+              "cc_emails": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "jane.doe@example.com",
+                    "cc.recipient@example.com"
+                  ],
+                  [
+                    "team@company.com"
+                  ]
+                ],
+                "description": "List of email addresses for CC recipients. Each email should be a separate string in the array. Do NOT pass comma-separated values as a single string."
+              },
+              "attachment": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "title": "FileUploadable",
+                    "required": [
+                      "name",
+                      "mimetype",
+                      "s3key"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "examples": [
+                          "document.pdf",
+                          "image.jpg",
+                          "report.docx"
+                        ],
+                        "description": "The filename that will be used when uploading the file to the destination service"
+                      },
+                      "s3key": {
+                        "type": "string",
+                        "title": "S3Key",
+                        "examples": [
+                          "47563/gmail/GET_ATTACHMENT/response/12345"
+                        ],
+                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                      },
+                      "mimetype": {
+                        "type": "string",
+                        "title": "Mimetype",
+                        "examples": [
+                          "application/pdf",
+                          "image/jpeg",
+                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        ],
+                        "description": "The MIME type of the file"
+                      }
+                    },
+                    "file_uploadable": true
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "title": "FileUploadable",
+                      "required": [
+                        "name",
+                        "mimetype",
+                        "s3key"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "title": "Name",
+                          "examples": [
+                            "document.pdf",
+                            "image.jpg",
+                            "report.docx"
+                          ],
+                          "description": "The filename that will be used when uploading the file to the destination service"
+                        },
+                        "s3key": {
+                          "type": "string",
+                          "title": "S3Key",
+                          "examples": [
+                            "47563/gmail/GET_ATTACHMENT/response/12345"
+                          ],
+                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
+                        },
+                        "mimetype": {
+                          "type": "string",
+                          "title": "Mimetype",
+                          "examples": [
+                            "application/pdf",
+                            "image/jpeg",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          ],
+                          "description": "The MIME type of the file"
+                        }
+                      },
+                      "file_uploadable": true
+                    }
+                  }
+                ],
+                "description": "File(s) to attach. Accepts a single file or a list of files."
+              },
+              "bcc_emails": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": [],
+                "examples": [
+                  [
+                    "manager@example.com",
+                    "supervisor@example.com"
+                  ],
+                  [
+                    "hr@company.com"
+                  ]
+                ],
+                "description": "List of email addresses for BCC recipients. Each email should be a separate string in the array. Do NOT pass comma-separated values as a single string."
+              },
+              "from_address": {
+                "type": "string",
+                "examples": [
+                  "shared.mailbox@contoso.com",
+                  "alias@example.com"
+                ],
+                "description": "Optional From address to set on the message (send as/on behalf). Provide a single email address. Requires appropriate mailbox permissions."
+              },
+              "save_to_sent_items": {
+                "type": "boolean",
+                "default": true,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Indicates if the email should be saved in 'Sent Items'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_UPDATE_EMAIL": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_UPDATE_EMAIL",
+          "description": "Updates specified properties of an existing email message; `message_id` must identify a valid message within the specified `user_id`'s mailbox.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "message_id"
+            ],
+            "properties": {
+              "From": {
+                "type": "object",
+                "required": [
+                  "emailAddress"
+                ],
+                "properties": {
+                  "emailAddress": {
+                    "type": "object",
+                    "required": [
+                      "address"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "default": "",
+                        "examples": [
+                          "Katherine Hughes",
+                          "Support Team"
+                        ],
+                        "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                      },
+                      "address": {
+                        "type": "string",
+                        "examples": [
+                          "kat.hughes@example.com",
+                          "support@company.org"
+                        ],
+                        "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                      }
+                    },
+                    "description": "Email address details for the recipient.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Recipient with email address for input requests.",
+                "additionalProperties": false
+              },
+              "body": {
+                "type": "object",
+                "required": [
+                  "contentType",
+                  "content"
+                ],
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "examples": [
+                      "<p>This is the <b>updated</b> email body.</p>",
+                      "This is a plain text update."
+                    ],
+                    "description": "The actual email body content, formatted according to the `contentType`. For example, if contentType is 'HTML', this would be HTML markup."
+                  },
+                  "contentType": {
+                    "type": "string",
+                    "examples": [
+                      "Text",
+                      "HTML"
+                    ],
+                    "description": "Specifies the format of the email body content. Must be either 'Text' (for plain text) or 'HTML' (for HTML markup)."
+                  }
+                },
+                "description": "New body content (Text or HTML). If omitted, the existing message body remains unchanged. Must be a dict with both `contentType` ('Text' or 'HTML') and `content` keys set together; omitting `contentType` defaults to plain text and will not render HTML markup.",
+                "additionalProperties": false
+              },
+              "flag": {
+                "type": "object",
+                "required": [
+                  "flagStatus"
+                ],
+                "properties": {
+                  "flagStatus": {
+                    "type": "string",
+                    "examples": [
+                      "notFlagged",
+                      "flagged",
+                      "complete"
+                    ],
+                    "description": "Flag status for the message. Possible values: 'notFlagged', 'flagged', 'complete'. When 'notFlagged', any date/time fields (startDateTime, dueDateTime, completedDateTime) are ignored."
+                  },
+                  "dueDateTime": {
+                    "type": "object",
+                    "required": [
+                      "dateTime",
+                      "timeZone"
+                    ],
+                    "properties": {
+                      "dateTime": {
+                        "type": "string",
+                        "description": "A single point of time in a combined date and time representation ({date}T{time}; for example, 2017-08-29T04:00:00.0000000)."
+                      },
+                      "timeZone": {
+                        "type": "string",
+                        "description": "Represents a time zone, for example, 'Pacific Standard Time' or 'UTC'."
+                      }
+                    },
+                    "description": "Represents a date and time with timezone information for input.",
+                    "additionalProperties": false
+                  },
+                  "startDateTime": {
+                    "type": "object",
+                    "required": [
+                      "dateTime",
+                      "timeZone"
+                    ],
+                    "properties": {
+                      "dateTime": {
+                        "type": "string",
+                        "description": "A single point of time in a combined date and time representation ({date}T{time}; for example, 2017-08-29T04:00:00.0000000)."
+                      },
+                      "timeZone": {
+                        "type": "string",
+                        "description": "Represents a time zone, for example, 'Pacific Standard Time' or 'UTC'."
+                      }
+                    },
+                    "description": "Represents a date and time with timezone information for input.",
+                    "additionalProperties": false
+                  },
+                  "completedDateTime": {
+                    "type": "object",
+                    "required": [
+                      "dateTime",
+                      "timeZone"
+                    ],
+                    "properties": {
+                      "dateTime": {
+                        "type": "string",
+                        "description": "A single point of time in a combined date and time representation ({date}T{time}; for example, 2017-08-29T04:00:00.0000000)."
+                      },
+                      "timeZone": {
+                        "type": "string",
+                        "description": "Represents a time zone, for example, 'Pacific Standard Time' or 'UTC'."
+                      }
+                    },
+                    "description": "Represents a date and time with timezone information for input.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Represents the flag value for a message (input).",
+                "additionalProperties": false
+              },
+              "sender": {
+                "type": "object",
+                "required": [
+                  "emailAddress"
+                ],
+                "properties": {
+                  "emailAddress": {
+                    "type": "object",
+                    "required": [
+                      "address"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "default": "",
+                        "examples": [
+                          "Katherine Hughes",
+                          "Support Team"
+                        ],
+                        "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                      },
+                      "address": {
+                        "type": "string",
+                        "examples": [
+                          "kat.hughes@example.com",
+                          "support@company.org"
+                        ],
+                        "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                      }
+                    },
+                    "description": "Email address details for the recipient.",
+                    "additionalProperties": false
+                  }
+                },
+                "description": "Recipient with email address for input requests.",
+                "additionalProperties": false
+              },
+              "is_read": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Mark message as read (True) or unread (False). If omitted, read status remains unchanged."
+              },
+              "subject": {
+                "type": "string",
+                "examples": [
+                  "Updated Subject",
+                  "Re: Important Update"
+                ],
+                "description": "New subject line. If omitted, the existing subject remains unchanged. Provide empty string to clear the subject."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "me",
+                  "specific.user@example.com"
+                ],
+                "description": "The UPN (User Principal Name) of the user whose mailbox contains the message, or 'me' for the currently authenticated user. This determines whose message is updated."
+              },
+              "reply_to": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "emailAddress"
+                  ],
+                  "properties": {
+                    "emailAddress": {
+                      "type": "object",
+                      "required": [
+                        "address"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "default": "",
+                          "examples": [
+                            "Katherine Hughes",
+                            "Support Team"
+                          ],
+                          "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                        },
+                        "address": {
+                          "type": "string",
+                          "examples": [
+                            "kat.hughes@example.com",
+                            "support@company.org"
+                          ],
+                          "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                        }
+                      },
+                      "description": "Email address details for the recipient.",
+                      "additionalProperties": false
+                    }
+                  },
+                  "description": "Recipient with email address for input requests."
+                },
+                "description": "Email addresses to use when replying. Updatable only if isDraft = true."
+              },
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "Follow Up",
+                    "Customer"
+                  ],
+                  [
+                    "Important",
+                    "Project"
+                  ]
+                ],
+                "description": "Categories associated with the message. Provides a list of category labels (e.g., 'Follow Up', 'Customer')."
+              },
+              "importance": {
+                "type": "string",
+                "examples": [
+                  "low",
+                  "normal",
+                  "high"
+                ],
+                "description": "New importance level ('low', 'normal', 'high'). If omitted, the existing importance level remains unchanged."
+              },
+              "message_id": {
+                "type": "string",
+                "examples": [
+                  "AAMkAGI2TAAA="
+                ],
+                "description": "The unique identifier of the email message to be updated. This ID is typically obtained from listing messages or creating/sending a message. URL-encoded IDs are automatically decoded before use."
+              },
+              "cc_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "address"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "default": "",
+                      "examples": [
+                        "Katherine Hughes",
+                        "Support Team"
+                      ],
+                      "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                    },
+                    "address": {
+                      "type": "string",
+                      "examples": [
+                        "kat.hughes@example.com",
+                        "support@company.org"
+                      ],
+                      "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                    }
+                  }
+                },
+                "description": "List of CC recipients; replaces all existing CCs. Omitting this field preserves existing CC recipients. Provide an empty list to clear all CC recipients."
+              },
+              "to_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "address"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "default": "",
+                      "examples": [
+                        "Katherine Hughes",
+                        "Support Team"
+                      ],
+                      "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                    },
+                    "address": {
+                      "type": "string",
+                      "examples": [
+                        "kat.hughes@example.com",
+                        "support@company.org"
+                      ],
+                      "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                    }
+                  }
+                },
+                "description": "List of TO recipients; replaces all existing TOs. Omitting this field preserves existing TO recipients. Provide an empty list to clear all TO recipients."
+              },
+              "bcc_recipients": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "address"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "default": "",
+                      "examples": [
+                        "Katherine Hughes",
+                        "Support Team"
+                      ],
+                      "description": "Optional display name for the recipient (e.g., 'Katherine Hughes')."
+                    },
+                    "address": {
+                      "type": "string",
+                      "examples": [
+                        "kat.hughes@example.com",
+                        "support@company.org"
+                      ],
+                      "description": "The SMTP email address of the recipient. For example, 'kat.hughes@example.com'."
+                    }
+                  }
+                },
+                "description": "List of BCC recipients; replaces all existing BCCs. Omitting this field preserves existing BCC recipients. Provide an empty list to clear all BCC recipients."
+              },
+              "internet_message_id": {
+                "type": "string",
+                "description": "The message ID in the format specified by RFC2822. Updatable only if isDraft = true."
+              },
+              "inference_classification": {
+                "type": "string",
+                "examples": [
+                  "focused",
+                  "other"
+                ],
+                "description": "Classification of the message for the user based on inferred relevance or importance. Possible values: 'focused' or 'other'."
+              },
+              "is_read_receipt_requested": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Indicates whether a read receipt is requested for the message."
+              },
+              "is_delivery_receipt_requested": {
+                "type": "boolean",
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Indicates whether a delivery receipt is requested for the message."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "OUTLOOK_ADD_MAIL_ATTACHMENT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_ADD_MAIL_ATTACHMENT",
+          "description": "Tool to add an attachment to an email message. Use when you have a message ID and need to attach a s...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_ADD_MAIL_ATTACHMENT"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_GET_DRAFTS_MAIL_FOLDER": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_GET_DRAFTS_MAIL_FOLDER",
+          "description": "Tool to get the drafts mail folder. Use when you need to retrieve details about the drafts folder su...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_GET_DRAFTS_MAIL_FOLDER"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_LIST_MAIL_FOLDER_MESSAGES": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_LIST_MAIL_FOLDER_MESSAGES",
+          "description": "Tool to list messages from a specific mail folder including subfolders. Use when you need to retriev...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_LIST_MAIL_FOLDER_MESSAGES"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_GET_MAIL_TIPS": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_GET_MAIL_TIPS",
+          "description": "Tool to retrieve mail tips such as automatic replies and mailbox full status. Use when you need to c...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_GET_MAIL_TIPS"
+              ]
+            }
+          }
+        },
+        "OUTLOOK_CREATE_DRAFT": {
+          "toolkit": "OUTLOOK",
+          "tool_slug": "OUTLOOK_CREATE_DRAFT",
+          "description": "Creates a new Outlook email draft with subject, body, recipients, and an optional attachment. This a...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "OUTLOOK_CREATE_DRAFT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:36:37.730Z",
+        "current_time_utc_epoch_seconds": 1786599397,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "frog",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"frog\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_GqyvRy9R9hOf"
+  }
+}

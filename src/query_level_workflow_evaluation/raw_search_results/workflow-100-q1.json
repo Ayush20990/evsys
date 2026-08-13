@@ -1,0 +1,295 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-100-q1",
+    "workflow_id": 100,
+    "workflow_task": "Extract CRM list-entry records from Attio, join them with Attio company domains, and prepare a domain-to-owner mapping for downstream processing.",
+    "query": "Attio list entry records",
+    "intent": "Extract CRM list-entry records from Attio.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "ATTIO_POST_V2_LISTS_LIST_ENTRIES_QUERY"
+        ],
+        "purpose": "Retrieve list entries from Attio"
+      }
+    ],
+    "candidate_tools": [
+      "ATTIO_POST_V2_LISTS_LIST_ENTRIES_QUERY",
+      "ATTIO_QUERY_RECORDS"
+    ]
+  },
+  "request": {
+    "query": "Attio list entry records"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "Attio list entry records",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if list identifier unknown)] [Prerequisite]: Discover the target list using ATTIO_LIST_LISTS (match by list label; extract the nested id value).",
+            "[Optional (if list scope/record type unclear)] [Prerequisite]: Confirm list metadata using ATTIO_GET_LIST (validate expected parent record type and list configuration).",
+            "[Optional (if you need object context for parent_record_id)] [Prerequisite]: Enumerate available record objects using ATTIO_LIST_OBJECTS (pick the likely object slug/type for downstream interpretation).",
+            "[Optional (if you need stable field slugs/types or server-side filtering/sorting)] [Prerequisite]: Retrieve list attribute schema using ATTIO_LIST_ATTRIBUTES (identify entry_values slugs and value shapes, including status/stage-like fields).",
+            "[Required] [Step]: List rows using ATTIO_POST_V2_LISTS_LIST_ENTRIES_QUERY (provide required 'list'; paginate with offset/cursor up to the 500 limit; collect parent_record_id and entry_values per row).",
+            "[Optional (if actor/owner references must be human-readable)] [Next Step]: Resolve referenced_actor_id using ATTIO_LIST_WORKSPACE_MEMBERS (map by id.workspace_member_id and join back to rows).",
+            "[Fallback (if results are empty or entry_values shape is unexpected)] [Fallback]: Inspect one row using ATTIO_GET_LIST_ENTRY (confirm entry_values slugs/nesting), then re-run ATTIO_POST_V2_LISTS_LIST_ENTRIES_QUERY."
+          ],
+          "known_pitfalls": [
+            "[ATTIO_LIST_LISTS] List identifiers are nested under an id object; don\u2019t assume a flat id field.",
+            "[ATTIO_POST_V2_LISTS_LIST_ENTRIES_QUERY] The required input field name is 'list'; misnaming can fail validation or return unexpected results.",
+            "[ATTIO_POST_V2_LISTS_LIST_ENTRIES_QUERY] limit is capped at 500; full exports require continuing pagination with offset/cursor and may produce very large payloads.",
+            "[ATTIO_POST_V2_LISTS_LIST_ENTRIES_QUERY] Rows are nested (e.g., response.data.data) and entry_values fields are arrays that are often empty; treat empty arrays as missing values.",
+            "[ATTIO_LIST_WORKSPACE_MEMBERS] Join key is id.workspace_member_id (to match referenced_actor_id); responses may include personal profile fields\u2014avoid outputting them verbatim."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Helper to read first value from array-shaped values (handles scalar, option-like, and reference-like shapes)",
+              "code": "```python\ndef first_value(values,key,default=None):\n  arr=(values or {}).get(key) or []\n  if not arr: return default\n  v=arr[0] or {}\n  return v.get('value') or (v.get('option') or {}).get('title') or v.get('full_name') or v.get('target_record_id') or default\n```"
+            },
+            {
+              "description": "Extract a status/stage title from entry_values where the field stores a nested status object",
+              "code": "```python\ndef status_title(entry,slug):\n  arr=((entry.get('entry_values') or {}).get(slug) or [])\n  return ((arr[0] or {}).get('status') or {}).get('title') if arr else None\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "ATTIO_POST_V2_LISTS_LIST_ENTRIES_QUERY"
+          ],
+          "related_tool_slugs": [
+            "ATTIO_LIST_LISTS",
+            "ATTIO_GET_LIST",
+            "ATTIO_LIST_ATTRIBUTES",
+            "ATTIO_GET_LIST_ENTRY",
+            "ATTIO_LIST_WORKSPACE_MEMBERS",
+            "ATTIO_LIST_OBJECTS"
+          ],
+          "toolkits": [
+            "attio"
+          ],
+          "plan_id": "ab25cc2edb3842f2915e3eab37559f57"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "attio",
+          "has_active_connection": false,
+          "description": "Attio is a fully customizable workspace for your team's relationships and workflows.",
+          "status_message": "No Active connection for toolkit=attio. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"attio\") to create a connection BEFORE executing any attio tools."
+        }
+      ],
+      "tool_schemas": {
+        "ATTIO_POST_V2_LISTS_LIST_ENTRIES_QUERY": {
+          "toolkit": "ATTIO",
+          "tool_slug": "ATTIO_POST_V2_LISTS_LIST_ENTRIES_QUERY",
+          "description": "Tool to list entries in a given list, with the option to filter and sort results. Use when you need to retrieve records that belong to a specific list with optional filtering and sorting.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "list"
+            ],
+            "properties": {
+              "list": {
+                "type": "string",
+                "examples": [
+                  "people-list",
+                  "33ebdbe9-e529-47c9-b894-0ba25e9c15c0"
+                ],
+                "description": "A UUID or slug identifying the list to retrieve entries from"
+              },
+              "limit": {
+                "type": "integer",
+                "default": 500,
+                "maximum": 500,
+                "minimum": 1,
+                "description": "The maximum number of results to return. Defaults to 500."
+              },
+              "sorts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "direction"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Path array for sorting by related record attributes"
+                    },
+                    "field": {
+                      "type": "string",
+                      "description": "Child attribute field for nested sorting"
+                    },
+                    "attribute": {
+                      "type": "string",
+                      "description": "The attribute name to sort by"
+                    },
+                    "direction": {
+                      "enum": [
+                        "asc",
+                        "desc"
+                      ],
+                      "type": "string",
+                      "description": "Sort order: 'asc' for ascending or 'desc' for descending"
+                    }
+                  },
+                  "description": "Sort descriptor for list entry sorting"
+                },
+                "description": "An array of sort objects used to sort results. Each descriptor must contain direction ('asc' or 'desc') and either attribute or path."
+              },
+              "filter": {
+                "type": "object",
+                "description": "Filter object using list-specific attribute slugs (NOT parent object attributes). Use ATTIO_LIST_ATTRIBUTES with target='lists' to discover valid attribute slugs for this list. Supports shorthand syntax (e.g., {'attribute_slug': 'value'}) for simple equality or verbose syntax with operators like $eq, $not_empty, $in, $contains, $lt, $gt. See https://docs.attio.com/rest-api/how-to/filtering-and-sorting for complete syntax.",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "array",
+                      "items": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "offset": {
+                "type": "integer",
+                "default": 0,
+                "minimum": 0,
+                "description": "The number of results to skip over before returning. Defaults to 0."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ATTIO_LIST_LISTS": {
+          "toolkit": "ATTIO",
+          "tool_slug": "ATTIO_LIST_LISTS",
+          "description": "This tool retrieves all lists available in the Attio workspace, sorted as they appear in the sidebar. Returns list metadata only (names, IDs, configuration) \u2014 not the records/entries within those lists. To fetch actual list entries, use ATTIO_FIND_RECORD with appropriate filters. This tool is a prerequisite for many list-related operations. Requires the list_configuration:read permission scope.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "ATTIO_GET_LIST": {
+          "toolkit": "ATTIO",
+          "tool_slug": "ATTIO_GET_LIST",
+          "description": "Tool to retrieve details of a single list in your Attio workspace. Use when you need to get information about a specific list by its UUID or slug.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "list"
+            ],
+            "properties": {
+              "list": {
+                "type": "string",
+                "examples": [
+                  "33ebdbe9-e529-47c9-b894-0ba25e9c15c0",
+                  "hiring-engineering"
+                ],
+                "description": "A UUID or slug to identify the list."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ATTIO_LIST_ATTRIBUTES": {
+          "toolkit": "ATTIO",
+          "tool_slug": "ATTIO_LIST_ATTRIBUTES",
+          "description": "Tool to list the attribute schema for an Attio object or list (including slugs, types, select/status...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ATTIO_LIST_ATTRIBUTES"
+              ]
+            }
+          }
+        },
+        "ATTIO_GET_LIST_ENTRY": {
+          "toolkit": "ATTIO",
+          "tool_slug": "ATTIO_GET_LIST_ENTRY",
+          "description": "Tool to get a single list entry by its entry_id. Use when you need to retrieve detailed information ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ATTIO_GET_LIST_ENTRY"
+              ]
+            }
+          }
+        },
+        "ATTIO_LIST_WORKSPACE_MEMBERS": {
+          "toolkit": "ATTIO",
+          "tool_slug": "ATTIO_LIST_WORKSPACE_MEMBERS",
+          "description": "Tool to list workspace members (actors) so agents can reliably assign owners and resolve workspace-m...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ATTIO_LIST_WORKSPACE_MEMBERS"
+              ]
+            }
+          }
+        },
+        "ATTIO_LIST_OBJECTS": {
+          "toolkit": "ATTIO",
+          "tool_slug": "ATTIO_LIST_OBJECTS",
+          "description": "This tool retrieves a list of all available objects (both system-defined and user-defined) in the At...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ATTIO_LIST_OBJECTS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:40:21.110Z",
+        "current_time_utc_epoch_seconds": 1786599621,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "type",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"type\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_aW1UxeZZKl0H"
+  }
+}

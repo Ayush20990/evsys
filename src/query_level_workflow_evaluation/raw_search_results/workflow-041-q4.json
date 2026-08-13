@@ -1,0 +1,473 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-041-q4",
+    "workflow_id": 41,
+    "workflow_task": "Implement and release a protected budget dashboard feature by reading Google Sheets and Google Docs data, retrieving deployment secrets from Vercel, committing and merging code changes, verifying deployments, and updating a Jira issue.",
+    "query": "verify Vercel deployment status",
+    "intent": "Check that the newly merged code has successfully built and deployed on Vercel.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "VERCEL_GET_DEPLOYMENTS"
+        ],
+        "purpose": "Check Vercel deployment status"
+      }
+    ],
+    "candidate_tools": [
+      "GITHUB_COMMIT_MULTIPLE_FILES",
+      "GITHUB_CREATE_A_PULL_REQUEST",
+      "GITHUB_DELETE_A_REFERENCE",
+      "GITHUB_GET_REPOSITORY_CONTENT",
+      "GITHUB_MERGE_A_PULL_REQUEST",
+      "GOOGLEDRIVE_DOWNLOAD_FILE",
+      "GOOGLESHEETS_BATCH_GET",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "JIRA_ADD_COMMENT",
+      "JIRA_ASSIGN_ISSUE",
+      "JIRA_TRANSITION_ISSUE",
+      "VERCEL_FILTER_PROJECT_ENVS",
+      "VERCEL_GET_DEPLOYMENTS",
+      "VERCEL_GET_PROJECT_ENV"
+    ]
+  },
+  "request": {
+    "query": "verify Vercel deployment status"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "verify Vercel deployment status",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if scope is unclear)] [Prerequisite]: Identify the correct scope using VERCEL_GET_TEAMS (reuse the chosen team context in later calls).",
+            "[Optional (if project is unknown/ambiguous)] [Prerequisite]: Resolve the project using VERCEL_GET_PROJECTS (retain a stable project identifier for filtering).",
+            "[Required] [Step]: Enumerate recent deployments using VERCEL_GET_DEPLOYMENTS (apply scope/project/branch filters if available; follow pagination.next/prev until the newest relevant item is found).",
+            "[Required] [Next Step]: Select the most recent usable deployment from deployments[] using created time plus readyState/state (skip queued/building/errored/blocked when you need a healthy \u201clatest\u201d).",
+            "[Required] [Next Step]: Fetch authoritative status/metadata using VERCEL_GET_DEPLOYMENT (use idOrUrl from the chosen deployment uid/url); if non-terminal or aliasAssigned is false, re-call until terminal/assigned when you need the final hostname.",
+            "[Optional (if a canonical hostname is needed)] [Next Step]: Retrieve alias(es) using VERCEL_LIST_DEPLOYMENT_ALIASES (can be empty; fall back to URL fields from VERCEL_GET_DEPLOYMENT).",
+            "[Required (if deployment is unhealthy or details are missing)] [Fallback]: Diagnose using VERCEL_LIST_DEPLOYMENT_CHECKS (ensure you pass deploymentId), correlate timeline with VERCEL_GET_DEPLOYMENT_EVENTS2, and pull runtime evidence via VERCEL_GET_DEPLOYMENT_LOGS2 when needed."
+          ],
+          "known_pitfalls": [
+            "[VERCEL_GET_DEPLOYMENTS] Tool wrappers may nest deployments under results[0].response.data.deployments and pagination under results[0].response.data.pagination.next/prev\u2014verify JSON paths before iterating.",
+            "[VERCEL_GET_DEPLOYMENTS] 403 Forbidden can occur when the connection is unauthorized for the chosen scope/team; retry with an authorized scope.",
+            "[VERCEL_GET_DEPLOYMENT] idOrUrl must be a deployment uid or deployment URL; passing other identifiers can 404 \u201cDeployment not found\u201d.",
+            "[VERCEL_LIST_DEPLOYMENT_CHECKS] Validation can fail if called without deploymentId (passing idOrUrl may trigger a missing-field error).",
+            "[VERCEL_GET_DEPLOYMENT_EVENTS2] High-frequency diagnostics (also VERCEL_LIST_DEPLOYMENT_CHECKS and VERCEL_GET_DEPLOYMENT_LOGS2) can trigger HTTP 429\u2014keep requests ~1/sec and honor Retry-After."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract a matching project id from a saved JSON payload read from stdin (adjust JSON path to your tool wrapper)",
+              "code": "```python\nimport json,sys\np=json.load(sys.stdin)\nident='PROJECT_KEY'\nitems=p['results'][0]['response']['data'].get('projects',[])\nm=next((x for x in items if x.get('name')==ident or x.get('slug')==ident),None)\nprint(m.get('id') if m else None)\n```"
+            },
+            {
+              "description": "Extract a compact deployments table (uid, state, createdAt, url) from a saved JSON payload read from stdin",
+              "code": "```python\nimport json,sys\np=json.load(sys.stdin)\nitems=p['results'][0]['response']['data'].get('deployments',[])\nout=[{'uid':d.get('uid'),'state':d.get('readyState') or d.get('state'),'createdAt':d.get('createdAt'),'url':d.get('url')} for d in items]\nprint(out[:10])\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "VERCEL_GET_DEPLOYMENTS",
+            "VERCEL_GET_DEPLOYMENT"
+          ],
+          "related_tool_slugs": [
+            "VERCEL_GET_PROJECTS",
+            "VERCEL_GET_TEAMS",
+            "VERCEL_LIST_DEPLOYMENT_ALIASES",
+            "VERCEL_LIST_DEPLOYMENT_CHECKS",
+            "VERCEL_GET_DEPLOYMENT_EVENTS2",
+            "VERCEL_GET_DEPLOYMENT_LOGS2"
+          ],
+          "toolkits": [
+            "vercel"
+          ],
+          "plan_id": "1e546e639d524cd9842659bdf253d274"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "vercel",
+          "has_active_connection": false,
+          "description": "Vercel is a platform for frontend frameworks and static sites, enabling developers to host websites and web services that deploy instantly, scale automatically, and require minimal configuration.",
+          "status_message": "No Active connection for toolkit=vercel. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"vercel\") to create a connection BEFORE executing any vercel tools."
+        }
+      ],
+      "tool_schemas": {
+        "VERCEL_GET_DEPLOYMENTS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENTS",
+          "description": "Tool to list deployments from Vercel. Use when you need to retrieve deployment information for a project or team.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "to": {
+                "type": "integer",
+                "examples": [
+                  1612948664566
+                ],
+                "description": "Gets the deployment created before this Date timestamp. (default: current time)"
+              },
+              "app": {
+                "type": "string",
+                "examples": [
+                  "docs"
+                ],
+                "description": "Name of the deployment to filter by"
+              },
+              "sha": {
+                "type": "string",
+                "description": "Filter deployments based on the SHA"
+              },
+              "from": {
+                "type": "integer",
+                "examples": [
+                  1612948664566
+                ],
+                "description": "Gets the deployment created after this Date timestamp. (default: current time)"
+              },
+              "slug": {
+                "type": "string",
+                "description": "The Team slug to perform the request on behalf of"
+              },
+              "limit": {
+                "type": "integer",
+                "examples": [
+                  10
+                ],
+                "description": "Maximum number of deployments to list from a request"
+              },
+              "since": {
+                "type": "integer",
+                "examples": [
+                  1540095775941
+                ],
+                "description": "Get Deployments created after this JavaScript timestamp"
+              },
+              "state": {
+                "type": "string",
+                "examples": [
+                  "BUILDING,READY"
+                ],
+                "description": "Filter deployments based on their state (BUILDING, ERROR, INITIALIZING, QUEUED, READY, CANCELED)"
+              },
+              "until": {
+                "type": "integer",
+                "examples": [
+                  1540095775951
+                ],
+                "description": "Get Deployments created before this JavaScript timestamp"
+              },
+              "users": {
+                "type": "string",
+                "examples": [
+                  "kr1PsOIzqEL5Xg6M4VZcZosf,K4amb7K9dAt5R2vBJWF32bmY"
+                ],
+                "description": "Filter out deployments based on users who have created the deployment"
+              },
+              "branch": {
+                "type": "string",
+                "description": "Filter deployments based on the branch name"
+              },
+              "target": {
+                "type": "string",
+                "examples": [
+                  "production"
+                ],
+                "description": "Filter deployments based on the environment"
+              },
+              "teamId": {
+                "type": "string",
+                "description": "The Team identifier to perform the request on behalf of"
+              },
+              "projectId": {
+                "type": "string",
+                "examples": [
+                  "QmXGTs7mvAMMC7WW5ebrM33qKG32QK3h4vmQMjmY"
+                ],
+                "description": "Filter deployments from the given ID or name"
+              },
+              "projectIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "prj_123",
+                    "prj_456"
+                  ]
+                ],
+                "description": "Filter deployments from the given project IDs. Cannot be used when projectId is specified"
+              },
+              "rollbackCandidate": {
+                "type": "boolean",
+                "description": "Filter deployments based on their rollback candidacy"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_GET_DEPLOYMENT": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENT",
+          "description": "Tool to get a deployment by ID or URL. Use when you need to retrieve detailed information about a specific deployment.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "idOrUrl"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string",
+                "description": "The Team slug to perform the request on behalf of."
+              },
+              "teamId": {
+                "type": "string",
+                "description": "The Team identifier to perform the request on behalf of."
+              },
+              "idOrUrl": {
+                "type": "string",
+                "examples": [
+                  "dpl_89qyp1cskzkLrVicDaZoDbjyHuDJ"
+                ],
+                "description": "The unique identifier or hostname of the deployment."
+              },
+              "withGitRepoInfo": {
+                "type": "string",
+                "examples": [
+                  "true"
+                ],
+                "description": "Whether to add in gitRepo information."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_GET_PROJECTS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_PROJECTS",
+          "description": "Tool to retrieve a list of projects from Vercel. Use this to get project information with optional filtering by repository, team, or other criteria.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "examples": [
+                  "1540095775941"
+                ],
+                "description": "Query only projects updated after the given timestamp or continuation token."
+              },
+              "repo": {
+                "type": "string",
+                "examples": [
+                  "vercel/next.js"
+                ],
+                "description": "Filter results by repo. Also used for project count."
+              },
+              "slug": {
+                "type": "string",
+                "examples": [
+                  "my-team"
+                ],
+                "description": "The Team slug to perform the request on behalf of."
+              },
+              "limit": {
+                "type": "string",
+                "examples": [
+                  "20"
+                ],
+                "description": "Limit the number of projects returned."
+              },
+              "repoId": {
+                "type": "string",
+                "examples": [
+                  "123456789"
+                ],
+                "description": "Filter results by Repository ID."
+              },
+              "search": {
+                "type": "string",
+                "examples": [
+                  "my-app"
+                ],
+                "description": "Search projects by the name field."
+              },
+              "teamId": {
+                "type": "string",
+                "examples": [
+                  "team_ABC123"
+                ],
+                "description": "The Team identifier to perform the request on behalf of."
+              },
+              "repoUrl": {
+                "type": "string",
+                "examples": [
+                  "https://github.com/vercel/next.js"
+                ],
+                "description": "Filter results by Repository URL."
+              },
+              "deprecated": {
+                "type": "boolean",
+                "examples": [
+                  false
+                ],
+                "description": "Filter results by deprecated projects."
+              },
+              "edgeConfigId": {
+                "type": "string",
+                "examples": [
+                  "ecfg_abc123"
+                ],
+                "description": "Filter results by connected Edge Config ID."
+              },
+              "excludeRepos": {
+                "type": "string",
+                "examples": [
+                  "vercel/next.js"
+                ],
+                "description": "Filter results by excluding those projects that belong to a repo."
+              },
+              "staticIpsEnabled": {
+                "enum": [
+                  "0",
+                  "1"
+                ],
+                "type": "string",
+                "examples": [
+                  "1"
+                ],
+                "description": "Filter results by projects with Static IPs enabled. Use '1' for enabled, '0' for disabled."
+              },
+              "buildMachineTypes": {
+                "type": "string",
+                "examples": [
+                  "default,enhanced"
+                ],
+                "description": "Filter results by build machine types. Accepts comma-separated values. Use 'default' for projects without a build machine type set."
+              },
+              "edgeConfigTokenId": {
+                "type": "string",
+                "examples": [
+                  "ect_abc123"
+                ],
+                "description": "Filter results by connected Edge Config Token ID."
+              },
+              "gitForkProtection": {
+                "enum": [
+                  "0",
+                  "1"
+                ],
+                "type": "string",
+                "examples": [
+                  "1"
+                ],
+                "description": "Specifies whether PRs from Git forks should require a team member's authorization before it can be deployed. Use '1' for enabled, '0' for disabled."
+              },
+              "elasticConcurrencyEnabled": {
+                "enum": [
+                  "0",
+                  "1"
+                ],
+                "type": "string",
+                "examples": [
+                  "1"
+                ],
+                "description": "Filter results by projects with elastic concurrency enabled. Use '1' for enabled, '0' for disabled."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "VERCEL_GET_TEAMS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_TEAMS",
+          "description": "Tool to list all teams accessible to the authenticated user with detailed information. Use when you ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_GET_TEAMS"
+              ]
+            }
+          }
+        },
+        "VERCEL_LIST_DEPLOYMENT_ALIASES": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_LIST_DEPLOYMENT_ALIASES",
+          "description": "Tool to list all aliases assigned to a specific deployment. Use when you need to retrieve the aliase...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_LIST_DEPLOYMENT_ALIASES"
+              ]
+            }
+          }
+        },
+        "VERCEL_LIST_DEPLOYMENT_CHECKS": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_LIST_DEPLOYMENT_CHECKS",
+          "description": "Tool to retrieve a list of checks for a specific deployment. Use after a deployment to inspect check...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_LIST_DEPLOYMENT_CHECKS"
+              ]
+            }
+          }
+        },
+        "VERCEL_GET_DEPLOYMENT_EVENTS2": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENT_EVENTS2",
+          "description": "Tool to get deployment events for a specific Vercel deployment by ID or URL. Use when you need to re...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_GET_DEPLOYMENT_EVENTS2"
+              ]
+            }
+          }
+        },
+        "VERCEL_GET_DEPLOYMENT_LOGS2": {
+          "toolkit": "VERCEL",
+          "tool_slug": "VERCEL_GET_DEPLOYMENT_LOGS2",
+          "description": "Tool to retrieve runtime logs for a specific Vercel deployment by project and deployment ID. Use whe...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "VERCEL_GET_DEPLOYMENT_LOGS2"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:33:28.056Z",
+        "current_time_utc_epoch_seconds": 1786599208,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "cave",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"cave\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_oFnSBqy95Go9"
+  }
+}

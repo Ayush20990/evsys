@@ -1,0 +1,252 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-025-q1",
+    "workflow_id": 25,
+    "workflow_task": "Find relevant job listings from public web/job sources, tailor them to a software profile, and email the curated list through Gmail.",
+    "query": "search public job boards for software engineer listings",
+    "intent": "Find relevant job listings from public web and job sources matching a software profile.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "COMPOSIO_SEARCH_WEB"
+        ],
+        "purpose": "search public job boards on the web"
+      }
+    ],
+    "candidate_tools": [
+      "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+      "COMPOSIO_SEARCH_WEB",
+      "GMAIL_CREATE_EMAIL_DRAFT",
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_GET_PROFILE",
+      "GMAIL_PROXY_EXECUTE",
+      "GMAIL_SEND_EMAIL",
+      "LINKEDIN_PROXY_EXECUTE"
+    ]
+  },
+  "request": {
+    "query": "search public job boards for software engineer listings"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search public job boards for software engineer listings",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Confirm the query intent (role + location/remote) and add site/domain qualifiers for public professional-networking posts and public job boards/employer career pages using COMPOSIO_SEARCH_WEB (keeps results relevant).",
+            "[Required] [Step]: Discover candidate listings/posts using COMPOSIO_SEARCH_WEB (capture titles, snippets, and URLs for shortlisting).",
+            "[Required] [Next Step]: Verify each shortlisted URL using COMPOSIO_SEARCH_FETCH_URL_CONTENT (extract role title, location/work arrangement, requirements, and application method/link when present).",
+            "[Optional (if you want fresher signal or announcements)] [Next Step]: Supplement discovery using COMPOSIO_SEARCH_NEWS (find recent mentions that point to canonical career/listing pages, then verify via COMPOSIO_SEARCH_FETCH_URL_CONTENT).",
+            "[Required] [Fallback]: If results are sparse/noisy or dominated by aggregators, re-run COMPOSIO_SEARCH_WEB with narrower role terms and stricter employer/ATS/job-board domain targeting, then re-verify via COMPOSIO_SEARCH_FETCH_URL_CONTENT."
+          ],
+          "known_pitfalls": [
+            "[COMPOSIO_SEARCH_WEB] Broad OR-heavy queries can overwhelm relevance; iteratively tighten to a couple core role phrases plus one qualifier.",
+            "[COMPOSIO_SEARCH_WEB] Results may include unrelated or aggregator pages even when queries look specific; filter before spending fetch calls.",
+            "[COMPOSIO_SEARCH_FETCH_URL_CONTENT] JS-heavy, gated, or login-required pages may return partial/empty text; treat missing key fields as unverified.",
+            "[COMPOSIO_SEARCH_NEWS] Articles may link to syndicated/aggregator pages rather than the original source; fetch and validate the final target page before extracting details."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "COMPOSIO_SEARCH_WEB",
+            "COMPOSIO_SEARCH_FETCH_URL_CONTENT"
+          ],
+          "related_tool_slugs": [
+            "COMPOSIO_SEARCH_NEWS"
+          ],
+          "toolkits": [
+            "composio_search"
+          ],
+          "plan_id": "9c5c8f9c4a4d40329c2beb58c86cf5de"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "composio_search",
+          "has_active_connection": true,
+          "description": "Composio Search provides comprehensive web search across travel (flights, hotels, events), e-commerce (Amazon, Walmart, shopping), financial markets, news, academic research, images, and location services.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        }
+      ],
+      "tool_schemas": {
+        "COMPOSIO_SEARCH_WEB": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_WEB",
+          "description": "Perform a web search using the Exa API. Returns a nested structure: narrative summary under results.answer, sources under results.citations (and optionally results.organic_results). Prioritize results.citations as primary evidence over results.answer, which can be vague. Only indexes publicly available content \u2014 no paywalled, login-gated, or private content. No date filters enforced; include recency terms in query and verify dates in snippets manually. Throttle to ~1\u20132 requests/second; bursty queries trigger HTTP 429. Large responses may be stored remotely \u2014 use structure_info to locate results.answer and results.citations.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "Coffee"
+                ],
+                "description": "The search query for the Composio Exa API. Must be non-empty; using any other parameter name (e.g., 'q') causes an invalid-request error. Include qualifiers (year, region, platform, intent) for better results \u2014 broad queries return generic content; excessive site: or quoted-term filters can return zero results. Add disambiguating terms (city, role, domain) when searching for people or organizations with common names."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_FETCH_URL_CONTENT": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+          "description": "Fetch and extract clean, readable page text (markdown) from public web pages (HTML content) using the Exa API. Use when you need to retrieve actual content from search results or documentation links to extract setup steps, requirements, or citations. Only works with web page URLs - does not support direct links to images, PDFs, or other binary files.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "urls"
+            ],
+            "properties": {
+              "text": {
+                "type": "boolean",
+                "default": true,
+                "description": "Include extracted markdown text content from the page. Defaults to true."
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "https://example.com/article",
+                    "https://docs.python.org/"
+                  ]
+                ],
+                "description": "List of public URLs to web pages (HTML content) to fetch content from. URLs must be valid and publicly accessible. Do not use direct links to images (.jpg, .png, .gif), PDFs, or other binary files - use web page URLs only. Also accepts a single URL string."
+              },
+              "extras": {
+                "type": "object",
+                "description": "Additional content options like imageLinks or links counts (e.g., {'imageLinks': 3, 'links': 5}).",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "summary": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Include AI-generated summary of the page content. Can be boolean or object with query/schema options."
+              },
+              "max_characters": {
+                "type": "integer",
+                "description": "Maximum number of characters to extract from each page. Maps to text.maxCharacters in Exa API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "COMPOSIO_SEARCH_NEWS": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_NEWS",
+          "description": "Search for the latest news articles and current events with smart filtering. Searches news-oriented sources only (not blogs, docs, or company pages). Results nest under `data.results.news_results`; a 200 response with empty `news_results` or `news_results_state: 'Fully empty'` means no results \u2014 broaden query or `when` window. Auto-correction (`showing_results_for`) can silently redirect queries; verify returned articles match intended topic. Only first page returned by default; follow `pagination.next` for more pages. Supports 100+ languages and countries. Use advanced operators like 'site:' for publisher filtering directly in your query. Examples: query=\"artificial intelligence\" + when=\"w\" for past week's AI news query=\"climate change\" + gl=\"us\" + hl=\"en\" for US climate news query=\"business news\" + when=\"d\" for today's business news query=\"site:bbc.com tesla\" + when=\"d\" for today's BBC Tesla news",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "gl": {
+                "type": "string",
+                "examples": [
+                  "us",
+                  "uk",
+                  "ca",
+                  "au",
+                  "de",
+                  "fr",
+                  "jp",
+                  "in",
+                  "br",
+                  "mx"
+                ],
+                "description": "Country code for news region (ISO 3166-1 alpha-2). Determines which country's news sources to prioritize."
+              },
+              "hl": {
+                "type": "string",
+                "examples": [
+                  "en",
+                  "es",
+                  "fr",
+                  "de",
+                  "pt",
+                  "it",
+                  "ja",
+                  "ko",
+                  "zh-cn",
+                  "zh-tw",
+                  "ar",
+                  "hi",
+                  "ru"
+                ],
+                "description": "Language code for news interface and results. Most languages use ISO 639-1 codes (e.g., 'en', 'es'). Chinese requires regional variants: 'zh-cn' (Simplified) or 'zh-tw' (Traditional). Standalone 'zh' is normalized to 'zh-cn'."
+              },
+              "when": {
+                "type": "string",
+                "examples": [
+                  "d",
+                  "w",
+                  "m",
+                  "y"
+                ],
+                "description": "Time filter for news articles. 'd' = past day, 'w' = past week, 'm' = past month, 'y' = past year. These are coarse UTC-based buckets with no finer granularity; filter `published_at` client-side for precise ranges. Combining narrow queries with strict `when` filters frequently returns zero results; broaden either before concluding no data exists."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "artificial intelligence",
+                  "climate change",
+                  "site:bbc.com technology",
+                  "when:7d startup funding",
+                  "Tesla stock market",
+                  "COVID-19 vaccine news"
+                ],
+                "description": "Search query for news articles. Supports advanced operators like 'site:', 'when:', etc. Cannot be used with topic_token, publication_token, or story_token."
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  0,
+                  10,
+                  20,
+                  30
+                ],
+                "description": "Result offset for pagination. Each page typically contains 10 results. Use multiples of 10 (0, 10, 20, 30, ...) to navigate pages. Stop paginating when a page returns no new results."
+              }
+            }
+          },
+          "hasFullSchema": true
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:31:04.765Z",
+        "current_time_utc_epoch_seconds": 1786599064,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "weak",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"weak\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) Connections active, proceed to next step",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_Qr7qkor7yfyi"
+  }
+}

@@ -1,0 +1,294 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-073-q3",
+    "workflow_id": 73,
+    "workflow_task": "Manage a large operational workflow across Google Tasks, Xero, and Notion: update and move task records, create and revise invoices, record payments, consolidate Notion rules, and track operational follow-ups.",
+    "query": "record payments in Xero",
+    "intent": "Log and reconcile received payments against outstanding invoices in Xero.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "XERO_CREATE_PAYMENT"
+        ],
+        "purpose": "Record and reconcile payments in Xero"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLECALENDAR_GET_CURRENT_DATE_TIME",
+      "GOOGLETASKS_DELETE_TASK",
+      "GOOGLETASKS_INSERT_TASK",
+      "GOOGLETASKS_LIST_TASKS",
+      "GOOGLETASKS_PATCH_TASK",
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_FETCH_BLOCK_CONTENTS",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_REPLACE_PAGE_CONTENT",
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_SEARCH_NOTION_PAGE",
+      "XERO_CREATE_CONTACT",
+      "XERO_CREATE_INVOICE",
+      "XERO_CREATE_PAYMENT",
+      "XERO_GET_CONTACTS",
+      "XERO_GET_INVOICE",
+      "XERO_LIST_INVOICES",
+      "XERO_POST_INVOICE_UPDATE"
+    ]
+  },
+  "request": {
+    "query": "record payments in Xero"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "record payments in Xero",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Prerequisite]: Identify the active tenant connection using XERO_GET_CONNECTIONS (select correct tenant before any reads/writes).",
+            "[Required] [Step]: Retrieve candidate invoices using XERO_LIST_INVOICES (apply status/date/contact filters; handle pagination if many results).",
+            "[Optional (if you need full validation before payment)] [Prerequisite]: Fetch invoice details using XERO_GET_INVOICE (confirm invoice status, currency, and outstanding amount).",
+            "[Optional (if bank account context is needed)] [Prerequisite]: Retrieve chart of accounts using XERO_LIST_ACCOUNTS (choose the correct BANK account for the payment).",
+            "[Required] [Step]: Create and allocate the payment using XERO_CREATE_PAYMENT (link to the intended invoice and selected bank account; confirm amount/date before submitting).",
+            "[Optional (to verify/audit)] [Next Step]: Confirm results using XERO_LIST_PAYMENTS (ensure payment is recorded); optionally re-check invoice balance via XERO_GET_INVOICE and cross-check with XERO_LIST_BANK_TRANSACTIONS if reconciling."
+          ],
+          "known_pitfalls": [
+            "[XERO_GET_CONNECTIONS] Multiple tenants can be returned; using the wrong tenant will list/create records in the wrong organization.",
+            "[XERO_GET_CONNECTIONS] Auth/connection can remain INITIATED and polling may time out (~181s); ensure the connection is fully authorized before proceeding.",
+            "[XERO_LIST_INVOICES] Filters matter: attempting to pay non-payable invoices (e.g., wrong status/outstanding balance) leads to downstream validation failures.",
+            "[XERO_CREATE_PAYMENT] Requires correct invoice linkage and a valid BANK-type account from XERO_LIST_ACCOUNTS; incorrect account selection can cause validation errors or misclassification.",
+            "[XERO_LIST_PAYMENTS] Verification may be incomplete if you only rely on invoice lists; explicitly query payments to confirm allocation to the intended invoice."
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "XERO_GET_CONNECTIONS",
+            "XERO_LIST_INVOICES",
+            "XERO_CREATE_PAYMENT",
+            "XERO_LIST_ACCOUNTS"
+          ],
+          "related_tool_slugs": [
+            "XERO_GET_INVOICE",
+            "XERO_LIST_PAYMENTS",
+            "XERO_LIST_BANK_TRANSACTIONS"
+          ],
+          "toolkits": [
+            "xero"
+          ],
+          "plan_id": "8443cce3bc424900ac5700e9d835ac3a"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "xero",
+          "has_active_connection": false,
+          "description": "Xero is a cloud-based accounting software for small businesses, providing invoicing, bank reconciliation, bookkeeping, and financial reporting in real time",
+          "status_message": "No Active connection for toolkit=xero. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"xero\") to create a connection BEFORE executing any xero tools."
+        }
+      ],
+      "tool_schemas": {
+        "XERO_GET_CONNECTIONS": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_GET_CONNECTIONS",
+          "description": "Tool to list active Xero connections. Use to retrieve all current tenant connections for the authenticated user and resolve the correct tenant_id before making data requests. When multiple tenants are returned, never assume the first connection is correct \u2014 always explicitly pass the intended tenant_id to every subsequent call. Using a wrong or stale tenant_id can silently return or modify data for a different organisation.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "XERO_LIST_INVOICES": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_LIST_INVOICES",
+          "description": "Retrieve a list of invoices from Xero. Results include both sales invoices (Type=ACCREC) and bills (Type=ACCPAY) by default; filter by Type in the `where` clause when only one is needed. Supports filtering by status, contact, date range, and pagination.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Page number for paginated results. Returns up to 100 invoices per page; increment page and check `pagination.pageCount` in the response to retrieve all records."
+              },
+              "order": {
+                "type": "string",
+                "description": "Sort by field, e.g. Date DESC or InvoiceNumber ASC."
+              },
+              "where": {
+                "type": "string",
+                "description": "OData-style filter, e.g. Status==\"AUTHORISED\" AND Total>100 Malformed expressions silently return empty results rather than an error."
+              },
+              "Statuses": {
+                "type": "string",
+                "description": "Comma-separated list of invoice statuses to filter by (e.g., DRAFT, SUBMITTED, AUTHORISED, PAID)."
+              },
+              "tenantId": {
+                "type": "string",
+                "description": "Xero tenant/organization ID. If not provided, uses the first connected tenant. When multiple organisations are connected, always pass this explicitly to avoid querying the wrong organisation's data."
+              },
+              "ContactIDs": {
+                "type": "string",
+                "description": "Comma-separated list of Contact IDs to filter invoices by contact."
+              },
+              "InvoiceIDs": {
+                "type": "string",
+                "description": "Comma-separated list of Invoice IDs to filter by."
+              },
+              "createdByMyApp": {
+                "type": "boolean",
+                "description": "Filter to invoices created by your app when true."
+              },
+              "includeArchived": {
+                "type": "boolean",
+                "description": "Include archived invoices when true."
+              },
+              "If-Modified-Since": {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp to return only invoices modified since this date."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "XERO_CREATE_PAYMENT": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_CREATE_PAYMENT",
+          "description": "Create a payment in Xero to link an invoice with a bank account transaction.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "InvoiceID",
+              "AccountID",
+              "Amount"
+            ],
+            "properties": {
+              "Date": {
+                "type": "string",
+                "description": "Payment date in YYYY-MM-DD format."
+              },
+              "Amount": {
+                "type": "number",
+                "description": "Payment amount."
+              },
+              "AccountID": {
+                "type": "string",
+                "description": "Xero Account ID (bank account) for the payment."
+              },
+              "InvoiceID": {
+                "type": "string",
+                "description": "Xero Invoice ID that this payment is for."
+              },
+              "Reference": {
+                "type": "string",
+                "description": "Payment reference or description."
+              },
+              "tenant_id": {
+                "type": "string",
+                "description": "Xero tenant/organization ID. If not provided, uses the first connected tenant."
+              },
+              "CurrencyRate": {
+                "type": "number",
+                "description": "Exchange rate for foreign currency payments."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "XERO_LIST_ACCOUNTS": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_LIST_ACCOUNTS",
+          "description": "Retrieve chart of accounts from Xero. Returns all accounting codes used for categorizing transactions. Use AccountID (not name or code) as the unique identifier for accounts. Results may be paginated; increment the page parameter until empty results are returned to avoid missing accounts in large organisations.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "order": {
+                "type": "string",
+                "description": "Sort by field, e.g. Code ASC or Name DESC."
+              },
+              "where": {
+                "type": "string",
+                "description": "OData-style filter, e.g. Status==\"ACTIVE\" AND Type==\"EXPENSE\" Invalid syntax silently returns empty or misleading results rather than an explicit error. Status-based filters (e.g., Status==\"ACTIVE\") exclude archived accounts; omit to retrieve full historical chart."
+              },
+              "tenant_id": {
+                "type": "string",
+                "description": "Xero tenant/organization ID. If not provided, uses the first connected tenant. Always specify when multiple organisations exist \u2014 omitting it defaults to the first tenant and may return another entity's data."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "XERO_GET_INVOICE": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_GET_INVOICE",
+          "description": "Retrieve a specific invoice by ID from Xero. Returns full invoice details including line items and status.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "invoice_id"
+            ],
+            "properties": {
+              "unitdp": {
+                "type": "integer",
+                "description": "Number of decimal places for unit amounts (default 4)."
+              },
+              "tenant_id": {
+                "type": "string",
+                "description": "Xero tenant/organization ID. If not provided, uses the first connected tenant. In multi-org setups, always pass explicitly to avoid querying the wrong organisation's data."
+              },
+              "invoice_id": {
+                "type": "string",
+                "description": "Xero Invoice ID to retrieve. Must be the internal UUID (e.g. `a1b2c3d4-...`), not the human-readable InvoiceNumber (e.g. `INV-0001`); obtain the UUID via XERO_LIST_INVOICES first."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "XERO_LIST_PAYMENTS": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_LIST_PAYMENTS",
+          "description": "Retrieve list of payments from Xero. Payments link invoices to bank transactions; invoices may have ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "XERO_LIST_PAYMENTS"
+              ]
+            }
+          }
+        },
+        "XERO_LIST_BANK_TRANSACTIONS": {
+          "toolkit": "XERO",
+          "tool_slug": "XERO_LIST_BANK_TRANSACTIONS",
+          "description": "Retrieve bank transactions from Xero. Includes SPEND, RECEIVE, and transfer types; unfiltered result...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "XERO_LIST_BANK_TRANSACTIONS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:37:12.365Z",
+        "current_time_utc_epoch_seconds": 1786599432,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "mine",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"mine\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_b4Crwd2GPwsM"
+  }
+}

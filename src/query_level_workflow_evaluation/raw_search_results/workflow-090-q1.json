@@ -1,0 +1,265 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-090-q1",
+    "workflow_id": 90,
+    "workflow_task": "Create and refine a Google Slides presentation by inspecting existing slides and layouts, adding styled slides, inserting an image, and verifying the rendered result.",
+    "query": "inspect existing google slides layouts and presentation structure",
+    "intent": "this query searches for capabilities to read existing slide content, inspect slide dimensions, and retrieve available slide layouts from a Google Slides presentation",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLESLIDES_PRESENTATIONS_GET"
+        ],
+        "purpose": "retrieve presentation structure"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "GOOGLESLIDES_PRESENTATIONS_PAGES_GET"
+        ],
+        "purpose": "inspect specific slide, layout, or master details"
+      }
+    ],
+    "candidate_tools": [
+      "GOOGLEDRIVE_UPLOAD_FILE",
+      "GOOGLESLIDES_GET_PAGE_THUMBNAIL2",
+      "GOOGLESLIDES_PRESENTATIONS_BATCH_UPDATE",
+      "GOOGLESLIDES_PRESENTATIONS_GET",
+      "GOOGLESLIDES_PRESENTATIONS_PAGES_GET"
+    ]
+  },
+  "request": {
+    "query": "inspect existing google slides layouts and presentation structure"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "inspect existing google slides layouts and presentation structure",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if presentation identifier unknown)] [Prerequisite]: Locate the presentation file using GOOGLEDRIVE_FIND_FILE (use returned file ID as the presentation identifier).",
+            "[Optional (if file type/access unclear)] [Prerequisite]: Verify it is a readable presentation using GOOGLEDRIVE_GET_FILE_METADATA.",
+            "[Required] [Step]: Retrieve layout inventory using GOOGLESLIDES_PRESENTATIONS_GET (use a minimal fields projection for layouts(objectId,layoutProperties(displayName)) to limit payload).",
+            "[Required] [Next Step]: Build a mapping of layoutProperties.displayName \u2192 objectId from the GOOGLESLIDES_PRESENTATIONS_GET response (treat objectId as the stable identifier).",
+            "[Optional (if you need which layouts are applied)] [Next Step]: Re-run GOOGLESLIDES_PRESENTATIONS_GET for slides(objectId,slideProperties(layoutObjectId)) and join slideProperties.layoutObjectId to the layout mapping.",
+            "[Optional (if you need one page\u2019s details)] [Next Step]: Fetch that page using GOOGLESLIDES_PRESENTATIONS_PAGES_GET (confirm the page\u2019s layout linkage/metadata).",
+            "[Optional (only with explicit approval if permission blocks reads)] [Fallback]: Add access using GOOGLEDRIVE_CREATE_PERMISSION, then retry GOOGLESLIDES_PRESENTATIONS_GET."
+          ],
+          "known_pitfalls": [
+            "[GOOGLESLIDES_PRESENTATIONS_GET] Missing presentation identifier can fail with an error indicating the presentationId field is required.",
+            "[GOOGLESLIDES_PRESENTATIONS_GET] 400 INVALID_ARGUMENT can occur if the fields selector includes invalid paths (non-existent layout fields).",
+            "[GOOGLESLIDES_PRESENTATIONS_GET] Omitting fields may return a very large response (observed ~150k tokens); prefer a minimal projection.",
+            "[GOOGLESLIDES_PRESENTATIONS_GET] Some responses are nested under results[0].response.data; unwrap before iterating layouts[].",
+            "[GOOGLESLIDES_PRESENTATIONS_GET] layoutProperties.displayName may be duplicated or vary by whitespace/special characters; do not assume uniqueness\u2014prefer objectId."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Parse an in-memory response dict to compute layout inventory and slide-to-layout usage counts",
+              "code": "```python\nlayouts={l.get('objectId'):l.get('layoutProperties',{}).get('displayName') for l in pres.get('layouts',[])}\nusage={}\nfor i,s in enumerate(pres.get('slides',[]),1):\n lid=s.get('slideProperties',{}).get('layoutObjectId')\n usage.setdefault(layouts.get(lid,'Unknown'),[]).append(i)\nprint(sorted(((k,len(v)) for k,v in usage.items()), key=lambda x:(-x[1],x[0])))\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLESLIDES_PRESENTATIONS_GET"
+          ],
+          "related_tool_slugs": [
+            "GOOGLESLIDES_PRESENTATIONS_PAGES_GET",
+            "GOOGLESLIDES_GET_PAGE_THUMBNAIL2",
+            "GOOGLEDRIVE_FIND_FILE",
+            "GOOGLEDRIVE_GET_FILE_METADATA",
+            "GOOGLEDRIVE_CREATE_PERMISSION"
+          ],
+          "toolkits": [
+            "googledrive",
+            "googleslides"
+          ],
+          "plan_id": "71a1081a032448a5b6f89888ded03304"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledrive",
+          "has_active_connection": false,
+          "description": "Google Drive is a cloud storage solution for uploading, sharing, and collaborating on files across devices, with robust search and offline access. Special usecases: Sharing google sheets/docs or any G-Suite files with specific emails.",
+          "status_message": "No Active connection for toolkit=googledrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledrive\") to create a connection BEFORE executing any googledrive tools."
+        },
+        {
+          "toolkit": "googleslides",
+          "has_active_connection": false,
+          "description": "Google Slides is a cloud-based presentation editor with real-time collaboration, template gallery, and integration with other Google Workspace apps",
+          "status_message": "No Active connection for toolkit=googleslides. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googleslides\") to create a connection BEFORE executing any googleslides tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLESLIDES_PRESENTATIONS_GET": {
+          "toolkit": "GOOGLESLIDES",
+          "tool_slug": "GOOGLESLIDES_PRESENTATIONS_GET",
+          "description": "Tool to retrieve the latest version of a presentation. Use after obtaining the presentation ID.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "type": "string",
+                "examples": [
+                  "presentationId,title,slides",
+                  "slides(objectId,pageElements(objectId,shape(text)))"
+                ],
+                "description": "Comma-separated selector specifying which fields to include in a partial response. Nested fields use parentheses that must be properly balanced. Top-level fields: presentationId, title, locale, revisionId, pageSize, slides, masters, layouts, notesMaster. For slides/masters/layouts, valid Page fields: objectId, pageType, pageElements, pageProperties, revisionId. For pageElements, valid fields: objectId, size, transform, title, description, shape, image, video, line, table, wordArt, elementGroup, sheetsChart, speakerSpotlight. For shape, valid fields: shapeType, text, shapeProperties, placeholder. Note: 'autofit' is under shapeProperties, not directly under shape. Use shape(shapeProperties(autofit)), not shape(autofit). Examples: 'presentationId,title', 'slides(objectId,pageElements(objectId,size))', 'slides(objectId,pageElements(objectId,shape(shapeType,text,shapeProperties(autofit))))'"
+              },
+              "presentationId": {
+                "type": "string",
+                "examples": [
+                  "1a2B3c4D5eF6gH7iJ8kL"
+                ],
+                "description": "The ID of the presentation to retrieve. Either presentation_id or presentation_name must be provided."
+              },
+              "presentationName": {
+                "type": "string",
+                "examples": [
+                  "Q4 Sales Report",
+                  "Monthly Meeting Slides"
+                ],
+                "description": "The name of the presentation to search for and retrieve. If provided, the action will search Google Drive for a presentation with this name. Either presentation_id or presentation_name must be provided."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESLIDES_PRESENTATIONS_PAGES_GET": {
+          "toolkit": "GOOGLESLIDES",
+          "tool_slug": "GOOGLESLIDES_PRESENTATIONS_PAGES_GET",
+          "description": "Tool to get the latest version of a specific page in a presentation. Use when you need to inspect slide, layout, master, or notes page details.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "presentationId",
+              "pageObjectId"
+            ],
+            "properties": {
+              "pageObjectId": {
+                "type": "string",
+                "description": "The object ID of the page to retrieve."
+              },
+              "presentationId": {
+                "type": "string",
+                "description": "The ID of the presentation from which to fetch the page."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLESLIDES_GET_PAGE_THUMBNAIL2": {
+          "toolkit": "GOOGLESLIDES",
+          "tool_slug": "GOOGLESLIDES_GET_PAGE_THUMBNAIL2",
+          "description": "Tool to generate a thumbnail of the latest version of a specified page. Use when you need a preview image URL for a slide page. This request counts as an expensive read request for quota purposes.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "presentationId",
+              "pageObjectId"
+            ],
+            "properties": {
+              "pageObjectId": {
+                "type": "string",
+                "examples": [
+                  "p"
+                ],
+                "description": "The object ID of the page whose thumbnail to retrieve."
+              },
+              "presentationId": {
+                "type": "string",
+                "examples": [
+                  "1l0UiR1k56BzDPiAfOHNbkbHsegbTn3BZMvomy02N0cM"
+                ],
+                "description": "The ID of the presentation to retrieve."
+              },
+              "thumbnailProperties.mimeType": {
+                "type": "string",
+                "const": "PNG",
+                "examples": [
+                  "PNG"
+                ],
+                "description": "The optional mime type of the thumbnail image. Defaults to PNG if not specified."
+              },
+              "thumbnailProperties.thumbnailSize": {
+                "enum": [
+                  "THUMBNAIL_SIZE_UNSPECIFIED",
+                  "LARGE",
+                  "MEDIUM",
+                  "SMALL"
+                ],
+                "type": "string",
+                "examples": [
+                  "LARGE"
+                ],
+                "description": "The optional thumbnail image size. LARGE = 1600px, MEDIUM = 800px, SMALL = 200px. Defaults to LARGE if not specified."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDRIVE_FIND_FILE": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_FIND_FILE",
+          "description": "The comprehensive Google Drive search tool that handles all file and folder discovery needs. Use thi...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_FIND_FILE"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_GET_FILE_METADATA": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_GET_FILE_METADATA",
+          "description": "Tool to get a file's metadata by ID. Use to verify `mimeType`, `parents`, and `trashed` status befor...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_GET_FILE_METADATA"
+              ]
+            }
+          }
+        },
+        "GOOGLEDRIVE_CREATE_PERMISSION": {
+          "toolkit": "GOOGLEDRIVE",
+          "tool_slug": "GOOGLEDRIVE_CREATE_PERMISSION",
+          "description": "Tool to create a permission for a file or shared drive. Use when you need to share a file or folder ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDRIVE_CREATE_PERMISSION"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:39:04.676Z",
+        "current_time_utc_epoch_seconds": 1786599544,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "fell",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"fell\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_WInRe5CTO9-U"
+  }
+}

@@ -1,0 +1,274 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-083-q3",
+    "workflow_id": 83,
+    "workflow_task": "Read files from a Microsoft cloud document library, inspect related due-diligence email context, locate supporting documents, and attempt to replace existing document contents.",
+    "query": "replace existing document contents",
+    "intent": "Update or overwrite the contents of existing documents with newly located supporting materials.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "ONE_DRIVE_UPDATE_FILE_CONTENT"
+        ],
+        "purpose": "Replace existing document contents in OneDrive"
+      }
+    ],
+    "candidate_tools": [
+      "ONE_DRIVE_DOWNLOAD_FILE",
+      "ONE_DRIVE_GET_DRIVE_ITEM_BY_SHARING_URL",
+      "ONE_DRIVE_LIST_FOLDER_CHILDREN",
+      "ONE_DRIVE_SEARCH_ITEMS",
+      "ONE_DRIVE_UPDATE_FILE_CONTENT",
+      "OUTLOOK_GET_MESSAGE",
+      "OUTLOOK_SEARCH_MESSAGES"
+    ]
+  },
+  "request": {
+    "query": "replace existing document contents"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "replace existing document contents",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if you want rollback or expect transient write failures)] [Prerequisite]: Duplicate the document using GOOGLEDOCS_COPY_DOCUMENT (apply edits to the copy).",
+            "[Optional (if exact match is uncertain, table-heavy, or a prior attempt changed 0)] [Prerequisite]: Fetch rendered text using GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT (pick short, distinctive literal anchors; note whitespace/case variants).",
+            "[Required] [Step]: Perform global find/replace using GOOGLEDOCS_REPLACE_ALL_TEXT (repeat per find_text\u2192replace_text; run specific anchors before broad ones; set match_case intentionally; optionally use regex matching; allow empty replace_text to delete; avoid empty find_text).",
+            "[Optional (if you need a quick signal, not proof)] [Next Step]: Inspect GOOGLEDOCS_REPLACE_ALL_TEXT response for replies[0].replace_all_text.occurrences_changed when present.",
+            "[Required] [Next Step]: Re-fetch using GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT (confirm new text exists and old text is absent; if output seems truncated, verify via multiple short anchors).",
+            "[Optional (if plaintext is truncated/empty, formatting must be verified, or you need bounded edits)] [Prerequisite]: Inspect structure using GOOGLEDOCS_GET_DOCUMENT_BY_ID (identify safe start_index/end_index ranges; use indices exactly as returned).",
+            "[Fallback (if global replace remains too broad/brittle after retries)] [Fallback]: Rewrite only the affected range using GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN (expect possible index adjustments), then verify via GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT."
+          ],
+          "known_pitfalls": [
+            "[GOOGLEDOCS_REPLACE_ALL_TEXT] replies[0].replace_all_text.occurrences_changed may be missing/null or 0 even when the call succeeds; treat it as a hint and verify by re-reading.",
+            "[GOOGLEDOCS_REPLACE_ALL_TEXT] Exact-match sensitivity to whitespace/newlines/tabs/casing can yield 0 replacements without error; validation fails if find_text is empty (min length 1).",
+            "[GOOGLEDOCS_REPLACE_ALL_TEXT] Bulk writes can hit HTTP 429 quota exceeded and transient 500 INTERNAL; reduce concurrency and retry with backoff (or edit a safety copy).",
+            "[GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT] Large documents may return truncated plain_text (or be incomplete for verification); use multiple anchors or fall back to GOOGLEDOCS_GET_DOCUMENT_BY_ID for structure-driven checks.",
+            "[GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN] Ranges may be auto-adjusted because the final newline of a segment can\u2019t be deleted; INVALID_ARGUMENT can occur if start_index isn\u2019t within a paragraph, and replies may not include a clear changed count\u2014verify via read-back."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Count how many times a candidate anchor appears before/after edits (for uniqueness and verification).",
+              "code": "```python\nimport re\ntext=(doc_data.get(\"data\",{}) or {}).get(\"plain_text\") or doc_data.get(\"plain_text\") or \"\"\nanchors=[\"anchor_a\",\"anchor_b\"]\n{a:len(re.findall(re.escape(a),text)) for a in anchors}\n```"
+            },
+            {
+              "description": "List paragraph text with start/end indices from GOOGLEDOCS_GET_DOCUMENT_BY_ID for bounded rewrites.",
+              "code": "```python\ncontent=((doc.get(\"data\",{}) or doc).get(\"body\",{}) or {}).get(\"content\",[])\nrows=[]\nfor el in content:\n  p=el.get(\"paragraph\")\n  if not p: continue\n  txt=\"\".join(e.get(\"textRun\",{}).get(\"content\",\"\") for e in p.get(\"elements\",[])).rstrip(\"\\n\")\n  if txt.strip(): rows.append((el.get(\"startIndex\"),el.get(\"endIndex\"),txt[:120]))\nrows[:10]\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "GOOGLEDOCS_REPLACE_ALL_TEXT"
+          ],
+          "related_tool_slugs": [
+            "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN",
+            "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+            "GOOGLEDOCS_COPY_DOCUMENT",
+            "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT"
+          ],
+          "toolkits": [
+            "googledocs"
+          ],
+          "plan_id": "b7ce9257b49b4f44849b37b9cd8e0bc0"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "googledocs",
+          "has_active_connection": false,
+          "description": "Google Docs is a cloud-based word processor with real-time collaboration, version history, and integration with other Google Workspace apps",
+          "status_message": "No Active connection for toolkit=googledocs. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googledocs\") to create a connection BEFORE executing any googledocs tools."
+        }
+      ],
+      "tool_schemas": {
+        "GOOGLEDOCS_REPLACE_ALL_TEXT": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_REPLACE_ALL_TEXT",
+          "description": "Tool to replace all occurrences of a specified text string with another text string throughout a Google Document. Use when you need to perform a global find and replace operation within a document.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "document_id",
+              "find_text",
+              "replace_text"
+            ],
+            "properties": {
+              "tab_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "tabId1",
+                    "tabId2"
+                  ]
+                ],
+                "description": "Optional. A list of specific tab IDs to perform the replacement on. If not provided, replacement occurs on all tabs."
+              },
+              "find_text": {
+                "type": "string",
+                "examples": [
+                  "old_text"
+                ],
+                "minLength": 1,
+                "description": "The text to search for in the document. Cannot be empty."
+              },
+              "match_case": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  false
+                ],
+                "description": "Indicates whether the search should be case sensitive. Defaults to False (case insensitive)."
+              },
+              "document_id": {
+                "type": "string",
+                "examples": [
+                  "12345abcdef"
+                ],
+                "description": "The ID of the document to update."
+              },
+              "replace_text": {
+                "type": "string",
+                "examples": [
+                  "new_world"
+                ],
+                "description": "The text that will replace the matched text."
+              },
+              "search_by_regex": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  false
+                ],
+                "description": "Optional. If True, the find_text is treated as a regular expression. Defaults to False."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_UPDATE_DOCUMENT_SECTION_MARKDOWN",
+          "description": "Tool to insert or replace a section of a Google Docs document with Markdown content. Use when you need to update only a section of a document by specifying start and optional end indices. Supports full Markdown formatting.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "document_id",
+              "markdown_text"
+            ],
+            "properties": {
+              "tab_id": {
+                "type": "string",
+                "examples": [
+                  "t.abc123"
+                ],
+                "description": "Optional tab ID to update with the rendered Markdown. When omitted, the first tab is updated."
+              },
+              "end_index": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Optional one-based end index of the content to replace (exclusive); must be greater than or equal to start_index. If end_index is not provided, the content is inserted at the start_index without replacing existing content. Requires start_index to be provided - if start_index is omitted (append mode), end_index is ignored. Important: Use the exact indices from GOOGLEDOCS_GET_DOCUMENT_BY_ID without modification. The Google Docs API does not allow deleting the last newline character of a document segment (body, header, footer, etc.), so ensure end_index does not include the final segment newline."
+              },
+              "document_id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                ],
+                "minLength": 10,
+                "description": "The unique ID of the Google Docs document to update. This is the alphanumeric string found in the document URL: https://docs.google.com/document/d/{DOCUMENT_ID}/edit. Valid IDs are typically 44 characters long and contain only letters, numbers, hyphens, and underscores (e.g., '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms'). To get a document ID: create a new document using GOOGLEDOCS_CREATE_DOCUMENT, or extract it from an existing document's URL. Also accepts parameter aliases: 'id', 'doc_id', 'documentId', or 'docId'."
+              },
+              "start_index": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "One-based UTF-16 code unit index where to insert or start replacement. If not provided, content will be appended to the end of the document. Use 1 to insert at the very beginning of the document. To insert at a specific position, first use GOOGLEDOCS_GET_DOCUMENT_BY_ID to retrieve the document structure and find the desired index from the body.content elements' start_index/end_index values. If the provided index equals or exceeds the document segment's end index, it will be automatically adjusted to the last valid position (end_index - 1) and a message will be included in the response."
+              },
+              "markdown_text": {
+                "type": "string",
+                "description": "Markdown content to insert or replace in the document section. Large content is automatically split into smaller batches to avoid API limits. Also accepts 'markdown', 'content', 'text', 'body', 'markdownText', or 'markdown_content'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_GET_DOCUMENT_BY_ID": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+          "description": "Retrieves an existing Google Document by its ID; will error if the document is not found.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "examples": [
+                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                  "https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
+                ],
+                "description": "The unique identifier for a native Google Docs document (typically a 44-character alphanumeric string). Accepts either a document ID or a full Google Docs URL (e.g., https://docs.google.com/document/d/{DOCUMENT_ID}/edit). When a URL is provided, the document ID will be automatically extracted. IMPORTANT: This tool only works with native Google Docs documents (mimeType application/vnd.google-apps.document), not uploaded Office files (DOCX, XLSX, etc.) stored in Google Drive. Use GOOGLEDOCS_SEARCH_DOCUMENTS to find available documents."
+              },
+              "includeTabsContent": {
+                "type": "boolean",
+                "default": false,
+                "description": "When true, request includeTabsContent=true so the response includes document.tabs with content for all tabs. When false, Google Docs returns the legacy first-tab content fields."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "GOOGLEDOCS_COPY_DOCUMENT": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_COPY_DOCUMENT",
+          "description": "Tool to create a copy of an existing Google Document. Use this to duplicate a document, for example,...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDOCS_COPY_DOCUMENT"
+              ]
+            }
+          }
+        },
+        "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT": {
+          "toolkit": "GOOGLEDOCS",
+          "tool_slug": "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT",
+          "description": "Retrieve a Google Doc by ID and return a best-effort plain-text rendering. Converts document structu...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "GOOGLEDOCS_GET_DOCUMENT_PLAINTEXT"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:38:36.396Z",
+        "current_time_utc_epoch_seconds": 1786599516,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "inch",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"inch\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_JNWZALQqg0XI"
+  }
+}

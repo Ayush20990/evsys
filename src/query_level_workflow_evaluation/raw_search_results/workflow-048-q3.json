@@ -1,0 +1,452 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-048-q3",
+    "workflow_id": 48,
+    "workflow_task": "Generate and post-process a long text-to-speech audio asset, upload it to cloud storage, research YouTube content opportunities and comments, then update YouTube channel branding metadata.",
+    "query": "youtube content research and comment analysis",
+    "intent": "Research YouTube content opportunities and analyze viewer comments.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "YOUTUBE_SEARCH_YOU_TUBE"
+        ],
+        "purpose": "Search YouTube for content opportunities"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "YOUTUBE_LIST_COMMENT_THREADS2"
+        ],
+        "purpose": "Retrieve and analyze YouTube comment threads"
+      }
+    ],
+    "candidate_tools": [
+      "ELEVENLABS_GET_USER_SUBSCRIPTION_INFO",
+      "ELEVENLABS_TEXT_TO_SPEECH",
+      "GOOGLEDRIVE_CREATE_FOLDER",
+      "GOOGLEDRIVE_RESUMABLE_UPLOAD",
+      "YOUTUBE_GET_CHANNEL_STATISTICS",
+      "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+      "YOUTUBE_LIST_COMMENT_THREADS2",
+      "YOUTUBE_SEARCH_YOU_TUBE",
+      "YOUTUBE_UPDATE_CHANNEL"
+    ]
+  },
+  "request": {
+    "query": "youtube content research and comment analysis"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "youtube content research and comment analysis",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Discover candidate videos by keyword using YOUTUBE_SEARCH_YOU_TUBE (collect items[].id.videoId plus snippet fields; optionally screen against a known channel handle to reduce off-topic results).",
+            "[Optional (if more than the first page is needed)] [Next Step]: Continue discovery by paginating YOUTUBE_SEARCH_YOU_TUBE with nextPageToken/pageToken until enough unique videoIds are gathered.",
+            "[Optional (if channelId is available and you want channel-scoped context)] [Step]: Enumerate a channel\u2019s videos using YOUTUBE_LIST_CHANNEL_VIDEOS and optionally fetch baseline channel metrics using YOUTUBE_GET_CHANNEL_STATISTICS (use to contextualize engagement).",
+            "[Optional (if you need to prioritize targets)] [Step]: Enrich and rank deduped videoIds using YOUTUBE_GET_VIDEO_DETAILS_BATCH (use YOUTUBE_VIDEO_DETAILS for spot-checking a single video before deep comment pulls).",
+            "[Required] [Step]: Retrieve discussion threads per selected videoId using YOUTUBE_LIST_COMMENT_THREADS2 (analyze top-level comments and included replies when present).",
+            "[Optional (if more threads are needed per video)] [Next Step]: Paginate YOUTUBE_LIST_COMMENT_THREADS2 with nextPageToken to collect additional pages.",
+            "[Optional (if replies/details are missing from threads)] [Fallback]: Fetch additional replies or comment details using YOUTUBE_LIST_COMMENTS (e.g., by parentId/id for high-value threads)."
+          ],
+          "known_pitfalls": [
+            "[YOUTUBE_SEARCH_YOU_TUBE] items[].id is an object; downstream calls must use items[].id.videoId (not items[].id).",
+            "[YOUTUBE_GET_VIDEO_DETAILS_BATCH] Some requested IDs return zero items (private/deleted/invalid); aggregate only returned items[].",
+            "[YOUTUBE_GET_VIDEO_DETAILS_BATCH] statistics fields (e.g., viewCount/commentCount) may arrive as strings; cast before ranking/aggregation.",
+            "[YOUTUBE_LIST_COMMENT_THREADS2] items[] can be empty with totalResults=0 (comments disabled/none); treat as a valid outcome.",
+            "[YOUTUBE_LIST_COMMENT_THREADS2] Payloads can be very large and previews may truncate; parse from the full response when collecting many threads/videos."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Extract video IDs safely from differing response shapes (search vs details)",
+              "code": "```python\ndef get_video_id_from_search_item(item):\n    return item.get('id', {}).get('videoId')\n\ndef get_video_id_from_details_item(item):\n    return item.get('id')\n```"
+            },
+            {
+              "description": "Extract top-level comment texts from stored thread responses for downstream summarization",
+              "code": "```python\nimport json\n\ndef extract_top_level_texts(path):\n    data=json.load(open(path))\n    out=[]\n    for r in data.get('results', []):\n        items=r.get('response', {}).get('data', {}).get('items', [])\n        for it in items:\n            sn=it.get('snippet', {}).get('topLevelComment', {}).get('snippet', {})\n            t=sn.get('textOriginal') or sn.get('textDisplay')\n            if t: out.append(t)\n    return out\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "YOUTUBE_SEARCH_YOU_TUBE",
+            "YOUTUBE_LIST_COMMENT_THREADS2"
+          ],
+          "related_tool_slugs": [
+            "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+            "YOUTUBE_VIDEO_DETAILS",
+            "YOUTUBE_LIST_COMMENTS",
+            "YOUTUBE_LIST_CHANNEL_VIDEOS",
+            "YOUTUBE_GET_CHANNEL_STATISTICS"
+          ],
+          "toolkits": [
+            "youtube"
+          ],
+          "plan_id": "0f1c41e1c0a44497961344fde07d864f"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "youtube",
+          "has_active_connection": false,
+          "description": "YouTube is a video-sharing platform with user-generated content, live streaming, and monetization opportunities, widely used for marketing, education, and entertainment",
+          "status_message": "No Active connection for toolkit=youtube. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"youtube\") to create a connection BEFORE executing any youtube tools."
+        }
+      ],
+      "tool_schemas": {
+        "YOUTUBE_SEARCH_YOU_TUBE": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_SEARCH_YOU_TUBE",
+          "description": "Searches YouTube for videos, channels, or playlists using a query term, returning the raw API response.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "q"
+            ],
+            "properties": {
+              "q": {
+                "type": "string",
+                "examples": [
+                  "OpenAI",
+                  "machine learning tutorial",
+                  "\"exact phrase\"",
+                  "@mkbhd"
+                ],
+                "description": "Search query term. Supports: - Basic text: 'machine learning' - Exact phrases: '\"exact phrase\"' - Exclusions: 'python -snake' - Multiple terms: 'AI OR ML' - Channel search: '@channelhandle' or channel name"
+              },
+              "part": {
+                "type": "string",
+                "default": "snippet",
+                "examples": [
+                  "snippet"
+                ],
+                "description": "The part parameter specifies properties to include in the response. For the search.list endpoint, only 'snippet' is a valid value. The 'id' object is always returned automatically with every search result (no quota cost). Note: 'statistics', 'contentDetails', etc. are only available on the videos.list endpoint, not search.list."
+              },
+              "type": {
+                "type": "string",
+                "default": "video",
+                "examples": [
+                  "video"
+                ],
+                "description": "Restricts search to 'video', 'channel', or 'playlist'; comma-separate for multiple types (e.g., 'video,channel')."
+              },
+              "order": {
+                "enum": [
+                  "date",
+                  "rating",
+                  "relevance",
+                  "title",
+                  "videoCount",
+                  "viewCount"
+                ],
+                "type": "string",
+                "examples": [
+                  "date"
+                ],
+                "description": "Sort order for YouTube search results."
+              },
+              "pageToken": {
+                "type": "string",
+                "examples": [
+                  "CAUQAA"
+                ],
+                "description": "Pagination token from a previous response's 'nextPageToken' or 'prevPageToken', used to retrieve a specific page of results."
+              },
+              "maxResults": {
+                "type": "integer",
+                "default": 5,
+                "maximum": 50,
+                "minimum": 1,
+                "examples": [
+                  "5"
+                ],
+                "description": "Maximum number of items to return per page."
+              },
+              "regionCode": {
+                "type": "string",
+                "examples": [
+                  "US"
+                ],
+                "maxLength": 2,
+                "minLength": 2,
+                "description": "Return search results for videos viewable in the specified country. ISO 3166-1 alpha-2 country code."
+              },
+              "publishedAfter": {
+                "type": "string",
+                "examples": [
+                  "2024-01-01T00:00:00Z"
+                ],
+                "description": "Filter results to only include resources created at or after the specified time. RFC 3339 formatted date-time."
+              },
+              "publishedBefore": {
+                "type": "string",
+                "examples": [
+                  "2024-12-31T23:59:59Z"
+                ],
+                "description": "Filter results to only include resources created before or at the specified time. RFC 3339 formatted date-time."
+              },
+              "relevanceLanguage": {
+                "type": "string",
+                "examples": [
+                  "en"
+                ],
+                "description": "Return results most relevant to the specified language. ISO 639-1 two-letter language code (use 'zh-Hans' for simplified Chinese, 'zh-Hant' for traditional Chinese)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_LIST_COMMENT_THREADS2": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_LIST_COMMENT_THREADS2",
+          "description": "Tool to retrieve comment threads from YouTube videos or channels matching API request parameters. Use when you need to fetch comments with filtering by video, channel, or specific thread IDs.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "part"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "examples": [
+                  "UgwQjKq3x6PmG9K7Vlp4AaABAg",
+                  "UgzqZPqT8dFOBkYj5AB4AaABAg"
+                ],
+                "description": "Comma-separated list of comment thread IDs to retrieve. Use this to fetch specific comment threads by their IDs. Mutually exclusive with 'allThreadsRelatedToChannelId', 'channelId', and 'videoId'."
+              },
+              "part": {
+                "type": "string",
+                "examples": [
+                  "snippet",
+                  "snippet,replies",
+                  "id"
+                ],
+                "description": "Comma-separated list of commentThread resource properties to include in the API response. Valid values: 'id' (thread ID only), 'snippet' (top-level comment metadata including authorDisplayName, textDisplay, likeCount, publishedAt), 'replies' (up to 5 reply comments if present). Most common: 'snippet,replies' for full comment data."
+              },
+              "order": {
+                "enum": [
+                  "relevance",
+                  "time"
+                ],
+                "type": "string",
+                "examples": [
+                  "time",
+                  "relevance"
+                ],
+                "description": "Sorting order for comment threads. 'time' returns newest first (default), 'relevance' returns most relevant first based on popularity and engagement."
+              },
+              "videoId": {
+                "type": "string",
+                "examples": [
+                  "dQw4w9WgXcQ",
+                  "jNQXAC9IVRw"
+                ],
+                "description": "Returns comment threads associated with the specified video ID. This is the most common use case for retrieving comments on a specific video. Mutually exclusive with 'allThreadsRelatedToChannelId', 'channelId', and 'id'."
+              },
+              "channelId": {
+                "type": "string",
+                "examples": [
+                  "UC_x5XG1OV2P6uZZ5FSM9Ttw"
+                ],
+                "description": "Returns comment threads for the specified channel ID. This retrieves comments about the channel itself, not comments on the channel's videos. Mutually exclusive with 'allThreadsRelatedToChannelId', 'videoId', and 'id'."
+              },
+              "pageToken": {
+                "type": "string",
+                "examples": [
+                  "CAUQAA"
+                ],
+                "description": "Token for pagination. Use the 'nextPageToken' value from a previous response to retrieve the next page of results."
+              },
+              "maxResults": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "examples": [
+                  20,
+                  50,
+                  100
+                ],
+                "description": "Maximum number of comment threads to return per page. Must be between 1 and 100. Default is 20 if not specified."
+              },
+              "textFormat": {
+                "enum": [
+                  "html",
+                  "plainText"
+                ],
+                "type": "string",
+                "examples": [
+                  "html",
+                  "plainText"
+                ],
+                "description": "Format for text fields in the response. 'html' preserves HTML formatting (default), 'plainText' returns plain text without formatting."
+              },
+              "searchTerms": {
+                "type": "string",
+                "examples": [
+                  "awesome video",
+                  "great content"
+                ],
+                "description": "Filter comment threads to only those matching the search query. Only works with 'allThreadsRelatedToChannelId' parameter and cannot be used with other filter parameters."
+              },
+              "moderationStatus": {
+                "enum": [
+                  "heldForReview",
+                  "likelySpam",
+                  "published"
+                ],
+                "type": "string",
+                "examples": [
+                  "published",
+                  "heldForReview"
+                ],
+                "description": "Filter comment threads by moderation status. Only valid for comments on channel's own videos when authorized as the channel owner. 'heldForReview' shows comments held for review, 'likelySpam' shows comments marked as likely spam, 'published' shows published comments."
+              },
+              "allThreadsRelatedToChannelId": {
+                "type": "string",
+                "examples": [
+                  "UC_x5XG1OV2P6uZZ5FSM9Ttw"
+                ],
+                "description": "Returns all comment threads associated with the specified channel ID. This includes comments on the channel page itself, not video comments. Mutually exclusive with 'channelId', 'videoId', and 'id'. Requires OAuth authorization."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_GET_VIDEO_DETAILS_BATCH": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_GET_VIDEO_DETAILS_BATCH",
+          "description": "Retrieves multiple YouTube video resource parts in a single batch call. Use when you need cohort-level metrics for many videos to reduce quota usage and latency.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "hl": {
+                "type": "string",
+                "examples": [
+                  "en"
+                ],
+                "description": "Language for localized metadata (snippet.localized); IETF language tag, e.g., 'en'."
+              },
+              "id": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "dQw4w9WgXcQ",
+                    "eX2qFMC8cFo"
+                  ]
+                ],
+                "minItems": 1,
+                "description": "List of YouTube video IDs to retrieve. At least one video ID is required. Accepts a list or comma-separated string. Also accepts 'videoIds' as an alias. The YouTube API limits each request to 50 video IDs; if more are provided, they will be automatically split into multiple requests and the results merged."
+              },
+              "parts": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "contentDetails",
+                    "fileDetails",
+                    "id",
+                    "liveStreamingDetails",
+                    "localizations",
+                    "paidProductPlacementDetails",
+                    "player",
+                    "processingDetails",
+                    "recordingDetails",
+                    "snippet",
+                    "statistics",
+                    "status",
+                    "suggestions",
+                    "topicDetails"
+                  ],
+                  "type": "string"
+                },
+                "default": [
+                  "snippet",
+                  "statistics"
+                ],
+                "examples": [
+                  [
+                    "snippet",
+                    "statistics"
+                  ],
+                  [
+                    "snippet",
+                    "contentDetails",
+                    "statistics"
+                  ]
+                ],
+                "minItems": 1,
+                "description": "Video resource properties to include. At least one part is required. Accepts a list of parts or a comma-separated string. Also accepts 'part' (singular) as an alias. Valid parts: snippet, contentDetails, statistics, status, player, topicDetails, recordingDetails, fileDetails, processingDetails, suggestions, liveStreamingDetails, localizations, paidProductPlacementDetails, id. Defaults to ['snippet', 'statistics'] if not specified."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "YOUTUBE_LIST_COMMENTS": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_LIST_COMMENTS",
+          "description": "List individual comments from YouTube videos. Returns comment details including author, text, timest...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_LIST_COMMENTS"
+              ]
+            }
+          }
+        },
+        "YOUTUBE_LIST_CHANNEL_VIDEOS": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_LIST_CHANNEL_VIDEOS",
+          "description": "Lists videos from a specified YouTube channel. This action primarily uses the playlistItems.list end...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_LIST_CHANNEL_VIDEOS"
+              ]
+            }
+          }
+        },
+        "YOUTUBE_GET_CHANNEL_STATISTICS": {
+          "toolkit": "YOUTUBE",
+          "tool_slug": "YOUTUBE_GET_CHANNEL_STATISTICS",
+          "description": "Gets detailed statistics for YouTube channels including subscriber counts, view counts, and video co...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "YOUTUBE_GET_CHANNEL_STATISTICS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:34:27.583Z",
+        "current_time_utc_epoch_seconds": 1786599267,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "real",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"real\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_P0Ou2XbhB8TS"
+  }
+}

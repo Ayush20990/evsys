@@ -1,0 +1,234 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-053-q3",
+    "workflow_id": 53,
+    "workflow_task": "Audit a short-link inventory by finding an existing spreadsheet registry, reading help-center mapping tabs, listing existing short links, and attempting to compare them with live public website article URLs and redirects.",
+    "query": "live public website article URLs and redirects",
+    "intent": "Check and compare the short links against live public website article URLs and their actual redirects.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "BROWSER_TOOL_CREATE_TASK"
+        ],
+        "purpose": "Navigate and check live public website article URLs and redirects"
+      }
+    ],
+    "candidate_tools": [
+      "BROWSER_TOOL_CREATE_TASK",
+      "BROWSER_TOOL_GET_SESSION",
+      "BROWSER_TOOL_STOP_TASK",
+      "BROWSER_TOOL_WATCH_TASK",
+      "GOOGLESHEETS_GET_SHEET_NAMES",
+      "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+      "GOOGLESHEETS_VALUES_GET",
+      "TINYURL_LIST_URLS"
+    ]
+  },
+  "request": {
+    "query": "live public website article URLs and redirects"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "live public website article URLs and redirects",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step 1]: Get full redirect chain and final destination using AGENTY_GET_BROWSER_REDIRECTS (resolve shortlinks plus meta/JavaScript hops when possible).",
+            "[Optional (if redirects are incomplete, timing-sensitive, or missing delayed hops)] [Fallback]: Retry tracing using AGENTY_GET_REDIRECTS_WITH_OPTIONS (tune waits/timeouts to capture late redirects).",
+            "[Optional (if HTTP 3xx redirects are sufficient or you want a lightweight cross-check)] [Next Step]: Inspect response headers using ZENROWS_GET_RESPONSE_HEADERS (read Location/final URL without rendering).",
+            "[Optional (if you need a quick first-hop diagnostic)] [Next Step]: Check initial HTTP status using ZENROWS_GET_ORIGINAL_STATUS (confirm 3xx vs 200/interstitial behavior).",
+            "[Optional (if the resolved URL looks like an interstitial/captcha or you need a cleaner canonical target)] [Step 2]: Infer the canonical destination using COMPOSIO_SEARCH_WEB (search by the short URL and select the clean target URL)."
+          ],
+          "known_pitfalls": [
+            "[AGENTY_GET_BROWSER_REDIRECTS] Some destinations may resolve to interstitial/captcha pages (e.g., certain ecommerce short links) rather than the true target URL.",
+            "[ZENROWS_GET_RESPONSE_HEADERS] Header-only tracing can miss non-3xx redirects (meta refresh/JavaScript), so the reported \u201cfinal\u201d URL may be a pre-redirect landing page.",
+            "[COMPOSIO_SEARCH_WEB] Results may include affiliate/tracking query parameters; prefer a cleaned canonical URL path when selecting the destination.",
+            "[ZENROWS_GET_ORIGINAL_STATUS] The origin status is only a first-hop signal and may not reflect later client-side redirects or interstitial flows."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "AGENTY_GET_BROWSER_REDIRECTS"
+          ],
+          "related_tool_slugs": [
+            "AGENTY_GET_REDIRECTS_WITH_OPTIONS",
+            "ZENROWS_GET_RESPONSE_HEADERS",
+            "ZENROWS_GET_ORIGINAL_STATUS",
+            "COMPOSIO_SEARCH_WEB"
+          ],
+          "toolkits": [
+            "agenty",
+            "composio_search",
+            "zenrows"
+          ],
+          "plan_id": "8ee1517ef2c144c6b51a56fb4cb2eb48"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "composio_search",
+          "has_active_connection": true,
+          "description": "Composio Search provides comprehensive web search across travel (flights, hotels, events), e-commerce (Amazon, Walmart, shopping), financial markets, news, academic research, images, and location services.",
+          "connection_details": {},
+          "status_message": "Connection is active and ready to use"
+        },
+        {
+          "toolkit": "agenty",
+          "has_active_connection": false,
+          "description": "Agenty is a web scraping and automation platform that enables users to extract data, monitor changes, and automate browser tasks without coding.",
+          "status_message": "No Active connection for toolkit=agenty. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"agenty\") to create a connection BEFORE executing any agenty tools."
+        },
+        {
+          "toolkit": "zenrows",
+          "has_active_connection": false,
+          "description": "ZenRows is a web scraping API allowing developers to bypass CAPTCHAs and blocks, gather structured data from dynamic websites, and quickly integrate results into applications",
+          "status_message": "No Active connection for toolkit=zenrows. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"zenrows\") to create a connection BEFORE executing any zenrows tools."
+        }
+      ],
+      "tool_schemas": {
+        "AGENTY_GET_BROWSER_REDIRECTS": {
+          "toolkit": "AGENTY",
+          "tool_slug": "AGENTY_GET_BROWSER_REDIRECTS",
+          "description": "Tool to get the complete redirect chain for a URL. Use when you need to trace how a URL redirects, including both server-side (HTTP 3xx redirects) and client-side redirects (JavaScript, meta tags). Returns an ordered list of all redirect steps from the original URL to the final destination.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "examples": [
+                  "https://example.com",
+                  "https://httpbin.org/redirect/2"
+                ],
+                "maxLength": 2083,
+                "minLength": 1,
+                "description": "The URL to check for redirects. Must be a valid HTTP or HTTPS URL. The API will follow all redirects including server-side (3xx status codes) and client-side redirects (JavaScript, meta tags, etc.)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "AGENTY_GET_REDIRECTS_WITH_OPTIONS": {
+          "toolkit": "AGENTY",
+          "tool_slug": "AGENTY_GET_REDIRECTS_WITH_OPTIONS",
+          "description": "Tool to get the complete redirect chain of a URL with custom navigation options. Use when you need to trace URL redirects including both server-side (3xx) and client-side redirects (JavaScript, meta tags). Supports custom timeout and navigation wait conditions to ensure all redirects are captured.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "examples": [
+                  "https://example.com",
+                  "https://httpbin.org/redirect/2"
+                ],
+                "description": "The URL to follow and get the complete redirect chain. Must be a valid HTTP or HTTPS URL."
+              },
+              "gotoOptions": {
+                "type": "object",
+                "properties": {
+                  "timeout": {
+                    "type": "integer",
+                    "maximum": 60000,
+                    "minimum": 100,
+                    "examples": [
+                      10000,
+                      30000
+                    ],
+                    "description": "Maximum time in milliseconds to wait for page load. Must be between 100 and 60000. Default is 10000."
+                  },
+                  "waitUntil": {
+                    "enum": [
+                      "load",
+                      "domcontentloaded",
+                      "networkidle0",
+                      "networkidle2"
+                    ],
+                    "type": "string",
+                    "description": "Navigation wait condition for page load."
+                  }
+                },
+                "description": "Browser navigation settings for page load behavior.",
+                "additionalProperties": false
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZENROWS_GET_RESPONSE_HEADERS": {
+          "toolkit": "ZENROWS",
+          "tool_slug": "ZENROWS_GET_RESPONSE_HEADERS",
+          "description": "A tool to retrieve and parse response headers from ZenRows API requests. It provides critical metadata such as concurrency limits, available request slots, request cost, unique request ID, and final URL after redirects, which is essential for monitoring usage, debugging, and optimizing requests.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "examples": [
+                  "https://example.com"
+                ],
+                "description": "The URL to scrape and get response headers from"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ZENROWS_GET_ORIGINAL_STATUS": {
+          "toolkit": "ZENROWS",
+          "tool_slug": "ZENROWS_GET_ORIGINAL_STATUS",
+          "description": "This tool retrieves the original HTTP status code returned by the target website, which is useful fo...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ZENROWS_GET_ORIGINAL_STATUS"
+              ]
+            }
+          }
+        },
+        "COMPOSIO_SEARCH_WEB": {
+          "toolkit": "COMPOSIO_SEARCH",
+          "tool_slug": "COMPOSIO_SEARCH_WEB",
+          "description": "Perform a web search using the Exa API. Returns a nested structure: narrative summary under results....",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "COMPOSIO_SEARCH_WEB"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:35:14.343Z",
+        "current_time_utc_epoch_seconds": 1786599314,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "give",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"give\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) You may call COMPOSIO_MANAGE_CONNECTIONS: Some toolkits lack active connections",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_-oaeLa08cLab"
+  }
+}

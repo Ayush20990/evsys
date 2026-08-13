@@ -44,640 +44,438 @@
           "use_case": "create automated email and workflow",
           "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
           "recommended_plan_steps": [
-            "[Required] [Prerequisite]: Confirm explicit user approval, audience, and stop-conditions before any outreach using GMAIL_SEND_EMAIL (prevents unintended sends).",
-            "[Optional (if spreadsheet unknown)] [Prerequisite]: Locate the tracking spreadsheet using GOOGLESHEETS_SEARCH_SPREADSHEETS and verify the correct tab using GOOGLESHEETS_GET_SHEET_NAMES (avoid updating the wrong data).",
-            "[Required] [Step]: Read only recipient identifiers plus due/status/last-contacted fields using GOOGLESHEETS_BATCH_GET (use bounded ranges for deterministic mapping).",
-            "[Optional (for safer review)] [Step]: Create a sample message draft using GMAIL_CREATE_EMAIL_DRAFT (validate merge fields and tone before sending).",
-            "[Optional (if reply context gates sending)] [Step]: Fetch a small set of recent thread messages using GMAIL_FETCH_EMAILS (detect replies/unsubscribe signals).",
-            "[Required] [Step]: De-duplicate and validate recipients, then send reminder/follow-up messages using GMAIL_SEND_EMAIL; [Fallback (if Gmail fails or bulk sending is needed)]: Send via RESEND_SEND_BATCH_EMAILS.",
-            "[Required] [Next Step]: Persist sent-state/last-contacted/status using GOOGLESHEETS_UPSERT_ROWS (key by a stable recipient identifier to prevent re-sends)."
+            "[Optional (if avoiding duplicates)] [Prerequisite]: Review existing ticket structures using INTERCOM_LIST_TICKET_TYPES (decide whether to reuse vs create new).",
+            "[Required] [Step]: Create the workflow\u2019s ticket container using INTERCOM_CREATE_TICKET_TYPE (define name, category, description, icon).",
+            "[Required] [Next Step]: Add workflow fields using INTERCOM_CREATE_TICKET_TYPE_ATTRIBUTE (create attributes like tier/reason/eligibility and store returned attribute IDs).",
+            "[Optional (if refining after stakeholder review)] [Next Step]: Adjust ticket type metadata using INTERCOM_UPDATE_TICKET_TYPE (rename, recategorize, or update description/icon without recreating).",
+            "[Optional (for verification or documentation)] [Next Step]: Confirm the final ticket schema and defaults using INTERCOM_GET_TICKET_TYPE (ensure attributes and default states match expectations)."
           ],
           "known_pitfalls": [
-            "[GMAIL_SEND_EMAIL] Validation fails unless at least one recipient (to/cc/bcc) and at least one of subject/body is provided.",
-            "[GMAIL_SEND_EMAIL] HTML content requires is_html=true or recipients may see raw markup.",
-            "[GMAIL_SEND_EMAIL] Sends are immediate/irreversible; if write-back fails, reruns can accidentally resend.",
-            "[GOOGLESHEETS_BATCH_GET] Response is grouped by requested ranges (valueRanges/values); header/column order changes can break index-based field mapping.",
-            "[GOOGLESHEETS_UPSERT_ROWS] Bursty writes can hit HTTP 429 per-user quota; retry with exponential backoff."
-          ],
-          "reference_workbench_snippets": [
-            {
-              "description": "Parse a large GOOGLESHEETS_BATCH_GET response (valueRanges/values path).",
-              "code": "```python\nimport json\nobj=json.loads(data)\nvalues=obj['results'][0]['response']['data']['valueRanges'][0]['values']\nheaders=values[0]\nrows=values[1:]\nidx={h:i for i,h in enumerate(headers)}\n```"
-            }
+            "[INTERCOM_CREATE_TICKET_TYPE_ATTRIBUTE] Requires the ticket_type_id returned by INTERCOM_CREATE_TICKET_TYPE; capture IDs immediately to avoid mis-attaching fields.",
+            "[INTERCOM_GET_TICKET_TYPE] Returned schema can include system-added defaults/default states; verify against expectations before announcing the workflow is ready.",
+            "[INTERCOM_UPDATE_TICKET_TYPE] Changing metadata post-creation can affect downstream usage; confirm changes before applying updates to an in-use ticket type."
           ],
           "difficulty": "easy",
           "primary_tool_slugs": [
-            "GOOGLESHEETS_BATCH_GET",
-            "GMAIL_SEND_EMAIL",
-            "GOOGLESHEETS_UPSERT_ROWS"
+            "INTERCOM_CREATE_DATA_EVENT",
+            "INTERCOM_CREATE_TICKET_TYPE",
+            "INTERCOM_CREATE_TICKET_TYPE_ATTRIBUTE",
+            "INTERCOM_UPDATE_TICKET_TYPE"
           ],
           "related_tool_slugs": [
-            "GOOGLESHEETS_SEARCH_SPREADSHEETS",
-            "GOOGLESHEETS_GET_SHEET_NAMES",
-            "GMAIL_CREATE_EMAIL_DRAFT",
-            "GMAIL_FETCH_EMAILS",
-            "RESEND_SEND_BATCH_EMAILS"
+            "INTERCOM_LIST_DATA_EVENTS",
+            "INTERCOM_SEARCH_CONTACTS",
+            "INTERCOM_CREATE_CONTACT",
+            "INTERCOM_LIST_TICKET_TYPES",
+            "INTERCOM_GET_TICKET_TYPE"
           ],
           "toolkits": [
-            "gmail",
-            "googlesheets",
-            "resend"
+            "intercom"
           ],
-          "plan_id": "987bace92d2d48d3a81da9c24f04a520"
+          "plan_id": "01f89205c1fd409baf1ab7db41b6f347"
         }
       ],
       "toolkit_connection_statuses": [
         {
-          "toolkit": "gmail",
+          "toolkit": "intercom",
           "has_active_connection": false,
-          "description": "Gmail is Google's email service, featuring spam protection, search functions, and seamless integration with other G-Suite apps for productivity. Special usecases: Search people by name/email.",
-          "status_message": "No Active connection for toolkit=gmail. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"gmail\") to create a connection BEFORE executing any gmail tools."
-        },
-        {
-          "toolkit": "googlesheets",
-          "has_active_connection": false,
-          "description": "Google Sheets is a cloud-based spreadsheet tool enabling real-time collaboration, data analysis, and integration with other Google Workspace apps. STRICT RATE LIMITS apply - max 60 reads/minute and 60 writes/minute. Exceeding this causes errors.",
-          "status_message": "No Active connection for toolkit=googlesheets. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"googlesheets\") to create a connection BEFORE executing any googlesheets tools."
-        },
-        {
-          "toolkit": "resend",
-          "has_active_connection": false,
-          "description": "The universal API for sending emails.",
-          "status_message": "No Active connection for toolkit=resend. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"resend\") to create a connection BEFORE executing any resend tools."
+          "description": "Intercom provides live chat, messaging, and customer engagement tools, enabling businesses to drive conversions, handle support, and personalize communication at scale",
+          "status_message": "No Active connection for toolkit=intercom. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"intercom\") to create a connection BEFORE executing any intercom tools."
         }
       ],
       "tool_schemas": {
-        "GOOGLESHEETS_BATCH_GET": {
-          "toolkit": "GOOGLESHEETS",
-          "tool_slug": "GOOGLESHEETS_BATCH_GET",
-          "description": "Retrieves data from specified cell ranges in a Google Spreadsheet.",
+        "INTERCOM_CREATE_DATA_EVENT": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_CREATE_DATA_EVENT",
+          "description": "Tool to submit a data event to Intercom to track user activities. Use when you need to notify Intercom of user actions and changes. Events are detected as duplicates using workspace ID, contact identifier, event name, and timestamp.",
           "input_schema": {
             "type": "object",
             "required": [
-              "spreadsheet_id"
+              "event_name",
+              "created_at"
             ],
             "properties": {
-              "ranges": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "examples": [
-                  "Sheet1",
-                  "Sheet1!A1:B2",
-                  "Sheet1!A1:Z10000",
-                  "Sheet1!1:2",
-                  "'My Sheet'!A1:Z500",
-                  "A1:B2"
-                ],
-                "description": "A list of cell ranges in A1 notation from which to retrieve data. If this list is omitted, empty, or contains only empty strings, all data from the first sheet of the spreadsheet will be fetched. Empty strings in the list are automatically filtered out. Supported formats: (1) Bare sheet name like 'Sheet1' to get all data from that sheet, (2) Sheet with range like 'Sheet1!A1:B2', (3) Just cell reference like 'A1:B2' (uses first sheet). For sheet names with spaces or special characters, enclose in single quotes (e.g., \"'My Sheet'\" or \"'My Sheet'!A1:B2\"). IMPORTANT: For large sheets, always use bounded ranges with explicit row limits (e.g., 'Sheet1!A1:Z10000' instead of 'Sheet1!A:Z'). Unbounded column ranges like 'A:Z' on sheets with >10,000 rows may cause timeouts or errors. If you need all data from a large sheet, fetch in chunks of 10,000 rows at a time."
-              },
-              "majorDimension": {
-                "enum": [
-                  "DIMENSION_UNSPECIFIED",
-                  "ROWS",
-                  "COLUMNS"
-                ],
-                "type": "string",
-                "description": "The major dimension for organizing data in results."
-              },
-              "spreadsheet_id": {
+              "id": {
                 "type": "string",
                 "examples": [
-                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                  "67eedf68fbd061d9f4fee259"
                 ],
-                "maxLength": 200,
-                "description": "The unique identifier of the Google Spreadsheet from which data will be retrieved. This is the ID found in the spreadsheet URL after /d/. You can provide either the spreadsheet ID directly or a full Google Sheets URL (the ID will be extracted automatically)."
+                "description": "Intercom's 24-character UUID identifier for a lead or user. The contact must already exist in Intercom; events cannot be created for non-existent contacts. At least one of user_id, id, or email is required."
               },
-              "valueRenderOption": {
-                "enum": [
-                  "FORMATTED_VALUE",
-                  "UNFORMATTED_VALUE",
-                  "FORMULA"
-                ],
-                "type": "string",
-                "default": "FORMATTED_VALUE",
-                "description": "How values should be rendered in the output. FORMATTED_VALUE: Values are calculated and formatted (default). UNFORMATTED_VALUE: Values are calculated but not formatted. FORMULA: Values are not calculated; the formula is returned instead."
-              },
-              "dateTimeRenderOption": {
-                "enum": [
-                  "SERIAL_NUMBER",
-                  "FORMATTED_STRING"
-                ],
-                "type": "string",
-                "default": "SERIAL_NUMBER",
-                "description": "How dates and times should be rendered in the output. SERIAL_NUMBER: Dates are returned as serial numbers (default). FORMATTED_STRING: Dates returned as formatted strings."
-              },
-              "empty_strings_filtered": {
-                "type": "boolean",
-                "default": false,
-                "description": "Indicates whether empty strings were filtered from the response."
-              }
-            }
-          },
-          "hasFullSchema": true
-        },
-        "GMAIL_SEND_EMAIL": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_SEND_EMAIL",
-          "description": "Sends an email via Gmail API using the authenticated user's Google profile display name. Sends immediately and is irreversible \u2014 confirm recipients, subject, body, and attachments before calling. At least one of 'to' (or 'recipient_email'), 'cc', or 'bcc' must be provided. At least one of subject or body must be provided. Requires `is_html=True` if the body contains HTML. All common file types including PNG, JPG, PDF, MP4, etc. are supported as attachments. Gmail API limits total message size to ~25 MB after base64 encoding. To reply in an existing thread, use GMAIL_REPLY_TO_THREAD instead. No scheduled send support; enforce timing externally.",
-          "input_schema": {
-            "type": "object",
-            "properties": {
-              "cc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "manager@example.com",
-                    "teamlead@example.com"
-                  ]
-                ],
-                "description": "Carbon Copy (CC) recipients' email addresses. At least one of 'to'/'recipient_email', 'cc', or 'bcc' must be provided."
-              },
-              "bcc": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "auditor@example.com"
-                  ]
-                ],
-                "description": "Blind Carbon Copy (BCC) recipients' email addresses. At least one of 'to'/'recipient_email', 'cc', or 'bcc' must be provided."
-              },
-              "body": {
+              "email": {
                 "type": "string",
                 "examples": [
-                  "Hello team, let's discuss the project updates tomorrow.",
-                  "<h1>Welcome!</h1><p>Thank you for signing up.</p>",
-                  ""
+                  "test.user@example.com",
+                  "user@example.com"
                 ],
-                "description": "Email content (plain text or HTML). Either subject or body must be provided for the email to be sent. If HTML, `is_html` must be `True`."
-              },
-              "is_html": {
-                "type": "boolean",
-                "default": false,
-                "description": "Set to `True` if the email body contains HTML tags."
-              },
-              "subject": {
-                "type": "string",
-                "examples": [
-                  "Project Update Meeting",
-                  "Your Weekly Newsletter"
-                ],
-                "description": "Subject line of the email. Either subject or body must be provided for the email to be sent."
+                "description": "The user's email address. The contact with this email must already exist in Intercom; events cannot be created for non-existent contacts. Use only when email uniquely identifies users. At least one of user_id, id, or email is required."
               },
               "user_id": {
                 "type": "string",
-                "default": "me",
                 "examples": [
-                  "user@example.com",
-                  "me"
+                  "user123",
+                  "abc456"
                 ],
-                "description": "User's email address; the literal 'me' refers to the authenticated user."
+                "description": "Your application's unique identifier for the user. The contact must already exist in Intercom with this user_id; events cannot be created for non-existent contacts. At least one of user_id, id, or email is required."
               },
-              "attachment": {
-                "anyOf": [
+              "metadata": {
+                "type": "object",
+                "examples": [
                   {
-                    "type": "object",
-                    "title": "FileUploadable",
-                    "required": [
-                      "name",
-                      "mimetype",
-                      "s3key"
-                    ],
-                    "properties": {
-                      "name": {
-                        "type": "string",
-                        "title": "Name",
-                        "examples": [
-                          "document.pdf",
-                          "image.jpg",
-                          "report.docx"
-                        ],
-                        "description": "The filename that will be used when uploading the file to the destination service"
-                      },
-                      "s3key": {
-                        "type": "string",
-                        "title": "S3Key",
-                        "examples": [
-                          "47563/gmail/GET_ATTACHMENT/response/12345"
-                        ],
-                        "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
-                      },
-                      "mimetype": {
-                        "type": "string",
-                        "title": "Mimetype",
-                        "examples": [
-                          "application/pdf",
-                          "image/jpeg",
-                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        ],
-                        "description": "The MIME type of the file"
-                      }
-                    },
-                    "file_uploadable": true
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "title": "FileUploadable",
-                      "required": [
-                        "name",
-                        "mimetype",
-                        "s3key"
-                      ],
-                      "properties": {
-                        "name": {
-                          "type": "string",
-                          "title": "Name",
-                          "examples": [
-                            "document.pdf",
-                            "image.jpg",
-                            "report.docx"
-                          ],
-                          "description": "The filename that will be used when uploading the file to the destination service"
-                        },
-                        "s3key": {
-                          "type": "string",
-                          "title": "S3Key",
-                          "examples": [
-                            "47563/gmail/GET_ATTACHMENT/response/12345"
-                          ],
-                          "description": "The S3 key of a publicly accessible file, typically returned from a previous download action that stored the file in S3. This key references an existing file that can be uploaded to another service."
-                        },
-                        "mimetype": {
-                          "type": "string",
-                          "title": "Mimetype",
-                          "examples": [
-                            "application/pdf",
-                            "image/jpeg",
-                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          ],
-                          "description": "The MIME type of the file"
-                        }
-                      },
-                      "file_uploadable": true
-                    }
+                    "source": "api_test",
+                    "test_key": "test_value"
                   }
                 ],
-                "description": "File(s) to attach. Accepts a single file or a list of files. IMPORTANT: mimetype MUST contain a '/' separator - single words like 'pdf' or 'new' are invalid. Gmail API limits: total message size must not exceed ~25 MB after base64 encoding. Omit or set to null for no attachment. Empty attachment objects (with all fields empty/whitespace) are treated as no attachment."
-              },
-              "from_email": {
-                "type": "string",
-                "examples": [
-                  "alias@example.com",
-                  "marketing@company.com"
-                ],
-                "description": "Sender email address for the 'From' header. Use this to send from a verified alias configured in Gmail's 'Send mail as' settings. When not provided, the authenticated user's primary email address is used. The alias must be verified in Gmail settings before use."
-              },
-              "recipient_email": {
-                "type": "string",
-                "examples": [
-                  "john@doe.com",
-                  "me"
-                ],
-                "description": "Primary recipient's email address. You can also use 'to' as an alias for this parameter. At least one of 'to'/'recipient_email', 'cc', or 'bcc' must be provided. Use extra_recipients if you want to send to multiple recipients. Use the special value 'me' to send to your own authenticated email address. Must be a full user@domain address; 'me' is not valid here and will fail."
-              },
-              "extra_recipients": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "default": [],
-                "examples": [
-                  [
-                    "jane.doe@example.com",
-                    "support@example.com"
+                "description": "Additional key-value pairs providing context about the event. Can include custom properties relevant to the event.",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
                   ]
+                }
+              },
+              "created_at": {
+                "type": "integer",
+                "examples": [
+                  1734220800,
+                  1609459200
                 ],
-                "description": "Additional 'To' recipients' email addresses (not Cc or Bcc). Should only be used if recipient_email is also provided."
+                "description": "Unix timestamp indicating when the event occurred."
+              },
+              "event_name": {
+                "type": "string",
+                "examples": [
+                  "test-event-completed",
+                  "purchase-completed",
+                  "profile-updated"
+                ],
+                "description": "The name of the event in past tense verb-noun format (e.g., 'updated-plan', 'purchased-item'). Describes what action occurred."
               }
             }
           },
           "hasFullSchema": true
         },
-        "GOOGLESHEETS_UPSERT_ROWS": {
-          "toolkit": "GOOGLESHEETS",
-          "tool_slug": "GOOGLESHEETS_UPSERT_ROWS",
-          "description": "Upsert rows - update existing rows by key, append new ones. Automatically handles column mapping and partial updates. Use for: CRM syncs (match Lead ID), transaction imports (match Transaction ID), inventory updates (match SKU), calendar syncs (match Event ID). Features: - Auto-adds missing columns to sheet - Partial column updates (only update Phone + Status, preserve other columns) - Column order doesn't matter (auto-maps by header name) - Prevents duplicates by matching key column Example inputs: - Contact update: keyColumn='Email', headers=['Email','Phone','Status'], data=[['john@ex.com','555-0101','Active']] - Inventory sync: keyColumn='SKU', headers=['SKU','Stock','Price'], data=[['WIDGET-001',50,9.99],['GADGET-002',30,19.99]] - CRM lead update: keyColumn='Lead ID', headers=['Lead ID','Score','Status'], data=[['L-12345',85,'Hot']] - Partial update: keyColumn='Email', headers=['Email','Phone'] (only updates Phone, preserves Name/Address/etc)",
+        "INTERCOM_CREATE_TICKET_TYPE": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_CREATE_TICKET_TYPE",
+          "description": "Tool to create a new ticket type that defines the data structure for tracking customer requests. Use when you need to establish a new category of tickets with specific fields and states.",
           "input_schema": {
             "type": "object",
             "required": [
-              "spreadsheetId",
-              "sheetName",
-              "rows"
+              "name",
+              "category"
             ],
             "properties": {
-              "rows": {
-                "type": "array",
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "examples": [
-                  [
-                    [
-                      "john@example.com",
-                      "555-0101",
-                      "Active"
-                    ],
-                    [
-                      "jane@example.com",
-                      "555-0102",
-                      "Pending"
-                    ]
-                  ],
-                  [
-                    [
-                      "WIDGET-001",
-                      50,
-                      9.99
-                    ],
-                    [
-                      "GADGET-002",
-                      30,
-                      19.99
-                    ]
-                  ],
-                  [
-                    [
-                      "L-12345",
-                      "John Doe",
-                      85
-                    ]
-                  ]
-                ],
-                "minItems": 1,
-                "description": "2D array of data rows to upsert. IMPORTANT: If 'headers' is NOT provided, the FIRST row is treated as column headers and remaining rows as data - so you need at least 2 rows (1 header + 1 data). If 'headers' IS provided separately, then ALL rows in this array are treated as data rows. Each row should have the same number of values as headers. If a row has MORE values than headers: with strict_mode=true (default), an error is returned showing which rows are affected; with strict_mode=false, extra values are silently truncated. If a row has FEWER values than headers, an error is returned during execution. Cell values can be strings, numbers, booleans, or null. Example with headers provided: headers=['Email','Status'], rows=[['john@ex.com','Active']] (1 data row). Example without headers: rows=[['Email','Status'],['john@ex.com','Active']] (row 1 = headers, row 2 = data)."
-              },
-              "headers": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "examples": [
-                  [
-                    "Email",
-                    "Phone",
-                    "Status"
-                  ],
-                  [
-                    "Lead ID",
-                    "Name",
-                    "Score"
-                  ],
-                  [
-                    "SKU",
-                    "Stock",
-                    "Price"
-                  ]
-                ],
-                "description": "List of column names for the data. These will be matched against sheet headers. If a column doesn't exist in the sheet, it will be added automatically. Order doesn't need to match sheet order. Can be auto-derived from the first row in 'rows' if not provided. Example inputs: ['Email', 'Phone', 'Status'] for contact updates, ['Lead ID', 'Name', 'Score'] for CRM, ['SKU', 'Stock', 'Price'] for inventory."
-              },
-              "keyColumn": {
+              "icon": {
                 "type": "string",
                 "examples": [
-                  "Email",
-                  "ID",
-                  "SKU",
-                  "Lead ID",
-                  "Transaction Number"
+                  "\ud83c\udf9f\ufe0f",
+                  "\ud83d\udc1b",
+                  "\ud83d\udccb"
                 ],
-                "description": "The column NAME (header text) to use as unique identifier for matching rows. Must be an actual header name from the sheet (e.g., 'Email', 'Lead ID', 'SKU'), NOT a column letter (e.g., 'A', 'B', 'C'). If you provide a column letter like 'A', it will be automatically converted to the header name at that column position. If neither 'key_column' nor 'key_column_index' is provided, defaults to the first column (index 0)."
+                "description": "Emoji representation (from Twemoji Cheatsheet)"
               },
-              "sheetName": {
+              "name": {
                 "type": "string",
                 "examples": [
-                  "Leads",
-                  "Transactions",
-                  "Inventory",
-                  "Sheet1",
-                  "\u5de5\u4f5c\u88681"
+                  "Customer Issue",
+                  "Bug Report"
                 ],
-                "description": "The name of the sheet/tab within the spreadsheet. Note: Google Sheets creates default sheets with localized names based on account language (e.g., 'Sheet1' for English, '\u5de5\u4f5c\u88681' for Chinese, 'Hoja1' for Spanish, 'Feuille1' for French, 'Planilha1' for Portuguese, '\u041b\u0438\u0441\u04421' for Russian). If you specify a common default name and the sheet is not found, the action will automatically use the first sheet if only one exists."
+                "description": "The designation for the ticket type"
               },
-              "strictMode": {
+              "category": {
+                "type": "string",
+                "examples": [
+                  "Customer",
+                  "Back-office",
+                  "Tracker"
+                ],
+                "description": "Classification as 'Customer', 'Back-office', or 'Tracker' (required)"
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "Ticket type for customer issues"
+                ],
+                "description": "Explanatory text about the ticket type"
+              },
+              "is_internal": {
                 "type": "boolean",
-                "default": true,
-                "description": "Controls how rows with mismatched column counts are handled. When True (default), an error is returned if any row has more values than headers - the error message shows exactly which rows are affected and what values would need to be removed. When False, extra values are silently truncated to match the header count. Set to False only if you explicitly want automatic truncation of extra values."
-              },
-              "tableStart": {
-                "type": "string",
-                "default": "A1",
-                "examples": [
-                  "A1",
-                  "C5",
-                  "D10"
-                ],
-                "description": "Cell where the table starts (where headers are located). Defaults to 'A1'. Use this if your table is offset (e.g., 'C5', 'D10')."
-              },
-              "spreadsheetId": {
-                "type": "string",
-                "examples": [
-                  "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-                ],
-                "description": "The ID of the spreadsheet. Must be a non-empty string, typically a 44-character alphanumeric string found in the spreadsheet URL."
-              },
-              "key_column_index": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "number"
-                  }
-                ],
-                "examples": [
-                  0,
-                  1,
-                  2
-                ],
-                "description": "The 0-based column index to use as unique identifier for matching rows. Alternative to 'key_column' - will be converted to column name using headers. If neither 'key_column' nor 'key_column_index' is provided, defaults to 0 (first column). Example: 0 for first column, 1 for second column."
-              },
-              "normalization_message": {
-                "type": "string",
-                "description": "Internal field to track input normalization (e.g., row truncation). Not part of API."
+                "description": "Whether tickets are for internal use only; defaults to false"
               }
             }
           },
           "hasFullSchema": true
         },
-        "GOOGLESHEETS_SEARCH_SPREADSHEETS": {
-          "toolkit": "GOOGLESHEETS",
-          "tool_slug": "GOOGLESHEETS_SEARCH_SPREADSHEETS",
-          "description": "Search for Google Spreadsheets using various filters including name, content, date ranges, and more.",
+        "INTERCOM_CREATE_TICKET_TYPE_ATTRIBUTE": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_CREATE_TICKET_TYPE_ATTRIBUTE",
+          "description": "Tool to create a new attribute for a ticket type in Intercom. Use when you need to add custom attributes to ticket types for data collection.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ticket_type_id",
+              "name",
+              "description",
+              "data_type"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Priority Level"
+                ],
+                "description": "The name of the ticket type attribute"
+              },
+              "data_type": {
+                "enum": [
+                  "string",
+                  "list",
+                  "integer",
+                  "decimal",
+                  "boolean",
+                  "datetime",
+                  "files"
+                ],
+                "type": "string",
+                "examples": [
+                  "list"
+                ],
+                "description": "The data type of the attribute. Allowed values: string, list, integer, decimal, boolean, datetime, files"
+              },
+              "multiline": {
+                "type": "boolean",
+                "description": "Whether the attribute allows multiple lines of text (applicable for string data_type only)"
+              },
+              "list_items": {
+                "type": "string",
+                "examples": [
+                  "High, Medium, Low"
+                ],
+                "description": "A comma delimited list of items for the attribute value (applicable for list data_type only)"
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "Select the priority level for this ticket"
+                ],
+                "description": "The description of the attribute presented to the teammate or contact"
+              },
+              "ticket_type_id": {
+                "type": "string",
+                "examples": [
+                  "2521663"
+                ],
+                "description": "The unique identifier of the ticket type to add the attribute to"
+              },
+              "visible_on_create": {
+                "type": "boolean",
+                "default": true,
+                "description": "Visibility to teammates during creation (default: true)"
+              },
+              "required_to_create": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether teammates must fill this attribute when creating tickets (default: false)"
+              },
+              "visible_to_contacts": {
+                "type": "boolean",
+                "default": true,
+                "description": "Visibility to contacts in Messenger (default: true)"
+              },
+              "allow_multiple_values": {
+                "type": "boolean",
+                "description": "Whether the attribute allows multiple files to be attached (applicable for files data_type only)"
+              },
+              "required_to_create_for_contacts": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether contacts must fill this attribute in Messenger (default: false)"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INTERCOM_UPDATE_TICKET_TYPE": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_UPDATE_TICKET_TYPE",
+          "description": "Tool to update an existing ticket type in the workspace. Use when you need to modify a ticket type's name, description, category, icon, or archive status.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ticket_type_id"
+            ],
+            "properties": {
+              "icon": {
+                "type": "string",
+                "examples": [
+                  "\ud83c\udfab"
+                ],
+                "description": "An emoji icon (copy from Twemoji Cheatsheet)."
+              },
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Updated Customer Issue"
+                ],
+                "description": "The ticket type's name."
+              },
+              "archived": {
+                "type": "boolean",
+                "examples": [
+                  false
+                ],
+                "description": "Archived status of the ticket type."
+              },
+              "category": {
+                "type": "string",
+                "examples": [
+                  "Customer"
+                ],
+                "description": "One of: Customer, Back-office, or Tracker."
+              },
+              "description": {
+                "type": "string",
+                "examples": [
+                  "Updated description for customer issue ticket type"
+                ],
+                "description": "The ticket type's description."
+              },
+              "is_internal": {
+                "type": "boolean",
+                "examples": [
+                  false
+                ],
+                "description": "Whether tickets are internal-only or shared with customers."
+              },
+              "ticket_type_id": {
+                "type": "string",
+                "examples": [
+                  "2973618"
+                ],
+                "description": "The unique identifier of the ticket type to update."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INTERCOM_LIST_DATA_EVENTS": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_LIST_DATA_EVENTS",
+          "description": "Tool to retrieve a log of data events belonging to a customer. Use when you need to list events for a specific user. Note: Only events less than 90 days old can be listed.",
           "input_schema": {
             "type": "object",
             "properties": {
-              "query": {
+              "email": {
                 "type": "string",
                 "examples": [
-                  "Budget Report",
-                  "quarterly sales",
-                  "name contains 'Budget'",
-                  "fullText contains 'sales data'",
-                  "sharedWithMe = true"
+                  "user@example.com"
                 ],
-                "description": "Search query to filter spreadsheets. Behavior depends on the 'search_type' parameter. For advanced searches, use Google Drive query syntax with fields like 'name contains', 'fullText contains', or boolean filters like 'sharedWithMe = true'. DO NOT use spreadsheet IDs as search terms. Leave empty to get all spreadsheets."
+                "description": "Contact's email address. Required if user_id and intercom_user_id are not provided."
               },
-              "order_by": {
-                "type": "string",
-                "default": "modifiedTime desc",
-                "description": "Sort order (comma-separated list for multi-field sorting). Valid fields: createdTime, folder, modifiedByMeTime, modifiedTime, name, name_natural, quotaBytesUsed, recency, sharedWithMeTime, starred, viewedByMeTime. Append ' desc' for descending order (default is ascending). Examples: 'modifiedTime desc', 'folder,name', 'starred,modifiedTime desc'."
-              },
-              "page_token": {
-                "type": "string",
-                "description": "Token for retrieving the next page of results. Use the 'next_page_token' value from a previous response to get subsequent pages. Leave empty to get the first page."
-              },
-              "max_results": {
-                "type": "integer",
-                "default": 10,
-                "maximum": 1000,
-                "minimum": 1,
-                "description": "Maximum number of spreadsheets to return (1-1000). Defaults to 10."
-              },
-              "search_type": {
-                "enum": [
-                  "name",
-                  "content",
-                  "both"
-                ],
-                "type": "string",
-                "default": "name",
-                "description": "How to search: 'name' searches filenames only (prefix matching from the START of filenames), 'content' uses fullText search which searches file content, name, description, and metadata (Google Drive API limitation: cannot search content exclusively without also matching filenames), 'both' explicitly searches both name OR content with an OR condition. Note: 'name' search only matches from the START of filenames (e.g., 'Budget' finds 'Budget 2024' but NOT 'Q1 Budget')."
-              },
-              "starred_only": {
+              "summary": {
                 "type": "boolean",
-                "default": false,
-                "description": "Whether to return only starred spreadsheets. Defaults to False."
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Flag to include event summaries in response"
               },
-              "created_after": {
+              "user_id": {
                 "type": "string",
                 "examples": [
-                  "2024-01-01T00:00:00Z",
-                  "2024-12-01T12:00:00-08:00"
+                  "user123",
+                  "abc456"
                 ],
-                "description": "Return spreadsheets created after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
+                "description": "Your internal identifier for the user. Required if intercom_user_id and email are not provided."
               },
-              "modified_after": {
+              "intercom_user_id": {
                 "type": "string",
                 "examples": [
-                  "2024-01-01T00:00:00Z",
-                  "2024-12-01T12:00:00-08:00"
+                  "67eedf68fbd061d9f4fee259"
                 ],
-                "description": "Return spreadsheets modified after this date. Use RFC 3339 format like '2024-01-01T00:00:00Z'."
-              },
-              "shared_with_me": {
-                "type": "boolean",
-                "default": false,
-                "description": "Whether to return only spreadsheets shared with the current user. Defaults to False."
-              },
-              "include_trashed": {
-                "type": "boolean",
-                "default": false,
-                "description": "Whether to include spreadsheets in trash. Defaults to False."
-              },
-              "include_shared_drives": {
-                "type": "boolean",
-                "default": true,
-                "description": "Whether to include spreadsheets from shared drives you have access to. Defaults to True."
+                "description": "Intercom's identifier for the contact. Required if user_id and email are not provided."
               }
             }
           },
           "hasFullSchema": true
         },
-        "GOOGLESHEETS_GET_SHEET_NAMES": {
-          "toolkit": "GOOGLESHEETS",
-          "tool_slug": "GOOGLESHEETS_GET_SHEET_NAMES",
-          "description": "Lists all worksheet names from a specified Google Spreadsheet (which must exist), useful for discove...",
+        "INTERCOM_SEARCH_CONTACTS": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_SEARCH_CONTACTS",
+          "description": "Tool to search for contacts using query filters with operators. Use when finding contacts by role, e...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GOOGLESHEETS_GET_SHEET_NAMES"
+                "INTERCOM_SEARCH_CONTACTS"
               ]
             }
           }
         },
-        "GMAIL_CREATE_EMAIL_DRAFT": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_CREATE_EMAIL_DRAFT",
-          "description": "Creates a Gmail email draft. While all fields are optional per the Gmail API, practical validation r...",
+        "INTERCOM_CREATE_CONTACT": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_CREATE_CONTACT",
+          "description": "Tool to create a new contact in Intercom workspace. Use when you need to add a user or lead to Inter...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_CREATE_EMAIL_DRAFT"
+                "INTERCOM_CREATE_CONTACT"
               ]
             }
           }
         },
-        "GMAIL_FETCH_EMAILS": {
-          "toolkit": "GMAIL",
-          "tool_slug": "GMAIL_FETCH_EMAILS",
-          "description": "Fetches a list of email messages from a Gmail account, supporting filtering, pagination, and optiona...",
+        "INTERCOM_LIST_TICKET_TYPES": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_LIST_TICKET_TYPES",
+          "description": "Tool to retrieve all ticket types for the workspace. Use when you need to get all available ticket t...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "GMAIL_FETCH_EMAILS"
+                "INTERCOM_LIST_TICKET_TYPES"
               ]
             }
           }
         },
-        "RESEND_SEND_BATCH_EMAILS": {
-          "toolkit": "RESEND",
-          "tool_slug": "RESEND_SEND_BATCH_EMAILS",
-          "description": "Trigger up to 100 batch emails at once. Use when you need to send multiple emails in a single API re...",
+        "INTERCOM_GET_TICKET_TYPE": {
+          "toolkit": "INTERCOM",
+          "tool_slug": "INTERCOM_GET_TICKET_TYPE",
+          "description": "Tool to retrieve details for a specific ticket type by its ID. Use when you need to get complete inf...",
           "hasFullSchema": false,
           "schemaRef": {
             "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
             "args": {
               "tool_slugs": [
-                "RESEND_SEND_BATCH_EMAILS"
+                "INTERCOM_GET_TICKET_TYPE"
               ]
             }
           }
         }
       },
       "time_info": {
-        "current_time_utc": "2026-08-12T21:30:11.516Z",
-        "current_time_utc_epoch_seconds": 1786570211,
+        "current_time_utc": "2026-08-13T05:27:17.656Z",
+        "current_time_utc_epoch_seconds": 1786598837,
         "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
       },
       "session": {
-        "id": "hour",
+        "id": "cake",
         "generate_id": true,
-        "instructions": "REQUIRED: Pass session_id \"hour\" in ALL subsequent meta tool calls for this workflow."
+        "instructions": "REQUIRED: Pass session_id \"cake\" in ALL subsequent meta tool calls for this workflow."
       },
       "next_steps_guidance": [
         "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
@@ -687,6 +485,6 @@
       "error": null
     },
     "error": null,
-    "log_id": "log_79_bljRiTYVM"
+    "log_id": "log_EF-hy337sSUX"
   }
 }

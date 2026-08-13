@@ -1,0 +1,311 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-050-q2",
+    "workflow_id": 50,
+    "workflow_task": "Verify the correct Slack workspace, identify members of a Slack channel, send an approved direct message to selected members, and remediate accidental sends in the wrong workspace.",
+    "query": "slack channel members list",
+    "intent": "Retrieve the list of members belonging to a specified Slack channel.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "SLACK_RETRIEVE_CONVERSATION_MEMBERS_LIST"
+        ],
+        "purpose": "Retrieve the list of member IDs for a specific Slack channel."
+      }
+    ],
+    "candidate_tools": [
+      "SLACK_DELETES_A_MESSAGE_FROM_A_CHAT",
+      "SLACK_FETCH_CONVERSATION_HISTORY",
+      "SLACK_FIND_CHANNELS",
+      "SLACK_LIST_ALL_USERS",
+      "SLACK_OPEN_DM",
+      "SLACK_RETRIEVE_CONVERSATION_MEMBERS_LIST",
+      "SLACK_SEARCH_MESSAGES",
+      "SLACK_SEND_MESSAGE",
+      "SLACK_TEST_AUTH"
+    ]
+  },
+  "request": {
+    "query": "slack channel members list"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "slack channel members list",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if channel/conversation ID unknown)] [Prerequisite]: Find the target channel using SLACK_FIND_CHANNELS (purpose: resolve conversation ID); if results are ambiguous, confirm the exact channel via SLACK_LIST_CONVERSATIONS.",
+            "[Required] [Step]: List member user IDs using SLACK_RETRIEVE_CONVERSATION_MEMBERS_LIST (purpose: get channel membership) and follow cursor-based pagination until response_metadata.next_cursor is empty.",
+            "[Optional (if you need names/emails/profile fields, not just IDs)] [Next Step]: Enrich selected user IDs using SLACK_RETRIEVE_DETAILED_USER_INFORMATION (purpose: map IDs to human-readable identities).",
+            "[Optional (if Slack toolkit is unavailable)] [Fallback]: List member user IDs using SLACKBOT_RETRIEVE_CONVERSATION_MEMBERS_LIST (purpose: retrieve membership via Slackbot)."
+          ],
+          "known_pitfalls": [
+            "[SLACK_RETRIEVE_CONVERSATION_MEMBERS_LIST] Returns user IDs only (members[] contains U*-style IDs); profile/name data requires SLACK_RETRIEVE_DETAILED_USER_INFORMATION.",
+            "[SLACK_RETRIEVE_CONVERSATION_MEMBERS_LIST] Cursor pagination uses response_metadata.next_cursor; stopping while next_cursor is non-empty yields an incomplete roster.",
+            "[SLACK_FIND_CHANNELS] Can return multiple similarly named channels; verify the correct conversation before listing members.",
+            "[SLACK_LIST_CONVERSATIONS] Output can include many conversation types; ensure you select the intended channel before using its ID downstream."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "SLACK_RETRIEVE_CONVERSATION_MEMBERS_LIST"
+          ],
+          "related_tool_slugs": [
+            "SLACK_FIND_CHANNELS",
+            "SLACK_LIST_CONVERSATIONS",
+            "SLACK_RETRIEVE_DETAILED_USER_INFORMATION",
+            "SLACKBOT_RETRIEVE_CONVERSATION_MEMBERS_LIST"
+          ],
+          "toolkits": [
+            "slack",
+            "slackbot"
+          ],
+          "plan_id": "b9cc819281d74c108d01312bddb950b6"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "slack",
+          "has_active_connection": false,
+          "description": "Slack is a channel-based messaging platform. With Slack, people can work together more effectively, connect all their software tools and services, and find the information they need to do their best work - all within a secure, enterprise-grade enviro",
+          "status_message": "No Active connection for toolkit=slack. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"slack\") to create a connection BEFORE executing any slack tools."
+        },
+        {
+          "toolkit": "slackbot",
+          "has_active_connection": false,
+          "description": "Slackbot gives agents workspace-wide read access to a Slack workspace on behalf of the installing user - search messages and files, browse channel and thread history, and look up users and channels - while continuing to post and react as the bot. Inc",
+          "status_message": "No Active connection for toolkit=slackbot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"slackbot\") to create a connection BEFORE executing any slackbot tools."
+        }
+      ],
+      "tool_schemas": {
+        "SLACK_RETRIEVE_CONVERSATION_MEMBERS_LIST": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_RETRIEVE_CONVERSATION_MEMBERS_LIST",
+          "description": "Retrieves a paginated list of active member IDs (not names, emails, or presence) for a specified Slack public channel, private channel, DM, or MPIM. Returns only user IDs; use a user-lookup tool to enrich member data.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "examples": [
+                  "100",
+                  "200"
+                ],
+                "description": "The maximum number of members to return per page. Fewer items may be returned than the requested limit, even if more members exist and the end of the list hasn't been reached."
+              },
+              "cursor": {
+                "type": "string",
+                "examples": [
+                  "dXNlcj1VMEc5V0ZYTlo=",
+                  "bmV4dF90czoxNTEyMDg1ODYxMDAwNTZa"
+                ],
+                "description": "Pagination cursor value for fetching specific pages of results. To retrieve the next page, provide the `next_cursor` value obtained from the `response_metadata` of the previous API call. If omitted or empty, the first page of members is fetched. For more details on pagination, refer to Slack API documentation. Loop by passing `next_cursor` into subsequent calls until `next_cursor` is empty to avoid silently truncating large member lists."
+              },
+              "channel": {
+                "type": "string",
+                "examples": [
+                  "C1234567890",
+                  "G0987654321",
+                  "D12345ABCDE"
+                ],
+                "description": "ID of the conversation (public channel, private channel, direct message, or multi-person direct message) for which to retrieve the member list. Public channel IDs typically start with 'C', private channels or multi-person direct messages (MPIMs) with 'G', and direct messages (DMs) with 'D'. Channel names are NOT accepted \u2014 only IDs. Obtain IDs via SLACK_FIND_CHANNELS or SLACK_LIST_CONVERSATIONS. For private channels and MPIMs, the app must have required scopes and be a member of the conversation, otherwise members may not be returned."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACK_FIND_CHANNELS": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_FIND_CHANNELS",
+          "description": "Find channels in a Slack workspace by any criteria - name, topic, purpose, or description. Returns channel IDs (C*/G* prefixed) required by most Slack tools \u2014 always resolve names to IDs here before passing to other tools. NOTE: This action searches channels and conversations visible to the authenticated user. Empty results may indicate: - No channels match the search query in name, topic, or purpose - The target private channel or DM is not accessible to the authenticated user because they are not a member - The connection lacks required read scopes (channels:read, groups:read, im:read, mpim:read). If empty, retry with exact_match=false or exclude_archived=false to avoid false negatives. In large workspaces, paginate using next_cursor to avoid missing matches. Check 'composio_execution_message' and 'total_channels_searched' in the response for details.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 50,
+                "examples": [
+                  10,
+                  50,
+                  100,
+                  200,
+                  500
+                ],
+                "description": "Maximum number of channels to return (1 to 999). Defaults to 50. Slack recommends no more than 200 results at a time for optimal performance."
+              },
+              "query": {
+                "type": "string",
+                "examples": [
+                  "general",
+                  "#general",
+                  "marketing",
+                  "dev",
+                  "announcements",
+                  "project"
+                ],
+                "description": "Search query to find channels. Searches across channel name, topic, purpose, and description (case-insensitive partial matching). Leading '#' prefix is automatically stripped."
+              },
+              "types": {
+                "type": "string",
+                "default": "public_channel,private_channel",
+                "examples": [
+                  "public_channel",
+                  "private_channel",
+                  "public_channel,private_channel"
+                ],
+                "description": "Comma-separated list of channel types to include: `public_channel`, `private_channel`, `mpim` (multi-person direct message), `im` (direct message). Defaults to public and private channels."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "T1234567890",
+                  "T9876543210"
+                ],
+                "description": "ID of the Slack workspace (team) to operate on, e.g. T0123456789. Use only with org-level Enterprise Grid tokens when you need to target a specific workspace; omit for single-workspace tokens."
+              },
+              "exact_match": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "When true, only return channels whose name exactly matches the query (case-insensitive). Also matches against previous channel names and the 'general' flag. When false, returns partial matches across name, topic, and purpose. Defaults to false."
+              },
+              "member_only": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Only return channels the user is a member of. Defaults to false."
+              },
+              "exclude_archived": {
+                "type": "boolean",
+                "default": true,
+                "examples": [
+                  true,
+                  false
+                ],
+                "description": "Exclude archived channels from search results. Defaults to true."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACK_LIST_CONVERSATIONS": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_LIST_CONVERSATIONS",
+          "description": "List conversations (channels/DMs) accessible to a specified user (or the authenticated user if no user ID is provided), respecting shared membership for non-public channels. Returns conversation IDs (C* for channels, G* for group DMs), not display names. Absence of private channels, DMs, or MPIMs from results indicates token scope or membership limits, not that the conversation is nonexistent.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "string",
+                "examples": [
+                  "U123ABC456",
+                  "W012A3BCD"
+                ],
+                "description": "The ID of the user whose conversations will be listed. If not provided, conversations for the authenticated user are returned. Non-public channels are restricted to those where the calling user (authenticating user) shares membership."
+              },
+              "limit": {
+                "type": "integer",
+                "examples": [
+                  "100",
+                  "500",
+                  "1000"
+                ],
+                "description": "The maximum number of items to return per page. Must be an integer, typically between 1 and 1000 (e.g., 100). If omitted, the API's default limit (often 100) applies. Fewer items than the limit may be returned."
+              },
+              "types": {
+                "type": "string",
+                "examples": [
+                  "public_channel,private_channel",
+                  "im,mpim",
+                  "public_channel"
+                ],
+                "description": "Comma-separated list of conversation types to include: `public_channel` (regular #channels everyone can join), `private_channel` (invite-only channels), `im` (1-on-1 direct messages), `mpim` (group direct messages with 3+ people). If omitted, all types are included. If omitted, the API defaults to `public_channel` only \u2014 explicitly specify all desired types to include private channels, DMs, or MPIMs. For `im` results, only user IDs are returned; use a user-lookup tool to resolve display names."
+              },
+              "cursor": {
+                "type": "string",
+                "examples": [
+                  "dXNlcjpVMDYxREk0Nlc=",
+                  "bmV4dF90czoxNTEyMDg1ODYxMDAwNTQz"
+                ],
+                "description": "Pagination cursor for retrieving the next set of results. Obtain this from the `next_cursor` field in a previous response's `response_metadata`. If omitted, the first page is fetched. Must loop on `next_cursor` until it is empty to avoid silently missing conversations."
+              },
+              "team_id": {
+                "type": "string",
+                "examples": [
+                  "T1234567890",
+                  "T0984ABC123"
+                ],
+                "description": "ID of the Slack workspace (team) to operate on, e.g. T0123456789. Use only with org-level Enterprise Grid tokens when you need to target a specific workspace; omit for single-workspace tokens."
+              },
+              "exclude_archived": {
+                "type": "boolean",
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Set to `true` to exclude archived channels from the list. If `false` or omitted, archived channels are typically included (the API's default behavior for omission will apply, usually including them)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SLACK_RETRIEVE_DETAILED_USER_INFORMATION": {
+          "toolkit": "SLACK",
+          "tool_slug": "SLACK_RETRIEVE_DETAILED_USER_INFORMATION",
+          "description": "Retrieves comprehensive information for a valid Slack user ID, excluding message history and channel...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACK_RETRIEVE_DETAILED_USER_INFORMATION"
+              ]
+            }
+          }
+        },
+        "SLACKBOT_RETRIEVE_CONVERSATION_MEMBERS_LIST": {
+          "toolkit": "SLACKBOT",
+          "tool_slug": "SLACKBOT_RETRIEVE_CONVERSATION_MEMBERS_LIST",
+          "description": "Retrieves a paginated list of active member IDs (not names, emails, or presence) for a specified Sla...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SLACKBOT_RETRIEVE_CONVERSATION_MEMBERS_LIST"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:34:41.288Z",
+        "current_time_utc_epoch_seconds": 1786599281,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "more",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"more\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_mYymsrvWLed5"
+  }
+}

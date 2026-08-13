@@ -1,0 +1,256 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-074-q1",
+    "workflow_id": 74,
+    "workflow_task": "Analyze Salesforce opportunity pipeline data by discovering a custom field, retrieving stage metadata, querying filtered opportunity records, fetching stage-change history, and computing stage conversion and skip metrics.",
+    "query": "search custom fields on Salesforce opportunity object",
+    "intent": "Discover the custom field name within the Salesforce opportunity object.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT"
+        ],
+        "purpose": "Discover custom fields and metadata for the Salesforce opportunity object"
+      }
+    ],
+    "candidate_tools": [
+      "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+      "SALESFORCE_RUN_SOQL_QUERY"
+    ]
+  },
+  "request": {
+    "query": "search custom fields on Salesforce opportunity object"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search custom fields on Salesforce opportunity object",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if object API name unknown)] [Prerequisite]: Enumerate candidate non-standard objects using SALESFORCE_GET_ALL_CUSTOM_OBJECTS (paginate while pagination.has_next_page=true).",
+            "[Required] [Step]: Retrieve authoritative field + relationship metadata using SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT (use fields[].name/label/type/custom/relationshipName/referenceTo plus queryable/filterable/groupable as available).",
+            "[Optional (if describe/query payload is truncated or offloaded)] [Prerequisite]: Parse/filter large responses using COMPOSIO_REMOTE_WORKBENCH (extract needed fields[] or data.records before building queries).",
+            "[Optional (if starting from ambiguous text identifiers)] [Prerequisite]: Find likely objects/records using SALESFORCE_EXECUTE_SOSL_SEARCH, then map hits to the correct sObject + Id before querying.",
+            "[Optional (if schema probing via SOQL is brittle)] [Prerequisite]: Inspect metadata via SALESFORCE_TOOLING_QUERY (iterate in small queries to avoid MALFORMED_QUERY while exploring field definitions).",
+            "[Required] [Step]: Validate schema + filters using SALESFORCE_RUN_SOQL_QUERY (COUNT() or small LIMIT) and fix INVALID_FIELD/INVALID_TYPE/MALFORMED_QUERY and relationship-path issues before scaling.",
+            "[Required] [Step]: Pull target records/aggregates using SALESFORCE_RUN_SOQL_QUERY (select only needed fields; paginate via data.done/data.nextRecordsUrl until done=true).",
+            "[Optional (for spot-checking runtime shapes)] [Next Step]: Fetch a single record using SALESFORCE_GET_S_OBJECT_RECORD (confirm nullability, picklist storage, and relationship fields).",
+            "[Optional (if picklist values vary by record type)] [Next Step]: Fetch allowed values using SALESFORCE_GET_PICKLIST_VALUES_BY_RECORD_TYPE (validate downstream logic inputs).",
+            "[Fallback (if standard query misses expected rows)] [Fallback]: Re-run the equivalent query using SALESFORCE_QUERY_ALL (include soft-deleted/archived where supported)."
+          ],
+          "known_pitfalls": [
+            "[SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT] Describe payloads can be very large and previews may truncate/offload; treat the returned fields[] as the source of truth.",
+            "[SALESFORCE_RUN_SOQL_QUERY] HTTP 400s often include INVALID_FIELD, INVALID_TYPE, INVALID_QUERY_FILTER_OPERATOR, and MALFORMED_QUERY from wrong API names or relationship paths.",
+            "[SALESFORCE_RUN_SOQL_QUERY] Pagination uses data.done plus data.nextRecordsUrl; misreading these can look like missing/empty results.",
+            "[SALESFORCE_RUN_SOQL_QUERY] Aggregate queries return AggregateResult rows; read the selected alias key in data.records[] rather than expecting normal row fields.",
+            "[SALESFORCE_TOOLING_QUERY] Tooling metadata queries may fail with MALFORMED_QUERY when using large OR/disjunction clauses; split into multiple queries and merge results."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Keyset pagination pattern to pull large result sets via repeated SALESFORCE_RUN_SOQL_QUERY calls",
+              "code": "```python\ndef fetch_all(base_query):\n    out=[]\n    last_id='000000000000000'\n    while True:\n        q=base_query.replace(':lastId', f\"'{last_id}'\")\n        r,e=run_composio_tool('SALESFORCE_RUN_SOQL_QUERY',{'query':q})\n        if e: break\n        rows=(r.get('data',{}) or {}).get('records',[])\n        if not rows: break\n        out.extend(rows)\n        last_id=rows[-1].get('Id')\n        if len(rows)<2000: break\n    return out\n```"
+            },
+            {
+              "description": "Filter an object-describe payload (fields array) to find candidate field API names by keyword",
+              "code": "```python\ndef find_fields(describe, keywords):\n    kws=[k.lower() for k in keywords]\n    out=[]\n    for f in (describe.get('fields',[]) or []):\n        s=((f.get('label') or '')+' '+(f.get('name') or '')).lower()\n        if any(k in s for k in kws):\n            out.append((f.get('label'),f.get('name'),f.get('type')))\n    return sorted(out)\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+            "SALESFORCE_RUN_SOQL_QUERY"
+          ],
+          "related_tool_slugs": [
+            "SALESFORCE_QUERY_ALL",
+            "SALESFORCE_GET_ALL_CUSTOM_OBJECTS",
+            "SALESFORCE_GET_S_OBJECT_RECORD",
+            "SALESFORCE_TOOLING_QUERY",
+            "SALESFORCE_EXECUTE_SOSL_SEARCH",
+            "SALESFORCE_GET_PICKLIST_VALUES_BY_RECORD_TYPE"
+          ],
+          "toolkits": [
+            "salesforce"
+          ],
+          "plan_id": "4e7153303e0642d79ea7112e6c616eb9"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "salesforce",
+          "has_active_connection": false,
+          "description": "Salesforce is a leading CRM platform integrating sales, service, marketing, and analytics to build customer relationships and drive business growth",
+          "status_message": "No Active connection for toolkit=salesforce. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"salesforce\") to create a connection BEFORE executing any salesforce tools."
+        }
+      ],
+      "tool_schemas": {
+        "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT",
+          "description": "Retrieves all fields (standard and custom) for a Salesforce object with complete metadata including field types, constraints, picklist values, and relationships.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "object_name"
+            ],
+            "properties": {
+              "object_name": {
+                "type": "string",
+                "examples": [
+                  "Contact",
+                  "Account",
+                  "Lead",
+                  "Custom_Object__c"
+                ],
+                "description": "API name of the Salesforce object to describe. Use standard object names (Account, Contact, Lead, Opportunity) or custom object API names ending in __c."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_RUN_SOQL_QUERY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_RUN_SOQL_QUERY",
+          "description": "Executes a SOQL query against Salesforce data. Returns records matching the query with pagination support.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "SELECT Id, Name, Email FROM Contact WHERE CreatedDate > 2024-01-01T00:00:00Z",
+                  "SELECT Name, (SELECT LastName FROM Contacts) FROM Account",
+                  "SELECT COUNT() FROM Lead WHERE Status = 'New'",
+                  "SELECT COUNT(Id), StageName FROM Opportunity GROUP BY StageName",
+                  "SELECT Id, Name FROM Opportunity ORDER BY Amount DESC LIMIT 10",
+                  "SELECT FIELDS(ALL) FROM Account LIMIT 200",
+                  "SELECT Id, Name FROM Contact WHERE LastName = 'O\\'Brien'",
+                  "SELECT Id, Name, Description FROM Account LIMIT 10"
+                ],
+                "description": "SOQL query to execute. Must start with SELECT. Field names must match object schema exactly \u2014 use SALESFORCE_GET_ALL_FIELDS_FOR_OBJECT for unfamiliar objects. ALIASES: No 'AS' keyword (use 'SUM(Amount) TotalSales' NOT 'SUM(Amount) AS TotalSales'). AGGREGATES: Without GROUP BY, ORDER BY/LIMIT not allowed (single-row result). COUNT() SYNTAX: Bare COUNT() only valid alone. With GROUP BY or other fields, must specify field: COUNT(Id) or COUNT(fieldName). Example: 'SELECT COUNT(Id), Status FROM Lead GROUP BY Status' NOT 'SELECT COUNT(), Status FROM Lead GROUP BY Status'. NON-GROUPABLE: Long text, rich text, encrypted text, compound address/location fields. NON-FILTERABLE: Long text area, rich text, encrypted text, multi-select picklists, blob fields CANNOT be in WHERE. FIELDS(ALL)/FIELDS(CUSTOM) require LIMIT \u2264200. ID values need single quotes. Apostrophes use backslash: 'O\\'Brien'."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_QUERY_ALL": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_QUERY_ALL",
+          "description": "Tool to execute SOQL queries including soft-deleted and archived records. Use when you need to query records that have been deleted via merge or delete operations, or when accessing archived Task and Event records.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "query"
+            ],
+            "properties": {
+              "query": {
+                "type": "string",
+                "examples": [
+                  "SELECT Id, Name FROM Account WHERE IsDeleted = true",
+                  "SELECT Id, Name, Email FROM Contact",
+                  "SELECT Id, Subject, Status FROM Task WHERE IsArchived = true",
+                  "SELECT Id, Name, Amount FROM Opportunity ORDER BY Amount DESC LIMIT 10"
+                ],
+                "minLength": 10,
+                "description": "The SOQL query to execute. Unlike standard queries, QueryAll includes soft-deleted records (from merge or delete operations) and archived Task/Event records. Example: 'SELECT Id, Name FROM Account WHERE IsDeleted = true'. Use standard SOQL syntax."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "SALESFORCE_GET_ALL_CUSTOM_OBJECTS": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_ALL_CUSTOM_OBJECTS",
+          "description": "Retrieves Salesforce objects (standard and custom) with detailed metadata. Each object includes a 'c...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_ALL_CUSTOM_OBJECTS"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_GET_S_OBJECT_RECORD": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_S_OBJECT_RECORD",
+          "description": "Tool to retrieve a single Salesforce record by ID from any sObject type. Use when you need to get de...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_S_OBJECT_RECORD"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_TOOLING_QUERY": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_TOOLING_QUERY",
+          "description": "Tool to execute SOQL queries against Salesforce Tooling API metadata objects. Use when you need to q...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_TOOLING_QUERY"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_EXECUTE_SOSL_SEARCH": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_EXECUTE_SOSL_SEARCH",
+          "description": "Execute a SOSL search to search across multiple Salesforce objects. Use when you need to search for ...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_EXECUTE_SOSL_SEARCH"
+              ]
+            }
+          }
+        },
+        "SALESFORCE_GET_PICKLIST_VALUES_BY_RECORD_TYPE": {
+          "toolkit": "SALESFORCE",
+          "tool_slug": "SALESFORCE_GET_PICKLIST_VALUES_BY_RECORD_TYPE",
+          "description": "Tool to get values for all picklist fields of a record type, including dependent picklists. Use when...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "SALESFORCE_GET_PICKLIST_VALUES_BY_RECORD_TYPE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:37:21.972Z",
+        "current_time_utc_epoch_seconds": 1786599441,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "luck",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"luck\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_FTTWSFe2_cOV"
+  }
+}

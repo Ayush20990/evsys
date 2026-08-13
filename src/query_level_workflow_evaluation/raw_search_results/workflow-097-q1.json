@@ -1,0 +1,311 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-097-q1",
+    "workflow_id": 97,
+    "workflow_task": "Manage Pipedrive CRM records: find deals and contacts, update deal participants and primary contacts, log notes and activities, schedule follow-ups, inspect deal and organization custom fields, and bulk reclassify deals across pipeline stages based on contract timing data.",
+    "query": "search Pipedrive deals and contacts",
+    "intent": "Find existing deals and contacts within the Pipedrive CRM.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "PIPEDRIVE_SEARCH_DEALS"
+        ],
+        "purpose": "Search Pipedrive deals"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "PIPEDRIVE_SEARCH_PERSONS"
+        ],
+        "purpose": "Search Pipedrive contacts"
+      }
+    ],
+    "candidate_tools": [
+      "PIPEDRIVE_ADD_AN_ACTIVITY",
+      "PIPEDRIVE_ADD_DEAL_PARTICIPANT",
+      "PIPEDRIVE_ADD_NOTE",
+      "PIPEDRIVE_GET_ALL_DEAL_FIELDS",
+      "PIPEDRIVE_GET_ALL_ORGANIZATIONS",
+      "PIPEDRIVE_GET_ALL_ORGANIZATION_FIELDS",
+      "PIPEDRIVE_GET_ALL_PIPELINES",
+      "PIPEDRIVE_GET_ALL_STAGES",
+      "PIPEDRIVE_GET_DEAL",
+      "PIPEDRIVE_GET_DEALS_IN_A_PIPELINE",
+      "PIPEDRIVE_GET_DEALS_IN_A_STAGE",
+      "PIPEDRIVE_GET_DETAILS_OF_AN_ORGANIZATION",
+      "PIPEDRIVE_LIST_DEAL_ACTIVITIES",
+      "PIPEDRIVE_LIST_PARTICIPANTS_OF_A_DEAL",
+      "PIPEDRIVE_SEARCH_DEALS",
+      "PIPEDRIVE_SEARCH_PERSONS",
+      "PIPEDRIVE_UPDATE_AN_ORGANIZATION",
+      "PIPEDRIVE_UPDATE_DEAL",
+      "PIPEDRIVE_UPDATE_ORGANIZATION"
+    ]
+  },
+  "request": {
+    "query": "search Pipedrive deals and contacts"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search Pipedrive deals and contacts",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if saved constraints exist)] [Prerequisite]: List available deal filters using PIPEDRIVE_GET_ALL_FILTERS (select a filter matching pipeline/stage/owner rules).",
+            "[Optional (if filtering uses custom fields)] [Prerequisite]: Fetch deal field metadata using PIPEDRIVE_GET_ALL_DEAL_FIELDS (map labels/options to internal keys, including address-like subkeys).",
+            "[Optional (if query can be reduced by keywords)] [Step]: Narrow the candidate set using PIPEDRIVE_SEARCH_DEALS (collect deal IDs for later hydration/validation).",
+            "[Required] [Step]: Pull recently changed deals since the window start using PIPEDRIVE_GET_RECENTS (items=deal; paginate via additional_data.pagination.more_items_in_collection and next_start).",
+            "[Required] [Next Step]: From each PIPEDRIVE_GET_RECENTS wrapper, read the nested deal at item.data, de-duplicate deal IDs, normalize nested-ID fields to primitives, and client-filter to the end cutoff using the chosen timestamp fields.",
+            "[Required] [Next Step]: Enrich shortlisted IDs using PIPEDRIVE_GET_DEAL (confirm current status/pipeline/stage and normalize activity-related and close/win/loss dates for reporting).",
+            "[Optional (if exact status/stage timing is required)] [Next Step]: Audit key field transitions using PIPEDRIVE_GET_DEAL_CHANGELOG (derive when changes occurred within the reporting window).",
+            "[Fallback (if PIPEDRIVE_GET_RECENTS/PIPEDRIVE_SEARCH_DEALS return nothing or constraints can\u2019t be expressed)] [Fallback]: Enumerate using PIPEDRIVE_GET_ALL_DEALS (paginate via response.data.additional_data.pagination.next_start; reduce limit on payload errors), then client-filter and spot-check with PIPEDRIVE_GET_DEAL."
+          ],
+          "known_pitfalls": [
+            "[PIPEDRIVE_GET_RECENTS] Rows are change-event wrappers; the deal ID is item.data.id (not the outer event id).",
+            "[PIPEDRIVE_GET_RECENTS] Only a start boundary is supported; enforce end-of-window filtering client-side.",
+            "[PIPEDRIVE_GET_RECENTS] May return success=true with data=null; treat as no matches and switch to the fallback.",
+            "[PIPEDRIVE_GET_ALL_DEALS] ToolRouterV2_PayloadTooLarge (HTTP 413) can occur on large pages; lower limit and/or pre-narrow via PIPEDRIVE_SEARCH_DEALS.",
+            "[PIPEDRIVE_GET_ALL_DEALS] Some fields that look like scalar IDs (for example pipeline/stage/owner) may be nested objects; normalize before joins/grouping, and treat repeated SSL/DNS errors as configuration issues rather than retryable failures."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Paginate PIPEDRIVE_GET_ALL_DEALS and count deals within a client-side date window",
+              "code": "```python\nfrom collections import Counter\nstart=0\nlimit=500\ncount=0\nby_status=Counter()\nwhile True:\n  res,err=run_composio_tool('PIPEDRIVE_GET_ALL_DEALS',{'limit':limit,'start':start,'status':'all_not_deleted'})\n  if err: raise RuntimeError(err)\n  payload=(res or {}).get('data') or {}\n  for d in (payload.get('data') or []):\n    created=(d.get('add_time') or '')[:10]\n    if created and start_date<=created<=end_date:\n      count+=1\n      by_status[d.get('status') or 'unknown']+=1\n  pag=((payload.get('additional_data') or {}).get('pagination') or {})\n  if not pag.get('more_items_in_collection') or pag.get('next_start') is None: break\n  start=pag.get('next_start')\n```"
+            }
+          ],
+          "difficulty": "medium",
+          "primary_tool_slugs": [
+            "PIPEDRIVE_GET_ALL_DEALS",
+            "PIPEDRIVE_GET_DEAL"
+          ],
+          "related_tool_slugs": [
+            "PIPEDRIVE_GET_DEAL_CHANGELOG",
+            "PIPEDRIVE_SEARCH_DEALS",
+            "PIPEDRIVE_GET_ALL_FILTERS",
+            "PIPEDRIVE_GET_ALL_DEAL_FIELDS",
+            "PIPEDRIVE_GET_RECENTS"
+          ],
+          "toolkits": [
+            "pipedrive"
+          ],
+          "plan_id": "2c0d2008e3584f699aecf61d27aa673f"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "pipedrive",
+          "has_active_connection": false,
+          "description": "Pipedrive is a sales management tool built around pipeline visualization, lead tracking, activity reminders, and automation to keep deals progressing",
+          "status_message": "No Active connection for toolkit=pipedrive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"pipedrive\") to create a connection BEFORE executing any pipedrive tools."
+        }
+      ],
+      "tool_schemas": {
+        "PIPEDRIVE_GET_ALL_DEALS": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_GET_ALL_DEALS",
+          "description": "Returns all deals. For more information, see the tutorial for <a href=\"https://pipedrive.readme.io/docs/getting-all-deals\" target=\"_blank\" rel=\"noopener noreferrer\">getting all deals</a>.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "sort": {
+                "type": "string",
+                "description": "The field names and sorting mode separated by a comma (`field_name_1 ASC`, `field_name_2 DESC`). Only first-level field keys are supported (no nested keys). "
+              },
+              "limit": {
+                "type": "integer",
+                "maximum": 500,
+                "minimum": 1,
+                "description": "Items shown per page (1-500). If not provided, 100 items will be returned."
+              },
+              "start": {
+                "type": "integer",
+                "default": 0,
+                "description": "Pagination start"
+              },
+              "status": {
+                "enum": [
+                  "open",
+                  "won",
+                  "lost",
+                  "deleted",
+                  "all_not_deleted"
+                ],
+                "type": "string",
+                "default": "all_not_deleted",
+                "description": "Only fetch deals with a specific status. If omitted, all not deleted deals are returned. If set to deleted, deals that have been deleted up to 30 days ago will be included. "
+              },
+              "user_id": {
+                "type": "integer",
+                "description": "If supplied, only deals matching the given user will be returned. However, `filter_id` and `owned_by_you` takes precedence over `user_id` when supplied. "
+              },
+              "stage_id": {
+                "type": "integer",
+                "description": "If supplied, only deals within the given stage will be returned"
+              },
+              "filter_id": {
+                "type": "integer",
+                "description": "The ID of the filter to use"
+              },
+              "owned_by_you": {
+                "type": "integer",
+                "description": "When supplied, only deals owned by you are returned. However, `filter_id` takes precedence over `owned_by_you` when both are supplied. "
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "PIPEDRIVE_GET_DEAL": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_GET_DEAL",
+          "description": "Tool to get details of a specific deal in Pipedrive. Use when you need to retrieve comprehensive information about a deal by its ID.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer",
+                "examples": [
+                  1,
+                  123,
+                  456
+                ],
+                "description": "The ID of the deal to retrieve"
+              },
+              "custom_fields": {
+                "type": "string",
+                "examples": [
+                  "field1,field2,field3"
+                ],
+                "description": "Comma-separated list of custom field keys to include (maximum 15 keys). Use this parameter for faster results and smaller responses when only specific custom fields are needed."
+              },
+              "include_fields": {
+                "type": "string",
+                "examples": [
+                  "products_count,activities_count",
+                  "files_count,notes_count"
+                ],
+                "description": "Comma-separated list of additional fields to include in the response. Acceptable values: next_activity_id, last_activity_id, first_won_time, products_count, files_count, notes_count, followers_count, email_messages_count, activities_count, done_activities_count, undone_activities_count, participants_count, last_incoming_mail_time, last_outgoing_mail_time, smart_bcc_email"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "PIPEDRIVE_GET_DEAL_CHANGELOG": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_GET_DEAL_CHANGELOG",
+          "description": "Tool to list updates about deal field values. Use when you need to retrieve the changelog history showing all changes made to a specific deal's field values.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer",
+                "examples": [
+                  1,
+                  123
+                ],
+                "description": "The ID of the deal"
+              },
+              "limit": {
+                "type": "integer",
+                "examples": [
+                  10,
+                  50,
+                  100
+                ],
+                "description": "Number of items to display per page. Controls the size of each paginated response."
+              },
+              "cursor": {
+                "type": "string",
+                "examples": [
+                  "eyJmaWVsZCI6InZhbHVlIiwiaWQiOjEyM30="
+                ],
+                "description": "Pagination cursor for the first item on the next page. Use the cursor returned in the response to fetch the next page."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "PIPEDRIVE_SEARCH_DEALS": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_SEARCH_DEALS",
+          "description": "This API endpoint searches deals by title, notes, and custom fields, filters results by person or or...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "PIPEDRIVE_SEARCH_DEALS"
+              ]
+            }
+          }
+        },
+        "PIPEDRIVE_GET_ALL_FILTERS": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_GET_ALL_FILTERS",
+          "description": "Returns data about all filters.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "PIPEDRIVE_GET_ALL_FILTERS"
+              ]
+            }
+          }
+        },
+        "PIPEDRIVE_GET_ALL_DEAL_FIELDS": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_GET_ALL_DEAL_FIELDS",
+          "description": "Returns data about all deal fields.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "PIPEDRIVE_GET_ALL_DEAL_FIELDS"
+              ]
+            }
+          }
+        },
+        "PIPEDRIVE_GET_RECENTS": {
+          "toolkit": "PIPEDRIVE",
+          "tool_slug": "PIPEDRIVE_GET_RECENTS",
+          "description": "Returns data about all recent changes occurred after the given timestamp.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "PIPEDRIVE_GET_RECENTS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:39:43.323Z",
+        "current_time_utc_epoch_seconds": 1786599583,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "meet",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"meet\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_lnjtZZ_rpOxO"
+  }
+}

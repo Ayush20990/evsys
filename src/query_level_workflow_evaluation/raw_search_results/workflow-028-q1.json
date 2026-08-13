@@ -1,0 +1,304 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-028-q1",
+    "workflow_id": 28,
+    "workflow_task": "Analyze recent Instagram Reel performance, generate a new short-form branded video with AI video and voice tools, publish it as an Instagram Reel, verify the post, and attempt to archive the final asset in a repository.",
+    "query": "fetch instagram reel analytics performance metrics",
+    "intent": "Retrieve recent Instagram Reel performance data to analyze metrics.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "INSTAGRAM_GET_IG_USER_MEDIA",
+          "INSTAGRAM_GET_IG_MEDIA_INSIGHTS"
+        ],
+        "purpose": "Retrieve recent Instagram Reel performance data and metrics"
+      }
+    ],
+    "candidate_tools": [
+      "ELEVENLABS_TEXT_TO_SPEECH",
+      "GEMINI_GENERATE_VIDEOS",
+      "GEMINI_WAIT_FOR_VIDEO",
+      "INSTAGRAM_GET_IG_MEDIA",
+      "INSTAGRAM_GET_IG_MEDIA_INSIGHTS",
+      "INSTAGRAM_GET_IG_USER_MEDIA",
+      "INSTAGRAM_POST_IG_USER_MEDIA",
+      "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH"
+    ]
+  },
+  "request": {
+    "query": "fetch instagram reel analytics performance metrics"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "fetch instagram reel analytics performance metrics",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if account context is unknown)] [Prerequisite]: Confirm accessible professional context using INSTAGRAM_GET_USER_INFO (ensure insights are available for the authenticated professional account).",
+            "[Required (if ig_media_id is unknown)] [Prerequisite]: Locate the target post using INSTAGRAM_GET_IG_USER_MEDIA (request minimal fields; match by stable returned identifiers such as id/permalink-like fields).",
+            "[Optional (if target not in first page)] [Step]: Paginate INSTAGRAM_GET_IG_USER_MEDIA using response.data.paging.cursors.after until found or no cursor remains.",
+            "[Optional (if media type/eligibility is unclear)] [Prerequisite]: Validate the selected item using INSTAGRAM_GET_IG_MEDIA (confirm it exists and check minimal type/product fields).",
+            "[Required] [Step]: Fetch per-media metrics using INSTAGRAM_GET_IG_MEDIA_INSIGHTS (pass metric as an array; normalize response.data.data[*] into name\u2192value via values[0].value, sometimes item.value).",
+            "[Fallback (if insights are empty/partial or error)] [Fallback]: Retry INSTAGRAM_GET_IG_MEDIA_INSIGHTS once with a reduced, known-valid metric list; keep partial results and optionally re-check the id using INSTAGRAM_GET_IG_MEDIA.",
+            "[Optional (if carousel child ids are needed)] [Next Step]: Expand children using INSTAGRAM_GET_IG_MEDIA_CHILDREN (report child ids; analytics typically remain at the parent).",
+            "[Optional (if qualitative engagement is needed)] [Next Step]: Fetch comments using INSTAGRAM_GET_IG_MEDIA_COMMENTS (empty data can be valid; paginate only when paging is present)."
+          ],
+          "known_pitfalls": [
+            "[INSTAGRAM_GET_IG_MEDIA] Passing a non-numeric or inaccessible ig_media_id can fail with API error code 100 (unsupported request).",
+            "[INSTAGRAM_GET_USER_INFO] Auth issues can surface as 401 with error code 190, blocking downstream id resolution.",
+            "[INSTAGRAM_GET_IG_USER_MEDIA] response.data.paging.next may be a full next-page URL with sensitive query data\u2014paginate via response.data.paging.cursors.after.",
+            "[INSTAGRAM_GET_IG_MEDIA_INSIGHTS] Metric eligibility/format is strict; incompatible metrics or non-array metric values often yield HTTP 400 or empty results.",
+            "[INSTAGRAM_GET_IG_MEDIA_INSIGHTS] Transient HTTP 500 (OAuthException code 2) can occur; retry later/backoff and preserve partial outputs instead of re-mapping ids immediately."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Flatten INSTAGRAM_GET_IG_MEDIA_INSIGHTS into {metric_name: value} handling values[0].value and occasional item.value.",
+              "code": "```python\ndef parse_insights(resp):\n    out={}\n    items=(((resp or {}).get('data') or {}).get('data') or [])\n    for it in items:\n        name=it.get('name')\n        vals=it.get('values') or []\n        if vals and isinstance(vals[0],dict):\n            out[name]=vals[0].get('value')\n        elif 'value' in it:\n            out[name]=it.get('value')\n    return out\n```"
+            },
+            {
+              "description": "Extract media rows and the next cursor from an INSTAGRAM_GET_IG_USER_MEDIA response.",
+              "code": "```python\ndef extract_media_page(resp):\n    d=(resp or {}).get('data') or {}\n    rows=d.get('data') or []\n    after=((d.get('paging') or {}).get('cursors') or {}).get('after')\n    return [{'id':r.get('id'),'permalink':r.get('permalink'),'created_time':r.get('timestamp')} for r in rows], after\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "INSTAGRAM_GET_IG_MEDIA_INSIGHTS"
+          ],
+          "related_tool_slugs": [
+            "INSTAGRAM_GET_IG_USER_MEDIA",
+            "INSTAGRAM_GET_IG_MEDIA",
+            "INSTAGRAM_GET_USER_INFO",
+            "INSTAGRAM_GET_IG_MEDIA_CHILDREN",
+            "INSTAGRAM_GET_IG_MEDIA_COMMENTS"
+          ],
+          "toolkits": [
+            "instagram"
+          ],
+          "plan_id": "b51bc78bf4fc4342aec7ea2d93d3cf2d"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "instagram",
+          "has_active_connection": false,
+          "description": "Instagram is a social media platform for sharing photos, videos, and stories. Only supports Instagram Business and Creator accounts, not Instagram Personal accounts.",
+          "status_message": "No Active connection for toolkit=instagram. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"instagram\") to create a connection BEFORE executing any instagram tools."
+        }
+      ],
+      "tool_schemas": {
+        "INSTAGRAM_GET_IG_MEDIA_INSIGHTS": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_IG_MEDIA_INSIGHTS",
+          "description": "Tool to get insights and metrics for Instagram media objects (photos, videos, reels, carousel albums). Use when you need to retrieve performance data such as views, reach, likes, comments, saves, and shares for specific media. Note: Insights data is only available for media published within the last 2 years, and the account must have at least 1,000 followers. Requires a Business or Creator account; personal Instagram profiles are not supported.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ig_media_id",
+              "metric"
+            ],
+            "properties": {
+              "metric": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "views",
+                    "reach",
+                    "likes",
+                    "comments",
+                    "saved"
+                  ]
+                ],
+                "description": "List of metrics to retrieve. Must be provided as an array of strings, e.g., ['reach', 'saved', 'likes']. COMMONLY SUPPORTED METRICS: views, reach, saved, likes, comments, shares, total_interactions, reposts. REELS-SPECIFIC METRICS: ig_reels_video_view_total_time, ig_reels_avg_watch_time, reels_skip_rate, facebook_views, crossposted_views. FEED-AND-STORY METRICS: profile_activity. STORIES-SPECIFIC METRICS: link_clicks, replies, navigation, follows, profile_visits. DEPRECATED METRICS (will be filtered out): 'impressions', 'plays', 'video_views', 'clips_replays_count', 'ig_reels_aggregated_all_plays_count' (use 'views' instead); 'taps_forward', 'taps_back', 'exits' (Story navigation metrics deprecated in API v18+, use 'navigation' instead). INVALID METRIC NAMES (will be rejected): 'clicks', 'engagement' are NOT valid metric names."
+              },
+              "period": {
+                "type": "string",
+                "const": "lifetime",
+                "default": "lifetime",
+                "description": "The time period for metric aggregation. Instagram media insights automatically use 'lifetime'; other period values are not supported."
+              },
+              "breakdown": {
+                "enum": [
+                  "action_type",
+                  "story_navigation_action_type"
+                ],
+                "type": "string",
+                "description": "Optional breakdown dimension for supported metrics. Allowed values: 'action_type' (e.g. for profile_activity) and 'story_navigation_action_type' (for Story navigation). Only applicable to metrics that support breakdowns."
+              },
+              "ig_media_id": {
+                "type": "string",
+                "examples": [
+                  "18044673371703564"
+                ],
+                "description": "The ID of the Instagram media object (photo, video, reel, carousel album) for which to retrieve insights"
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "Instagram Graph API version to use"
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_GET_IG_USER_MEDIA": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_IG_USER_MEDIA",
+          "description": "Get Instagram user's media collection (posts, photos, videos, reels, carousels). Use when you need to retrieve all media published by an Instagram Business or Creator account with support for pagination and time-based filtering.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ig_user_id"
+            ],
+            "properties": {
+              "after": {
+                "type": "string",
+                "description": "Cursor for forward pagination - retrieve media after this cursor Value comes from paging.cursors.after in the response; stopping at the first page silently omits older posts."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 25,
+                "maximum": 100,
+                "minimum": 1,
+                "description": "Number of media items to return per page (default: 25, max: 100)"
+              },
+              "since": {
+                "type": "integer",
+                "description": "Unix timestamp - filter results to media created after this time. If both 'since' and 'until' are provided, 'since' must be less than 'until'."
+              },
+              "until": {
+                "type": "integer",
+                "description": "Unix timestamp - filter results to media created before this time. If both 'since' and 'until' are provided, 'since' must be less than 'until'."
+              },
+              "before": {
+                "type": "string",
+                "description": "Cursor for backward pagination - retrieve media before this cursor"
+              },
+              "fields": {
+                "type": "string",
+                "default": "id,caption,media_type,media_url,permalink,thumbnail_url,timestamp,username,legacy_instagram_media_id,alt_text,is_ai_generated,is_shared_to_feed,media_audio_type,view_count,reposts_count,saved_count,shares_count,total_like_count,total_comments_count,total_views_count",
+                "description": "Comma-separated list of fields to return. Available fields: id, caption, media_type, media_url, permalink, thumbnail_url, timestamp, username, comments_count, like_count, legacy_instagram_media_id, is_comment_enabled, owner, shortcode, media_product_type, alt_text, is_ai_generated, is_shared_to_feed, media_audio_type, view_count, reposts_count, saved_count, shares_count, total_like_count, total_comments_count, total_views_count, children{media_url,media_type,thumbnail_url} Reels appear as media_type=VIDEO and media_product_type=REELS; filter both fields to identify reels. media_url is a direct file URL; permalink is the user-facing share link. Optional fields like caption and like_count may be null or absent in the response."
+              },
+              "ig_user_id": {
+                "type": "string",
+                "examples": [
+                  "me",
+                  "17841405793187218"
+                ],
+                "minLength": 2,
+                "description": "Instagram Business or Creator Account ID. Use 'me' for the authenticated user, or provide the numeric IG User ID obtained from the Instagram Graph API (typically 17 digits, e.g., '17841405793187218'). Facebook Page IDs are not supported or automatically converted."
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "Instagram Graph API version to use (e.g., 'v21.0')"
+              },
+              "auto_resolve_fb_page_id": {
+                "type": "boolean",
+                "default": true,
+                "description": "Deprecated no-op retained for backwards compatibility. On Instagram Login the host follows the token (graph.instagram.com) and Facebook Page IDs are not resolved. Provide an Instagram Business or Creator Account ID directly (or 'me')."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_GET_IG_MEDIA": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_IG_MEDIA",
+          "description": "Get a published Instagram Media object (photo, video, story, reel, or carousel). Use when you need to retrieve detailed information about a specific Instagram post including engagement metrics, caption, media URLs, and metadata. NOTE: This action is for published media only. For unpublished container IDs (from INSTAGRAM_CREATE_MEDIA_CONTAINER), use INSTAGRAM_GET_POST_STATUS to check status instead.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ig_media_id"
+            ],
+            "properties": {
+              "fields": {
+                "type": "string",
+                "default": "id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count,media_product_type,legacy_instagram_media_id,alt_text,is_ai_generated,is_shared_to_feed,media_audio_type,view_count,reposts_count,saved_count,shares_count,total_like_count,total_comments_count,total_views_count",
+                "description": "Comma-separated list of fields to return. Supported: id, caption, comments_count, is_comment_enabled, like_count, media_type, media_url, media_product_type, legacy_instagram_media_id, owner, permalink, shortcode, thumbnail_url, timestamp, username, alt_text, is_ai_generated, is_shared_to_feed, media_audio_type, view_count, reposts_count, saved_count, shares_count, total_like_count, total_comments_count, total_views_count, children, comments. For nested fields use 'children{media_url,media_type}'. UNSUPPORTED (cause errors): tagged_users, user_tags, location, filter_name, latitude, longitude, text \u2014 use 'caption' not 'text'. For insights metrics use INSTAGRAM_GET_IG_MEDIA_INSIGHTS. Tagged-media retrieval is unavailable through this Instagram Login toolkit. A MediaBuilder error means the ID is an unpublished container \u2014 use INSTAGRAM_GET_POST_STATUS."
+              },
+              "ig_media_id": {
+                "type": "string",
+                "examples": [
+                  "17858625294504375"
+                ],
+                "description": "The numeric ID of the Instagram media object from the Graph API (e.g., '17858625294504375'). IMPORTANT: This must be a numeric string, NOT an alphanumeric shortcode from instagram.com/p/<shortcode>/ URLs (e.g., 'DUTi4n4D9wg' is NOT valid). Obtain numeric IDs from INSTAGRAM_GET_IG_USER_MEDIA or similar endpoints. For unpublished container IDs, use INSTAGRAM_GET_POST_STATUS instead."
+              },
+              "graph_api_version": {
+                "type": "string",
+                "default": "v21.0",
+                "description": "Instagram Graph API version to use"
+              }
+            },
+            "additionalProperties": true
+          },
+          "hasFullSchema": true
+        },
+        "INSTAGRAM_GET_USER_INFO": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_USER_INFO",
+          "description": "Get Instagram Business Account info including profile details and statistics. Use \"me\" to query your...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_GET_USER_INFO"
+              ]
+            }
+          }
+        },
+        "INSTAGRAM_GET_IG_MEDIA_CHILDREN": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_IG_MEDIA_CHILDREN",
+          "description": "Tool to get media objects (images/videos) that are children of an Instagram carousel/album post. Use...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_GET_IG_MEDIA_CHILDREN"
+              ]
+            }
+          }
+        },
+        "INSTAGRAM_GET_IG_MEDIA_COMMENTS": {
+          "toolkit": "INSTAGRAM",
+          "tool_slug": "INSTAGRAM_GET_IG_MEDIA_COMMENTS",
+          "description": "Tool to retrieve comments on an Instagram media object. Use when you need to fetch comments from a s...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "INSTAGRAM_GET_IG_MEDIA_COMMENTS"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:31:26.704Z",
+        "current_time_utc_epoch_seconds": 1786599086,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "copy",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"copy\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_Hc4wXuqnvsCd"
+  }
+}

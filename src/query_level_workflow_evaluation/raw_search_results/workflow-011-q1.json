@@ -1,0 +1,427 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-011-q1",
+    "workflow_id": 11,
+    "workflow_task": "Maintain an internal OneDrive-based operations knowledge base, create and verify strategy/support documents, coordinate operational tasks via Discord, check queue and system state files, and configure Gmail support labels and routing.",
+    "query": "search and read files in OneDrive",
+    "intent": "Find and retrieve strategy and support documents stored in the internal OneDrive-based knowledge base.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "ONE_DRIVE_SEARCH_ITEMS"
+        ],
+        "purpose": "Search files by keyword"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "ONE_DRIVE_DOWNLOAD_FILE",
+          "ONE_DRIVE_DOWNLOAD_FILE_BY_PATH"
+        ],
+        "purpose": "Read/download file contents"
+      },
+      {
+        "acceptable_tool_slugs": [
+          "ONE_DRIVE_LIST_FOLDER_CHILDREN"
+        ],
+        "purpose": "List folder contents to find files"
+      }
+    ],
+    "candidate_tools": [
+      "DISCORDBOT_LIST_MESSAGES",
+      "DISCORDBOT_TEST_AUTH",
+      "GMAIL_CREATE_FILTER",
+      "GMAIL_CREATE_LABEL",
+      "ONE_DRIVE_DOWNLOAD_FILE",
+      "ONE_DRIVE_DOWNLOAD_FILE_BY_PATH",
+      "ONE_DRIVE_GET_ITEM",
+      "ONE_DRIVE_LIST_FOLDER_CHILDREN",
+      "ONE_DRIVE_ONEDRIVE_CREATE_FOLDER",
+      "ONE_DRIVE_ONEDRIVE_CREATE_TEXT_FILE",
+      "ONE_DRIVE_ONEDRIVE_FIND_FILE",
+      "ONE_DRIVE_ONEDRIVE_FIND_FOLDER",
+      "ONE_DRIVE_SEARCH_ITEMS"
+    ]
+  },
+  "request": {
+    "query": "search and read files in OneDrive"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search and read files in OneDrive",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Optional (if multiple drives/libraries are accessible)] [Prerequisite]: Choose scope using ONE_DRIVE_LIST_DRIVES (store drive_id for downstream calls).",
+            "[Optional (if exact name is known and a likely parent folder exists)] [Prerequisite]: Attempt direct lookup using ONE_DRIVE_ONEDRIVE_FIND_FILE (reduces noise vs broad search).",
+            "[Required] [Step]: Discover candidates using ONE_DRIVE_SEARCH_ITEMS (search by name keywords; if no hits, retry with fewer tokens/without extension; post-filter by exact name and file-vs-folder facet; de-duplicate by stable item id).",
+            "[Optional (if @odata.nextLink is returned)] [Next Step]: Continue ONE_DRIVE_SEARCH_ITEMS pagination (extract skip_token and iterate until exhausted or the target is found).",
+            "[Optional (if search is empty/noisy but a likely folder is known)] [Fallback]: Validate folder scope using ONE_DRIVE_ONEDRIVE_FIND_FOLDER, then enumerate with ONE_DRIVE_LIST_FOLDER_CHILDREN and filter client-side by exact name/extension and file vs folder.",
+            "[Required] [Next Step]: Validate the chosen match using ONE_DRIVE_GET_ITEM (confirm file vs folder/shortcut and capture stable drive_id/item_id and parentReference metadata).",
+            "[Optional (if file bytes are needed)] [Next Step]: Download using ONE_DRIVE_DOWNLOAD_FILE (if a hosted content URL is returned, fetch it promptly and re-request if expired)."
+          ],
+          "known_pitfalls": [
+            "[ONE_DRIVE_SEARCH_ITEMS] Request can fail validation if the query is omitted or collapses to empty after token processing.",
+            "[ONE_DRIVE_SEARCH_ITEMS] Highly specific filename queries can return empty or noisy results; simplifying keywords/extension often surfaces matches.",
+            "[ONE_DRIVE_SEARCH_ITEMS] Results may contain duplicates for the same item id and mixed file/folder entries; de-duplicate and verify before choosing.",
+            "[ONE_DRIVE_LIST_FOLDER_CHILDREN] Requires an explicit drive scope and select must be a JSON list of field names; wrong types can cause 400/404.",
+            "[ONE_DRIVE_DOWNLOAD_FILE] Often returns a temporary content.s3url (not inline bytes) and format conversion can fail with HTTP 406\u2014retry downloading the original format."
+          ],
+          "reference_workbench_snippets": [
+            {
+              "description": "Paginate ONE_DRIVE_SEARCH_ITEMS by extracting skip_token from @odata.nextLink.",
+              "code": "```python\nitems=[]\nskip=None\nwhile True:\n  a={\"q\":kw,\"top\":200}\n  if skip: a[\"skip_token\"]=skip\n  r,e=run_composio_tool(\"ONE_DRIVE_SEARCH_ITEMS\",a)\n  if e: break\n  d=(r or {}).get(\"data\",{})\n  items+=(d.get(\"value\") or [])\n  nl=d.get(\"@odata.nextLink\")\n  if not nl: break\n  skip=nl.split(\"$skiptoken=\")[-1]\n```"
+            },
+            {
+              "description": "Fetch bytes when ONE_DRIVE_DOWNLOAD_FILE returns a hosted content link.",
+              "code": "```python\nimport requests\nr,_=run_composio_tool(\"ONE_DRIVE_DOWNLOAD_FILE\",{\"item_id\":item_id,\"file_name\":name})\nurl=r[\"data\"][\"content\"][\"s3url\"]\nb=requests.get(url,timeout=60).content\n```"
+            }
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "ONE_DRIVE_SEARCH_ITEMS"
+          ],
+          "related_tool_slugs": [
+            "ONE_DRIVE_LIST_DRIVES",
+            "ONE_DRIVE_ONEDRIVE_FIND_FOLDER",
+            "ONE_DRIVE_LIST_FOLDER_CHILDREN",
+            "ONE_DRIVE_GET_ITEM",
+            "ONE_DRIVE_DOWNLOAD_FILE",
+            "ONE_DRIVE_ONEDRIVE_FIND_FILE"
+          ],
+          "toolkits": [
+            "one_drive"
+          ],
+          "plan_id": "d2e7e19bbb4446d1b601ab1b9be79956"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "one_drive",
+          "has_active_connection": false,
+          "description": "OneDrive is Microsoft\u2019s cloud storage solution enabling users to store, sync, and share files across devices, offering offline access, real-time collaboration, and enterprise-grade security",
+          "status_message": "No Active connection for toolkit=one_drive. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"one_drive\") to create a connection BEFORE executing any one_drive tools."
+        }
+      ],
+      "tool_schemas": {
+        "ONE_DRIVE_SEARCH_ITEMS": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_SEARCH_ITEMS",
+          "description": "Search OneDrive for files and folders by keyword. Searches filenames, metadata, and file content to find matching items. Use when you need to find specific files based on keywords, file types, or content. Supports filtering, sorting, and pagination. Results are mixed files and folders \u2014 filter client-side using file vs folder properties. Disambiguate similarly named items using parentReference.path, lastModifiedDateTime, and size before passing item IDs downstream. Newly created or recently moved files may not appear due to indexing delays; fall back to ONE_DRIVE_LIST_FOLDER_CHILDREN if expected items are missing. No server-side date filtering \u2014 apply lastModifiedDateTime/createdDateTime filtering in your own logic. HTTP 429 responses include a Retry-After header; use exponential backoff.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "q"
+            ],
+            "properties": {
+              "q": {
+                "type": "string",
+                "examples": [
+                  "Contoso Project",
+                  "budget report",
+                  "mp4",
+                  "pdf"
+                ],
+                "description": "The query text used to search for items. Values are matched across filenames, metadata, and file content. This is a simple keyword-based search only - NOT KQL (Keyword Query Language). IMPORTANT: (1) KQL operators like 'folder:', 'file:', 'content:', 'filetype:' are NOT supported by this endpoint and will be treated as literal text search. Use plain keywords instead (e.g., 'shared documents' not 'folder:shared'). (2) Path-based filtering syntax (e.g., 'path:/folder') is NOT supported and will be transformed to a keyword search. (3) Wildcard characters (* and ?) are NOT supported and will be automatically removed - use file extension keywords instead (e.g., 'mp4' instead of '*.mp4'). To search within a specific folder, use ONE_DRIVE_LIST_FOLDER_CHILDREN."
+              },
+              "top": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The maximum number of items to return in a single page. Default is 200."
+              },
+              "expand": {
+                "type": "string",
+                "examples": [
+                  "children",
+                  "thumbnails",
+                  "permissions"
+                ],
+                "description": "A comma-separated list of relationship names to expand and include in the response. For driveItem resources, you can expand relationships like 'children' to get child items, 'thumbnails' to get thumbnail metadata, or 'permissions' to get sharing permissions. For example, use 'children' to include the child items of folders in search results, or 'thumbnails' to include thumbnail URLs. Note: Not all relationships may be expandable in search results. Refer to the Microsoft Graph API documentation for supported expansions."
+              },
+              "select": {
+                "type": "string",
+                "examples": [
+                  "id,name,webUrl"
+                ],
+                "description": "Comma-separated list of driveItem properties to include in the response. Valid properties include: id, name, webUrl, size, createdDateTime, lastModifiedDateTime, file, folder, parentReference, createdBy, lastModifiedBy, fileSystemInfo, searchResult, remoteItem, etc. Note: @-prefixed annotations (e.g., @microsoft.graph.downloadUrl) are automatically stripped as they are not valid in $select queries for search endpoints."
+              },
+              "orderby": {
+                "type": "string",
+                "examples": [
+                  "name desc"
+                ],
+                "description": "A comma-separated list of properties used to sort the order of the items in the response. Use 'asc' or 'desc' for ascending or descending order, e.g., 'name asc'."
+              },
+              "drive_id": {
+                "type": "string",
+                "examples": [
+                  "b!C378D127A8A967E6!115"
+                ],
+                "description": "The ID of the drive to search within. If not provided, the user's personal drive (me/drive) will be searched. Use ONE_DRIVE_LIST_DRIVES to get valid drive IDs. Note: Some drive ID formats (e.g., secondary personal drives or special SharePoint IDs) may return 'ObjectHandle is Invalid' errors due to Microsoft Graph API limitations."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend the same required identifiers, but filter/sort params need not be repeated \u2014 the token carries them."
+              },
+              "search_scope": {
+                "enum": [
+                  "drive",
+                  "root"
+                ],
+                "type": "string",
+                "default": "root",
+                "description": "Specifies the scope of the search. 'root' searches within the folder hierarchy starting from root (uses /drives/{drive_id}/root/search or /me/drive/root/search). 'drive' broadens the search to include items shared with the current user (uses /drives/{drive_id}/search or /me/drive/search). This parameter is respected both with and without a drive_id."
+              },
+              "stripped_annotations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Internal field to track stripped annotations. Not exposed to API."
+              },
+              "transformed_path_query": {
+                "type": "string",
+                "description": "Internal field to track if path-based query was transformed. Not exposed to API."
+              },
+              "transformed_kql_operator": {
+                "type": "string",
+                "description": "Internal field to track if a KQL operator was transformed. Not exposed to API."
+              },
+              "transformed_parent_query": {
+                "type": "string",
+                "description": "Internal field to track if parent: filter was stripped from query. Not exposed to API."
+              },
+              "transformed_wildcard_query": {
+                "type": "string",
+                "description": "Internal field to track if wildcard characters were removed from query. Not exposed to API."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_LIST_DRIVES": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_LIST_DRIVES",
+          "description": "Tool to retrieve a list of Drive resources available to the authenticated user, or for a specific user, group, or site. Use when you need to find out what drives are accessible. Returns only drives within the signed-in account's permission scope; missing drives indicate insufficient permissions or different tenant scope. Results are paginated \u2014 pass the returned next_page_token back as page_token across all pages to avoid missing drives. Returned drives represent document libraries and may not reflect full SharePoint site structure; use SHARE_POINT_GET_SITE_COLLECTION_INFO or SHARE_POINT_SEARCH_QUERY for broader coverage. Use driveType and webUrl to distinguish personal, system, and SharePoint-backed drives.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "examples": [
+                  25
+                ],
+                "description": "The maximum number of items to return in a single page. Must be between 1 and 999."
+              },
+              "expand": {
+                "type": "string",
+                "examples": [
+                  "root,list"
+                ],
+                "description": "Comma-separated list of relationships to expand (e.g., \"root,list\")."
+              },
+              "select": {
+                "type": "string",
+                "examples": [
+                  "id,name,driveType"
+                ],
+                "description": "Comma-separated list of properties to include in the response (e.g., \"id,name,driveType\")."
+              },
+              "orderby": {
+                "type": "string",
+                "examples": [
+                  "name desc"
+                ],
+                "description": "A comma-separated list of properties to order the results by, optionally followed by \"asc\" or \"desc\" (e.g., \"name desc\")."
+              },
+              "site_id": {
+                "type": "string",
+                "examples": [
+                  "contoso.sharepoint.com,2C712604-131D-49FC-857B-AF2775FC24E3,2D1C721E-289F-412A-96E9-ADD9707C0167"
+                ],
+                "description": "The ID of the site to list drives for. If provided, group_id and user_id should not be used."
+              },
+              "user_id": {
+                "type": "string",
+                "examples": [
+                  "48d31887-5fad-4d73-a9f5-3c356e68a038"
+                ],
+                "description": "The ID of the user to list drives for. If provided, group_id and site_id should not be used. If none of group_id, site_id, or user_id are provided, the drives for the current authenticated user (/me/drives) will be listed."
+              },
+              "group_id": {
+                "type": "string",
+                "examples": [
+                  "80957564-4f36-480e-a079-99963a083854"
+                ],
+                "description": "The ID of the group to list drives for. If provided, site_id and user_id should not be used."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend the same required identifiers, but filter/sort params need not be repeated \u2014 the token carries them."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_ONEDRIVE_FIND_FOLDER": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_ONEDRIVE_FIND_FOLDER",
+          "description": "Finds folders by name within an accessible parent folder in OneDrive, or lists all its direct child folders if no name is specified. Search is non-recursive: only immediate children of `folder` are checked, not deeper hierarchy levels.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "type": "integer",
+                "maximum": 999,
+                "minimum": 1,
+                "examples": [
+                  50,
+                  200
+                ],
+                "description": "Maximum number of items to return in a single page. Use the returned next_page_token to fetch subsequent pages."
+              },
+              "name": {
+                "type": "string",
+                "examples": [
+                  "Annual Reports",
+                  "Meeting Notes"
+                ],
+                "description": "Exact name of the folder to find. If omitted, all direct child folders of the parent `folder` are returned."
+              },
+              "expand": {
+                "type": "string",
+                "examples": [
+                  "thumbnails",
+                  "children"
+                ],
+                "description": "Comma-separated list of relationships to expand in the response (e.g., 'thumbnails', 'children'). See Microsoft Graph API documentation for supported expand properties."
+              },
+              "folder": {
+                "type": "string",
+                "default": "/",
+                "examples": [
+                  "/Documents/Projects",
+                  "folder_id_example"
+                ],
+                "description": "Path (e.g., '/My Files/Work', '/' for root) or unique ID of the parent folder where child folders are searched."
+              },
+              "select": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "id",
+                    "name",
+                    "webUrl",
+                    "size",
+                    "lastModifiedDateTime"
+                  ]
+                ],
+                "description": "List of properties to include in the response (e.g., ['id', 'name', 'size']). Supports standard driveItem properties like id, name, webUrl, size, createdDateTime, lastModifiedDateTime, folder, etc. Note: 'folder' field is automatically included to enable folder identification, and 'name' is auto-included when filtering by folder name."
+              },
+              "orderby": {
+                "type": "string",
+                "examples": [
+                  "name",
+                  "lastModifiedDateTime desc"
+                ],
+                "description": "Sort results by specified properties (e.g., 'name', 'lastModifiedDateTime desc')."
+              },
+              "user_id": {
+                "type": "string",
+                "default": "me",
+                "examples": [
+                  "user@example.com",
+                  "me"
+                ],
+                "description": "User's unique identifier (e.g., email, UPN) or 'me' for the authenticated user, specifying the OneDrive account."
+              },
+              "page_token": {
+                "type": "string",
+                "description": "Opaque continuation token for the next page. Omit for the first page; then pass back the `next_page_token` from the previous response, unmodified, until it is absent. Do not construct or edit it. When set, it drives pagination; resend the same required identifiers, but filter/sort params need not be repeated \u2014 the token carries them."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "ONE_DRIVE_LIST_FOLDER_CHILDREN": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_LIST_FOLDER_CHILDREN",
+          "description": "List the direct children (files/folders) of a OneDrive/SharePoint folder by DriveItem ID or path. Re...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_LIST_FOLDER_CHILDREN"
+              ]
+            }
+          }
+        },
+        "ONE_DRIVE_GET_ITEM": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_GET_ITEM",
+          "description": "Retrieves the metadata of a DriveItem by its unique ID. Use this tool to get information about a spe...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_GET_ITEM"
+              ]
+            }
+          }
+        },
+        "ONE_DRIVE_DOWNLOAD_FILE": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_DOWNLOAD_FILE",
+          "description": "Downloads a file from a user's OneDrive using its item ID, which must refer to a file and not a fold...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_DOWNLOAD_FILE"
+              ]
+            }
+          }
+        },
+        "ONE_DRIVE_ONEDRIVE_FIND_FILE": {
+          "toolkit": "ONE_DRIVE",
+          "tool_slug": "ONE_DRIVE_ONEDRIVE_FIND_FILE",
+          "description": "Non-recursively finds an item (file or folder) in a specified OneDrive folder; if `folder` is provid...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "ONE_DRIVE_ONEDRIVE_FIND_FILE"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:28:42.758Z",
+        "current_time_utc_epoch_seconds": 1786598922,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "care",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"care\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_JhAHzvP2mZyp"
+  }
+}

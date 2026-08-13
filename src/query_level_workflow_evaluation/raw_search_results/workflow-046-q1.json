@@ -1,0 +1,222 @@
+{
+  "query_ground_truth": {
+    "query_id": "workflow-046-q1",
+    "workflow_id": 46,
+    "workflow_task": "Create, update, query, and verify Notion database rows and page content for generic deal-room style pages, including owner lookup, bulk content replacement, child-page preservation, and database filtering.",
+    "query": "search users to find owner lookup details",
+    "intent": "Retrieve workspace member information to perform owner lookups for database rows.",
+    "requirement_groups": [
+      {
+        "acceptable_tool_slugs": [
+          "NOTION_LIST_USERS"
+        ],
+        "purpose": "Retrieve workspace users to perform owner lookups"
+      }
+    ],
+    "candidate_tools": [
+      "NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+      "NOTION_CREATE_NOTION_PAGE",
+      "NOTION_FETCH_ALL_BLOCK_CONTENTS",
+      "NOTION_FETCH_BLOCK_CONTENTS",
+      "NOTION_FETCH_DATABASE",
+      "NOTION_GET_PAGE_MARKDOWN",
+      "NOTION_LIST_USERS",
+      "NOTION_QUERY_DATABASE",
+      "NOTION_QUERY_DATABASE_WITH_FILTER",
+      "NOTION_REPLACE_PAGE_CONTENT",
+      "NOTION_RETRIEVE_PAGE",
+      "NOTION_SEARCH_NOTION_PAGE",
+      "NOTION_UPDATE_PAGE",
+      "NOTION_UPSERT_ROW_DATABASE"
+    ]
+  },
+  "request": {
+    "query": "search users to find owner lookup details"
+  },
+  "response": {
+    "data": {
+      "results": [
+        {
+          "index": 1,
+          "use_case": "search users to find owner lookup details",
+          "execution_guidance": "IMPORTANT: Follow the recommended plan below. Extract steps before execution, adapt to your current context, execute sequentially with current_step parameter, and check known pitfalls to avoid errors.",
+          "recommended_plan_steps": [
+            "[Required] [Step]: Retrieve owner directory using HUBSPOT_RETRIEVE_OWNERS (build canonical owner_id\u2192display-fields map; normalize owner_id to string for joins).",
+            "[Optional (if starting from a user-provided identifier)] [Next Step]: Resolve candidate owner by locally matching against HUBSPOT_RETRIEVE_OWNERS results; if ambiguous, return multiple candidates for selection.",
+            "[Optional (if confirming one candidate or identifier type is unclear)] [Next Step]: Fetch details using HUBSPOT_RETRIEVE_OWNER_BY_ID_OR_USER_ID (try owner id vs user id via idProperty; include archived=true when needed).",
+            "[Optional (if results look truncated/incomplete or archived owners are required)] [Step]: Paginate using HUBSPOT_RETRIEVE_PAGE_OF_CRM_OWNERS (follow paging.next.after until absent; de-dupe by owner id).",
+            "[Optional (if results are empty/unexpected or access seems restricted)] [Fallback]: Verify context and permissions using HUBSPOT_GET_ACCOUNT_INFO and HUBSPOT_LIST_GRANTED_SCOPES before retrying owner reads."
+          ],
+          "known_pitfalls": [
+            "[HUBSPOT_RETRIEVE_OWNERS] Owner records are under response.data.results; mis-parsing the response shape can look like an empty directory.",
+            "[HUBSPOT_RETRIEVE_PAGE_OF_CRM_OWNERS] Cursor pagination uses paging.next.after and limit max 100; stop when paging.next is absent and de-dupe by owner id.",
+            "[HUBSPOT_RETRIEVE_OWNER_BY_ID_OR_USER_ID] Wrong idProperty (owner id vs user id) can yield 400 or failed lookups; retry with archived=true on 404 for inactive owners.",
+            "[HUBSPOT_LIST_GRANTED_SCOPES] Missing/insufficient scopes can surface as 401/403 or unexpectedly empty reads; confirm scopes before repeated retries."
+          ],
+          "difficulty": "easy",
+          "primary_tool_slugs": [
+            "HUBSPOT_RETRIEVE_OWNERS"
+          ],
+          "related_tool_slugs": [
+            "HUBSPOT_RETRIEVE_PAGE_OF_CRM_OWNERS",
+            "HUBSPOT_RETRIEVE_OWNER_BY_ID_OR_USER_ID",
+            "HUBSPOT_LIST_GRANTED_SCOPES",
+            "HUBSPOT_GET_ACCOUNT_INFO"
+          ],
+          "toolkits": [
+            "hubspot"
+          ],
+          "plan_id": "17263329d7614507b67de574f1108d13"
+        }
+      ],
+      "toolkit_connection_statuses": [
+        {
+          "toolkit": "hubspot",
+          "has_active_connection": false,
+          "description": "HubSpot is an inbound marketing, sales, and customer service platform integrating CRM, email automation, and analytics to facilitate lead nurturing and seamless customer experiences",
+          "status_message": "No Active connection for toolkit=hubspot. You MUST call COMPOSIO_MANAGE_CONNECTIONS (toolkit=\"hubspot\") to create a connection BEFORE executing any hubspot tools."
+        }
+      ],
+      "tool_schemas": {
+        "HUBSPOT_RETRIEVE_OWNERS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_RETRIEVE_OWNERS",
+          "description": "Retrieves a list of all owners in the HubSpot CRM, including their ID, first name, last name, email, and user ID.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_RETRIEVE_PAGE_OF_CRM_OWNERS": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_RETRIEVE_PAGE_OF_CRM_OWNERS",
+          "description": "Retrieves a paginated list of CRM owners from HubSpot, optionally filtering by email or archived status.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "string",
+                "examples": [
+                  "1234567890",
+                  "abcDeFg123HijKlm4NoPqRstUvWxYz"
+                ],
+                "description": "Pagination token from a previous response to fetch the next page."
+              },
+              "email": {
+                "type": "string",
+                "examples": [
+                  "johndoe@example.com",
+                  "jane.smith@company.com"
+                ],
+                "description": "Filter by a specific email address."
+              },
+              "limit": {
+                "type": "integer",
+                "default": 100,
+                "examples": [
+                  "100",
+                  "50",
+                  "250"
+                ],
+                "description": "Maximum number of CRM owners per page. Refer to HubSpot's API documentation for current limits."
+              },
+              "archived": {
+                "type": "boolean",
+                "default": false,
+                "examples": [
+                  "true",
+                  "false"
+                ],
+                "description": "Set to `true` for archived owners, or `false` for active owners."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_RETRIEVE_OWNER_BY_ID_OR_USER_ID": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_RETRIEVE_OWNER_BY_ID_OR_USER_ID",
+          "description": "Retrieves a specific HubSpot CRM owner by their ID, with options to specify ID type (owner or user) and to include archived records.",
+          "input_schema": {
+            "type": "object",
+            "required": [
+              "ownerId"
+            ],
+            "properties": {
+              "ownerId": {
+                "type": "integer",
+                "description": "Unique identifier of the owner. Its meaning (HubSpot owner ID or user ID) is determined by `idProperty`."
+              },
+              "archived": {
+                "type": "boolean",
+                "default": false,
+                "description": "Set to `true` to retrieve only archived owners; otherwise, active (non-archived) owners are returned."
+              },
+              "idProperty": {
+                "enum": [
+                  "id",
+                  "userId"
+                ],
+                "type": "string",
+                "default": "id",
+                "examples": [
+                  "id",
+                  "userId"
+                ],
+                "description": "Determines if `ownerId` refers to the HubSpot owner ID (`id`) or the user ID (`userId`)."
+              }
+            }
+          },
+          "hasFullSchema": true
+        },
+        "HUBSPOT_LIST_GRANTED_SCOPES": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_LIST_GRANTED_SCOPES",
+          "description": "Tool to introspect the current OAuth access token and return its granted scopes and metadata. Use wh...",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_LIST_GRANTED_SCOPES"
+              ]
+            }
+          }
+        },
+        "HUBSPOT_GET_ACCOUNT_INFO": {
+          "toolkit": "HUBSPOT",
+          "tool_slug": "HUBSPOT_GET_ACCOUNT_INFO",
+          "description": "Gets current HubSpot account info (email, hubId, user details) using access-token lookup.",
+          "hasFullSchema": false,
+          "schemaRef": {
+            "tool": "COMPOSIO_GET_TOOL_SCHEMAS",
+            "args": {
+              "tool_slugs": [
+                "HUBSPOT_GET_ACCOUNT_INFO"
+              ]
+            }
+          }
+        }
+      },
+      "time_info": {
+        "current_time_utc": "2026-08-13T05:34:04.834Z",
+        "current_time_utc_epoch_seconds": 1786599244,
+        "message": "\n          - This is time in UTC timezone. Get timezone from user if you needed.\n          - Always use this time info to construct parameters for tool calls appropriately even when the tool call requires relative times like 'last week', 'last 24 hours', 'today', 'tomorrow' etc.\n          - Do not hallucinate the time or timezone by yourself.\n        "
+      },
+      "session": {
+        "id": "ride",
+        "generate_id": true,
+        "instructions": "REQUIRED: Pass session_id \"ride\" in ALL subsequent meta tool calls for this workflow."
+      },
+      "next_steps_guidance": [
+        "1) CALL COMPOSIO_MANAGE_CONNECTIONS: Use manage connections to initiate connections for toolkits that are not active",
+        "2) Extract validated plan steps returned above, acknowledge each step, then execute sequentially updating current_step parameter. Check pitfalls during execution."
+      ],
+      "success": true,
+      "error": null
+    },
+    "error": null,
+    "log_id": "log_yxTNFOR1V4AR"
+  }
+}
