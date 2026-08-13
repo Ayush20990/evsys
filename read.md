@@ -202,6 +202,11 @@ end in one sitting. The pipeline is built to fail safely into that limit rather 
 fully judged 100-workflow number needs either a bigger quota or a day where generation hasn't already spent
 most of the budget before judging starts.
 
+**Still needs work: how queries get worded during decomposition.** The blind-decomposition step sometimes
+writes a query that's too generic, dropping a vendor name or scope detail that was in the task text (and even
+in its own `intent` field) the whole time — so search gets blamed for missing something it was never told.
+See `manual_audit_workflows_1_5.md` for real examples and what's actually happening.
+
 ## Artifacts
 
 ```
