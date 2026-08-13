@@ -1,87 +1,114 @@
-# Evsys — `COMPOSIO_SEARCH_TOOLS` retrieval evaluation
+# Evsys
 
-This repository measures the retrieval quality of Composio's `COMPOSIO_SEARCH_TOOLS`: incorrect or missed
-tool retrieval, poor ranking, cross-toolkit confusion, toolkit-specific weakness, and latency.
+Evsys measures how well Composio's `COMPOSIO_SEARCH_TOOLS` finds the right tool for a search query: whether
+it misses tools outright, ranks the right tool below wrong ones, confuses similar toolkits, is weak on
+specific toolkits, or is slow.
 
-## The core idea
+## Why not just search the whole task
 
-A high-level task is not a search query. `top-100-eval-use-cases.md` lists every tool that *might* be
-touched somewhere in a whole workflow — it is not what one search call should return. A real agent doesn't
-search that way either: it breaks the task into smaller steps and searches for one tool at a time.
+`top-100-eval-use-cases.md` gives 100 workflows, each with a description and a list of tools a human decided
+were relevant to it somewhere. It's tempting to send that whole description to `COMPOSIO_SEARCH_TOOLS` as one
+query and check whether the listed tools come back. That's the wrong test, for a simple reason: nobody
+actually searches that way. An agent working through "prepare HubSpot launch assets for a paid event
+registration flow" doesn't type that sentence into a tool search. It breaks the job into steps first — check
+permissions, clone an email template, create a workflow — and searches for a tool at each step. The tool list
+attached to a workflow is a pool of things that *might* get used somewhere in it, not the answer to one
+search call.
 
-```
-High-level task → break into steps → one search query per step → COMPOSIO_SEARCH_TOOLS → tools found
-```
+So the benchmark works one level down from the workflow: it builds a search query for each step, and checks
+retrieval against only the tool(s) that step needs.
 
-So this benchmark builds ground truth **per query, not per task**, and scores each query against only the
-tool(s) that step genuinely needs.
+## How a workflow turns into scored results
 
-## How it works, step by step
+**Decomposition happens blind.** For a given task, an LLM call sees the task description only — no tool
+list — and writes out the individual queries an agent would issue while working through it. This isn't a
+minor detail: when the same call could see the candidate pool, its query wording started leaking pool
+vocabulary. One early example: a query came out as "query ledger **entities**" because
+`QUICKBOOKS_QUERY_ENTITIES` was sitting in view. Nobody says "entities" when describing a task to themselves;
+that's the tool's internal name bleeding into what's supposed to be a natural query. Once the pool was
+hidden from decomposition, the same step turned into "search quickbooks bank account ledger transactions" —
+ordinary phrasing. How many queries a task gets is scaled to the size of its tool pool (roughly one query per
+2–3 tools, with a floor and ceiling), but that's only used as a size hint — the pool's contents stay hidden.
 
-**1. A workflow is read in.** `top-100-eval-use-cases.md` gives a task description plus a candidate pool of
-tools a human decided are relevant somewhere in that task. That pool is treated as a superset, never as the
-answer key.
+**Labeling happens with full context, separately.** A second, independent call then sees those queries
+alongside the candidate pool — but this time with each tool's actual description pulled live from Composio,
+not just its slug. `GOOGLESUPER_FETCH_EMAILS` doesn't tell an LLM much by itself; its description does. For
+every query, this call decides which pool tool(s) would genuinely satisfy it, and it's allowed to say none
+of them do — a workflow's human-picked pool doesn't necessarily cover every sub-intent an agent might
+generate from it, and forcing a bad match onto an uncovered query would corrupt the ground truth silently. A
+query with no covering tool is recorded as "unlabelable" and left out of scoring.
 
-**2. The task is decomposed into queries — blindly.** An LLM call sees *only the task text*, nothing about
-the tool pool, and writes 1 to ~10 realistic search queries (the exact count scales with how large the
-task's tool pool is, as a proxy for its complexity — but the pool itself stays hidden). This mimics a real
-agent, which has no visibility into what tools exist before it searches. Keeping the pool hidden here matters:
-if the same call could see the pool, tool-name jargon leaked straight into query wording (observed example:
-a query asked to "query ledger **entities**" purely because `QUICKBOOKS_QUERY_ENTITIES` was visible — no
-real person phrases a task that way). Blind decomposition removes that leak.
+Ground truth for a query is never a flat list. It's grouped: two tools that could each independently satisfy
+the same need (say, either of two ways to search email) sit in one group, because either one is a full
+success. Two operations that both have to happen (find an email *and* schedule a follow-up) become two
+separate groups, because both are needed. A flat list can't tell these apart, and scoring one as if it were
+the other either double-penalizes valid alternatives or lets a compositional query pass on half its work.
 
-**3. Each query is labeled — grounded in real tool descriptions.** A second, independent LLM call now sees
-the queries from step 2 *and* the candidate pool, but with each tool's actual description fetched live from
-Composio, not just its slug. It decides, per query, which pool tool(s) would genuinely satisfy it. This
-matters because a name like `GOOGLESUPER_FETCH_EMAILS` tells an LLM almost nothing on its own — the real
-description is needed to judge a match honestly.
+**A workflow only contributes test cases if both stages pass validation** — sane query counts, no invented
+tool slugs, no query left unlabeled by the labeling call. A workflow that fails either check produces zero
+test cases and gets logged with why, rather than partially poisoning the dataset.
 
-Ground truth per query is one or more **requirement groups**:
-- Tools *within* a group are alternatives — any one of them is a full success.
-- *Across* groups, all are required — this only happens for genuinely compositional queries (two different
-  operations needed together).
+**Scoring runs the query through search and checks group coverage.** A query's score is the fraction of its
+requirement groups that search satisfied — group by group, not tool by tool, so alternatives inside a group
+never get double-counted or under-counted. This is the strict score: it only credits what was pre-labeled.
 
-A query is also allowed to come back with **zero matching tools** — meaning this task's human-curated pool
-genuinely doesn't cover that specific sub-intent. That's recorded and reported honestly, not forced into a
-bad match and not silently dropped.
+**Anything strict scoring calls a miss gets a second opinion.** The labeling call is still one model's
+judgment, made against a pool that was itself hand-picked at the workflow level — it can be wrong or
+incomplete. So every query that misses at least one group gets a follow-up check: did search actually return
+a tool, never pre-labeled, that would still genuinely satisfy that requirement? This check is told to hold
+the line on vendor: if the task specifically names a product for that data ("in Salesforce", "our QuickBooks
+ledger"), a same-shaped tool from a different vendor doesn't count, because it wouldn't actually reach the
+data the task needs. This produces a second number, judged recall, reported next to the strict one — not in
+place of it.
 
-**4. A workflow is only "accepted" if both stages pass validation.** Decomposition is rejected if the query
-count is out of range, a query is nonsense, or queries duplicate each other. Labeling is rejected if it
-invents a tool slug outside the candidate pool, mislabels the group count, or doesn't cover every query it
-was given. A rejected workflow contributes zero test cases — it's logged with a reason, never silently
-patched over.
+**A stalled quota doesn't lose work.** If a call to Gemini comes back looking like a quota or rate-limit
+error, the run stops immediately instead of retrying into a dead quota for the rest of the workflow list.
+Every generated query is written to a cache file the moment it's produced, so restarting later only pays for
+what's still missing.
 
-**5. Every accepted query is run through `COMPOSIO_SEARCH_TOOLS` and scored.** Recall = fraction of
-requirement groups satisfied (any one tool per group, found in the primary or related results). This is
-**strict recall** — a query only counts as a hit if search returned a tool that was pre-labeled correct.
+## What each number actually means
 
-**6. Misses get a second look — judged recall.** Ground truth from steps 2–3 is still one LLM's opinion. So
-every query that misses a requirement group gets one more check: does the tool search *actually returned*
-plausibly satisfy that requirement, even though it was never pre-labeled? This check is vendor-scoped — if
-the task names a specific product for that data (e.g. "in Salesforce"), only a same-vendor tool can be
-credited, so a functionally similar competitor tool doesn't inflate the score. Reported as `judged_recall`
-**alongside** strict recall, never replacing it — both numbers matter together.
+For one query with requirement groups $G_1, \dots, G_n$, and a search response split into a primary tool set
+$P$ and a related tool set $R$:
 
-**7. Quota-safe by design.** If a Gemini call looks like a quota/rate-limit error, the run stops immediately
-(no wasted retries) and saves everything completed so far — generated queries, search scores, and whatever
-was judged. Every generated query is cached to disk per workflow, so re-running later only pays for what's
-still missing; nothing already done is repeated or lost.
+- A group $G_i$ is **satisfied** if $G_i \cap (P \cup R) \neq \emptyset$ — at least one of its acceptable
+  tools showed up anywhere in the response.
+- A group is satisfied **on primary** if $G_i \cap P \neq \emptyset$ — the stricter version, ignoring related
+  results.
+- **`recall`** (strict retrieval recall) for that query = (number of groups satisfied) / $n$.
+- **`primary_recall`** for that query = (number of groups satisfied on primary) / $n$.
+- **`any_hit`** = true if at least one group was satisfied at all; **`primary_hit`** = true if at least one
+  group was satisfied on primary specifically.
+- **`judged_recall`** starts equal to `recall`. If `recall` < 1, the follow-up check (above) can additionally
+  credit unmet groups where an actually-returned tool plausibly satisfies them; `judged_recall` becomes
+  (groups satisfied strictly + groups newly credited) / $n$. It can only go up from `recall`, never down.
+
+Every aggregate reported (average primary recall, average retrieval recall, any-required-group hit rate,
+average judged recall) is simply the mean of the corresponding per-query value across all scored queries.
+"Workflows accepted" counts distinct workflows with at least one scored query; "unlabelable queries" counts
+queries where the labeling call found no group at all; "rejected" counts workflows where either stage failed
+validation outright.
+
+The baseline benchmark (`single_tool_evaluation.py`) uses a plainer setup: one specific target tool, one
+query built to retrieve it. `primary_hit` = target tool slug appears in $P$; `related_hit` = target appears
+in $R$; `complete_miss` = appears in neither; `demotion` = appears in $R$ but not $P$ (found, but ranked
+below the cutoff for primary). Rates are again just means across all sampled queries.
 
 ## What's in the repo
 
-| Script | Role |
-|---|---|
-| `src/query_level_workflow_evaluation.py` | **Primary benchmark.** Everything described above. |
-| `src/single_tool_evaluation.py` | **Baseline.** A simpler, independent check: sample individual tools across many toolkits, ask an LLM for one query that should retrieve each one (with and without naming the app), and see if it comes back as a primary or related result. Useful as a sanity floor — if a tool can't be found from an easy, purpose-built query, complex-workflow retrieval was never going to find it either. |
+`src/query_level_workflow_evaluation.py` is the primary benchmark — everything above. `src/single_tool_evaluation.py`
+is the baseline described just now: it samples individual tools across many toolkits and checks whether a
+purpose-built query (with and without naming the app) finds each one. It's a floor, not a substitute — if a
+tool can't be found from an easy, tailor-made query, a workflow's messier queries were never going to find it
+either.
 
-Two earlier scripts (`query_robustness_evaluation.py`, `synthetic_query_level_evaluation.py`) still exist in
-`src/` but are not part of this documentation for now — they predate the two-stage blind-decompose /
-grounded-label redesign above and would need to be migrated to it before their numbers are trustworthy
-alongside the primary benchmark's. Revisit them later if that phrasing-robustness and synthetic-task coverage
-is wanted again.
+Two other scripts, `query_robustness_evaluation.py` and `synthetic_query_level_evaluation.py`, are still in
+`src/` but predate the blind-decompose / grounded-label split described above. Their ground truth uses the
+older flat-list schema, so their numbers aren't safely comparable to the current benchmark until they're
+migrated to match it.
 
-Both latency fields are reported everywhere: `api_search_latency_sec` covers only the successful search call,
-while `end_to_end_latency_sec` includes failed attempts and retry backoff.
+Both latency fields are recorded on every scored row: `api_search_latency_sec` is the successful search call
+only, `end_to_end_latency_sec` adds in any failed attempts and retry backoff before it.
 
 ## Setup
 
@@ -92,103 +119,93 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Set `COMPOSIO_API_KEY` and `GEMINI_API_KEY` in `.env`. Both scripts need both keys.
+Set `COMPOSIO_API_KEY` and `GEMINI_API_KEY` in `.env` — both scripts need both.
 
-## Run
+## Running it
 
 ```powershell
 .\.venv\Scripts\python.exe src\query_level_workflow_evaluation.py
 .\.venv\Scripts\python.exe src\single_tool_evaluation.py
 ```
 
-Notebooks: `notebooks/01_query_level_workflow_evaluation.ipynb`, `notebooks/04_single_tool_search_evaluation.ipynb`.
+or the matching notebooks, `notebooks/01_query_level_workflow_evaluation.ipynb` and
+`notebooks/04_single_tool_search_evaluation.ipynb`.
 
-### Controlling cost
+Every generation and every fetched tool description is cached to disk (`generation_cache.json`,
+`tool_catalog_cache.json`, both git-ignored, both keyed per workflow), so a second run only pays for
+workflows it hasn't seen yet. Search calls themselves aren't cached — re-running always re-searches
+everything currently in the ground truth.
 
-Every generation is cached to disk (`generation_cache.json`, keyed per workflow) and tool descriptions are
-cached too (`tool_catalog_cache.json`) — re-runs only pay for what's new. Search calls are not cached.
+Constants worth knowing about, all in `query_level_workflow_evaluation.py` unless noted:
 
 | Constant | Effect |
 |---|---|
-| `MAX_USE_CASES` | Workflows attempted, out of the 100 in `top-100-eval-use-cases.md`. Currently **100**. |
+| `MAX_USE_CASES` | How many of the 100 workflows to attempt. Currently 100. |
 | `MIN_QUERIES_FLOOR`, `MAX_QUERIES_CEILING`, `TOOLS_PER_QUERY_TARGET` | Bound how many queries a workflow's pool size can produce. |
-| `DESCRIPTION_CHAR_LIMIT`, `TOOL_FETCH_CHUNK` | Tool-description truncation and Composio batch-fetch size. |
-| `NUM_TOOLKITS_TO_SAMPLE`, `TOOLS_PER_TOOLKIT` (in `single_tool_evaluation.py`) | Sampling breadth/depth for the baseline. |
+| `DESCRIPTION_CHAR_LIMIT`, `TOOL_FETCH_CHUNK` | Tool-description truncation length and Composio fetch batch size. |
+| `NUM_TOOLKITS_TO_SAMPLE`, `TOOLS_PER_TOOLKIT` (in `single_tool_evaluation.py`) | Sampling breadth and depth for the baseline. |
 
-Start small and read `query_ground_truth.json` by hand before trusting any aggregate — the generated
-decompositions and labels should be spot-checked, especially after any prompt change.
+Before trusting an aggregate number, open `query_ground_truth.json` and read a handful of entries by hand —
+especially after touching either prompt. Generated ground truth is only as good as it's been checked.
 
-## Results
-
-*Full run, 100 workflows attempted:*
+## Where things stand — 100 workflows attempted
 
 | Metric | Value |
 |---|---|
 | Workflows accepted / attempted | 85 / 100 |
-| Query-level test cases (scored) | 262 |
-| Unlabelable queries (no pool tool fit — not scored) | 30 |
-| Rejected workflow decompositions/labelings | 15 |
+| Query-level test cases scored | 262 |
+| Unlabelable queries (no pool tool fit) | 30 |
+| Rejected workflows | 15 |
 | Any-required-group hit rate | 71.0% |
-| Retrieval recall (strict) | 62.2% |
-| Primary-only recall (strict) | 48.5% |
-| Judged recall | **not usable this run — 0/262 queries judged** |
+| Retrieval recall, strict | 62.2% |
+| Primary-only recall, strict | 48.5% |
+| Judged recall | not usable this run — 0/262 queries got judged |
 
-Latency: 2.52s average, 2.42s median, 3.33s P95, 12.73s maximum.
+Latency: 2.52s average, 2.42s median, 3.33s P95, 12.73s max.
 
-Strict-recall numbers above are complete and final — search runs on Composio, not Gemini, so quota never
-touched them. Judging is a different story: this run hit Gemini's **daily** free-tier cap
-(`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, 500 requests/day) right at the start of the judge
-phase, after generation alone had already used a large share of that budget across ~170 decompose+label
-calls. Two earlier attempts judged 15/262 and 60/262 before hitting the same wall; this run judged 0. Judged
-recall needs a day with enough quota headroom left after generation to get through all 262 judge calls in
-one pass — until then, treat strict recall as the trustworthy number and judged recall as not yet measured.
+Search itself never touches Gemini, so the recall numbers above are complete and final regardless of quota.
+Judging is the part that depends on Gemini, and it's been the actual bottleneck: the free tier caps out at
+500 requests/day for this model, generation alone for 85 workflows uses roughly 170 of those, and judging
+simply hasn't had daily budget left to finish. Three attempts so far judged 15, then 60, then 0 of the 262
+queries before running out. An earlier, smaller pass (25 workflows) did get far enough through judging to be
+informative: 66.7% strict recall against 81.3% judged recall there — a 14.6-point gap that's real evidence
+strict scoring understates true performance, even though the 100-workflow number for judged recall isn't
+usable yet.
 
 ### Single-tool baseline — 174 queries
 
-Primary hit 65.5%, related-only 7.5%, complete miss 27.0%. Explicit 69.0% vs. implicit 62.1%.
-Per-toolkit spread is wide: Jira and Airtable near 100%, while **GitHub scored 0%** on both explicit and
-implicit queries across 10 sampled tools.
+65.5% primary hit, 7.5% related-only, 27.0% complete miss. Explicit queries (app named) beat implicit ones
+69.0% to 62.1%. Spread across toolkits is wide — Jira and Airtable near 100%, GitHub at 0% on both explicit
+and implicit phrasing across its 10 sampled tools.
 
-## Key findings
+## What the results say so far
 
-1. **All misses so far are confidently wrong, not empty results.** Search never returns nothing — it returns
-   a plausible-looking but incorrect tool, which is worse for an agent than an empty result it could recover
-   from. Recurring pattern: the right *toolkit* is found, but a near-neighbour tool inside or outside it gets
-   returned instead of the one actually needed (e.g. `QUICKBOOKS_GET_GENERAL_LEDGER_REPORT` instead of
-   `QUICKBOOKS_QUERY_ENTITIES`; `HUBSPOT_ARCHIVE_CRM_OBJECT_BY_ID` instead of `HUBSPOT_ARCHIVE_PRODUCTS`).
+Misses aren't empty results — search always returns *something*, just usually the wrong specific tool inside
+the right general area. `QUICKBOOKS_GET_GENERAL_LEDGER_REPORT` comes back instead of
+`QUICKBOOKS_QUERY_ENTITIES`; `HUBSPOT_ARCHIVE_CRM_OBJECT_BY_ID` instead of `HUBSPOT_ARCHIVE_PRODUCTS`. For an
+agent that's arguably worse than an empty result, which at least signals "try again" instead of quietly doing
+the wrong thing.
 
-2. **Cross-toolkit intrusion is common.** A generic-sounding query (e.g. "send an email") frequently pulls in
-   a domain-matching but wrong-vendor tool instead of the generic operation the task actually needs, especially
-   when the query's surrounding vocabulary (job, marketing, support) has a strong toolkit association of its
-   own.
+Generic phrasing pulls toward whatever toolkit the surrounding words suggest. A query like "send an email"
+embedded in a task about jobs or marketing tends to surface a jobs or marketing tool instead of the plain
+email-sending one — the domain vocabulary around the verb outweighs the verb itself.
 
-3. **Judged recall exceeds strict recall by a wide margin whenever it actually runs** — from an earlier,
-   smaller 25-workflow pass that got substantially further through judging before quota cut it off: 66.7%
-   strict vs. 81.3% judged, a 14.6-point gap. That's direct, measured evidence that some fraction of "misses"
-   are really search finding a correct tool the human-curated pool simply never listed as acceptable for that
-   specific query. Strict recall alone understates real performance; judged recall is not yet reliably
-   available at the current 100-workflow scale (see below).
-
-4. **Gemini's free-tier *daily* quota (500 requests/day for this model) is the practical bottleneck**, not
-   Composio's. Search has run to completion every time; judging has been interrupted three times running at
-   this scale (15/262, then 60/262, then 0/262 judged), because generation alone (~170 calls for 85 accepted
-   workflows) already consumes most of the daily budget before judging can start. The pipeline survives this
-   cleanly (see step 7 above — nothing is lost or corrupted), but a full, reliable judged-recall number at
-   100-workflow scale needs either a higher-quota key or judging run as its own pass on a day when generation
-   hasn't already spent the budget.
+Gemini's daily cap, not Composio's, is what's currently limiting how much of this benchmark can run end to
+end in one sitting. The pipeline is built to fail safely into that limit rather than losing progress, but a
+fully judged 100-workflow number needs either a bigger quota or a day where generation hasn't already spent
+most of the budget before judging starts.
 
 ## Artifacts
 
 ```
 src/query_level_workflow_evaluation/
-  query_ground_truth.json     accepted queries (requirement groups) + unlabelable queries
-  generation_audit.json       raw LLM responses for both decompose and label stages, rejection reasons
-  search_results.csv          per-query metrics: strict recall, judged recall, latency, extras
-  raw_search_results/*.json   full request + response per query
-  summary_report.md           aggregate metrics, failure examples, unlabelable-query list
-  generation_cache.json       (git-ignored) resumable cache of every LLM generation, keyed per workflow
-  tool_catalog_cache.json     (git-ignored) cached real tool descriptions fetched from Composio
+  query_ground_truth.json     accepted queries with their requirement groups, plus unlabelable ones
+  generation_audit.json       raw LLM output from both stages, and why anything was rejected
+  search_results.csv          per-query recall, judged recall, latency, extras
+  raw_search_results/*.json   full request/response for every scored query
+  summary_report.md           the aggregate numbers and worked failure examples
+  generation_cache.json       (git-ignored) resumable per-workflow cache of every generation
+  tool_catalog_cache.json     (git-ignored) cached tool descriptions pulled from Composio
 ```
 
-`src/single_tool_evaluation/` follows the same shape. Only the generation/catalog caches are git-ignored —
-every scored artifact and audit trail is tracked.
+`src/single_tool_evaluation/` follows the same shape. Everything except the two caches is tracked in git.
