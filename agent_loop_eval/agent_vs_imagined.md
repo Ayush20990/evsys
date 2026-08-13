@@ -11,14 +11,16 @@ Same tasks, two ways of producing the queries. The left column is what the one-s
 - `verify asset status and test inertness`
 - `create custom object registration ledger`
 
-**Agent-issued (7 queries)**
-- `hubspot`
-- `payment link`
-- `email`
-- `workflow`
-- `custom object`
-- `hubspot email`
-- `hubspot workflow`
+**Agent-issued (9 queries)**
+- `Check payment link feasibility or creation in HubSpot`
+- `Create a marketing email in HubSpot`
+- `Create or manage workflows in HubSpot`
+- `Create a new workflow in HubSpot`
+- `Create custom object schema in HubSpot`
+- `List payment links in HubSpot`
+- `Get account info in HubSpot`
+- `Get workflow by ID in HubSpot`
+- `Get workflow by id in HubSpot`
 
 ## Task 2
 *Retrieve upcoming Google Calendar meeting events and create or update Notion content containing a large structured dataset, with verification after writing.*
@@ -28,12 +30,15 @@ Same tasks, two ways of producing the queries. The left column is what the one-s
 - `create or update structured dataset content in Notion`
 - `verify Notion content after writing`
 
-**Agent-issued (5 queries)**
-- `Google Calendar`
-- `Notion`
-- `Notion database query or search`
-- `Notion search database`
-- `Notion insert row database`
+**Agent-issued (8 queries)**
+- `Retrieve upcoming Google Calendar meeting events`
+- `Create or update Notion content or database pages with verification`
+- `Search Notion pages`
+- `List Google Calendar settings`
+- `List Google Calendar events with time_min and time_max`
+- `Create a new Notion page`
+- `Add multiple page content in Notion`
+- `Get page markdown in Notion for verification`
 
 ## Task 3
 *Find a spreadsheet in OneDrive, download it, programmatically add comparison summary worksheets/sections, upload the modified workbook back to the same OneDrive item, and verify the cloud copy.*
@@ -42,19 +47,16 @@ Same tasks, two ways of producing the queries. The left column is what the one-s
 - `download file from OneDrive`
 - `upload file to OneDrive`
 
-**Agent-issued (12 queries)**
-- `onedrive spreadsheet`
-- `search onedrive files`
-- `upload onedrive file`
-- `update file content onedrive`
-- `download file onedrive`
-- `workbench python file execution`
-- `execute python code`
-- `composio remote workbench`
-- `ONE_DRIVE_SEARCH_ITEMS`
-- `ONE_DRIVE_LIST_DRIVES`
-- `ONE_DRIVE_LIST_FOLDER_CHILDREN`
-- `ONE_DRIVE_ONEDRIVE_FIND_FILE`
+**Agent-issued (9 queries)**
+- `find spreadsheet in OneDrive`
+- `download file from OneDrive`
+- `upload update file content OneDrive`
+- `remote workbench execute python bash`
+- `get recent items OneDrive root`
+- `start sandbox daytona`
+- `list root folder children OneDrive`
+- `list items in OneDrive folder`
+- `search items in OneDrive query`
 
 ## Task 4
 *Publish approved carousel content from a Trello workflow to LinkedIn, add a first comment, update Trello status/logs, and adjust the Trello board workflow structure.*
@@ -66,18 +68,18 @@ Same tasks, two ways of producing the queries. The left column is what the one-s
 - `modify Trello board workflow lists and structure`
 
 **Agent-issued (12 queries)**
-- `trello`
-- `linkedin`
-- `get trello cards`
-- `trello search boards`
-- `linkedin create post`
-- `linkedin comment`
-- `trello create list update card`
-- `TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER`
-- `TRELLO_GET_SEARCH`
-- `LINKEDIN_GET_MY_INFO`
-- `TRELLO_UPDATE_LISTS_BY_ID_LIST`
-- `TRELLO_ADD_LISTS`
+- `trello get cards in list or board`
+- `linkedin create post and comment`
+- `trello update card move list create list`
+- `linkedin add comment to post`
+- `trello create list on board`
+- `trello get boards for member`
+- `trello add comment to card`
+- `trello search query`
+- `trello search cards query`
+- `linkedin get my info author urn`
+- `linkedin create comment on post schema`
+- `get definition for LINKEDIN_CREATE_COMMENT_ON_POST`
 
 ## Task 5
 *Manage a partner-operations pipeline across Gmail, ClickUp, and Notion: create outreach drafts and task handoffs, inspect and update existing handoffs, scan recent email threads against CRM records, and write evidence-su...*
@@ -89,16 +91,18 @@ Same tasks, two ways of producing the queries. The left column is what the one-s
 - `create and update ClickUp tasks`
 - `write evidence-supported updates in Notion CRM records`
 
-**Agent-issued (9 queries)**
-- `gmail`
-- `clickup`
-- `notion`
-- `list database notion`
-- `search notion page`
-- `clickup get teams`
-- `get spaces clickup`
-- `search notion page database`
-- `gmail list messages`
+**Agent-issued (11 queries)**
+- `partner operations pipeline gmail clickup notion`
+- `search and read gmail email threads`
+- `clickup create task handoff`
+- `create gmail draft`
+- `notion query database or search database`
+- `search notion pages workspace`
+- `list gmail threads messages`
+- `clickup get tasks list`
+- `search notion databases workspace pages`
+- `notion fetch database data`
+- `clickup get lists space folder`
 
 ## Task 6
 *Manage Salesforce leads, contacts, campaign membership, campaign attendance statuses, a campaign-based static list, and MQL lead activity reporting.*
@@ -106,19 +110,14 @@ Same tasks, two ways of producing the queries. The left column is what the one-s
 **Imagined (0 queries)**
 - _(workflow rejected during generation)_
 
-**Agent-issued (12 queries)**
-- `Salesforce leads contacts campaign`
-- `campaign contact member static list MQL activity reporting Salesforce`
-- `Salesforce campaign`
-- `Salesforce lead contact campaign member status report`
-- `lead status MQL activity campaign member`
-- `CampaignMember status`
-- `update campaign member status`
-- `Salesforce update campaign member`
-- `Salesforce list leads contacts campaigns`
-- `Salesforce search campaigns`
-- `Salesforce list leads`
-- `Salesforce list contacts`
+**Agent-issued (7 queries)**
+- `salesforce leads contacts campaign membership attendance status static list MQL lead activity reporting`
+- `salesforce manage campaigns campaign members campaign member status static list`
+- `salesforce create lead contact update campaign member status report`
+- `salesforce update campaign member status attendance`
+- `salesforce update campaign member status field`
+- `salesforce update sobject campaign member`
+- `salesforce custom rest api call or campaign member update`
 
 ## Task 7
 *Aggregate and act on personal productivity signals across email, calendar, GitHub, LinkedIn, and SMS; additionally configure SMS receiving/sending and manage calendar access/events.*
@@ -130,19 +129,22 @@ Same tasks, two ways of producing the queries. The left column is what the one-s
 - `configure sms sending and receiving`
 - `manage calendar access and events`
 
-**Agent-issued (12 queries)**
-- `email`
-- `calendar`
-- `github`
-- `linkedin`
-- `sms`
-- `gmail`
-- `list events`
-- `google calendar events list`
-- `github commits`
-- `linkedin my info`
-- `clicksend sms history`
-- `google calendar list calendars`
+**Agent-issued (15 queries)**
+- `aggregate productivity signals across email calendar github linkedin sms`
+- `read email calendar github linkedin sms signals`
+- `list emails read emails messages`
+- `manage calendar access and events`
+- `github repositories issues pull requests productivity signals`
+- `linkedin profile posts messages productivity signals`
+- `configure sms receiving and sending text messages`
+- `configure sms receiving webhook inbound messages clicksend`
+- `list messages emails in inbox`
+- `agent_mail_list_messages`
+- `googlecalendar_list_calendars`
+- `github_list_repositories_for_the_authenticated_user`
+- `linkedin_get_my_info`
+- `clicksend_get_account`
+- `agent_mail_list_inboxes`
 
 ## Task 8
 *Build and update a knowledge base from public video transcript data, mark incomplete archive documents when transcript retrieval failed, and append summarized entries to existing Google Docs.*
@@ -150,13 +152,14 @@ Same tasks, two ways of producing the queries. The left column is what the one-s
 **Imagined (1 queries)**
 - `append summary to google docs`
 
-**Agent-issued (6 queries)**
-- `video transcript knowledge base`
-- `google docs append`
-- `knowledge base archive document mark incomplete`
-- `list files or search files or workspace or database or filesystem or storage`
-- `GOOGLEDRIVE_FIND_FILE`
-- `search youtube video`
+**Agent-issued (7 queries)**
+- `video transcript knowledge base archive google docs`
+- `get public video transcripts transcript retrieval`
+- `append to google docs google docs tools`
+- `archive documents knowledge base archive mark incomplete`
+- `google drive list files search files`
+- `drive find file search query`
+- `list all files in google drive`
 
 ## Task 9
 *Create multimedia travel marketing assets from scripts and stock/generative media, then deliver generated files by email and provide downloadable presentation content.*
@@ -165,14 +168,10 @@ Same tasks, two ways of producing the queries. The left column is what the one-s
 - `generate multimedia video from script and media assets`
 - `send email with attachments and generate downloadable presentation link`
 
-**Agent-issued (7 queries)**
-- `travel marketing assets script media`
-- `email deliver presentation content`
-- `send email`
-- `generate image`
-- `get user email address`
-- `get profile`
-- `search contacts or user profile`
+**Agent-issued (3 queries)**
+- `create multimedia travel marketing assets from scripts and stock media`
+- `deliver generated files by email and provide downloadable presentation content`
+- `generate presentation gamma`
 
 ## Task 10
 *Reconcile an organization's QuickBooks bank-account ledger by querying existing transactions, removing or undoing incorrect entries, posting corrected ledger activity, creating adjustment entries, recording a customer pa...*
@@ -182,33 +181,25 @@ Same tasks, two ways of producing the queries. The left column is what the one-s
 - `undo remove incorrect quickbooks ledger entry`
 - `record customer payment quickbooks financial report`
 
-**Agent-issued (13 queries)**
-- `QuickBooks`
-- `bank ledger transaction`
-- `QuickBooks ledger account transaction bank`
-- `QuickBooks transaction create update delete void payment adjustment`
-- `QuickBooks payment deposit journal entry`
-- `QuickBooks payment deposit`
-- `QuickBooks report balance sheet trial balance`
-- `QuickBooks query accounts`
-- `QuickBooks get transaction list report`
-- `QuickBooks query payment invoice journal deposit`
-- `QuickBooks create deposit`
-- `QuickBooks delete transaction void journal payment deposit`
-- `QuickBooks update delete journal entry payment deposit`
+**Agent-issued (5 queries)**
+- `QuickBooks bank account ledger query transactions reconciliation`
+- `QuickBooks create update delete void transaction ledger journal entry customer payment`
+- `QuickBooks void delete transaction payment`
+- `QuickBooks record customer payment`
+- `QuickBooks get trial balance general ledger report`
 
 ## Query-count comparison
 
 | Task | Imagined | Agent-issued |
 |---|---:|---:|
-| 1 | 4 | 7 |
-| 2 | 3 | 5 |
-| 3 | 2 | 12 |
+| 1 | 4 | 9 |
+| 2 | 3 | 8 |
+| 3 | 2 | 9 |
 | 4 | 4 | 12 |
-| 5 | 5 | 9 |
-| 6 | 0 | 12 |
-| 7 | 5 | 12 |
-| 8 | 1 | 6 |
-| 9 | 2 | 7 |
-| 10 | 3 | 13 |
-| **mean** | **2.9** | **9.5** |
+| 5 | 5 | 11 |
+| 6 | 0 | 7 |
+| 7 | 5 | 15 |
+| 8 | 1 | 7 |
+| 9 | 2 | 3 |
+| 10 | 3 | 5 |
+| **mean** | **2.9** | **8.6** |

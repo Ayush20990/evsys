@@ -252,12 +252,12 @@ class AgentSession:
         self.connected = connected
         self.calls = 0
 
-    def search_tools(self, query: str) -> dict[str, Any]:
+    def search_tools(self, query: str, intent: str = "") -> dict[str, Any]:
         started = time.monotonic()
         try:
             response = self.session.execute("COMPOSIO_SEARCH_TOOLS", arguments={"query": query})
         except Exception as exc:
-            self.trace.queries.append({"query": query, "error": repr(exc)})
+            self.trace.queries.append({"query": query, "intent": intent, "error": repr(exc)})
             return {"error": f"search failed: {exc!r}"}
         latency = time.monotonic() - started
         data = to_plain(getattr(response, "data", response)) or {}
@@ -267,6 +267,7 @@ class AgentSession:
         plan = results.get("recommended_plan_steps") or []
         self.trace.queries.append({
             "query": query,
+            "intent": intent,
             "primary_tool_slugs": primary,
             "related_tool_slugs": related,
             "latency_sec": round(latency, 3),
@@ -323,19 +324,42 @@ class AgentSession:
         return {"successful": True, "data": mocked.get("data", mocked), "error": None}
 
 
-# Deliberately says nothing about query length, granularity or phrasing. An earlier
-# version instructed the model to issue "one focused query" for "the single capability
-# you need right now"; the resulting keyword-fragment queries were then almost reported
-# as a discovered property of agent behaviour. Describe what the tool does, and let the
-# model choose how to phrase the search -- that choice is the thing being measured.
+# Mirrors the one-shot DECOMPOSE_PROMPT in the primary benchmark, which gets well-formed
+# queries out of this same model. Two lessons are baked in.
+#
+# First: ask for "concrete" and "specific", never for "short" or "one at a time". An
+# earlier version said "issue one focused query" for "the single capability you need
+# right now" and produced single-word searches ('email', 'workflow'). Stripping that
+# guidance entirely did not help -- with no quality bar at all the queries stayed just as
+# bare. Specificity and brevity are separate axes; the working prompt constrains the first
+# and says nothing about the second.
+#
+# Second: require an `intent` sentence alongside the query. Articulating the capability in
+# full is what anchors the query text -- it is the one structural difference between the
+# prompt that works and the prompt that does not. Only `query` is ever sent to search;
+# `intent` exists to make the model think before it searches.
 SEARCH_DECLARATION = types.FunctionDeclaration(
     name="search_tools",
-    description="Search the tool catalogue for tools you could use.",
+    description=(
+        "Search the tool catalogue for a tool that performs a specific action or lookup "
+        "this task requires. Searches the catalogue by meaning, so describe the capability "
+        "concretely, the way you would describe it to a colleague."
+    ),
     parameters=types.Schema(
         type=types.Type.OBJECT,
-        properties={"query": types.Schema(type=types.Type.STRING,
-                                          description="What you are looking for.")},
-        required=["query"],
+        properties={
+            "intent": types.Schema(
+                type=types.Type.STRING,
+                description=("One precise sentence describing exactly what capability you need "
+                             "right now, and in which application."),
+            ),
+            "query": types.Schema(
+                type=types.Type.STRING,
+                description=("The search query. A concrete, realistic description of that "
+                             "capability. Do not use internal tool or API names."),
+            ),
+        },
+        required=["intent", "query"],
     ),
 )
 
@@ -354,18 +378,25 @@ EXECUTE_DECLARATION = types.FunctionDeclaration(
 )
 
 SYSTEM_PROMPT = """You are an autonomous agent completing a real workplace task using external
-application tools. You do not know in advance which tools exist.
+application tools. You do NOT know what tools or APIs exist -- your only way to find one is
+to call search_tools once you know what you need.
 
 How to work:
-- You discover tools only by calling search_tools.
-- After each search, look at what came back, pick the tool that fits, and call execute_tool.
+- Work out what the task requires, then search for a tool for each genuine, distinct
+  sub-intent, in the order you need them.
+- Search the way you would describe the capability to a colleague: name the application and
+  the specific action or lookup you need. The catalogue matches on meaning, so a bare word
+  like "email" finds the wrong application entirely.
+- After each search, look at what came back, pick the tool that fits, and call execute_tool
+  with its real arguments.
 - Use what each result actually gives you to decide your next move. If a call fails or
   returns nothing useful, adapt: search differently, or try another approach.
 - Work through the whole task, including any verification the task asks for.
 - When the task is complete or you genuinely cannot proceed, reply with a short plain-text
   summary of what you did and stop calling tools.
 
-Do not invent tool slugs. Only execute slugs that a search actually returned."""
+Do not invent tool slugs, and never search for a slug you have already seen -- search for
+capabilities, and execute only slugs a search actually returned."""
 
 
 def run_task(client, session, metadata: ToolMetadata, limiter: RateLimiter,
@@ -416,7 +447,8 @@ def run_task(client, session, metadata: ToolMetadata, limiter: RateLimiter,
                 return trace
             arguments = dict(function_call.args or {})
             if function_call.name == "search_tools":
-                result = agent.search_tools(str(arguments.get("query", "")).strip())
+                result = agent.search_tools(str(arguments.get("query", "")).strip(),
+                                            str(arguments.get("intent", "")).strip())
             elif function_call.name == "execute_tool":
                 try:
                     parsed = json.loads(arguments.get("arguments_json") or "{}")

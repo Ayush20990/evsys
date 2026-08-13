@@ -14,7 +14,37 @@ script runs a real tool-calling loop instead: the model gets the task and two to
 searches for while genuinely trying to make progress is what gets recorded. Query count is emergent —
 no cap, no `ceil(pool_size / 2.5)` formula.
 
-## The query-distribution difference — measured, but NOT yet explained
+## Resolved: the terse queries were a prompt defect, not agent behaviour
+
+Two earlier runs produced single-word searches (`'email'`, `'workflow'`) and were nearly written up
+as a finding about how agents phrase queries. They were a defect in this harness, now fixed. The
+diagnosis came from an obvious anchor that had been sitting in the repo the whole time: the primary
+benchmark's one-shot `DECOMPOSE_PROMPT` gets well-formed queries out of *the same* flash-lite model.
+So the model was never the constraint.
+
+Comparing the two prompts showed the working one constrains **specificity** — "concrete, realistic
+search queries", "a specific action or lookup" — and separately requires an `intent` sentence per
+query. The agent prompt had neither. Its first version instead constrained **brevity** ("ONE
+capability at a time", "one focused query"), and removing that guidance without adding a quality bar
+left the queries just as bare, which is what made the model look like the culprit. Specificity and
+brevity are separate axes; only the first one should be constrained.
+
+The fix ports both properties across: `search_tools` now takes `intent` alongside `query`, and asks
+for a concrete description while saying nothing about length.
+
+| | Run 2 (defective prompt) | Run 3 (fixed) |
+|---|---|---|
+| Task-1 queries | `'hubspot'`, `'payment'`, `'email'`, `'workflow'` | `'HubSpot create marketing email'`, `'HubSpot create custom object definition schema'` |
+| Words per query | 2.9 | **5.6** |
+| Slug-lookup queries | 11% | **0** |
+| Union recall | 67% | **74%** |
+| Primary-only recall | 34% | **46%** |
+
+The lesson is methodological: two runs' worth of results were shaped by prompt wording, and the
+symptom looked like a model limitation. Anything measured through an LLM harness is a property of the
+harness until a known-good configuration says otherwise.
+
+## Historical: the retracted query-distribution claim
 
 Same 9 tasks, both methods:
 
@@ -26,49 +56,41 @@ Same 9 tasks, both methods:
 The loop issues ~3x more queries, each about half as long: keyword fragments (`"payment link"`,
 `"hubspot email"`) rather than sentences (`"check payment link capabilities and configuration"`).
 
-**Do not read this as "agents query in keywords."** The cause is unestablished, and at least one
-strong candidate is this harness rather than agent behaviour. Task 1 makes the problem obvious — from
-a task that says *"create a review-only automated confirmation email"* and *"create a disabled
-confirmation workflow"*, the agent searched `'email'`, `'workflow'`, `'custom object'`. Single generic
-words. That is severe context loss, not plausible agent behaviour.
+**This claim is withdrawn — the cause was the prompt (see the resolved section above).** The tell was
+visible at the time: from a task that says *"create a review-only automated confirmation email"* and
+*"create a disabled confirmation workflow"*, the agent searched `'email'`, `'workflow'`,
+`'custom object'`. That is severe context loss, not a plausible way for any agent to phrase a search.
+With the prompt fixed, the same model and the same task produce `'HubSpot create marketing email'`,
+and words-per-query lands at 5.3 against the imagined 6.0 — so the length difference was never real.
+What survives is the query *count*: 8.8 per task versus 3.2 imagined.
 
-### Cause 1 — the prompt: TESTED, REJECTED
+### How the wrong conclusion nearly got locked in
 
-The original `SYSTEM_PROMPT` said *"Search for ONE capability at a time"* and `SEARCH_DECLARATION`
-said *"Issue one focused query describing the single capability you need right now"* — three separate
-instructions to atomise queries. Reporting the resulting atomisation as a property of agents would
-have been circular.
+Worth keeping, because the reasoning failed in a specific and repeatable way.
 
-Both were removed; the tool description now says only *"Search the tool catalogue for tools you could
-use."* **The terseness did not change.** Task 1 still produced `'hubspot'`, `'payment'`, `'email'`,
-`'workflow'`, `'schema'`, `'marketing'` — and repeated `'email'` twice while issuing `'HUBSPOT'`
-directly after `'hubspot'`. The prompt was not the cause.
+**Step 1 — blamed the prompt, correctly.** The original prompt said *"Search for ONE capability at a
+time"* and *"Issue one focused query describing the single capability you need right now"*: three
+instructions to atomise queries. Reporting the resulting fragments as agent behaviour would have been
+circular.
 
-### Cause 2 — model tier: REPRODUCES ACROSS EVERY MODEL REACHABLE
+**Step 2 — removed it, and drew the wrong lesson from the result.** With that guidance stripped, the
+tool description said only *"Search the tool catalogue for tools you could use."* Terseness did not
+change, and that was recorded as *"the prompt was not the cause"*. The actual explanation: removing
+the brevity instruction left **no quality bar at all**, so nothing pulled the queries toward being
+specific. Constrain-brevity and constrain-nothing produce the same bare output for different reasons.
 
-| Model | Task-1 queries |
-|---|---|
-| `gemini-3.5-flash-lite` | `'hubspot'`, `'payment'`, `'email'`, `'workflow'`, `'custom object'` |
-| `gemini-3.5-flash` | `'hubspot'`, `'hubspot email'`, `'hubspot workflow'` |
-| `gemini-3-flash-preview` | `'hubspot payment email workflow custom object'` (keyword bag, not a sentence) |
-| `gemini-2.5-pro`, `gemini-2.5-flash` | retired — 404 |
-| `gemini-3.1-pro-preview`, `gemini-pro-latest`, `gemini-flash-latest` | quota exhausted, untestable |
+**Step 3 — blamed the model, on evidence that looked strong.** Terseness reproduced everywhere
+reachable: `gemini-3.5-flash-lite` gave `'hubspot'`, `'payment'`, `'email'`; `gemini-3.5-flash` gave
+`'hubspot'`, `'hubspot email'`; `gemini-3-flash-preview` gave the keyword bag
+`'hubspot payment email workflow custom object'`. `gemini-2.5-pro` and `2.5-flash` were retired (404),
+and `3.1-pro-preview`, `pro-latest`, `flash-latest` were all quota-exhausted. Consistency across three
+tiers looked like a model property. It was really the same defective harness applied three times —
+every configuration shared the one variable that mattered.
 
-Every reachable model produces keyword-style queries. The larger preview model produces *longer*
-queries but still concatenated keywords rather than natural phrasing.
-
-### What this actually licenses you to say
-
-**"Gemini flash-tier models issue keyword-fragment queries."** That is supported.
-
-**"Agents issue keyword-fragment queries."** That is *not* supported. No pro-tier model was
-reachable, and nothing here speaks to how a Claude- or GPT-class agent phrases searches. Treat the
-3.2 → 9.2 queries-per-task and 6.0 → 2.9 words-per-query figures as properties of this harness on
-flash-tier Gemini, not as a discovered fact about agents. Confirming or killing the claim needs a
-pro-tier or non-Gemini model.
-
-The recall and derailment results are unaffected — they depend on which queries were issued, not on
-why they were phrased that way.
+**What resolved it:** the primary benchmark's `DECOMPOSE_PROMPT` already produced good queries from
+the *same* flash-lite model. One known-good configuration in the same repo beat three consistent
+readings from the broken one. The general form: reproducing a result across models says nothing if
+every run shares the harness under suspicion.
 
 See `agent_vs_imagined.md` for the side-by-side.
 
@@ -90,37 +112,47 @@ ground truth, so it cannot leak the answer key. It immediately caught
 
 ## Results
 
-Two runs over the same 10 tasks. They differ only in execution policy.
+Three runs over the same 10 tasks. **Run 3 is the current one**; 1 and 2 are kept because the
+differences between them are what exposed two harness defects.
 
-| | Run 1 — real reads, unconnected | Run 2 — fully mocked |
-|---|---:|---:|
-| Queries | 85 | 95 |
-| Connection-hunting queries | 18 (21%) | **0 (0%)** |
-| Tool executions | 16 (12 failed) | 52 (all mocked) |
-| Union recall | 56/92 (61%) | **62/92 (67%)** |
-| Primary-only recall | 25/92 (27%) | **31/92 (34%)** |
+| | Run 1 real reads | Run 2 mocked | Run 3 mocked + fixed prompt |
+|---|---:|---:|---:|
+| Queries | 85 | 95 | 86 |
+| Words per query | 2.9 | 2.9 | **5.6** |
+| Connection-hunting | 18 (21%) | 0 | **0** |
+| Slug-lookup queries | 9 (11%) | 10 (11%) | **0** |
+| Union recall | 56/92 (61%) | 62/92 (67%) | **68/92 (74%)** |
+| Primary-only recall | 25/92 (27%) | 31/92 (34%) | **42/92 (46%)** |
 
 *Union recall* = reference tool appeared anywhere in a response (`primary` ∪ `related`) across the
 session. *Primary-only* = it appeared in `primary_tool_slugs`.
 
+**Run 3's 74% is a floor, not a measurement.** Six tasks hit the 18-step ceiling and one exhausted
+the Gemini quota, so seven of ten stopped before finishing. Truncated tasks cannot search for
+capabilities they never reached. On the five tasks scored mid-run before truncation dominated, union
+recall was 94% — tasks 2, 3 and 4 each hit 100% (6/6, 4/4, 10/10). Raising `MAX_STEPS` is the single
+change most likely to move this number.
+
 **Note on comparability:** these are scored against each use case's full reference tool list, which is
-a different ground truth from the primary benchmark's requirement groups. Do not compare 67% against
+a different ground truth from the primary benchmark's requirement groups. Do not compare 74% against
 that benchmark's 62.2%/81.3% — they measure different things.
 
-### Finding 1: half the correct tools are demoted to `related`
+### Finding 1: the right tool is usually found, but only half the time recommended
 
-Search surfaces the right tool 67% of the time but promotes it to `primary` only 34% — roughly half
-the correct answers are present but not recommended. This is stable across both runs (61/27 and
-67/34), so it's a property of the ranking, not an artifact of run 1's derailment. For an agent that
-mostly acts on the primary recommendation, a demoted correct answer is close to a miss.
+Union 74% vs primary-only 46%. Search *has* the correct tool far more often than it *promotes* it;
+the rest are demoted to `related`. The gap has held across all three runs — 61/27, 67/34, 74/46 —
+which spans wildly different query quality, so it is a property of the ranking rather than an
+artifact of any one run's phrasing. For an agent that acts on the primary recommendation, a demoted
+correct answer costs nearly as much as a miss. **This is the most robust finding here.**
 
-### Finding 2: bare-capability queries drift across vendors
+### Finding 2: naming the vendor does not prevent cross-vendor drift
 
-The agent frequently drops the vendor from its query. In task 1 (a HubSpot task) it searched
-`"payment link"`, got `STRIPE_*` / `GOCARDLESS_*` / `RAZORPAY_*` back, and by query 10 had abandoned
-HubSpot entirely for `"stripe create payment link"`. This is the same cross-vendor drift already
-noted in `../read.md`, but arising from the *agent's own* phrasing rather than the decomposer's — so
-it's a real retrieval-side property, not a generation artifact.
+Run 2's version of this was weak: the agent searched a bare `"payment link"` on a HubSpot task and
+got Stripe back, which is arguably fair given the query. Run 3 removed that excuse — the query was
+`"HubSpot list payment links ecommerce"`, with the vendor stated explicitly, and search still
+returned `STRIPE_LIST_PAYMENT_LINKS` as the primary result. An immediately following
+`"HubSpot list payment links"` returned `HUBSPOT_LIST_EMAILS`. Explicit vendor scoping in the query
+is not reliably respected.
 
 ### Finding 3: the readOnlyHint gate was wrong, and why
 
@@ -182,8 +214,8 @@ number here.
 
 ## Next
 
-- **Resolve the query-phrasing question above before quoting the distribution numbers.** Neutral
-  prompt wording plus a frontier model; that is the blocking item.
+- **Raise `MAX_STEPS` above 18.** Seven of ten tasks in run 3 stopped early, so 74% union recall is a
+  floor set by truncation rather than by retrieval.
 - Complete the OAuth flow (auth configs exist; connected accounts are still 0) to get real read
   execution and genuine recovery queries.
 - Feed agent-issued queries back into the primary benchmark's scoring to measure retrieval against
