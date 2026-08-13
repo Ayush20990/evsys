@@ -89,6 +89,10 @@ average judged recall) is simply the mean of the corresponding per-query value a
 queries where the labeling call found no group at all; "rejected" counts workflows where either stage failed
 validation outright.
 
+For every rejection reason with a real example, and a worked example of why a 2-tool query can score either
+100% or 50% depending on whether those tools are alternatives or a composition, see
+[`scoring_and_validation_reference.md`](scoring_and_validation_reference.md).
+
 The baseline benchmark (`single_tool_evaluation.py`) uses a plainer setup: one specific target tool, one
 query built to retrieve it. `primary_hit` = target tool slug appears in $P$; `related_hit` = target appears
 in $R$; `complete_miss` = appears in neither; `demotion` = appears in $R$ but not $P$ (found, but ranked
