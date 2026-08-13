@@ -6,6 +6,11 @@ compared against what `search_results.csv` reports — a check on the scoring pi
 ground truth. Then looked at what actually came back on each miss to judge whether it reads as a genuine
 search failure or a too-narrow ground truth.
 
+**Revision note:** the first version of this document called three misses "likely ground-truth gaps" based on
+the returned tool *sounding* like a plausible alternative. On checking the actual tool descriptions and
+parameters (not just names), two of the three turned out to be genuine misses after all — the correction is
+below. Lesson: don't judge whether a miss is "fair" from tool-name similarity; check the real schema.
+
 ## Result: scoring mechanics check out completely
 
 All 20 queries match exactly — 0 mismatches between the CSV's recorded recall and an independent
@@ -36,23 +41,50 @@ outside the script.
 The extraction and scoring logic (`extract_results()` / `score_query()`) is doing exactly what it's supposed
 to. No bugs found here.
 
-## But the pass surfaced 3 likely ground-truth gaps
+## Three misses, checked against actual tool descriptions — not just names
 
-Looking past the pass/fail number at *what actually came back* on the misses, three of them read less like
-genuine search failures and more like the ground truth being narrower than it should be:
+### `workflow-003-q2` "upload file to OneDrive" — genuine miss, not a gap
 
-| Query | Ground truth required | What search actually returned | Judgment |
-|---|---|---|---|
-| `workflow-003-q2` "upload file to OneDrive" | `ONE_DRIVE_UPDATE_FILE_CONTENT` only | `ONE_DRIVE_ONEDRIVE_UPLOAD_FILE` (primary) | Search found a genuine OneDrive upload tool — just not the one specific one pre-labeled. Plausibly should have been an alternative in the same group. |
-| `workflow-004-q1` "get approved cards from Trello workflow" | `TRELLO_GET_LISTS_CARDS_BY_ID_LIST` only | `TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD_BY_FILTER` (primary) | The query never actually specifies a list vs. a board — a board-level filtered fetch is arguably just as valid an answer. |
-| `workflow-005-q5` "write evidence-supported updates in Notion CRM records" | `NOTION_UPDATE_PAGE` only | `NOTION_UPDATE_ROW_DATABASE` / `NOTION_UPSERT_ROW_DATABASE` (primary) | Whether "CRM record" means a database row or a page is genuinely ambiguous from the query text alone; search picked the database-row reading. |
+Ground truth: `ONE_DRIVE_UPDATE_FILE_CONTENT`. Search returned `ONE_DRIVE_ONEDRIVE_UPLOAD_FILE` instead.
 
-These are exactly the class of case `judged_recall` exists to catch — but none of the three actually got
-judged. This 100-workflow run's judging pass hit Gemini's daily quota before reaching any of them (0/262
-judged overall — see `read.md`). Right now they're counted as flat misses with no second look, when a fair
-reading suggests at least the OneDrive and Trello cases probably deserve credit.
+The task text is explicit: *"upload the modified workbook back to the **same** OneDrive item."* That "same"
+matters. `ONE_DRIVE_UPDATE_FILE_CONTENT`'s description states it *"update[s] an existing file's content...
+the item's ID is preserved (existing share links remain valid)"* — identity-preserving by design.
+`ONE_DRIVE_ONEDRIVE_UPLOAD_FILE`'s description says it *"[u]ploads a file to a specified OneDrive
+**folder**... renaming on conflict"* — its `conflict_behavior` parameter **defaults to `rename`**, meaning
+left alone it creates a second, differently-named file rather than touching the original item at all. Only
+with `conflict_behavior='replace'` explicitly set does it overwrite anything, with no stated guarantee the
+item ID/share-links survive the way the other tool promises. Confirmed genuine miss.
 
-## Contrast: a genuinely correct miss, verified against the live API
+### `workflow-004-q1` "get approved cards from Trello workflow" — genuine miss, not a gap
+
+Ground truth: `TRELLO_GET_LISTS_CARDS_BY_ID_LIST`. Search returned
+`TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD_BY_FILTER` instead.
+
+`TRELLO_GET_LISTS_CARDS_BY_ID_LIST` fetches cards from one specific list, by ID.
+`TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD_BY_FILTER` only filters by board-wide archival status
+(`all`/`closed`/`open`/`visible`) — it has no parameter to scope down to a single list at all. The workflow's
+own description confirms it reads from a Trello *source list*, and its candidate pool pairs
+`TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD` (find the list) with `TRELLO_GET_LISTS_CARDS_BY_ID_LIST` (fetch that
+list's cards) — a clear two-step, list-scoped pattern the returned tool structurally cannot perform. Confirmed
+genuine miss.
+
+### `workflow-005-q5` "write evidence-supported updates in Notion CRM records" — different issue, not resolved either way
+
+Ground truth: `NOTION_UPDATE_PAGE`. Search returned `NOTION_UPDATE_ROW_DATABASE` / `NOTION_UPSERT_ROW_DATABASE`.
+
+This one doesn't reduce to "search missed the right tool" or "ground truth was too narrow" — it's a
+different category. `NOTION_UPDATE_ROW_DATABASE` isn't in this workflow's human-curated candidate pool at
+all, so the labeling stage was never even allowed to consider it; the fixed vocabulary here is
+"invalid or invented required tool" (see `scoring_and_validation_reference.md`), not "too narrow a group."
+The workflow's pool mixes page-oriented Notion tools (`NOTION_RETRIEVE_PAGE`, `NOTION_GET_PAGE_MARKDOWN`,
+`NOTION_UPDATE_PAGE`) with database-oriented ones (`NOTION_FETCH_DATABASE`, `NOTION_FETCH_ROW`,
+`NOTION_QUERY_DATABASE_WITH_FILTER`), so whether the human curator's choice of a page-update tool over a
+row-update tool was the better call is genuinely unresolved from the data available here — it's a question
+about whether the *candidate pool itself* was complete, not about how the labeling or scoring stages handled
+what was in it.
+
+## A genuinely correct miss, verified against the live API, for contrast
 
 `workflow-004-q2`, *"publish carousel content to LinkedIn with a first comment"*, ground truth:
 
@@ -68,13 +100,15 @@ The response's `related_tool_slugs` came back as `['LINKEDIN_GET_MY_INFO', 'LINK
 'LINKEDIN_GET_POST_CONTENT', 'LINKEDIN_REGISTER_IMAGE_UPLOAD', 'LINKEDIN_DELETE_POST',
 'LINKEDIN_GET_COMPANY_INFO']` — `LINKEDIN_CREATE_COMMENT_ON_POST` never appears anywhere in the response:
 not primary, not related, not even mentioned in the full `tool_schemas` block that came back alongside it.
-This one is an unambiguous, correctly-scored miss at 50% recall — not a gray area like the three above.
+Unambiguous, correctly-scored miss at 50% recall.
 
 ## Net takeaway
 
 The pipeline's arithmetic is trustworthy — every recall value checked traces correctly back to the raw
-response. The open risk is entirely in ground-truth completeness for compositional or ambiguous queries,
-which was already a documented limitation (`judged_recall` exists specifically to catch it); this audit just
-puts three concrete names on it from a small, hand-checked sample. Worth extending this same manual pass to
-workflows 6–10 to see whether the pattern holds at a larger sample before treating the ~3-in-18 rate as
-representative.
+response. What changed on closer inspection: two of three cases that initially looked like unfair, too-narrow
+ground truth turned out to be correctly-labeled genuine misses once the actual tool descriptions and
+parameters were checked instead of going on name similarity. The one remaining open question
+(`workflow-005-q5`) is about candidate-pool completeness, not about how this pipeline scores what's given to
+it. Across all 20 queries in this sample, that leaves zero confirmed ground-truth-narrowness bugs — a
+better result than the first pass of this audit suggested, and a reminder to verify against real schemas
+before calling something a gap.
