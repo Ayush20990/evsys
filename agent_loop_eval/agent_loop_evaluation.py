@@ -43,6 +43,7 @@ Nothing here writes to a connected account.
 from __future__ import annotations
 
 import json, os, re, sys, time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,6 +75,33 @@ REPORT_PATH = ROOT / "summary_report.md"
 
 READ_ONLY_TAG = "readOnlyHint"
 DESCRIPTION_CHARS = 400   # per-tool description budget returned to the agent
+
+# --- what counts as a failed search, and when to stop --------------------------------
+#
+# Two behaviours look alike from outside and mean opposite things:
+#
+#   FRONT-LOADING  several searches in a row, each for a DIFFERENT capability, before any
+#                  execution. Healthy, and this harness explicitly asks for it -- the agent
+#                  is told to search for a step's tool even when the step's data is absent.
+#   THRASHING      searching over and over for the SAME capability because nothing usable
+#                  comes back. Unhealthy: no progress, and it inflates the query count with
+#                  noise while burning quota.
+#
+# An earlier version of this breaker counted any search the agent had not yet acted on, and
+# so stopped task 1 after four consecutive GOOD searches (payment link, email, workflow,
+# custom object) purely because execution came later. Acting on a result can lag the search
+# by several steps, so "not yet acted on" cannot distinguish the two cases.
+#
+# What does distinguish them is whether the search taught the agent anything new. A search
+# is UNPRODUCTIVE only when it returns nothing at all, or repeats a capability already
+# searched for. Consecutive unproductive searches mean the agent is stuck, and that is a
+# SEARCH FAILURE -- recorded as such rather than left to spin to the step ceiling.
+MAX_UNPRODUCTIVE_SEARCHES = 4   # consecutive empty-or-repeated searches -> stop
+MAX_QUERY_REPEATS = 2           # same normalised query issued this many times -> stop
+
+
+def normalise_query(query: str) -> str:
+    return " ".join(sorted(re.findall(r"[a-z0-9]+", query.lower())))
 
 # A query that is just a tool slug the agent already saw in an earlier response is not
 # discovery -- search returns it by exact match, which tests lookup rather than
@@ -248,9 +276,25 @@ class ToolMetadata:
         # when the tag that authorises real execution could not be confirmed.
         return bool(record) and READ_ONLY_TAG in record.get("tags", [])
 
-    def toolkit_of(self, slug: str) -> str:
+    def toolkit_of(self, slug: str, known: set[str] | None = None) -> str:
+        """Authoritative toolkit for a slug, from Composio's own metadata.
+
+        The fallback matters: several toolkit slugs contain underscores (`one_drive`,
+        `google_calendar`), so splitting on the first underscore yields `one` -- which
+        matches no live toolkit, silently demoting every OneDrive read to a mock even
+        with an ACTIVE connection. Observed in run 5: task 3 recorded
+        toolkit="one", toolkit_connected=false while one_drive was connected throughout.
+        So when metadata is unavailable, prefer the longest known toolkit that prefixes
+        the slug, and only then fall back to the first segment.
+        """
         record = self.get(slug) or {}
-        return (record.get("toolkit") or slug.split("_")[0]).lower()
+        if record.get("toolkit"):
+            return record["toolkit"].lower()
+        lowered = slug.lower()
+        for candidate in sorted(known or (), key=len, reverse=True):
+            if lowered.startswith(candidate + "_"):
+                return candidate
+        return lowered.split("_")[0]
 
 
 def connected_toolkits(composio: Composio) -> tuple[set[str], dict[str, str]]:
@@ -327,6 +371,7 @@ class TaskTrace:
     unmet_steps: list[str] = field(default_factory=list)
     blocked_by: str = ""
     completion_source: str = ""            # "self-report" | "" when unreported
+    search_failed: bool = False            # stopped by a search circuit breaker
     error: str | None = None
 
 
@@ -340,6 +385,21 @@ class AgentSession:
         self.trace = trace
         self.connected = connected
         self.calls = 0
+        self.unproductive_streak = 0        # consecutive searches nothing was called from
+        self.pending_slugs: set[str] = set()  # slugs offered by searches not yet acted on
+        self.pending_indexes: list[int] = []   # their positions in trace.queries
+        self.query_counts: Counter[str] = Counter()
+
+    def note_search_outcome(self, slug_called: str) -> None:
+        """Mark the searches that offered this slug as productive."""
+        if slug_called in self.pending_slugs:
+            for index in self.pending_indexes:
+                if slug_called in (self.trace.queries[index].get("primary_tool_slugs") or []) + \
+                                  (self.trace.queries[index].get("related_tool_slugs") or []):
+                    self.trace.queries[index]["acted_on"] = True
+            self.unproductive_streak = 0
+            self.pending_slugs.clear()
+            self.pending_indexes.clear()
 
     def search_tools(self, query: str, intent: str = "") -> dict[str, Any]:
         started = time.monotonic()
@@ -354,6 +414,7 @@ class AgentSession:
         primary = results.get("primary_tool_slugs") or []
         related = results.get("related_tool_slugs") or []
         plan = results.get("recommended_plan_steps") or []
+        self.query_counts[normalise_query(query)] += 1
         self.trace.queries.append({
             "query": query,
             "intent": intent,
@@ -361,7 +422,21 @@ class AgentSession:
             "related_tool_slugs": related,
             "latency_sec": round(latency, 3),
             "is_slug_lookup": bool(SLUG_QUERY.match(query.strip())),
+            "acted_on": False,          # set True if the agent calls one of these tools
+            "returned_nothing": not (primary or related),
+            "repeat_number": self.query_counts[normalise_query(query)],
         })
+        # Only a search that taught the agent nothing counts toward the streak: one that
+        # returned no tools at all, or that re-asked a capability already searched for.
+        # A run of distinct, well-answered searches is front-loading, not thrashing.
+        repeated = self.query_counts[normalise_query(query)] > 1
+        fruitless = not (primary or related)
+        if repeated or fruitless:
+            self.unproductive_streak += 1
+        else:
+            self.unproductive_streak = 0
+        self.pending_slugs.update(primary); self.pending_slugs.update(related)
+        self.pending_indexes.append(len(self.trace.queries) - 1)
         print(f"    search: {query!r} -> {primary}")
 
         # Describe every returned tool. A real agent never picks from bare slugs: it reads
@@ -398,8 +473,9 @@ class AgentSession:
                 "recommended_plan_steps": plan[:6]}
 
     def execute_tool(self, tool_slug: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.note_search_outcome(tool_slug)
         read_only = self.metadata.is_read_only(tool_slug)
-        toolkit = self.metadata.toolkit_of(tool_slug)
+        toolkit = self.metadata.toolkit_of(tool_slug, self.connected)
         live = toolkit in self.connected
         record = {"tool_slug": tool_slug, "arguments": arguments,
                   "read_only": read_only, "toolkit": toolkit, "toolkit_connected": live}
@@ -647,6 +723,22 @@ def run_task(client, session, metadata: ToolMetadata, limiter: RateLimiter,
             if function_call.name == "search_tools":
                 result = agent.search_tools(str(arguments.get("query", "")).strip(),
                                             str(arguments.get("intent", "")).strip())
+                # Circuit breakers. Without these the agent can spin until the step
+                # ceiling re-issuing variants of a query that never returns anything it
+                # will use -- burning quota and inflating the query count with noise.
+                last = agent.trace.queries[-1] if agent.trace.queries else {}
+                if last.get("repeat_number", 0) > MAX_QUERY_REPEATS:
+                    trace.stop_reason = (f"search failure: query repeated "
+                                         f"{last['repeat_number']} times without progress")
+                    trace.search_failed = True
+                    print(f"    STOP: {trace.stop_reason}")
+                    return trace
+                if agent.unproductive_streak >= MAX_UNPRODUCTIVE_SEARCHES:
+                    trace.stop_reason = (f"search failure: {agent.unproductive_streak} consecutive "
+                                         f"searches returned nothing the agent would use")
+                    trace.search_failed = True
+                    print(f"    STOP: {trace.stop_reason}")
+                    return trace
             elif function_call.name == "execute_tool":
                 try:
                     parsed = json.loads(arguments.get("arguments_json") or "{}")
