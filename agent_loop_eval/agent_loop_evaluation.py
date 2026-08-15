@@ -188,19 +188,30 @@ class ToolMetadata:
 
 
 def connected_toolkits(composio: Composio) -> set[str]:
-    """Toolkits with a live connected account. Real execution is gated on this: a read
-    against an unconnected toolkit returns an auth error, never usable signal."""
+    """Toolkits this USER_ID can actually execute against.
+
+    Both filters below are load-bearing, and getting either wrong reintroduces the run-1
+    derailment (a real call fails with "No active connection", whose error text tells the
+    agent to go find COMPOSIO_MANAGE_CONNECTIONS, which it then does instead of the task).
+
+    user_ids: Composio scopes connections per user/entity, but connected_accounts.list()
+    is account-wide by default. An account connected under a different user_id -- one made
+    by a dashboard flow, an MCP connector, or another script -- is listed here yet is
+    invisible to session.execute(user_id=USER_ID).
+
+    statuses: a connection can exist and still be EXPIRED or REVOKED. Only ACTIVE can
+    actually execute.
+    """
     try:
-        accounts = composio.connected_accounts.list()
+        accounts = composio.connected_accounts.list(user_ids=[USER_ID], statuses=["ACTIVE"])
     except Exception as exc:
         print(f"[connections] lookup failed, mocking everything: {exc!r}")
         return set()
     live = set()
     for account in accounts.items or []:
-        status = str(getattr(account, "status", "")).upper()
         toolkit = to_plain(getattr(account, "toolkit", None)) or {}
         slug = (toolkit.get("slug") if isinstance(toolkit, dict) else str(toolkit)) or ""
-        if slug and status in ("ACTIVE", "INITIALIZED", ""):
+        if slug:
             live.add(slug.lower())
     return live
 
