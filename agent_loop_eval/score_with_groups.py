@@ -66,7 +66,7 @@ from agent_loop_evaluation import (
 
 DESCRIPTION_CHARS = 300
 MAX_GROUPS = 8
-MAX_TOOLS_PER_GROUP = 6
+MAX_TOOLS_PER_GROUP = 8
 
 
 def strip_json(text: str) -> str:
@@ -158,6 +158,15 @@ def describe(metadata: ToolMetadata, slugs: list[str]) -> str:
 
 
 def validate_groups(payload: Any, allowed: set[str]) -> str | None:
+    """Reject only what makes a task unscoreable; repair what is merely untidy.
+
+    An over-long alternatives list is not a correctness problem -- a 25-tool task can
+    legitimately have eight interchangeable tools for one capability -- so it is truncated
+    rather than rejected. Rejecting cost two whole tasks (11 and 16, the two largest) on
+    the first run, which is exactly the wrong trade: the biggest tasks are the ones whose
+    scores matter most. An invented slug IS rejected, because a group referencing a tool
+    outside the pool cannot be scored against what search returned.
+    """
     if not isinstance(payload, dict) or not isinstance(payload.get("groups"), list):
         return "missing groups list"
     groups = payload["groups"]
@@ -167,10 +176,14 @@ def validate_groups(payload: Any, allowed: set[str]) -> str | None:
         if not isinstance(group, dict) or not str(group.get("purpose", "")).strip():
             return "group missing purpose"
         slugs = group.get("acceptable_tool_slugs")
-        if not isinstance(slugs, list) or len(slugs) > MAX_TOOLS_PER_GROUP:
-            return "group slug list invalid or too long"
+        if not isinstance(slugs, list):
+            return "group slug list is not a list"
         if not set(slugs) <= allowed:
             return f"invented slug: {sorted(set(slugs) - allowed)[:3]}"
+        if len(slugs) > MAX_TOOLS_PER_GROUP:
+            print(f"    [groups] truncating '{group['purpose'][:40]}' "
+                  f"from {len(slugs)} alternatives to {MAX_TOOLS_PER_GROUP}")
+            group["acceptable_tool_slugs"] = slugs[:MAX_TOOLS_PER_GROUP]
     return None
 
 

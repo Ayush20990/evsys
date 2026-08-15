@@ -216,51 +216,50 @@ See `manual_audit_workflows_1_5.md` for real examples and what's actually happen
 
 ### Corroborated independently by the agent-loop benchmark
 
-Two findings show up in `agent_loop_eval/` as well, from live agent-issued queries rather than predicted
-ones, which makes them harder to explain away as artefacts of how this benchmark phrases things.
+`agent_loop_eval/` runs a real tool-calling loop and scores it with requirement groups plus an LLM
+judge. Three findings there are measured on live agent-issued queries rather than predicted ones,
+which makes them hard to dismiss as artefacts of how this benchmark phrases things.
 
-**Found but not recommended.** Search *returns* the right tool far more often than it *promotes* it. Across
-three agent-loop runs the split was 61%/27%, 67%/34% and 74%/46% — union recall against `primary`-only
-recall. Roughly half the correct answers arrive demoted to `related`. The gap held across runs whose query
-quality differed enormously, so it is a property of the ranking rather than of the phrasing. For an agent
-acting on the primary recommendation, a demoted correct answer costs nearly what a miss costs.
+**Found, but not recommended.** 70% of required capabilities were delivered, but only 45% arrived as
+a `primary` recommendation; the rest were demoted to `related`. The gap has held across every run and
+both scoring methods. For an agent acting on the primary recommendation, a demoted correct answer
+costs nearly what a miss costs.
 
-**Naming the vendor doesn't reliably scope the search.** The cross-toolkit drift described above was easy to
-dismiss while queries were bare (`"payment link"` returning Stripe on a HubSpot task is arguably fair). It
-survives explicit scoping: `"HubSpot list payment links ecommerce"` still returned `STRIPE_LIST_PAYMENT_LINKS`
-as the primary result, and the immediately following `"HubSpot list payment links"` returned
-`HUBSPOT_LIST_EMAILS`.
+**Naming the vendor does not scope the search.** `"HubSpot list payment links ecommerce"` returned
+`STRIPE_LIST_PAYMENT_LINKS` as its primary result; the next query, `"HubSpot list payment links"`,
+returned `HUBSPOT_LIST_EMAILS`. The cross-toolkit drift described above survives explicit scoping.
 
-**And a catalogue defect worth reporting upstream.** `HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUBSPOT_ACCOUNT`
-and `HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT` are both live and non-deprecated, with identical
-display names and descriptions. A curated tool list can therefore name a slug search will never return,
-because search surfaces the twin. Any set-intersection scorer counts that as a miss; this repo's scoring is
-not yet corrected for it.
+**A catalogue defect worth reporting upstream.** `HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUBSPOT_ACCOUNT`
+and `HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT` are both live and non-deprecated with
+identical display names and descriptions, so a curated list can name a slug search will never return.
+Any set-intersection scorer counts that as a miss; this repo's scoring is not yet corrected for it.
 
-### What the agent-loop runs say about *this* benchmark's query cap
+### The `Tools:` lists are execution logs, not requirement sets
 
-The dynamic cap here — `ceil(pool_size / TOOLS_PER_QUERY_TARGET)`, bounded by `MIN_QUERIES_FLOOR` and
-`MAX_QUERIES_CEILING` — replaced a fixed 2-4 cap that left most of a large pool untested. The agent-loop
-benchmark lets query count emerge from behaviour instead, with no cap at all, which sounds strictly better
-and is not. Grouping its 20 tasks by the size of their reference tool list:
+Measured across all 100 use cases: every description narrates a past session, #32 states outright that
+"the agent repeatedly used tool search to find tools", 13 task texts describe attempts rather than
+successes, 51 of 100 contain three or more same-toolkit same-verb tools, and auth probes plus
+`*_PROXY_EXECUTE` passthroughs are 3.4% of all 1008 entries.
 
-| Reference tools | Tasks | Union recall | Mean queries/task |
-|---|---:|---:|---:|
-| ≤ 6 | 6 | 69% | 4.5 |
-| 7-13 | 8 | 59% | 4.1 |
-| ≥ 14 | 6 | 38% | 5.7 |
+This confirms the framing this benchmark was built on — the listed tools are what *might* be required,
+not an expected search response — and it is why the grounded-labeling stage here assigns requirement
+groups per query and may return none. Scoring against the raw lists is wrong in three directions at
+once: too harsh on logged-but-unnecessary tools, too harsh on valid alternatives the list never named,
+and too *generous* when the list omits a capability the task genuinely needs.
 
-Recall collapses on complex tasks while query count stays nearly flat — a task needing 25 tools gets 5.7
-queries. A real agent does not search harder when there is more to find, so an emergent count under-samples
-precisely the tasks where retrieval is hardest. The formula here scales coverage with pool size and the agent
-loop does not; the two benchmarks fail in opposite directions, which is the argument for keeping both rather
-than replacing this one.
+### What the agent loop says about this benchmark's query cap
 
-Session-level recall is also confounded by query count, which makes it unsafe to compare across runs whose
-execution policy differs. Comparing the agent loop's mocked and real-read runs over the same ten tasks: 86
-queries at 74% union versus 50 queries at 63%, but 0.79 union hits per query versus 1.16. Real data lets an
-agent stop searching once something works, so total recall falls while per-query quality rises. Hits-per-query
-is the fairer statistic whenever the number of queries is not held fixed.
+The dynamic cap here — `ceil(pool_size / TOOLS_PER_QUERY_TARGET)` — replaced a fixed 2-4 cap that left
+most of a large pool untested. The agent loop lets query count emerge instead, with no cap, which
+sounds strictly better and is not. Grouping its tasks by reference-list size gave 69% recall at ≤6
+tools, 59% at 7-13, and 38% at ≥14, while queries per task stayed near 4-6 throughout. A real agent
+does not search harder when there is more to find, so an emergent count under-samples precisely the
+hardest tasks. The formula here scales coverage with pool size; the agent loop does not. The two
+benchmarks fail in opposite directions, which is the argument for keeping both.
+
+Session recall is also confounded by query count, so it cannot be compared across runs whose
+execution policy differs — a better agent searches less and scores lower. Report hits-per-query, or
+group recall, whenever query count is not held fixed.
 
 ## Artifacts
 
@@ -277,17 +276,17 @@ src/query_level_workflow_evaluation/
 
 `src/single_tool_evaluation/` follows the same shape. Everything except the two caches is tracked in git.
 
-The agent-loop benchmark keeps its own artifacts, one directory per run because its results are only
+The agent-loop benchmark keeps its own artifacts, one directory per run, because results are only
 comparable within a fixed execution policy:
 
 ```
 agent_loop_eval/
-  RUNS.md                     which run is which, and which comparisons are legitimate
-  run3_vs_run4_queries.md     query-by-query side-by-side, mocked vs real reads
-  run1_real_reads_unconnected/  attempted real reads with no connections -- the derailment run
-  run3_fully_mocked/            everything mocked; the retrieval baseline
-  run4_real_reads/              real reads against nine connected toolkits
+  README.md                        method, current results, known issues
+  RUNS.md                          run index and what each earlier run established
+  agent_loop_evaluation.py         the loop
+  score_with_groups.py             requirement-group + LLM-judge scoring
+  run6_descriptions_20tasks/       current run: traces, queries, reports
 ```
 
-Each run directory holds per-task traces, the captured queries, a generated report, and the run log.
+Earlier run directories are kept for the comparisons documented in `RUNS.md`.
 
