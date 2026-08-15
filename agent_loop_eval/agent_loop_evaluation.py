@@ -73,6 +73,7 @@ QUERIES_PATH = ROOT / "agent_queries.json"
 REPORT_PATH = ROOT / "summary_report.md"
 
 READ_ONLY_TAG = "readOnlyHint"
+DESCRIPTION_CHARS = 400   # per-tool description budget returned to the agent
 
 # A query that is just a tool slug the agent already saw in an earlier response is not
 # discovery -- search returns it by exact match, which tests lookup rather than
@@ -205,29 +206,41 @@ class ToolMetadata:
         self.composio = composio
         self.cache: dict[str, Any] = load_json(TOOL_META_CACHE, {})
 
+    @staticmethod
+    def _record(tool) -> dict[str, Any]:
+        toolkit = to_plain(tool.toolkit) or {}
+        return {
+            "slug": tool.slug,
+            "toolkit": (toolkit.get("slug") if isinstance(toolkit, dict) else str(toolkit)) or "",
+            "description": (getattr(tool, "description", "") or "").strip(),
+            "tags": list(tool.tags or []),
+            "output_parameters": to_plain(tool.output_parameters) or {},
+            "input_parameters": to_plain(tool.input_parameters) or {},
+        }
+
+    def get_many(self, slugs: list[str]) -> dict[str, dict[str, Any]]:
+        """Batch-fetch metadata, so describing a whole search result costs one API call."""
+        missing = [s for s in dict.fromkeys(slugs)
+                   if s not in self.cache or (self.cache[s] or {}).get("description") is None]
+        if missing:
+            try:
+                for tool in self.composio.tools.get_raw_composio_tools(tools=missing):
+                    self.cache[tool.slug] = self._record(tool)
+            except Exception as exc:
+                print(f"    [meta] batch lookup failed: {exc!r}")
+            for slug in missing:                      # negative-cache anything not returned
+                self.cache.setdefault(slug, None)
+            save_json(TOOL_META_CACHE, self.cache)
+        return {s: self.cache.get(s) for s in slugs if self.cache.get(s)}
+
     def get(self, slug: str) -> dict[str, Any] | None:
-        if slug in self.cache:
-            return self.cache[slug]
-        try:
-            tools = self.composio.tools.get_raw_composio_tools(tools=[slug])
-        except Exception as exc:
-            print(f"    [meta] lookup failed for {slug}: {exc!r}")
+        cached = self.cache.get(slug)
+        # Records cached before descriptions were stored lack the key; refetch those.
+        if cached is not None and "description" in cached:
+            return cached
+        if slug in self.cache and cached is None:
             return None
-        record = None
-        for tool in tools:
-            if tool.slug == slug:
-                toolkit = to_plain(tool.toolkit) or {}
-                record = {
-                    "slug": tool.slug,
-                    "toolkit": (toolkit.get("slug") if isinstance(toolkit, dict) else str(toolkit)) or "",
-                    "tags": list(tool.tags or []),
-                    "output_parameters": to_plain(tool.output_parameters) or {},
-                    "input_parameters": to_plain(tool.input_parameters) or {},
-                }
-                break
-        self.cache[slug] = record
-        save_json(TOOL_META_CACHE, self.cache)
-        return record
+        return self.get_many([slug]).get(slug)
 
     def is_read_only(self, slug: str) -> bool:
         record = self.get(slug)
@@ -350,7 +363,38 @@ class AgentSession:
             "is_slug_lookup": bool(SLUG_QUERY.match(query.strip())),
         })
         print(f"    search: {query!r} -> {primary}")
-        return {"primary_tool_slugs": primary, "related_tool_slugs": related,
+
+        # Describe every returned tool. A real agent never picks from bare slugs: it reads
+        # what each tool does, and it needs the parameter schema to construct the call at
+        # all. Returning slugs alone forced two unrealistic behaviours -- the agent judged
+        # fit from the name, so it could not tell a wrong tool from a right one; and it
+        # invented arguments from training memory, so mock-rejections measured how well the
+        # model remembered an API rather than how well it reasoned. Descriptions come from
+        # Composio's public catalogue, the same data a real caller has, so this adds
+        # realism without leaking anything about the reference tools.
+        described = self.metadata.get_many(list(primary) + list(related))
+
+        def describe(slug: str) -> dict[str, Any]:
+            record = described.get(slug)
+            if not record:
+                return {"slug": slug}
+            params = record.get("input_parameters") or {}
+            required = params.get("required") or []
+            properties = params.get("properties") or {}
+            return {
+                "slug": slug,
+                "description": (record.get("description") or "")[:DESCRIPTION_CHARS],
+                "required_parameters": [
+                    {"name": name,
+                     "type": (properties.get(name) or {}).get("type", ""),
+                     "about": ((properties.get(name) or {}).get("description", "") or "")[:120]}
+                    for name in required[:8]
+                ],
+                "optional_parameters": [n for n in properties if n not in required][:10],
+            }
+
+        return {"primary_tools": [describe(s) for s in primary],
+                "related_tools": [describe(s) for s in related],
                 "recommended_plan_steps": plan[:6]}
 
     def execute_tool(self, tool_slug: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -524,8 +568,12 @@ How to work:
 - Search the way you would describe the capability to a colleague: name the application and
   the specific action or lookup you need. The catalogue matches on meaning, so a bare word
   like "email" finds the wrong application entirely.
-- After each search, look at what came back, pick the tool that fits, and call execute_tool
-  with its real arguments.
+- Each search result carries the tool's description and its required parameters. READ THEM.
+  Pick the tool whose description actually matches the step, not the one whose name looks
+  closest. If none of the returned tools genuinely does what the step needs, say so and
+  search again with different wording rather than calling a tool that does not fit.
+- Build execute_tool arguments from the required_parameters listed in the search result,
+  not from memory of how that product's API usually looks.
 - Use what each result actually gives you to decide your next move. If a call fails
   because the tool was the wrong choice, search for a better-suited tool.
 - The accounts you are working against are NOT the accounts this task was written for.
