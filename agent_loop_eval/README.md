@@ -4,7 +4,10 @@ Captures the search queries an LLM issues while *actually working* a task, inste
 imagine them up front. Built to answer a specific critique: the queries the primary benchmark scores
 against don't look like the queries a real agent produces.
 
-Tasks come from the first 10 entries of `../src/top-100-eval-use-cases.md`.
+Tasks come from `../src/top-100-eval-use-cases.md` (first 20 as of the current run).
+
+**For results, read `RUNS.md`** — it indexes all five runs, says which comparisons are legitimate,
+and carries the current numbers. This file explains the method and the defects found along the way.
 
 ## Why this exists
 

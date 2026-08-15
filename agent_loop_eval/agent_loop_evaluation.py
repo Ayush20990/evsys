@@ -61,8 +61,8 @@ GEMINI_MODEL = "gemini-3.5-flash-lite"
 GEMINI_RPM = 15
 USER_ID = "agent-loop-eval-user"
 
-NUM_TASKS = 10
-MAX_STEPS = 36          # was 18; 7 of 10 tasks truncated at 18, capping session recall
+NUM_TASKS = 20          # quota, not this number, is the real limit; run stops cleanly when it hits
+MAX_STEPS = 24          # tasks finish in <=17; 36 was not binding but exhausted quota at task 7
 MAX_TOOL_CALLS = 40     # hard ceiling on total calls per task
 
 ROOT = Path(__file__).resolve().parent
@@ -310,6 +310,10 @@ class TaskTrace:
     steps_used: int = 0
     stop_reason: str = ""
     final_message: str = ""
+    completed: bool | None = None          # None = never reported (truncated/crashed)
+    unmet_steps: list[str] = field(default_factory=list)
+    blocked_by: str = ""
+    completion_source: str = ""            # "self-report" | "" when unreported
     error: str | None = None
 
 
@@ -451,6 +455,51 @@ SEARCH_DECLARATION = types.FunctionDeclaration(
     ),
 )
 
+# Completion is reported through a tool rather than parsed out of free text, so it arrives
+# structured and costs no extra LLM call.
+#
+# The blocked_by split is the point of this. A task left unfinished because no tool could
+# be found is a RETRIEVAL failure and belongs in the search evaluation. A task left
+# unfinished because the connected account has no such spreadsheet, board or message is
+# an ENVIRONMENT limitation and says nothing about search -- and it is the common case
+# here, since these tasks were written against accounts we do not have. Collapsing the two
+# into one "completed" rate would make retrieval look far worse than it is.
+FINISH_DECLARATION = types.FunctionDeclaration(
+    name="finish_task",
+    description=(
+        "Call this once when you stop working, whether or not you finished. Report honestly "
+        "-- an unfinished task accurately described is more useful than a false success."
+    ),
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "completed": types.Schema(
+                type=types.Type.BOOLEAN,
+                description="True only if every part of the task was actually carried out.",
+            ),
+            "summary": types.Schema(
+                type=types.Type.STRING,
+                description="What you did, in two or three sentences.",
+            ),
+            "unmet_steps": types.Schema(
+                type=types.Type.ARRAY,
+                items=types.Schema(type=types.Type.STRING),
+                description="Parts of the task you did not carry out. Empty if none.",
+            ),
+            "blocked_by": types.Schema(
+                type=types.Type.STRING,
+                description=(
+                    "Main reason anything was left undone: 'no_suitable_tool' (search "
+                    "returned nothing that could do it), 'data_absent' (the tool existed "
+                    "but the account holds no such record), 'tool_failed' (the call "
+                    "errored), 'not_blocked' (finished everything)."
+                ),
+            ),
+        },
+        required=["completed", "summary", "unmet_steps", "blocked_by"],
+    ),
+)
+
 EXECUTE_DECLARATION = types.FunctionDeclaration(
     name="execute_tool",
     description="Run one tool by its exact slug, with its arguments, to make progress on the task.",
@@ -482,12 +531,18 @@ How to work:
 - The accounts you are working against are NOT the accounts this task was written for.
   The specific spreadsheet, board, database or message the task mentions will usually not
   exist here, so correct tools will often return empty results or "not found". That means
-  the data is absent, NOT that you picked the wrong tool. When it happens, treat the step
-  as done and move on to the next part of the task -- do not search for a replacement tool
-  and do not retry the same lookup with different ids.
+  the data is absent, NOT that you picked the wrong tool. Do not retry the same lookup with
+  different ids, and do not go looking for a replacement tool.
+- When a step cannot be carried out because its data is absent, STILL search for the tool
+  you would have used for it before moving on. Later steps of a task matter even when an
+  earlier one found nothing: if the task says to fetch a file, edit it and upload it, and
+  no such file exists, search for the edit tool and the upload tool anyway. Then continue
+  to the next step.
 - Work through the whole task, including any verification the task asks for.
-- When the task is complete or you genuinely cannot proceed, reply with a short plain-text
-  summary of what you did and stop calling tools.
+- When the task is complete, or you genuinely cannot proceed, call finish_task. Always end
+  by calling it, even if you finished nothing. Be honest in what you report there: say a
+  step was not done when it was not done, and distinguish "no tool exists for this" from
+  "the tool exists but this account has no such data".
 
 Do not invent tool slugs, and never search for a slug you have already seen -- search for
 capabilities, and execute only slugs a search actually returned."""
@@ -500,7 +555,8 @@ def run_task(client, session, metadata: ToolMetadata, limiter: RateLimiter,
 
     config = types.GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT,
-        tools=[types.Tool(function_declarations=[SEARCH_DECLARATION, EXECUTE_DECLARATION])],
+        tools=[types.Tool(function_declarations=[SEARCH_DECLARATION, EXECUTE_DECLARATION,
+                                                 FINISH_DECLARATION])],
         temperature=0.4,
     )
     contents = [types.Content(role="user", parts=[types.Part(text=f"Task:\n{case.task}")])]
@@ -551,6 +607,17 @@ def run_task(client, session, metadata: ToolMetadata, limiter: RateLimiter,
                 except json.JSONDecodeError:
                     parsed = {}
                 result = agent.execute_tool(str(arguments.get("tool_slug", "")).strip(), parsed)
+            elif function_call.name == "finish_task":
+                trace.completed = bool(arguments.get("completed"))
+                trace.final_message = str(arguments.get("summary", "")).strip()
+                raw_unmet = arguments.get("unmet_steps") or []
+                trace.unmet_steps = [str(s) for s in raw_unmet] if isinstance(raw_unmet, list) else []
+                trace.blocked_by = str(arguments.get("blocked_by", "")).strip()
+                trace.completion_source = "self-report"
+                trace.stop_reason = "agent finished"
+                print(f"    finish: completed={trace.completed} blocked_by={trace.blocked_by!r}"
+                      + (f" unmet={len(trace.unmet_steps)}" if trace.unmet_steps else ""))
+                return trace
             else:
                 result = {"error": f"unknown function {function_call.name}"}
             replies.append(types.Part.from_function_response(name=function_call.name,
@@ -563,6 +630,7 @@ def run_task(client, session, metadata: ToolMetadata, limiter: RateLimiter,
 
 def write_report(traces: list[TaskTrace]) -> None:
     import statistics
+    from collections import Counter
     done = [t for t in traces if not t.error]
     all_queries = [q for t in traces for q in t.queries]
     counts = [len(t.queries) for t in traces if t.queries]
@@ -570,6 +638,10 @@ def write_report(traces: list[TaskTrace]) -> None:
     real = [e for e in executions if e.get("mode") == "real"]
     real_failed = [e for e in executions if e.get("mode") == "real-failed"]
     mocked = [e for e in executions if e.get("mode") == "mocked"]
+
+    reported = [t for t in traces if t.completion_source]
+    finished = [t for t in reported if t.completed]
+    blocked = Counter(t.blocked_by or "unspecified" for t in reported if not t.completed)
 
     md = [
         "# Agent-Loop Query Benchmark\n",
@@ -597,13 +669,40 @@ def write_report(traces: list[TaskTrace]) -> None:
         f"- **Tool executions:** {len(executions)} "
         f"({len(real)} real, {len(real_failed)} real-failed, {len(mocked)} mocked)",
     ])
+    if reported:
+        md.extend([
+            "",
+            "### Task completion",
+            "",
+            f"- **Reported:** {len(reported)}/{len(traces)} tasks called `finish_task` "
+            f"({len(traces) - len(reported)} truncated before reporting)",
+            f"- **Completed:** {len(finished)}/{len(reported)} of those reported",
+        ])
+        if blocked:
+            md.append("")
+            md.append("| Blocked by | Tasks | Counts against search? |")
+            md.append("|---|---:|---|")
+            verdict = {
+                "no_suitable_tool": "**yes** - retrieval failure",
+                "data_absent": "no - the account lacks the record, not a search problem",
+                "tool_failed": "no - execution error, not retrieval",
+                "not_blocked": "n/a",
+            }
+            for reason, count in blocked.most_common():
+                md.append(f"| `{reason}` | {count} | {verdict.get(reason, 'unclassified')} |")
+            md.append("")
+            md.append("Completion is the agent's own report. It is a weak signal on its own -- an "
+                      "agent can believe it finished when it did not -- so read it next to the "
+                      "recall numbers rather than instead of them.")
 
     md.append("\n## Per-task breakdown\n")
-    md.append("| Task | Queries | Executions | Steps | Stop reason |")
-    md.append("|---|---:|---:|---:|---|")
+    md.append("| Task | Queries | Executions | Steps | Completed | Blocked by | Stop reason |")
+    md.append("|---|---:|---:|---:|---|---|---|")
     for t in traces:
+        done_flag = {True: "yes", False: "no", None: "-"}[t.completed]
         md.append(f"| {t.identifier} | {len(t.queries)} | {len(t.executions)} | "
-                  f"{t.steps_used} | {t.error or t.stop_reason} |")
+                  f"{t.steps_used} | {done_flag} | {t.blocked_by or '-'} | "
+                  f"{t.error or t.stop_reason} |")
 
     md.append("\n## Queries the agent actually issued\n")
     for t in traces:
@@ -633,14 +732,14 @@ def main() -> None:
     client = genai.Client(api_key=GEMINI_API_KEY)
     metadata = ToolMetadata(composio)
     limiter = RateLimiter(GEMINI_RPM)
+    connected, account_ids = connected_toolkits(composio)
+    print(f"[connections] live toolkits: {sorted(connected) or 'none -- every tool will be mocked'}")
+
     # connected_accounts binding is what actually makes a live connection callable; see
     # connected_toolkits(). Without it every real execution 400s with "No active
     # connection ... in this session" despite the account being ACTIVE.
     session = (composio.create(user_id=USER_ID, connected_accounts=account_ids)
                if account_ids else composio.create(user_id=USER_ID))
-
-    connected, account_ids = connected_toolkits(composio)
-    print(f"[connections] live toolkits: {sorted(connected) or 'none -- every tool will be mocked'}")
 
     traces: list[TaskTrace] = []
     for index, case in enumerate(cases, 1):

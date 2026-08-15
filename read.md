@@ -114,6 +114,13 @@ Two other scripts, `query_robustness_evaluation.py` and `synthetic_query_level_e
 older flat-list schema, so their numbers aren't safely comparable to the current benchmark until they're
 migrated to match it.
 
+`agent_loop_eval/` is a separate benchmark answering a different question — see
+`agent_loop_eval/README.md`. Where this one asks Gemini to *predict* an agent's queries in a single shot,
+that one runs an actual tool-calling loop and records whatever the agent searches for while trying to make
+progress. It exists because a prediction never sees a search result and so can never react to one, and
+because a manager review raised the concern that predicted queries may not match what an agent really
+issues. Query count there is emergent rather than capped by the formula below.
+
 Both latency fields are recorded on every scored row: `api_search_latency_sec` is the successful search call
 only, `end_to_end_latency_sec` adds in any failed attempts and retry backoff before it.
 
@@ -207,6 +214,54 @@ writes a query that's too generic, dropping a vendor name or scope detail that w
 in its own `intent` field) the whole time — so search gets blamed for missing something it was never told.
 See `manual_audit_workflows_1_5.md` for real examples and what's actually happening.
 
+### Corroborated independently by the agent-loop benchmark
+
+Two findings show up in `agent_loop_eval/` as well, from live agent-issued queries rather than predicted
+ones, which makes them harder to explain away as artefacts of how this benchmark phrases things.
+
+**Found but not recommended.** Search *returns* the right tool far more often than it *promotes* it. Across
+three agent-loop runs the split was 61%/27%, 67%/34% and 74%/46% — union recall against `primary`-only
+recall. Roughly half the correct answers arrive demoted to `related`. The gap held across runs whose query
+quality differed enormously, so it is a property of the ranking rather than of the phrasing. For an agent
+acting on the primary recommendation, a demoted correct answer costs nearly what a miss costs.
+
+**Naming the vendor doesn't reliably scope the search.** The cross-toolkit drift described above was easy to
+dismiss while queries were bare (`"payment link"` returning Stripe on a HubSpot task is arguably fair). It
+survives explicit scoping: `"HubSpot list payment links ecommerce"` still returned `STRIPE_LIST_PAYMENT_LINKS`
+as the primary result, and the immediately following `"HubSpot list payment links"` returned
+`HUBSPOT_LIST_EMAILS`.
+
+**And a catalogue defect worth reporting upstream.** `HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUBSPOT_ACCOUNT`
+and `HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT` are both live and non-deprecated, with identical
+display names and descriptions. A curated tool list can therefore name a slug search will never return,
+because search surfaces the twin. Any set-intersection scorer counts that as a miss; this repo's scoring is
+not yet corrected for it.
+
+### What the agent-loop runs say about *this* benchmark's query cap
+
+The dynamic cap here — `ceil(pool_size / TOOLS_PER_QUERY_TARGET)`, bounded by `MIN_QUERIES_FLOOR` and
+`MAX_QUERIES_CEILING` — replaced a fixed 2-4 cap that left most of a large pool untested. The agent-loop
+benchmark lets query count emerge from behaviour instead, with no cap at all, which sounds strictly better
+and is not. Grouping its 20 tasks by the size of their reference tool list:
+
+| Reference tools | Tasks | Union recall | Mean queries/task |
+|---|---:|---:|---:|
+| ≤ 6 | 6 | 69% | 4.5 |
+| 7-13 | 8 | 59% | 4.1 |
+| ≥ 14 | 6 | 38% | 5.7 |
+
+Recall collapses on complex tasks while query count stays nearly flat — a task needing 25 tools gets 5.7
+queries. A real agent does not search harder when there is more to find, so an emergent count under-samples
+precisely the tasks where retrieval is hardest. The formula here scales coverage with pool size and the agent
+loop does not; the two benchmarks fail in opposite directions, which is the argument for keeping both rather
+than replacing this one.
+
+Session-level recall is also confounded by query count, which makes it unsafe to compare across runs whose
+execution policy differs. Comparing the agent loop's mocked and real-read runs over the same ten tasks: 86
+queries at 74% union versus 50 queries at 63%, but 0.79 union hits per query versus 1.16. Real data lets an
+agent stop searching once something works, so total recall falls while per-query quality rises. Hits-per-query
+is the fairer statistic whenever the number of queries is not held fixed.
+
 ## Artifacts
 
 ```
@@ -221,3 +276,18 @@ src/query_level_workflow_evaluation/
 ```
 
 `src/single_tool_evaluation/` follows the same shape. Everything except the two caches is tracked in git.
+
+The agent-loop benchmark keeps its own artifacts, one directory per run because its results are only
+comparable within a fixed execution policy:
+
+```
+agent_loop_eval/
+  RUNS.md                     which run is which, and which comparisons are legitimate
+  run3_vs_run4_queries.md     query-by-query side-by-side, mocked vs real reads
+  run1_real_reads_unconnected/  attempted real reads with no connections -- the derailment run
+  run3_fully_mocked/            everything mocked; the retrieval baseline
+  run4_real_reads/              real reads against nine connected toolkits
+```
+
+Each run directory holds per-task traces, the captured queries, a generated report, and the run log.
+
