@@ -7,21 +7,28 @@ static: it never sees a search result, so it can't react to one. This script run
 real tool-calling loop instead -- the model is given the task and two tools, and
 whatever queries it issues while genuinely trying to make progress are what we record.
 
-Execution is mocked by default. A tool is executed for real only when BOTH conditions
-hold, checked against Composio itself rather than guessed from slug names:
+Execution is mocked by default. A tool runs for real only when BOTH conditions hold,
+checked against Composio itself rather than guessed from slug names:
 
   * the tool carries Composio's `readOnlyHint` tag (so it cannot write), AND
-  * its toolkit has a live connected account (so the call can actually succeed)
+  * its toolkit has an ACTIVE connected account under this USER_ID (so it can succeed)
 
-Everything else gets a schema-conformant mock generated from the tool's declared
-output_parameters; the real API is never called.
+Everything else -- writes, and reads on unconnected toolkits -- gets a schema-conformant
+mock built from the tool's declared output_parameters. The mock is also the fallback when
+a real read fails for infrastructure reasons, so no path can strand the agent.
 
-The second condition matters more than it looks. Attempting a real read against an
-unconnected toolkit does not yield useful signal -- it yields "No active connection" on
-every call, and the agent responds by abandoning the task to hunt for connection-
-management tools. In the first run of this script that behaviour consumed 27% of all
-queries and derailed all ten tasks. Real execution only earns its place once the
-account behind it exists; until then mocking is strictly better.
+The second condition matters more than it looks. A real read against an unconnected
+toolkit yields no useful signal -- just "No active connection", whose error text tells the
+caller to go find COMPOSIO_MANAGE_CONNECTIONS. The agent obeys, cannot satisfy it, and
+abandons the task; in run 1 that consumed 21% of all queries and derailed every task.
+Hence infrastructure failures (auth, scope, rate limit, 5xx) never reach the agent, while
+semantic failures (404, bad id, validation) do -- only the latter say anything about
+whether the tool was the right choice.
+
+One consequence of using real accounts: they are not the accounts these tasks were
+written against, so correct tools frequently return empty. The agent is told this
+explicitly, and empty reads are flagged in the trace, so a "no data here" result is not
+mistaken for "wrong tool" either by the agent or during analysis.
 
 The mock deliberately succeeds on any syntactically valid call. It cannot know that a
 tool is the *wrong* tool without consulting the ground truth we're evaluating against,
@@ -55,7 +62,7 @@ GEMINI_RPM = 15
 USER_ID = "agent-loop-eval-user"
 
 NUM_TASKS = 10
-MAX_STEPS = 18          # tool-calling rounds before we stop a task
+MAX_STEPS = 36          # was 18; 7 of 10 tasks truncated at 18, capping session recall
 MAX_TOOL_CALLS = 40     # hard ceiling on total calls per task
 
 ROOT = Path(__file__).resolve().parent
@@ -72,6 +79,52 @@ READ_ONLY_TAG = "readOnlyHint"
 # retrieval. Flagged so scoring can exclude it; in the first two runs these were 11% of
 # queries and inflated recall by 1-2 points.
 SLUG_QUERY = re.compile(r"^[A-Z][A-Z0-9]*(_[A-Z0-9]+){2,}$")
+
+# Failures about the CONNECTION rather than about the tool choice. These must never reach
+# the agent: they carry no information about whether it picked the right tool, and
+# Composio's connection error additionally tells the caller to go find
+# COMPOSIO_MANAGE_CONNECTIONS, which is what wrecked run 1.
+INFRASTRUCTURE_ERROR = re.compile(
+    r"no active connection|not authenticated|unauthoriz|forbidden|invalid[_ ]grant"
+    r"|token.{0,20}expir|expired.{0,20}token|rate.?limit|too many requests"
+    r"|\b401\b|\b403\b|\b429\b|\b5\d{2}\b|timed? ?out|connection reset",
+    re.I,
+)
+
+
+def is_infrastructure_error(exc: Exception) -> bool:
+    return bool(INFRASTRUCTURE_ERROR.search(f"{exc!r} {exc}"))
+
+
+def is_empty_payload(payload: Any) -> bool:
+    """Whether a successful read came back with no records.
+
+    Tracked because the connected accounts are not the accounts these tasks were written
+    against -- there is no "partner-operations database" in this Notion, no invoice mail in
+    this inbox. A correct tool therefore returns empty, and an agent that reads that as
+    "wrong tool" would emit a false recovery query. Recorded so those can be told apart
+    from genuine recoveries during analysis.
+    """
+    if payload is None:
+        return True
+    if isinstance(payload, (list, str)):
+        return len(payload) == 0
+    if not isinstance(payload, dict):
+        return False
+    # Records usually arrive wrapped alongside status flags, e.g. Salesforce returns
+    # {'done': True, 'records': [], 'totalSize': 0}. Judge on the record containers alone;
+    # a truthy status flag next to an empty list must not read as "has data".
+    containers = [v for k, v in payload.items()
+                  if k in ("records", "items", "data", "results", "values", "messages",
+                           "files", "rows", "entries", "response_data", "elements")]
+    if containers:
+        return all(is_empty_payload(v) for v in containers)
+    meaningful = [v for k, v in payload.items()
+                  if k not in ("successful", "error", "successfull", "done", "totalSize",
+                               "has_more", "next_cursor", "object", "count")]
+    if not meaningful:
+        return True
+    return all(v in (None, [], {}, "") for v in meaningful)
 
 
 class QuotaExhaustedError(RuntimeError):
@@ -187,7 +240,7 @@ class ToolMetadata:
         return (record.get("toolkit") or slug.split("_")[0]).lower()
 
 
-def connected_toolkits(composio: Composio) -> set[str]:
+def connected_toolkits(composio: Composio) -> tuple[set[str], dict[str, str]]:
     """Toolkits this USER_ID can actually execute against.
 
     Both filters below are load-bearing, and getting either wrong reintroduces the run-1
@@ -201,19 +254,27 @@ def connected_toolkits(composio: Composio) -> set[str]:
 
     statuses: a connection can exist and still be EXPIRED or REVOKED. Only ACTIVE can
     actually execute.
+
+    Returns the live toolkit slugs and their connection ids. The ids are required:
+    a ToolRouter session only resolves a toolkit when the session is created with
+    connected_accounts={slug: connection_id}. Passing toolkits=[...] is NOT sufficient --
+    an ACTIVE, correctly-scoped connection still fails with "No active connection for
+    toolkit(s) X in this session" unless its id is bound at session creation.
     """
     try:
-        accounts = composio.connected_accounts.list(user_ids=[USER_ID], statuses=["ACTIVE"])
+        accounts = composio.connected_accounts.list(user_ids=[USER_ID], statuses=["ACTIVE"],
+                                                    limit=100)
     except Exception as exc:
         print(f"[connections] lookup failed, mocking everything: {exc!r}")
-        return set()
-    live = set()
+        return set(), {}
+    live, ids = set(), {}
     for account in accounts.items or []:
         toolkit = to_plain(getattr(account, "toolkit", None)) or {}
         slug = (toolkit.get("slug") if isinstance(toolkit, dict) else str(toolkit)) or ""
-        if slug:
+        if slug and getattr(account, "id", None):
             live.add(slug.lower())
-    return live
+            ids.setdefault(slug.lower(), account.id)
+    return live, ids
 
 
 def mock_from_schema(schema: dict[str, Any], depth: int = 0) -> Any:
@@ -300,17 +361,33 @@ class AgentSession:
                 payload = to_plain(getattr(response, "data", response))
                 record["mode"] = "real"
                 record["successful"] = True
+                record["empty_result"] = is_empty_payload(payload)
                 self.trace.executions.append(record)
-                print(f"    exec[real] {tool_slug}")
+                print(f"    exec[real] {tool_slug}"
+                      + ("  (empty)" if record["empty_result"] else ""))
                 return {"successful": True, "data": payload, "error": None}
             except Exception as exc:
-                # A real read that fails (no connected account, bad id, empty scope) is
-                # genuine signal -- hand the agent the real error so it can react to it.
-                record["mode"] = "real-failed"
-                record["error"] = repr(exc)[:400]
-                self.trace.executions.append(record)
-                print(f"    exec[real-failed] {tool_slug}: {repr(exc)[:90]}")
-                return {"successful": False, "data": None, "error": repr(exc)[:400]}
+                # Split real failures by what they say about the agent's CHOICE of tool.
+                #
+                # Infrastructure failures (expired token, revoked scope, rate limit) say
+                # nothing about whether the tool was right, and their error text actively
+                # misleads -- Composio's "No active connection" message instructs the
+                # caller to go find COMPOSIO_MANAGE_CONNECTIONS, which derailed 21% of
+                # run 1's queries. These fall through to the mock silently, which is also
+                # the backup engine for any toolkit that is simply not connected.
+                #
+                # Semantic failures (404, bad id, validation) DO say something -- they are
+                # the signal real execution exists to provide -- so they reach the agent.
+                if is_infrastructure_error(exc):
+                    record["mode"] = "real-infra-fallback"
+                    record["error"] = repr(exc)[:300]
+                    print(f"    exec[real->mock] {tool_slug}: infra error, mocking")
+                else:
+                    record["mode"] = "real-failed"
+                    record["error"] = repr(exc)[:400]
+                    self.trace.executions.append(record)
+                    print(f"    exec[real-failed] {tool_slug}: {repr(exc)[:90]}")
+                    return {"successful": False, "data": None, "error": repr(exc)[:400]}
         meta = self.metadata.get(tool_slug) or {}
         # Reject calls the real API would reject. This is a pure schema check against the
         # tool's declared required parameters -- it never consults the ground truth, so it
@@ -400,8 +477,14 @@ How to work:
   like "email" finds the wrong application entirely.
 - After each search, look at what came back, pick the tool that fits, and call execute_tool
   with its real arguments.
-- Use what each result actually gives you to decide your next move. If a call fails or
-  returns nothing useful, adapt: search differently, or try another approach.
+- Use what each result actually gives you to decide your next move. If a call fails
+  because the tool was the wrong choice, search for a better-suited tool.
+- The accounts you are working against are NOT the accounts this task was written for.
+  The specific spreadsheet, board, database or message the task mentions will usually not
+  exist here, so correct tools will often return empty results or "not found". That means
+  the data is absent, NOT that you picked the wrong tool. When it happens, treat the step
+  as done and move on to the next part of the task -- do not search for a replacement tool
+  and do not retry the same lookup with different ids.
 - Work through the whole task, including any verification the task asks for.
 - When the task is complete or you genuinely cannot proceed, reply with a short plain-text
   summary of what you did and stop calling tools.
@@ -550,9 +633,13 @@ def main() -> None:
     client = genai.Client(api_key=GEMINI_API_KEY)
     metadata = ToolMetadata(composio)
     limiter = RateLimiter(GEMINI_RPM)
-    session = composio.create(user_id=USER_ID)
+    # connected_accounts binding is what actually makes a live connection callable; see
+    # connected_toolkits(). Without it every real execution 400s with "No active
+    # connection ... in this session" despite the account being ACTIVE.
+    session = (composio.create(user_id=USER_ID, connected_accounts=account_ids)
+               if account_ids else composio.create(user_id=USER_ID))
 
-    connected = connected_toolkits(composio)
+    connected, account_ids = connected_toolkits(composio)
     print(f"[connections] live toolkits: {sorted(connected) or 'none -- every tool will be mocked'}")
 
     traces: list[TaskTrace] = []
