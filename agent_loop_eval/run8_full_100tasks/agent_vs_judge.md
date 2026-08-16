@@ -1,149 +1,135 @@
 # Agent believed it worked, judge disagreed — `run8_full_100tasks`
 
-Each row is a tool the agent ran **while stating it was carrying out a specific step**,
-where an independent judge then ruled that capability was never delivered. Recall cannot
-see these: the agent records success and later steps proceed on a false premise.
+Each case is a tool the agent ran **while stating it was carrying out a specific step**,
+where an independent judge ruled that capability was never delivered. Recall cannot see
+these: the agent records success and later steps proceed on a false premise.
 
-The agent's stated purpose is matched to the capability semantically, one call per
-capability. A capability no call was aimed at is a plain miss, not a disagreement, and is
-counted in `failure_analysis.md` instead.
+**17 cases — 6 the agent's fault, 11 search's.**
 
-**18 cases.**
+The split is the useful part. If a tool that would have worked was sitting in the results
+the agent had already seen, it chose badly. If no such tool was ever returned, the agent
+had no option and the failure is search's.
 
-### Task 1
+## Agent selection errors — a correct tool was available and not chosen
 
-- Agent ran **`STRIPE_CREATE_PAYMENT_LINK`** (mocked)
-  - agent's stated purpose: *"Assess payment link feasibility by attempting to create a Stripe payment link"*
-  - capability the judge ruled unmet: **Assess payment link feasibility**
-  - matched because: The agent explicitly stated its purpose for tool call 2 was to assess payment link feasibility by attempting to create a Stripe payment link.
-  - judge: No available tool assesses the feasibility of a payment link in HubSpot.
-- Agent ran **`HUBSPOT_GET_WORKFLOWS`** (mocked)
-  - agent's stated purpose: *"Retrieve workflows to verify asset status and inertness"*
-  - capability the judge ruled unmet: **Verify assets remain inert**
-  - matched because: The agent explicitly stated its purpose for tool call 5 was to retrieve workflows to verify asset status and inertness.
-  - judge: None of the returned tools provide the capability to verify that HubSpot assets remain inert.
+**Task 13 — Audit website search performance and indexing**
 
-### Task 7
+- agent ran `GOOGLESUPER_GET_METADATA` (mock-rejected), stating: *"Attempt to check GA4 metadata or run report to audit website traffic and search performance"*
+- should have used: `GOOGLESUPER_RUN_REPORT`
+- why: The list includes Google Search Console tools (prefixed with GOOGLESUPER), and GOOGLESUPER_RUN_REPORT or GOOGLESUPER_BATCH_RUN_REPORTS can be used to audit website search performance and indexing data.
+- judge: The returned tools only provide Google Analytics (GA4) and Gmail functionalities, but none of them support auditing website search performance and indexing like Google Search Console.
 
-- Agent ran **`GMAIL_GET_PROFILE`** (real)
-  - agent's stated purpose: *"Fetch Gmail profile to check account availability and productivity signals"*
-  - capability the judge ruled unmet: **Fetch and read email messages and threads**
-  - would have accepted: `GMAIL_FETCH_EMAILS`, `GMAIL_LIST_THREADS`
-  - matched because: The agent used GMAIL_GET_PROFILE with the purpose of checking account availability and productivity signals, which served as its attempt to interact with email services.
-  - judge: None of the returned Gmail tools provide the capability to fetch and read email messages and threads.
+**Task 17 — Attempt social media publishing on Instagram**
 
-### Task 8
+- agent ran `UPLOAD_POST_LIST_PROFILES` (mocked), stating: *"List Upload-Post profiles for social publishing"*
+- should have used: `UPLOAD_POST_PUBLISH_POST`
+- why: The UPLOAD_POST_PUBLISH_POST tool provides the necessary capability to publish posts on platforms like Instagram from the same upload service family.
+- judge: None of the returned tools provide the specific capability to publish social media posts to Instagram.
 
-- Agent ran **`SUPADATA_GET_TRANSCRIPT`** (mocked)
-  - agent's stated purpose: *"Attempt to retrieve video transcript for knowledge base update"*
-  - capability the judge ruled unmet: **Mark incomplete archive documents when transcript retrieval fails**
-  - matched because: Tool call 3 was used to attempt transcript retrieval, which directly aligns with the condition for marking incomplete archive documents when that retrieval fails.
-  - judge: None of the returned tools provide the capability to mark or update incomplete archive documents when transcript retrieval fails.
+**Task 17 — Read and update the booking schedule**
 
-### Task 13
+- agent ran `GOOGLECALENDAR_FIND_EVENT` (real), stating: *"Search calendar events to read booking schedule"*
+- should have used: `GOOGLECALENDAR_PATCH_EVENT`
+- why: The list contains Google Calendar tools like GOOGLECALENDAR_PATCH_EVENT and GOOGLECALENDAR_EVENTS_LIST that allow reading and updating booking schedules.
+- judge: The available tools only cover Google Calendar management rather than the required Google Sheets booking schedule read and update capabilities.
 
-- Agent ran **`GOOGLESUPER_GET_METADATA`** (mock-rejected)
-  - agent's stated purpose: *"Attempt to check GA4 metadata or run report to audit website traffic and search performance"*
-  - capability the judge ruled unmet: **Audit website search performance and indexing**
-  - would have accepted: `GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY`, `GOOGLE_SEARCH_CONSOLE_INSPECT_URL`, `GOOGLE_SEARCH_CONSOLE_GET_SITE`, `GOOGLE_SEARCH_CONSOLE_LIST_SITEMAPS`
-  - matched because: The agent explicitly stated its purpose for the first call was to audit website traffic and search performance.
-  - judge: The returned tools only provide Google Analytics (GA4) and Gmail functionalities, but none of them support auditing website search performance and indexing like Google Search Console.
-- Agent ran **`GMAIL_GET_CONTACTS`** (real)
-  - agent's stated purpose: *"Retrieve Gmail contacts to prepare email marketing and outreach lists"*
-  - capability the judge ruled unmet: **Prepare and manage email marketing or contact lists**
-  - would have accepted: `BREVO_CREATE_CONTACT_LIST`, `BREVO_GET_CONTACT_LISTS`
-  - matched because: The agent explicitly stated its purpose for tool call 3 was to retrieve Gmail contacts in order to prepare email marketing and outreach lists.
-  - judge: None of the returned tools provide the capability to create and manage email marketing lists or contact lists.
+**Task 52 — Inspect existing Zep context, user nodes, and graph structure**
 
-### Task 16
+- agent ran `ZEP_GET_USER_SESSIONS` (mocked), stating: *"Inspect existing Zep sessions for user"*
+- should have used: `ZEP_GET_THREAD_USER_CONTEXT`
+- why: ZEP_GET_THREAD_USER_CONTEXT is available in the list and provides the capability to inspect user context, nodes, and graph structure.
+- judge: None of the returned Zep tools provide the capability to directly inspect existing user nodes and graph structure as specified by the missing ZEP_GET_USER_NODE capability.
 
-- Agent ran **`VERCEL_GET_DEPLOYMENTS`** (mocked)
-  - agent's stated purpose: *"List Vercel deployments to check hosting and deployment state"*
-  - capability the judge ruled unmet: **Investigate hosting and deployment state via DNS/CDN configuration**
-  - would have accepted: `CLOUDFLARE_LIST_ZONES`, `CLOUDFLARE_LIST_DNS_RECORDS`
-  - matched because: The agent explicitly stated its purpose for running the VERCEL_GET_DEPLOYMENTS tool was to check the hosting and deployment state.
-  - judge: None of the returned Vercel or GitHub tools provide the ability to inspect DNS or CDN configuration for hosting and deployment state.
+**Task 64 — Gather marketing performance data from advertising platforms**
 
-### Task 17
+- agent ran `METAADS_GET_AD_ACCOUNTS` (mocked), stating: *"List accessible Meta ad accounts to gather marketing performance data"*
+- should have used: `LINKEDIN_ADS_GET_AD_ANALYTICS`
+- why: The LinkedIn Ads tool for getting ad analytics provides the necessary capability to gather marketing performance data from advertising platforms.
+- judge: None of the returned tools provide the ability to gather marketing performance data from advertising platforms like Google Ads.
 
-- Agent ran **`UPLOAD_POST_LIST_PROFILES`** (mocked)
-  - agent's stated purpose: *"List Upload-Post profiles for social publishing"*
-  - capability the judge ruled unmet: **Attempt social media publishing on Instagram**
-  - would have accepted: `INSTAGRAM_POST_IG_USER_MEDIA`, `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH`
-  - matched because: The agent listed Upload-Post profiles with the stated purpose of social publishing, which corresponds to the attempt at publishing on Instagram.
-  - judge: None of the returned tools provide the specific capability to publish social media posts to Instagram.
-- Agent ran **`GOOGLECALENDAR_FIND_EVENT`** (real)
-  - agent's stated purpose: *"Search calendar events to read booking schedule"*
-  - capability the judge ruled unmet: **Read and update the booking schedule**
-  - would have accepted: `GOOGLESHEETS_BATCH_GET`, `GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND`
-  - matched because: The agent explicitly stated the purpose of tool call 6 was to search calendar events to read the booking schedule.
-  - judge: The available tools only cover Google Calendar management rather than the required Google Sheets booking schedule read and update capabilities.
+**Task 64 — Gather web analytics and traffic performance data**
 
-### Task 18
+- agent ran `METAADS_GET_AD_ACCOUNTS` (mocked), stating: *"List accessible Meta ad accounts to gather marketing performance data"*
+- should have used: `GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY`
+- why: The Google Search Console search analytics query tool directly provides web analytics and traffic performance data from Google Search.
+- judge: None of the returned tools provide Google Analytics website traffic and web analytics performance reporting.
 
-- Agent ran **`COMPOSIO_SEARCH_WEB`** (mock-rejected)
-  - agent's stated purpose: *"Search job boards or listings for remote or hybrid contract data-engineering-related jobs in a target region"*
-  - capability the judge ruled unmet: **Search and extract recent job listings from web sources or job boards**
-  - would have accepted: `BROWSER_TOOL_CREATE_TASK`
-  - matched because: The agent explicitly stated its purpose was to search job boards or listings for remote or hybrid contract data-engineering-related jobs in a target region.
-  - judge: None of the available search tools provide the dedicated browser task automation required to dynamically navigate, extract, and validate live job listings from web-based job boards.
+## Search left the agent no option — nothing returned could do it
 
-### Task 20
+**Task 1 — Assess payment link feasibility**
 
-- Agent ran **`GOOGLEDRIVE_FIND_FILE`** (mocked)
-  - agent's stated purpose: *"Search Google Drive for portal, billing, or project documentation files"*
-  - capability the judge ruled unmet: **Manage and reconcile files in Google Drive**
-  - matched because: Tool call 2 explicitly searched Google Drive to find and reconcile portal, billing, or project documentation files.
-  - judge: Although there are tools for finding, getting metadata, and downloading files in Google Drive, there are no tools provided to manage (such as create, update, move, or delete) and reconcile files in Google Drive.
+- agent ran `STRIPE_CREATE_PAYMENT_LINK` (mocked), stating: *"Assess payment link feasibility by attempting to create a Stripe payment link"*
+- would have needed: _(nothing listed)_
+- why: None of the listed tools provide the capability to assess payment link feasibility for Stripe.
+- judge: No available tool assesses the feasibility of a payment link in HubSpot.
 
-### Task 52
+**Task 1 — Verify assets remain inert**
 
-- Agent ran **`MEM0_EXPORT_DATA_BASED_ON_FILTERS`** (mock-rejected)
-  - agent's stated purpose: *"Attempt to export memory data from Mem0"*
-  - capability the judge ruled unmet: **Retrieve memory data from Mem0**
-  - would have accepted: `MEM0_GET_MEMORIES_BY_ENTITY`
-  - matched because: The agent explicitly stated its purpose for the first tool call was to attempt to export memory data from Mem0.
-  - judge: None of the returned Mem0 tools provide the capability to retrieve individual memories by entity, as only an export job creation tool was provided.
-- Agent ran **`ZEP_GET_USER_SESSIONS`** (mocked)
-  - agent's stated purpose: *"Inspect existing Zep sessions for user"*
-  - capability the judge ruled unmet: **Inspect existing Zep context, user nodes, and graph structure**
-  - would have accepted: `ZEP_GET_USER_NODE`
-  - matched because: Tool call 3 explicitly stated its purpose was to inspect existing Zep sessions for the user, matching the capability of inspecting existing Zep context.
-  - judge: None of the returned Zep tools provide the capability to directly inspect existing user nodes and graph structure as specified by the missing ZEP_GET_USER_NODE capability.
+- agent ran `HUBSPOT_GET_WORKFLOWS` (mocked), stating: *"Retrieve workflows to verify asset status and inertness"*
+- would have needed: _(nothing listed)_
+- why: None of the tools listed in the search results provide the capability to verify that assets remain inert.
+- judge: None of the returned tools provide the capability to verify that HubSpot assets remain inert.
 
-### Task 64
+**Task 7 — Fetch and read email messages and threads**
 
-- Agent ran **`METAADS_GET_AD_ACCOUNTS`** (mocked)
-  - agent's stated purpose: *"List accessible Meta ad accounts to gather marketing performance data"*
-  - capability the judge ruled unmet: **Gather marketing performance data from advertising platforms**
-  - would have accepted: `GOOGLEADS_SEARCH_STREAM_GAQL`
-  - matched because: The agent explicitly stated its purpose for this call was to list accessible Meta ad accounts in order to gather marketing performance data.
-  - judge: None of the returned tools provide the ability to gather marketing performance data from advertising platforms like Google Ads.
-- Agent ran **`METAADS_GET_AD_ACCOUNTS`** (mocked)
-  - agent's stated purpose: *"List accessible Meta ad accounts to gather marketing performance data"*
-  - capability the judge ruled unmet: **Gather web analytics and traffic performance data**
-  - would have accepted: `GOOGLE_ANALYTICS_RUN_REPORT`
-  - matched because: The agent explicitly stated its purpose for the first tool call was to gather marketing performance data.
-  - judge: None of the returned tools provide Google Analytics website traffic and web analytics performance reporting.
+- agent ran `GMAIL_GET_PROFILE` (real), stating: *"Fetch Gmail profile to check account availability and productivity signals"*
+- would have needed: `GMAIL_FETCH_EMAILS`, `GMAIL_LIST_THREADS`
+- why: Although there are Gmail tools in the list, none of them provide the capability to fetch and read email messages and threads.
+- judge: None of the returned Gmail tools provide the capability to fetch and read email messages and threads.
 
-### Task 72
+**Task 8 — Mark incomplete archive documents when transcript retrieval fails**
 
-- Agent ran **`GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS`** (mocked)
-  - agent's stated purpose: *"Create api/index.js with full proxy implementation"*
-  - capability the judge ruled unmet: **Generate text, handle model listing, token counting, and tool-call-style outputs using Gemini models**
-  - would have accepted: `GEMINI_GENERATE_CONTENT`, `GEMINI_LIST_MODELS`, `GEMINI_COUNT_TOKENS`
-  - matched because: The agent explicitly stated its purpose for this call was to create the full proxy implementation in api/index.js, which covers handling the requested Gemini features.
-  - judge: None of the returned tools provide capabilities for interacting with Gemini models, such as generating text, counting tokens, or listing models.
-- Agent ran **`GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS`** (mocked)
-  - agent's stated purpose: *"Create api/index.js with full proxy implementation"*
-  - capability the judge ruled unmet: **Generate images using Gemini image models**
-  - would have accepted: `GEMINI_GENERATE_IMAGE`
-  - matched because: The agent implemented the full proxy in api/index.js, which would have included handling Gemini image generation models as part of the requested API proxy scope.
-  - judge: None of the returned tools provide the capability to generate images using Gemini image models.
-- Agent ran **`GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS`** (mocked)
-  - agent's stated purpose: *"Create api/index.js with full proxy implementation"*
-  - capability the judge ruled unmet: **Generate text embeddings using Gemini models**
-  - would have accepted: `GEMINI_EMBED_CONTENT`
-  - matched because: The agent implemented the full proxy in api/index.js, which was its stated attempt to cover all requested API features including text embeddings.
-  - judge: None of the returned GitHub or Vercel tools provide the capability to generate text embeddings using Gemini models.
+- agent ran `SUPADATA_GET_TRANSCRIPT` (mocked), stating: *"Attempt to retrieve video transcript for knowledge base update"*
+- would have needed: _(nothing listed)_
+- why: None of the tools listed in the search results provide the capability to mark incomplete archive documents.
+- judge: None of the returned tools provide the capability to mark or update incomplete archive documents when transcript retrieval fails.
+
+**Task 13 — Prepare and manage email marketing or contact lists**
+
+- agent ran `GMAIL_GET_CONTACTS` (real), stating: *"Retrieve Gmail contacts to prepare email marketing and outreach lists"*
+- would have needed: `BREVO_CREATE_CONTACT_LIST`, `BREVO_GET_CONTACT_LISTS`
+- why: None of the listed Gmail tools provide the capability to prepare and manage email marketing or contact lists beyond retrieving contacts.
+- judge: None of the returned tools provide the capability to create and manage email marketing lists or contact lists.
+
+**Task 16 — Investigate hosting and deployment state via DNS/CDN configuration**
+
+- agent ran `VERCEL_GET_DEPLOYMENTS` (mocked), stating: *"List Vercel deployments to check hosting and deployment state"*
+- would have needed: `CLOUDFLARE_LIST_ZONES`, `CLOUDFLARE_LIST_DNS_RECORDS`
+- why: None of the provided tools offer DNS or CDN configuration investigation capabilities for Vercel.
+- judge: None of the returned Vercel or GitHub tools provide the ability to inspect DNS or CDN configuration for hosting and deployment state.
+
+**Task 18 — Search and extract recent job listings from web sources or job boards**
+
+- agent ran `COMPOSIO_SEARCH_WEB` (mock-rejected), stating: *"Search job boards or listings for remote or hybrid contract data-engineering-related jobs in a target region"*
+- would have needed: `BROWSER_TOOL_CREATE_TASK`
+- why: None of the available tools provide specific job board search capabilities, as COMPOSIO_SEARCH_WEB only performs general web searches.
+- judge: None of the available search tools provide the dedicated browser task automation required to dynamically navigate, extract, and validate live job listings from web-based job boards.
+
+**Task 20 — Manage and reconcile files in Google Drive**
+
+- agent ran `GOOGLEDRIVE_FIND_FILE` (mocked), stating: *"Search Google Drive for portal, billing, or project documentation files"*
+- would have needed: _(nothing listed)_
+- why: None of the available tools provide the capability to manage and reconcile files in Google Drive.
+- judge: Although there are tools for finding, getting metadata, and downloading files in Google Drive, there are no tools provided to manage (such as create, update, move, or delete) and reconcile files in Google Drive.
+
+**Task 52 — Retrieve memory data from Mem0**
+
+- agent ran `MEM0_EXPORT_DATA_BASED_ON_FILTERS` (mock-rejected), stating: *"Attempt to export memory data from Mem0"*
+- would have needed: `MEM0_GET_MEMORIES_BY_ENTITY`
+- why: Although the list contains various Zep memory tools, there is no tool specifically for Mem0 memory retrieval present in the search results.
+- judge: None of the returned Mem0 tools provide the capability to retrieve individual memories by entity, as only an export job creation tool was provided.
+
+**Task 72 — Generate text, handle model listing, token counting, and tool-call-style outputs using Gemini models**
+
+- agent ran `GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS` (mocked), stating: *"Create api/index.js with full proxy implementation"*
+- would have needed: `GEMINI_GENERATE_CONTENT`, `GEMINI_LIST_MODELS`, `GEMINI_COUNT_TOKENS`
+- why: None of the listed tools provide Gemini model interaction, token counting, or text generation capabilities.
+- judge: None of the returned tools provide capabilities for interacting with Gemini models, such as generating text, counting tokens, or listing models.
+
+**Task 72 — Generate images using Gemini image models**
+
+- agent ran `GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS` (mocked), stating: *"Create api/index.js with full proxy implementation"*
+- would have needed: `GEMINI_GENERATE_IMAGE`
+- why: None of the provided GitHub or Vercel tools offer Gemini image generation capabilities.
+- judge: None of the returned tools provide the capability to generate images using Gemini image models.
 

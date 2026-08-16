@@ -79,23 +79,40 @@ grouping stage could not label cleanly).
 `PROXY_EXECUTE` fallbacks or duplicate variants, the rest merged into alternative groups. Flat recall
 was measuring log noise for roughly half of what it counted.
 
-### Finding 1: found, but not recommended — the dominant failure
+### Finding 1: only 19 of 433 capabilities are true search-recall failures
 
-83% of required capabilities were delivered; only **56%** arrived as a `primary` recommendation.
+Every unmet capability is attributed: which query was meant to find it, what search returned for
+that query, and whether the query was good enough that search should have found it. The judgement is
+made on the query alone, without showing the model the expected tools, so it cannot reason backwards
+from the answer key.
 
-| Outcome | Count | Share |
-|---|---:|---:|
-| Delivered on `primary` | 241 | 56% |
-| **Delivered only in `related`** | **83** | **19%** |
-| Credited alternative (judge) | 35 | 8% |
-| `never-returned` | 56 | 13% |
-| `catalogue-gap` | 18 | 4% |
+| Fault | Count | Meaning |
+|---|---:|---|
+| **`search: returned it, but only in related`** | **83** | search *had* the tool and left it below the fold |
+| `agent: never searched for it` | 28 | no query targeted this capability at all |
+| **`search: fair query, tool not returned`** | **19** | **the true recall failure** |
+| `catalogue: no tool provides this` | 18 | not a search bug |
+| `agent: query too vague to find it` | 9 | searched, but no engine could resolve it |
 
-**83 capabilities where search held the right tool and never promoted it** — more than the 56 it
-missed entirely. This is the single largest correctable class, and it is a ranking problem, not a
-retrieval one. An agent acting on the primary recommendation misses all 83.
+**Agent-side 37 · search-side 102 · catalogue 18.**
 
-The gap has now held across every run, both scoring methods, and a 5× increase in sample size.
+The reframe matters: of 433 required capabilities, search genuinely failed to retrieve only **19
+(4.4%)**. Its far larger problem is **ranking** — 83 capabilities where the right tool was returned
+and never promoted. And 37 failures are the agent's own, fixable by better decomposition, which
+would be misread as retrieval failures by any recall metric.
+
+The clearest true recall failure, task 16:
+
+```
+capability : Modify repository code and create pull requests
+query      : "Git repository file inspect and commit or pull request"
+needed     : GITHUB_COMMIT_MULTIPLE_FILES, GITHUB_CREATE_A_PULL_REQUEST
+returned   : GITHUB_GET_A_REPOSITORY, GITHUB_GET_A_TREE, GITHUB_GET_REPOSITORY_CONTENT,
+             GITHUB_LIST_COMMITS, GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS
+```
+
+The query names the application and asks for commit and pull-request actions. Search returned nine
+GitHub tools, every one of them read-only. The write tools it asked for exist and were not returned.
 
 ### Finding 2: recall is flat across task complexity, but `primary` is not
 
@@ -110,12 +127,22 @@ recall showed on 20 tasks (69% / 59% / 38%). That collapse was an artefact of fl
 tasks carry more log noise, so they accumulate more phantom misses. Once capabilities replace log
 entries, complexity stops mattering. **A concrete case for not scoring against the raw lists.**
 
-### Finding 3: the agent cannot tell it picked wrong
+### Finding 3: when the agent picks wrong, search usually left it no choice
 
-`agent_vs_judge.md` — 18 cases where the agent **stated** it was carrying out a step and an
+`agent_vs_judge.md` — 17 cases where the agent **stated** it was carrying out a step and an
 independent judge ruled that capability was never delivered. Invisible to recall: the agent records
-success and later steps build on a false premise. The recurring pattern is cross-vendor substitution,
-a plausible tool from the wrong application.
+success and later steps build on a false premise.
+
+Split by whether a correct tool was sitting in the results the agent had already seen:
+
+| | Count | Fault |
+|---|---:|---|
+| A correct tool was available and not chosen | 6 | agent: selection error |
+| **No returned tool could do it** | **11** | **search: the agent had no option** |
+
+Two thirds of the time the agent was not choosing badly — nothing it had been shown could do the
+job, so it substituted the closest thing. The recurring shape is cross-vendor: a LinkedIn post tool
+for an Instagram publish, a Calendar event for a spreadsheet-backed schedule.
 
 ### Finding 4: naming the vendor does not scope the search
 
@@ -178,9 +205,21 @@ steps then scored as retrieval misses. The breaker fired zero times in run 7.
 | `run8_full_100tasks/` | **current run** — all 100 tasks, traces, queries, all reports |
 | `RUNS.md` | run index and what each earlier run established |
 
-Each scored run carries `group_scoring_report.md` (recall), `failure_analysis.md` (why each
-capability was missed, plus the demoted list) and `agent_vs_judge.md` (calls the agent believed
-worked that the judge rejected).
+Each scored run carries three reports:
+
+- `group_scoring_report.md` — recall, strict and judged, per task.
+- `failure_analysis.md` — every unmet capability with the query that was meant to find it, what
+  search returned for that query, and a fault verdict.
+- `agent_vs_judge.md` — calls the agent believed worked that the judge rejected, split by whether a
+  correct tool was available to it.
+
+**Attribution is an LLM judgement and is not perfect.** Borderline cases where a query overlaps a
+capability without targeting it can still land on the wrong side. An earlier version of the adequacy
+prompt graded "is this a well-formed query" rather than "does this query ask for this capability",
+which blamed search for not returning Cloudflare DNS tools to a query about Vercel deployments, and
+Sheets tools to a query about calendar events. Tightening it moved three cases from search to agent;
+at least one vendor-overlap case is still classified as a search failure and is arguably the agent's.
+Treat the 19 as an upper bound.
 
 Each run directory holds per-task traces, captured queries, the generated reports, and the run log.
 A new run writes to `traces/` and overwrites the top-level report files, so archive them into a

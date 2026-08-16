@@ -111,3 +111,14 @@ they accumulate more phantom misses. It disappears once capabilities replace log
 Scoring needed `MAX_GROUPS` raised from 8 to 12; complex tasks legitimately need more groups, and 8
 rejected three tasks outright. Two tasks remain unscored where the grouping stage could not produce
 a clean label.
+
+**Run 8 attribution.** Every unmet capability is now traced to the query that was meant to find it
+and assigned a fault. Of 433 required capabilities: 83 delivered only in `related` (ranking), 28
+never searched for by the agent, 19 fair queries search failed to answer, 18 catalogue gaps, 9
+queries too vague to resolve. Agent-side 37, search-side 102.
+
+Search's true recall failure is 19 of 433 (4.4%); its ranking failure is more than four times larger.
+
+The adequacy judge needed a correction first: it initially graded general query quality rather than
+whether the query asked for the capability in question, which blamed search for not returning
+Cloudflare DNS tools to a Vercel-deployment query. That moved three cases from search to agent.
