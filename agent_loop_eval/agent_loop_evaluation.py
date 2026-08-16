@@ -62,7 +62,7 @@ GEMINI_MODEL = "gemini-3.5-flash-lite"
 GEMINI_RPM = 15
 USER_ID = "agent-loop-eval-user"
 
-NUM_TASKS = 20          # quota, not this number, is the real limit; run stops cleanly when it hits
+NUM_TASKS = 100         # full set; quota, not this number, is the real limit
 MAX_STEPS = 24          # tasks finish in <=17; 36 was not binding but exhausted quota at task 7
 MAX_TOOL_CALLS = 40     # hard ceiling on total calls per task
 
@@ -781,11 +781,19 @@ def run_task(client, session, metadata: ToolMetadata, limiter: RateLimiter,
                     result = {"search_abandoned": True,
                               "instruction": GIVE_UP_INSTRUCTION.format(count=count)}
             elif function_call.name == "execute_tool":
-                try:
-                    parsed = json.loads(arguments.get("arguments_json") or "{}")
-                    if not isinstance(parsed, dict):
+                # The model may return arguments_json either as a JSON string or as an
+                # already-structured dict; both are valid function-call payloads. Handling
+                # only the string form raised TypeError and killed a 100-task run at task
+                # 51, so accept either and never let a malformed payload raise.
+                raw_arguments = arguments.get("arguments_json") or "{}"
+                if isinstance(raw_arguments, dict):
+                    parsed = raw_arguments
+                else:
+                    try:
+                        parsed = json.loads(raw_arguments)
+                    except (json.JSONDecodeError, TypeError):
                         parsed = {}
-                except json.JSONDecodeError:
+                if not isinstance(parsed, dict):
                     parsed = {}
                 result = agent.execute_tool(str(arguments.get("tool_slug", "")).strip(), parsed,
                                             str(arguments.get("purpose", "")).strip())
@@ -925,12 +933,26 @@ def main() -> None:
 
     traces: list[TaskTrace] = []
     for index, case in enumerate(cases, 1):
+        # Resume: a task already on disk is not re-run. A 100-task run takes about an hour
+        # and costs real quota, so losing completed work to a crash or a quota stop late in
+        # the list is expensive. Delete traces/ to force a clean run.
+        existing = TRACE_DIR / f"task-{case.identifier:03d}.json"
+        if existing.exists():
+            traces.append(TaskTrace(**load_json(existing, {})))
+            print(f"[task {index}/{len(cases)}] #{case.identifier}: already done, skipping")
+            continue
         print(f"\n[task {index}/{len(cases)}] #{case.identifier}: {case.task[:80]}...")
         try:
             trace = run_task(client, session, metadata, limiter, case, connected)
         except QuotaExhaustedError as exc:
             print(f"  quota exhausted, stopping early: {exc}")
             break
+        except Exception as exc:
+            # One task's failure must not cost the other 99. Record it and continue.
+            print(f"  TASK FAILED: {exc!r}")
+            trace = TaskTrace(identifier=case.identifier, task=case.task,
+                              reference_tools=case.tools)
+            trace.stop_reason, trace.error = "harness error", repr(exc)[:400]
         traces.append(trace)
         save_json(TRACE_DIR / f"task-{case.identifier:03d}.json", trace.__dict__)
         print(f"  -> {len(trace.queries)} queries, {len(trace.executions)} executions "

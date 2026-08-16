@@ -4,12 +4,12 @@ Records the search queries an LLM issues while *actually working* a task, instea
 predict them up front. Built to answer a review point: predicted queries may not resemble what a real
 agent issues, and a prediction never sees a search result so it can never react to one.
 
-Tasks come from the first 20 entries of `../src/top-100-eval-use-cases.md`.
+Tasks come from `../src/top-100-eval-use-cases.md` — all 100 as of the current run.
 
 ```powershell
 python agent_loop_evaluation.py                        # run the loop, writes traces/
-python score_with_groups.py run7_continue_after_stuck  # requirement-group + judge scoring
-python analyse_failures.py run7_continue_after_stuck   # failure classes + agent/judge conflicts
+python score_with_groups.py run8_full_100tasks  # requirement-group + judge scoring
+python analyse_failures.py run8_full_100tasks   # failure classes + agent/judge conflicts
 ```
 
 ## How it works
@@ -60,60 +60,70 @@ Scoring recall against those lists is wrong in three ways at once:
 
 It reads saved traces, so re-scoring any completed run costs no agent quota.
 
-## Current results — `run7_continue_after_stuck`
+## Current results — `run8_full_100tasks`
 
-| Metric | Run 6 | Run 7 |
+All 100 use cases, 384 queries, no quota stop and no crashes. 98 of 100 scored (two tasks the
+grouping stage could not label cleanly).
+
+| Metric | 20 tasks (run 7) | **100 tasks (run 8)** |
 |---|---:|---:|
-| **Judged group recall** | 70% | **63/84 (75%)** |
-| Strict group recall | 61% | **56/84 (67%)** |
-| Groups delivered as `primary` | 45% | 39/84 (46%) |
-| *Flat union recall (superseded)* | *46%* | *119/229 (52%)* |
-| Queries | 73 | 82 |
-| Tasks reaching a clean finish | 19/20 | **20/20** |
-| Capabilities abandoned | n/a | 0 |
+| **Judged group recall** | 75% | **359/433 (83%)** |
+| Strict group recall | 67% | **324/433 (75%)** |
+| Groups delivered as `primary` | 46% | **241/433 (56%)** |
+| *Flat union recall (superseded)* | *52%* | *601/983 (61%)* |
+| Queries | 82 | 384 (6.6 words each) |
+| Clean finishes | 20/20 | 97/100 |
+| Capabilities abandoned | 0 | 0 |
 
-229 logged tools collapse to **84 real capabilities**. Every task ended with the agent calling
-`finish_task` — no step ceilings, no quota stops, no search-failure stops.
+**983 logged tools collapse to 433 real capabilities** — 189 dropped outright as auth probes,
+`PROXY_EXECUTE` fallbacks or duplicate variants, the rest merged into alternative groups. Flat recall
+was measuring log noise for roughly half of what it counted.
 
-Failure breakdown, from `failure_analysis.md`:
+### Finding 1: found, but not recommended — the dominant failure
 
-| Outcome | Count | Meaning |
-|---|---:|---|
-| Delivered on `primary` | 39 | search recommended the right tool |
-| **Delivered only in `related`** | **17** | search *held* the right tool and never promoted it |
-| Credited alternative | 7 | judge accepted a tool the logged list never named |
-| `never-returned` | 16 | no acceptable tool appeared in any result |
-| `catalogue-gap` | 5 | the task needs this and no logged tool provides it either |
+83% of required capabilities were delivered; only **56%** arrived as a `primary` recommendation.
 
-### Finding 1: found, but not recommended
+| Outcome | Count | Share |
+|---|---:|---:|
+| Delivered on `primary` | 241 | 56% |
+| **Delivered only in `related`** | **83** | **19%** |
+| Credited alternative (judge) | 35 | 8% |
+| `never-returned` | 56 | 13% |
+| `catalogue-gap` | 18 | 4% |
 
-75% of required capabilities were delivered; only **46%** arrived as a `primary` recommendation. The
-17 demoted capabilities are the single largest correctable failure class — search already has those
-tools, it just ranks them below the fold. An agent acting on the primary recommendation misses them.
-The gap has held across every run and both scoring methods.
+**83 capabilities where search held the right tool and never promoted it** — more than the 56 it
+missed entirely. This is the single largest correctable class, and it is a ranking problem, not a
+retrieval one. An agent acting on the primary recommendation misses all 83.
 
-### Finding 2: the agent cannot tell it picked wrong
+The gap has now held across every run, both scoring methods, and a 5× increase in sample size.
 
-`agent_vs_judge.md` lists calls where the agent **stated** it was carrying out a step, and an
-independent judge ruled that capability was never delivered. Seven cases in run 7. These are
-invisible to recall — the agent records success and later steps build on a false premise:
+### Finding 2: recall is flat across task complexity, but `primary` is not
 
-- Task 1 — stated *"Assess payment-link feasibility in HubSpot"*, ran
-  `HUBSPOT_CREATE_FEEDBACK_SUBMISSION`.
-- Task 16 — stated *"Get Vercel deployments"* for a capability requiring Cloudflare zones and DNS.
-- Task 17 — ran `LINKEDIN_CREATE_LINKED_IN_POST` for a capability requiring Instagram publishing,
-  and `GOOGLECALENDAR_CREATE_EVENT` for a spreadsheet-backed booking schedule.
+| Reference tools | Tasks | Judged | On `primary` | Queries/task |
+|---|---:|---:|---:|---:|
+| ≤ 6 | 29 | 84% | 60% | 2.9 |
+| 7-13 | 47 | 83% | 52% | 3.9 |
+| ≥ 14 | 22 | 82% | 59% | 4.9 |
 
-The pattern is cross-vendor substitution: a plausible tool from the wrong application. Mocked
-execution cannot correct this without consulting the ground truth, which would leak the answer key,
-so it can only be detected after the fact by comparing the agent's own claim against the judge.
+Judged recall barely moves with task size — 84% / 83% / 82% — which is the opposite of what flat
+recall showed on 20 tasks (69% / 59% / 38%). That collapse was an artefact of flat scoring: large
+tasks carry more log noise, so they accumulate more phantom misses. Once capabilities replace log
+entries, complexity stops mattering. **A concrete case for not scoring against the raw lists.**
 
-### Finding 3: naming the vendor does not scope the search
+### Finding 3: the agent cannot tell it picked wrong
+
+`agent_vs_judge.md` — 18 cases where the agent **stated** it was carrying out a step and an
+independent judge ruled that capability was never delivered. Invisible to recall: the agent records
+success and later steps build on a false premise. The recurring pattern is cross-vendor substitution,
+a plausible tool from the wrong application.
+
+### Finding 4: naming the vendor does not scope the search
 
 `"HubSpot list payment links ecommerce"` returned `STRIPE_LIST_PAYMENT_LINKS` as its primary result;
-the next query, `"HubSpot list payment links"`, returned `HUBSPOT_LIST_EMAILS`.
+the next query, `"HubSpot list payment links"`, returned `HUBSPOT_LIST_EMAILS`. A GitHub-only query
+in run 8 returned two Trello tools among its results.
 
-### Finding 4: a catalogue defect
+### Finding 5: a catalogue defect
 
 `HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUBSPOT_ACCOUNT` and
 `HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT` are both live and non-deprecated with
@@ -165,7 +175,7 @@ steps then scored as retrieval misses. The breaker fired zero times in run 7.
 | `agent_loop_evaluation.py` | the loop |
 | `score_with_groups.py` | requirement-group + judge scoring |
 | `analyse_failures.py` | failure classification and agent/judge disagreements |
-| `run7_continue_after_stuck/` | **current run** — traces, queries, all reports |
+| `run8_full_100tasks/` | **current run** — all 100 tasks, traces, queries, all reports |
 | `RUNS.md` | run index and what each earlier run established |
 
 Each scored run carries `group_scoring_report.md` (recall), `failure_analysis.md` (why each

@@ -220,10 +220,11 @@ See `manual_audit_workflows_1_5.md` for real examples and what's actually happen
 judge. Three findings there are measured on live agent-issued queries rather than predicted ones,
 which makes them hard to dismiss as artefacts of how this benchmark phrases things.
 
-**Found, but not recommended.** 70% of required capabilities were delivered, but only 45% arrived as
-a `primary` recommendation; the rest were demoted to `related`. The gap has held across every run and
-both scoring methods. For an agent acting on the primary recommendation, a demoted correct answer
-costs nearly what a miss costs.
+**Found, but not recommended.** Over all 100 use cases, 83% of required capabilities were delivered
+but only 56% arrived as a `primary` recommendation. 83 capabilities were held in `related` and never
+promoted — more than the 56 search missed outright, making demotion the largest correctable failure
+class rather than a footnote. The gap has held across every run, both scoring methods, and a fivefold
+increase in sample size.
 
 **Naming the vendor does not scope the search.** `"HubSpot list payment links ecommerce"` returned
 `STRIPE_LIST_PAYMENT_LINKS` as its primary result; the next query, `"HubSpot list payment links"`,

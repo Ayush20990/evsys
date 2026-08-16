@@ -1,6 +1,6 @@
 # Run index
 
-`run7_continue_after_stuck/` is current — see `README.md` for its results. Earlier runs are kept only
+`run8_full_100tasks/` is current — see `README.md` for its results. Earlier runs are kept only
 because each one established something that shaped the current design.
 
 | Run | Change from previous | What it established |
@@ -12,6 +12,7 @@ because each one established something that shaped the current design.
 | 5 | 20 tasks, completion tracking | Query count does not scale with task complexity |
 | 6 | tool descriptions + schemas returned | Descriptions fix tool choice and argument construction |
 | 7 | stuck step abandons capability, not task; agent states a `purpose` per call | Every task finishes; agent/judge disagreements become measurable |
+| 8 | **all 100 use cases** | Judged recall is flat across task complexity; demotion outnumbers outright misses |
 
 ## What each run established
 
@@ -86,3 +87,27 @@ Run 7 made 21 write-tool calls against run 6's fewer, which is why its real-exec
 (13 vs 34) and its mock-rejections higher (13 vs 2): writes are mocked by design and create-tools
 have complex required parameters. Every read-only call on a connected toolkit still ran for real,
 13 of 13, so the gate is behaving.
+
+**Run 8 — the full 100.** 384 queries, no quota stop, no abandons, 97/100 clean finishes. Two crashes
+during the first attempt produced three harness fixes worth keeping: `arguments_json` can arrive as a
+dict rather than a JSON string (only `JSONDecodeError` was caught, so a `TypeError` killed the run at
+task 51 after 25 minutes); `main()` now guards each task so one failure cannot cost the other 99; and
+completed traces are skipped on restart, so a late crash no longer discards an hour of work.
+
+| | Run 7 (20 tasks) | Run 8 (100 tasks) |
+|---|---:|---:|
+| Judged group recall | 75% | **83%** |
+| Strict group recall | 67% | **75%** |
+| Delivered as `primary` | 46% | **56%** |
+| Flat union recall | 52% | 61% |
+
+983 logged tools reduce to 433 capabilities, 189 dropped outright as probes, proxies or duplicates.
+
+The finding that only the full set could establish: **judged recall barely varies with task size**
+(84% / 83% / 82% across ≤6, 7-13 and ≥14 reference tools), whereas flat recall on 20 tasks had shown
+a collapse from 69% to 38%. That collapse was an artefact — larger tasks carry more log noise, so
+they accumulate more phantom misses. It disappears once capabilities replace log entries.
+
+Scoring needed `MAX_GROUPS` raised from 8 to 12; complex tasks legitimately need more groups, and 8
+rejected three tasks outright. Two tasks remain unscored where the grouping stage could not produce
+a clean label.

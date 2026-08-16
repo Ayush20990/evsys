@@ -65,7 +65,7 @@ from agent_loop_evaluation import (
 )
 
 DESCRIPTION_CHARS = 300
-MAX_GROUPS = 8
+MAX_GROUPS = 12          # complex tasks legitimately need more; 8 rejected 3 of 100
 MAX_TOOLS_PER_GROUP = 8
 
 
