@@ -222,19 +222,25 @@ than predicted ones, which makes them hard to dismiss as artefacts of how this b
 things. It also attributes every failure, which turns out to matter more than the recall number.
 
 **Most "search failures" are not search failures.** Of 433 required capabilities across the 100 use
-cases, each unmet one was traced back to the query that was meant to find it and given a verdict:
+cases, each unmet one was traced back to the query meant to find it and given a verdict:
 
 | Fault | Count |
 |---|---:|
 | search returned the right tool but only in `related` | 83 |
 | the agent never searched for the capability at all | 28 |
-| **search failed a fair query — the true recall failure** | **19** |
+| the agent's query was too vague to resolve | 24 |
 | no tool in the catalogue provides it | 18 |
-| the agent's query was too vague for any engine to resolve | 9 |
+| **search failed a fair query — the true recall failure** | **4** |
 
-Agent-side 37, search-side 102, catalogue 18. **Search genuinely failed to retrieve 19 of 433
-capabilities — 4.4%.** A flat recall metric reports all 157 identically, which is why the earlier
+Agent-side 52, search-side 87, catalogue 18. **Search retrieved what was asked for in all but 4 of
+433 capabilities.** A flat recall metric reports all 157 identically, which is why the earlier
 numbers in this repo overstated retrieval failure.
+
+That split was revised five times as each attribution gate was corrected, moving in both directions,
+so it is a reading of the evidence rather than a measurement — `agent_loop_eval/failure_analysis.md`
+prints the query and results for every case so any row can be checked. The three counts above that
+depend on no judgement at all (83 demoted, 28 never searched, 18 catalogue) are safe to quote
+directly.
 
 **Found, but not recommended, is the real problem.** 83% of required capabilities were delivered but
 only 56% arrived as a `primary` recommendation. Demotion outnumbers true recall failures more than

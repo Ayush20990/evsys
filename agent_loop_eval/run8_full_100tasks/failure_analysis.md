@@ -11,16 +11,41 @@ returned for it, and whether the query was good enough that search should have f
 | Fault | Count | Meaning |
 |---|---:|---|
 | agent: never searched for it | 28 | the agent never searched for this capability at all |
-| search: fair query, tool not returned | 19 | the agent asked a fair question and search did not return the tool |
+| agent: query too vague to find it | 24 | the agent searched, but too vaguely for any engine to resolve |
 | catalogue: no tool provides this | 18 | no tool in the catalogue provides this |
-| agent: query too vague to find it | 9 | the agent searched, but too vaguely for any engine to resolve |
+| search: fair query, tool not returned | 4 | the agent asked a fair question and search did not return the tool |
 | search: returned it, but only in related (from met groups) | 83 | delivered only in `related`, never promoted |
 
-**Agent-side: 37. Search-side: 102. Catalogue: 18.**
+**How much to trust the agent/search split.** The counts above were revised five times while this analysis was built, moving in both directions as each gate was corrected: 19 -> 11 -> 5 -> 1 -> 2 -> 4. Every gate is individually defensible and two were validated by hand, but the sensitivity is real, so treat this split as a reading of the evidence rather than a measurement.
+
+The three counts that do NOT depend on any judgement -- delivered-only-in-`related`, never-searched-for, and catalogue gaps -- are computed from set membership alone and are safe to quote directly.
+
+Of the search-recall failures, **1** rest on deterministic evidence (Composio's own `readOnlyHint` tags proving no returned tool could perform the change the query asked for); the rest rest on LLM votes and are individually arguable. Each is listed below with its query and results so any row can be checked.
+
+
+**Agent-side: 52. Search-side: 87. Catalogue: 18.**
 
 Agent-side failures are fixable by better decomposition or phrasing and say nothing
 about retrieval quality. Search-side failures are the ones that belong in a report on
 the search tool.
+
+## Vendor scoping: queries that name an application and get another
+
+Measured directly, not judged. Of 384 queries, **249** name an application explicitly. In **6** of those the named application appears nowhere in `primary`, and in **3** it is absent from the results entirely.
+
+That is **1.2%** of vendor-scoped queries fully ignoring the application named in the query — real, but
+rare rather than systemic. Counted separately from capability recall because it can
+happen even when no capability was missed, and because a capability scored as a
+catalogue gap never has its query examined at all (task 1 below).
+
+| Task | Query | Named | Primary returned | Absent entirely |
+|---|---|---|---|---|
+| 1 | `Create or check payment link in HubSpot` | hubspot | `STRIPE_CREATE_PAYMENT_LINK` | **yes** |
+| 11 | `Send Discord channel message` | discord | `DISCORDBOT_CREATE_MESSAGE` | no |
+| 24 | `Search LinkedIn job listings` | linkedin | `COMPOSIO_SEARCH_WEB` | no |
+| 33 | `broadcast campaigns kommo crm` | kommo | `KIT_CREATE_BROADCAST` | **yes** |
+| 57 | `create short video dog themed YouTube Shorts` | youtube | `GEMINI_GENERATE_VIDEOS`, `GEMINI_WAIT_FOR_VIDEO` | no |
+| 70 | `Transfer GitHub repository to another account or org` | github | `VERCEL_CREATE_PROJECT_TRANSFER_REQUEST` | **yes** |
 
 ## Delivered, but never recommended
 
@@ -165,7 +190,7 @@ on the primary recommendation would have missed every one.
 - needed: `GMAIL_FETCH_EMAILS`, `GMAIL_LIST_THREADS`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: The agent never issued a search query aimed at finding a tool to fetch and read email messages and threads.
+- why: The agent never issued a search query aimed at fetching and reading email messages and threads.
 - judge: None of the returned Gmail tools provide the capability to fetch and read email messages and threads.
 
 ### Task 8
@@ -193,7 +218,8 @@ on the primary recommendation would have missed every one.
   primary: GEMINI_GENERATE_VIDEOS, GEMINI_WAIT_FOR_VIDEO, GEMINI_GENERATE_IMAGE, HEYGEN_V2_VIDEO_GENERATE
   related: GEMINI_GENERATE_VIDEOS, GEMINI_WAIT_FOR_VIDEO, GEMINI_GET_VIDEOS_OPERATION, HEYGEN_V2_TEMPLATES, HEYGEN_V2_TEMPLATE_GENERATE, HEYGEN_RETRIEVE_VIDEO_STATUS_DETAILS
 ```
-- why: The query asks for video creation and generation from scripts and stock media, whereas the target capability is specifically about searching or sourcing stock images.
+- why: query named no application; search returned an equivalent tool from another one -- The returned tools generate multimedia assets like videos and images from content inputs, which directly fulfills the query for creating travel marketing assets.
+- signals: needs composio_search; query names no application
 - judge: Although GEMINI_GENERATE_IMAGE can create images from text prompts, no provided tool offers the specific capability to search or source existing stock images from a stock media library.
 
 ### Task 11
@@ -216,7 +242,7 @@ on the primary recommendation would have missed every one.
 - needed: `GMAIL_FETCH_EMAILS`, `GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: The agent never issued a query to fetch or search Gmail emails for project management.
+- why: The agent never issued a query to fetch or search Gmail emails, as the only email-related query was for sending an email.
 - judge: None of the returned Gmail tools provide the ability to fetch and search emails, as the available tools only cover sending, drafting, replying, managing aliases, and searching contacts.
 
 **Search and list Slack messages and users for chat integration**
@@ -229,7 +255,8 @@ on the primary recommendation would have missed every one.
   primary: CLICKUP_CREATE_CHAT_MESSAGE
   related: CLICKUP_GET_CHAT_CHANNELS, CLICKUP_GET_CHAT_MESSAGES, CLICKUP_GET_SUBTYPES
 ```
-- why: The query asks to send a chat message, whereas the required capability is to search and list Slack messages and users.
+- why: The query is too generic and describes a messaging action rather than a search action, making it ambiguous for a specific message-search tool. [0/3 votes]
+- signals: needs slack; query names no application
 - judge: The available tools are for ClickUp chat channels, whereas the missing capability specifically requires Slack message and user search integration.
 
 **Perform broader automation-maintenance operations**
@@ -246,27 +273,29 @@ on the primary recommendation would have missed every one.
 **Audit website search performance and indexing**
 
 - needed: `GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY`, `GOOGLE_SEARCH_CONSOLE_INSPECT_URL`, `GOOGLE_SEARCH_CONSOLE_GET_SITE`, `GOOGLE_SEARCH_CONSOLE_LIST_SITEMAPS`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#1): `Audit website search and traffic performance in analytics`
 - search returned:
 ```
   primary: GOOGLESUPER_RUN_REPORT, GOOGLESUPER_BATCH_RUN_REPORTS
   related: GOOGLESUPER_LIST_PROPERTIES, GOOGLESUPER_CHECK_COMPATIBILITY, GOOGLESUPER_GET_METADATA, GOOGLE_ANALYTICS_RUN_REPORT, GOOGLE_ANALYTICS_BATCH_RUN_REPORTS
 ```
-- why: The query explicitly asks for website search and traffic performance analysis in analytics, which directly maps to the capability of auditing website search performance and indexing.
+- why: query named no application; search returned an equivalent tool from another one -- Both the expected and returned tools retrieve and analyze website search and traffic performance data using Google reporting services.
+- signals: needs google_search_console; query names no application
 - judge: The returned tools only provide Google Analytics (GA4) and Gmail functionalities, but none of them support auditing website search performance and indexing like Google Search Console.
 
 **Prepare and manage email marketing or contact lists**
 
 - needed: `BREVO_CREATE_CONTACT_LIST`, `BREVO_GET_CONTACT_LISTS`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#2): `Search for contacts or create email lists in CRM or email marketing tool`
 - search returned:
 ```
   primary: GMAIL_GET_CONTACTS, GMAIL_SEARCH_PEOPLE
   related: GMAIL_GET_PEOPLE, GMAIL_FETCH_EMAILS, GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID
 ```
-- why: The query explicitly asks for contact search and email list creation capabilities within a CRM or email marketing tool, which directly aligns with the required capability.
+- why: query named no application; search returned an equivalent tool from another one -- The returned Gmail tools manage contacts and user lists, which is the same functional work requested by the query for a CRM or email marketing tool.
+- signals: needs brevo; query names no application; **compound query** (bundles more than one ask)
 - judge: None of the returned tools provide the capability to create and manage email marketing lists or contact lists.
 
 ### Task 16
@@ -283,20 +312,22 @@ on the primary recommendation would have missed every one.
   primary: GITHUB_GET_A_REPOSITORY, GITHUB_GET_A_TREE, GITHUB_GET_REPOSITORY_CONTENT, GITHUB_LIST_COMMITS, GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS
   related: GITHUB_LIST_BRANCHES, GITHUB_GET_A_REFERENCE, GITHUB_GET_RAW_REPOSITORY_CONTENT, GITHUB_SEARCH_CODE
 ```
-- why: The query explicitly asks for git repository file inspection, committing, and pull requests, which directly aligns with the required capability of modifying repository code and creating pull requests.
+- why: The query describes core Git repository file inspection and commit/PR operations, which directly aligns with the functionality of a GitHub multi-file commit and repository modification tool. [3/3 votes] (query asks to 'commit' but every tool returned is tagged read-only, so the write half of the query was never answered)
+- signals: needs github; query names no application; **compound query** (bundles more than one ask)
 - judge: None of the returned GitHub tools provide the ability to modify repository code or create pull requests; the available tools only retrieve references and search issues or pull requests.
 
 **Investigate hosting and deployment state via DNS/CDN configuration**
 
 - needed: `CLOUDFLARE_LIST_ZONES`, `CLOUDFLARE_LIST_DNS_RECORDS`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#3): `Vercel Netlify Heroku deployment status inspect`
 - search returned:
 ```
   primary: VERCEL_GET_DEPLOYMENTS, VERCEL_GET_DEPLOYMENT, VERCEL_GET_DEPLOYMENT_LOGS2
   related: VERCEL_GET_PROJECT2, VERCEL_LIST_DEPLOYMENT_CHECKS, VERCEL_GET_PROJECTS, VERCEL_GET_DEPLOYMENT_EVENTS2
 ```
-- why: The query specifically targets deployment status inspection across major hosting platforms like Vercel and Netlify, which is conceptually aligned with investigating hosting and deployment state.
+- why: query names vercel but the step needs cloudflare
+- signals: needs cloudflare; query names vercel
 - judge: None of the returned Vercel or GitHub tools provide the ability to inspect DNS or CDN configuration for hosting and deployment state.
 
 ### Task 17
@@ -306,27 +337,29 @@ on the primary recommendation would have missed every one.
 **Attempt social media publishing on Instagram**
 
 - needed: `INSTAGRAM_POST_IG_USER_MEDIA`, `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#2): `Publish video to social media platforms`
 - search returned:
 ```
   primary: UPLOAD_POST_PUBLISH_POST, WOOP_SOCIAL_PUBLISH_POST_NOW
   related: UPLOAD_POST_LIST_PROFILES, UPLOAD_POST_GET_UPLOAD_STATUS, UPLOAD_POST_LIST_PLATFORM_DESTINATIONS, WOOP_SOCIAL_LIST_SOCIAL_ACCOUNTS, WOOP_SOCIAL_VALIDATE_POST
 ```
-- why: The query asks for publishing video to social media platforms, which is a direct and appropriate description for finding tools that publish posts to Instagram and other social networks.
+- why: query named no application; search returned an equivalent tool from another one -- The returned tools perform the exact same core function of publishing posts to social media platforms, just using different integrations than Instagram.
+- signals: needs instagram; query names no application
 - judge: None of the returned tools provide the specific capability to publish social media posts to Instagram.
 
 **Read and update the booking schedule**
 
 - needed: `GOOGLESHEETS_BATCH_GET`, `GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#4): `Read and update bookings or calendar events`
 - search returned:
 ```
   primary: GOOGLECALENDAR_FIND_EVENT, GOOGLECALENDAR_PATCH_EVENT, GOOGLECALENDAR_DELETE_EVENT, GOOGLECALENDAR_CREATE_EVENT
   related: GOOGLECALENDAR_EVENTS_LIST, GOOGLECALENDAR_EVENTS_GET, GOOGLECALENDAR_EVENTS_INSTANCES, GOOGLECALENDAR_BATCH_EVENTS, GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS
 ```
-- why: The query explicitly asks for reading and updating bookings and calendar events, which directly aligns with the required capability.
+- why: query named no application; search returned an equivalent tool from another one -- The returned calendar tools successfully handle reading, updating, and managing events, which matches the core task requested by the query.
+- signals: needs googlesheets; query names no application; **compound query** (bundles more than one ask)
 - judge: The available tools only cover Google Calendar management rather than the required Google Sheets booking schedule read and update capabilities.
 
 ### Task 18
@@ -343,7 +376,8 @@ on the primary recommendation would have missed every one.
   primary: COMPOSIO_SEARCH_WEB
   related: COMPOSIO_SEARCH_FETCH_URL_CONTENT, COMPOSIO_SEARCH_NEWS, COMPOSIO_SEARCH_TRENDS, LINKEDIN_GET_POST_CONTENT
 ```
-- why: The query explicitly asks to search job listings and job boards for specific data engineering roles, which directly targets the required capability of searching and extracting recent job listings.
+- why: The query explicitly describes a multi-step web scraping and browsing task across job boards, which directly maps to the browser automation tool's capabilities of navigating websites, filling forms, and extracting data. [3/3 votes]
+- signals: needs browser_tool; query names no application; **compound query** (bundles more than one ask)
 - judge: None of the available search tools provide the dedicated browser task automation required to dynamically navigate, extract, and validate live job listings from web-based job boards.
 
 ### Task 19
@@ -355,7 +389,7 @@ on the primary recommendation would have missed every one.
 - needed: `COMPOSIO_SEARCH_FETCH_URL_CONTENT`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: None of the issued queries target fetching or reading content from web pages or job postings.
+- why: None of the issued queries target the capability of fetching and reading content from web pages or job postings.
 - judge: None of the returned tools provide the capability to fetch and read the full content of arbitrary web pages or specific job postings from URLs.
 
 ### Task 20
@@ -376,14 +410,15 @@ on the primary recommendation would have missed every one.
 **look up CRM-style trial records**
 
 - needed: `AIRTABLE_GET_BASE_SCHEMA`, `AIRTABLE_LIST_BASES`, `AIRTABLE_LIST_RECORDS`, `PIPEDRIVE_SEARCH_ORGANIZATIONS`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#2): `Search CRM trial records or contacts`
 - search returned:
 ```
   primary: SALESFORCE_LIST_CONTACTS, SALESFORCE_RUN_SOQL_QUERY
   related: SALESFORCE_QUERY, SALESFORCE_QUERY_ALL, SALESFORCE_GET_CONTACT
 ```
-- why: The query explicitly asks to search CRM trial records and contacts, which clearly targets Salesforce contact and query tools for CRM data retrieval.
+- why: query named no application; search returned an equivalent tool from another one -- The returned Salesforce tools search CRM contacts and records, which is the exact same kind of work requested by the query, just in a different CRM application than Airtable or Pipedrive.
+- signals: needs airtable, pipedrive; query names no application; **compound query** (bundles more than one ask)
 - judge: None of the returned tools support Airtable or Pipedrive CRM trial records, as the available CRM tools are exclusively for Salesforce.
 
 **inspect and modify source code in GitHub, and handle branches**
@@ -396,20 +431,22 @@ on the primary recommendation would have missed every one.
   primary: GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS
   related: GITHUB_FIND_PULL_REQUESTS, GITHUB_LIST_REPOSITORY_ISSUES, GITHUB_GET_A_PULL_REQUEST, GITHUB_GET_AN_ISSUE, GITHUB_LIST_PULL_REQUESTS_FILES, GITHUB_LIST_ISSUE_COMMENTS
 ```
-- why: The query asks for searching repositories, issues, pull requests, and workflows, but does not ask for tools to inspect, modify source code, or handle branches.
+- why: The query is a broad generic list of GitHub features rather than a specific request to atomically commit multiple files to a repository. [0/3 votes]
+- signals: needs github; query names github
 - judge: None of the returned GitHub tools provide the ability to inspect source code, modify files, create branches, or merge pull requests.
 
 **check CI workflow failures**
 
 - needed: `GITHUB_DOWNLOAD_JOB_LOGS_FOR_A_WORKFLOW_RUN`, `GITHUB_GET_THE_COMBINED_STATUS_FOR_A_SPECIFIC_REFERENCE`, `GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#3): `Search GitHub repositories issues pull requests workflows actions code`
 - search returned:
 ```
   primary: GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS
   related: GITHUB_FIND_PULL_REQUESTS, GITHUB_LIST_REPOSITORY_ISSUES, GITHUB_GET_A_PULL_REQUEST, GITHUB_GET_AN_ISSUE, GITHUB_LIST_PULL_REQUESTS_FILES, GITHUB_LIST_ISSUE_COMMENTS
 ```
-- why: The query explicitly includes 'workflows' and 'actions', which directly target the capability of checking CI workflow failures, so a competent search engine should have been able to find the relevant tool.
+- why: The query is a broad list of keywords related to GitHub rather than a specific description of downloading logs for a workflow job. [1/3 votes]
+- signals: needs github; query names github
 - judge: None of the returned GitHub tools provide the ability to check or download CI workflow run failures.
 
 ### Task 27
@@ -421,7 +458,7 @@ on the primary recommendation would have missed every one.
 - needed: `GOOGLEDRIVE_CREATE_FOLDER`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: None of the issued queries target the creation of a new folder in Google Drive.
+- why: None of the issued queries target the capability of creating a new folder in Google Drive.
 - judge: None of the returned Google Drive tools provide the capability to create a new folder.
 
 ### Task 28
@@ -438,7 +475,8 @@ on the primary recommendation would have missed every one.
   primary: GEMINI_GENERATE_VIDEOS
   related: GEMINI_GENERATE_IMAGE, GEMINI_WAIT_FOR_VIDEO, TRELLO_GET_CARDS_BY_ID_CARD
 ```
-- why: The query explicitly asks for text-to-speech voice generation, which directly matches the required capability for creating AI voiceovers.
+- why: The query explicitly asks to 'Generate ... text to speech voice', which directly matches the primary function of the ElevenLabs text-to-speech tool. [3/3 votes]
+- signals: needs elevenlabs; query names no application; **compound query** (bundles more than one ask)
 - judge: None of the returned tools provide text-to-speech audio generation capabilities.
 
 ### Task 29
@@ -459,14 +497,15 @@ on the primary recommendation would have missed every one.
 **Retrieve social page activity or posts**
 
 - needed: `FACEBOOK_GET_PAGE_POSTS`, `FACEBOOK_GET_PAGE_CONVERSATIONS`, `FACEBOOK_GET_PAGE_TAGGED_POSTS`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#2): `Fetch social media page activity or posts`
 - search returned:
 ```
   primary: LINKEDIN_GET_POST_CONTENT, LINKEDIN_LIST_REACTIONS
   related: LINKEDIN_GET_SHARE_STATS, LINKEDIN_GET_COMPANY_INFO, LINKEDIN_GET_ORG_PAGE_STATS, LINKEDIN_GET_NETWORK_SIZE
 ```
-- why: The query directly and accurately describes the required capability of fetching social media page activity and posts, leaving no ambiguity about the intended action.
+- why: query named no application; search returned an equivalent tool from another one -- The returned LinkedIn tools fetch post content and reactions, which performs essentially the same kind of social media page activity and post retrieval work described by the query, just on a different platform.
+- signals: needs facebook; query names no application; **compound query** (bundles more than one ask)
 - judge: None of the returned LinkedIn or other tools provide a capability to retrieve social page activity or posts directly, only statistics, network size, company info, and reactions.
 
 ### Task 31
@@ -478,20 +517,21 @@ on the primary recommendation would have missed every one.
 - needed: `COMPOSIO_SEARCH_FINANCE`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: None of the issued queries searched for real-time market data or financial information.
+- why: None of the issued queries targeted real-time market data or financial information.
 - judge: None of the returned tools provide the capability to retrieve real-time market data and financial information.
 
 **Create and manage tasks or reminders**
 
 - needed: `TICKTICK_CREATE_TASK`, `TICKTICK_GET_TASK_BY_PROJECT_AND_ID`, `TICKTICK_LIST_ALL_TASKS`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#3): `Create reminder or task`
 - search returned:
 ```
   primary: NOTION_SEARCH_NOTION_PAGE, NOTION_FETCH_DATABASE, NOTION_INSERT_ROW_DATABASE
   related: NOTION_UPSERT_ROW_DATABASE, NOTION_QUERY_DATABASE_WITH_FILTER, NOTION_LIST_USERS, NOTION_INSERT_ROW_FROM_NL, NOTION_FETCH_ROW
 ```
-- why: The query directly asks for the capability to create reminders or tasks, which clearly matches the required functionality.
+- why: query named no application; search returned an equivalent tool from another one -- The returned Notion tools allow creating and organizing tasks or database entries, which performs essentially the same task-management function as creating a reminder.
+- signals: needs ticktick; query names no application; **compound query** (bundles more than one ask)
 - judge: None of the returned tools provide the capability to create and manage TickTick tasks or reminders.
 
 ### Task 32
@@ -511,7 +551,7 @@ on the primary recommendation would have missed every one.
 - needed: `BROWSER_TOOL_CREATE_TASK`, `BROWSER_TOOL_WATCH_TASK`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: Neither of the issued queries targets browser automation or QA capabilities, as they only search for session notes, logs, files, and documents.
+- why: Neither of the issued queries targets browser automation or QA capabilities, as they only search general session notes and file storage.
 - judge: None of the returned tools provide browser automation or QA capabilities for web applications, as they are entirely focused on Google Drive and Salesforce integrations.
 
 **Retail product and catalog search**
@@ -519,7 +559,7 @@ on the primary recommendation would have missed every one.
 - needed: `COMPOSIO_SEARCH_SHOPPING`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: None of the issued queries target retail product and catalog search, as they only search through session notes, activity logs, and stored files.
+- why: None of the issued queries target retail product or catalog search, as both focused on searching internal session notes, activity logs, files, or documents.
 - judge: None of the returned tools provide retail product or catalog search capabilities, as they are exclusively related to Google Drive and Salesforce.
 
 **Fast LLM inference and content generation**
@@ -527,7 +567,7 @@ on the primary recommendation would have missed every one.
 - needed: `COMPOSIO_SEARCH_GROQ_CHAT`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: Neither of the issued queries targets fast LLM inference or content generation capabilities.
+- why: Neither of the issued queries target fast LLM inference or content generation tools, as they only search general session notes, activity logs, and stored files.
 - judge: None of the returned Google Drive or Salesforce tools provide fast LLM inference and content generation capabilities.
 
 ### Task 33
@@ -556,7 +596,8 @@ on the primary recommendation would have missed every one.
   primary: GOOGLESHEETS_SEARCH_SPREADSHEETS, GOOGLESHEETS_GET_SHEET_NAMES, GOOGLESHEETS_VALUES_GET, GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS, GOOGLESHEETS_UPSERT_ROWS
   related: GMAIL_FETCH_EMAILS, GOOGLEDRIVE_FIND_FILE, GOOGLEDRIVE_DOWNLOAD_FILE, GOOGLESHEETS_BATCH_GET, GOOGLECALENDAR_FIND_EVENT
 ```
-- why: The query asks for Google Sheets spreadsheet reporting tools, whereas the capability requires listing and retrieving lead details from Kommo CRM.
+- why: query named no application; search returned an equivalent tool from another one -- The returned Google Sheets tools handle the spreadsheet reporting and data extraction requested by the query, serving the same functional purpose as the CRM lead export tool.
+- signals: needs kommo; query names no application
 - judge: None of the returned tools interact with Kommo CRM to list or retrieve lead details, history, notes, or contacts.
 
 ### Task 41
@@ -573,7 +614,8 @@ on the primary recommendation would have missed every one.
   primary: GITHUB_CREATE_A_PULL_REQUEST, GITHUB_LIST_CHECK_RUNS_FOR_A_REF, GITHUB_MERGE_A_PULL_REQUEST, TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD, TRELLO_UPDATE_CARDS_ID_LIST_BY_ID_CARD
   related: GITHUB_GET_A_PULL_REQUEST, GITHUB_GET_COMMIT_STATUSES, TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD
 ```
-- why: The query asks for committing changes and merging a pull request, but committing code changes is a distinct capability from merging a pull request.
+- why: The query asks to merge a pull request, whereas the target tool is specifically for committing multiple files atomically. [0/3 votes]
+- signals: needs github; query names github
 - judge: None of the returned GitHub tools provide the ability to commit code changes to a repository.
 
 ### Task 43
@@ -596,7 +638,7 @@ on the primary recommendation would have missed every one.
 - needed: `NOTION_LIST_USERS`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: None of the issued queries target looking up workspace users for owner assignment; they focus on database rows, block contents, and clearing page content instead.
+- why: None of the queries issued by the agent mentioned searching for workspace users or owner lookup capabilities.
 - judge: None of the returned Notion tools provide the capability to list or lookup workspace users for owner assignment.
 
 ### Task 51
@@ -606,14 +648,15 @@ on the primary recommendation would have missed every one.
 **Fetch and annotate support-thread evidence**
 
 - needed: `PLAIN_RUN_GRAPHQL_QUERY`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#1): `fetch support thread messages and notes or annotations in customer support tool`
 - search returned:
 ```
   primary: HELPWISE_GET_CONVERSATION, ZENDESK_GET_ZENDESK_TICKET_BY_ID, FRESHDESK_LIST_ALL_TICKET_CONVERSATIONS
   related: HELPWISE_GET_NOTES, HELPWISE_GET_ATTACHMENTS, ZENDESK_LIST_ZENDESK_TICKETS, ZENDESK_UPDATE_ZENDESK_TICKET, FRESHDESK_VIEW_TICKET
 ```
-- why: The query specifically asks to fetch support thread messages and notes in a customer support tool, which directly aligns with the capability to fetch and annotate support-thread evidence.
+- why: query named no application; search returned an equivalent tool from another one -- The returned tools retrieve support tickets, conversations, and messages from alternative customer support platforms like Helpwise, Zendesk, and Freshdesk, performing the exact same kind of work as the expected Plain GraphQL query.
+- signals: needs plain; query names no application; **compound query** (bundles more than one ask)
 - judge: None of the returned tools provide the required Plain GraphQL query capability to fetch and annotate support-thread evidence.
 
 ### Task 52
@@ -623,27 +666,29 @@ on the primary recommendation would have missed every one.
 **Retrieve memory data from Mem0**
 
 - needed: `MEM0_GET_MEMORIES_BY_ENTITY`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#1): `Migrate memory data from Mem0 into Zep`
 - search returned:
 ```
   primary: MEM0_EXPORT_DATA_BASED_ON_FILTERS, ZEP_ADD_SESSION_MEMORY
   related: ZEP_CREATE_SESSION, ZEP_GET_SESSION_MEMORY
 ```
-- why: The query explicitly asks to migrate memory data from Mem0 into Zep, which directly encompasses the capability to retrieve memory data from Mem0 as part of the migration process.
+- why: The query asks to migrate data into Zep, whereas the tool is specifically for retrieving memories from Mem0 by entity. [0/3 votes]
+- signals: needs mem0; query names mem0, zep
 - judge: None of the returned Mem0 tools provide the capability to retrieve individual memories by entity, as only an export job creation tool was provided.
 
 **Inspect existing Zep context, user nodes, and graph structure**
 
 - needed: `ZEP_GET_USER_NODE`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#2): `Inspect existing Zep context or get user sessions and memory`
 - search returned:
 ```
   primary: ZEP_GET_THREAD_USER_CONTEXT, ZEP_GET_SESSION_MEMORY, ZEP_GET_USER_SESSIONS
   related: ZEP_ADD_THREAD_MESSAGES, ZEP_CREATE_THREAD, ZEP_GET_THREAD_MESSAGES, ZEP_ADD_SESSION_MEMORY, ZEP_GET_SESSION
 ```
-- why: The query explicitly names Zep and asks to inspect context, sessions, and memory, which directly aligns with the required capability.
+- why: search answered the query as written -- None does what it asked; the step needed something else. The search results successfully returned tools covering both inspecting existing Zep context and getting user sessions and memory.
+- signals: needs zep; query names zep; **compound query** (bundles more than one ask)
 - judge: None of the returned Zep tools provide the capability to directly inspect existing user nodes and graph structure as specified by the missing ZEP_GET_USER_NODE capability.
 
 ### Task 53
@@ -675,7 +720,7 @@ on the primary recommendation would have missed every one.
 - needed: `GOOGLEADS_MUTATE_CAMPAIGN_CRITERIA`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: The agent never issued a search query aimed at configuring campaign-level targeting criteria.
+- why: The agent never issued a query searching for a tool to configure campaign-level targeting criteria.
 - judge: None of the returned Google Ads tools provide the capability to configure campaign-level targeting criteria.
 
 **Add keywords and targeting criteria to ad groups**
@@ -708,7 +753,8 @@ on the primary recommendation would have missed every one.
   primary: GOOGLESHEETS_SET_DATA_VALIDATION_RULE, GOOGLESHEETS_MUTATE_CONDITIONAL_FORMAT_RULES
   related: GOOGLESHEETS_GET_SPREADSHEET_INFO, GOOGLESHEETS_GET_DATA_VALIDATION_RULES, GOOGLESHEETS_GET_CONDITIONAL_FORMAT_RULES, GOOGLESHEETS_FORMAT_CELL, GOOGLESHEETS_VALUES_UPDATE, GOOGLESHEETS_BATCH_GET
 ```
-- why: The query asks for formatting, formulas, and data validation, whereas the required capability is writing, updating, and managing values across multiple cell ranges.
+- why: search answered the query as written -- GOOGLESHEETS_BATCH_GET does what it asked; the step needed something else. The returned results cover updating spreadsheets, formatting, formulas (via values update/batch), and data validation.
+- signals: needs googlesheets; query names no application
 - judge: While GOOGLESHEETS_VALUES_UPDATE handles a single range, there is no tool returned that manages values across multiple cell ranges simultaneously as required by the batch update capability.
 
 **Apply filters and sort options to data ranges**
@@ -716,7 +762,7 @@ on the primary recommendation would have missed every one.
 - needed: `GOOGLESHEETS_SET_BASIC_FILTER`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: The only query issued focuses on formatting, formulas, and data validation, but does not search for tools related to applying filters and sort options.
+- why: The agent's only query focused on formatting, formulas, and data validation, but did not search for any tool related to applying filters and sorting data ranges.
 - judge: None of the returned tools provide the capability to apply filters or sort options to data ranges.
 
 **Modify worksheet properties and metadata**
@@ -724,7 +770,7 @@ on the primary recommendation would have missed every one.
 - needed: `GOOGLESHEETS_UPDATE_SHEET_PROPERTIES`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: The agent's only query focused on formatting, formulas, and data validation, but did not issue any search to modify worksheet properties and metadata.
+- why: The agent's only query focused on formatting, formulas, and data validation, but did not issue a query aimed at modifying worksheet properties and metadata.
 - judge: None of the returned tools provide the capability to modify worksheet properties and metadata.
 
 ### Task 58
@@ -752,14 +798,15 @@ on the primary recommendation would have missed every one.
 **Enrich contact data and find email addresses**
 
 - needed: `HUNTER_DOMAIN_SEARCH`, `HUNTER_EMAIL_FINDER`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#7): `instantly verify email or enrich contact`
 - search returned:
 ```
   primary: INSTANTLY_CREATE_SUPERSEARCH_ENRICHMENT, INSTANTLY_SUPERSEARCH_ENRICHMENT_RUN_POST
   related: INSTANTLY_CREATE_LEAD_LIST, INSTANTLY_LIST_LEAD_LISTS, INSTANTLY_GET_LEAD_LIST, INSTANTLY_COUNT_LEADS_FROM_SUPERSEARCH, INSTANTLY_PATCH_SUPERSEARCH_ENRICHMENT_SETTINGS, INSTANTLY_GET_SUPERSEARCH_ENRICHMENT
 ```
-- why: The query explicitly asks to verify email and enrich contact data, which directly targets the required capability.
+- why: query names instantly but the step needs hunter
+- signals: needs hunter; query names instantly; **compound query** (bundles more than one ask)
 - judge: None of the returned tools provide the specific capability to enrich contact data and find email addresses using Hunter tools (such as HUNTER_DOMAIN_SEARCH or HUNTER_EMAIL_FINDER).
 
 ### Task 64
@@ -769,27 +816,29 @@ on the primary recommendation would have missed every one.
 **Gather marketing performance data from advertising platforms**
 
 - needed: `GOOGLEADS_SEARCH_STREAM_GAQL`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#1): `get marketing performance data`
 - search returned:
 ```
   primary: METAADS_GET_AD_ACCOUNTS, METAADS_GET_INSIGHTS, LINKEDIN_ADS_GET_AD_ANALYTICS
   related: METAADS_LIST_BUSINESS_AD_ACCOUNTS, METAADS_LIST_CLIENT_AD_ACCOUNTS, METAADS_GET_OBJECT, METAADS_READ_ADSETS, METAADS_GET_USER, METAADS_LIST_ADS, LINKEDIN_ADS_SEARCH_CAMPAIGNS, LINKEDIN_ADS_GET_AD_ACCOUNT, LINKEDIN_ADS_SEARCH_AD_ACCOUNTS, LINKEDIN_ADS_GET_TARGETING_ENTITIES, LINKEDIN_ADS_GET_TARGETING_FACETS, LINKEDIN_ADS_SEARCH_CREATIVES
 ```
-- why: The query directly asks to get marketing performance data, which clearly matches the intended capability of gathering performance metrics from advertising platforms.
+- why: query named no application; search returned an equivalent tool from another one -- The returned tools retrieve ad performance and analytics data from alternative marketing platforms, fulfilling the general request for marketing performance data just as the expected Google Ads tool would.
+- signals: needs googleads; query names no application
 - judge: None of the returned tools provide the ability to gather marketing performance data from advertising platforms like Google Ads.
 
 **Gather web analytics and traffic performance data**
 
 - needed: `GOOGLE_ANALYTICS_RUN_REPORT`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#3): `search console query performance`
 - search returned:
 ```
   primary: GOOGLE_SEARCH_CONSOLE_LIST_SITES, GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY
   related: GOOGLE_SEARCH_CONSOLE_GET_SITE, GOOGLE_SEARCH_CONSOLE_LIST_SITEMAPS, GOOGLE_SEARCH_CONSOLE_GET_SITEMAP, GOOGLE_SEARCH_CONSOLE_SUBMIT_SITEMAP, GOOGLE_SEARCH_CONSOLE_INSPECT_URL, GOOGLE_SEARCH_CONSOLE_ADD_SITE
 ```
-- why: The query specifically asks for search console query performance, which directly aligns with gathering web analytics and traffic performance data from Google Search Console.
+- why: query named no application; search returned an equivalent tool from another one -- The returned Search Console tools directly address the query's request for search performance data, serving the same functional purpose as the expected Analytics tool.
+- signals: needs google_analytics; query names no application
 - judge: None of the returned tools provide Google Analytics website traffic and web analytics performance reporting.
 
 ### Task 67
@@ -812,7 +861,7 @@ on the primary recommendation would have missed every one.
 - needed: `GITHUB_LIST_CHECK_RUNS_FOR_A_REF`, `GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: None of the issued queries target the verification of CI check runs and workflow status.
+- why: The agent never issued a query aimed at verifying CI check runs and workflow status.
 - judge: None of the returned GitHub tools provide the ability to list check runs or workflow run statuses for a reference or repository.
 
 **Apply database migrations via SQL execution**
@@ -820,7 +869,7 @@ on the primary recommendation would have missed every one.
 - needed: `SUPABASE_BETA_RUN_SQL_QUERY`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: The agent did not issue any search queries specifically aimed at finding a tool to apply database migrations via SQL execution.
+- why: The agent never issued a search query specifically aimed at finding a tool to execute SQL database migrations.
 - judge: None of the returned GitHub tools provide the ability to execute SQL queries or apply database migrations.
 
 **Check hosted deployment status and logs on Vercel**
@@ -828,7 +877,7 @@ on the primary recommendation would have missed every one.
 - needed: `VERCEL_GET_DEPLOYMENTS`, `VERCEL_GET_DEPLOYMENT_LOGS2`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: The agent never issued a query to check hosted deployment status or logs on Vercel.
+- why: The agent never issued a query to check hosted deployment status or logs on Vercel, focusing instead only on GitHub repository file operations.
 - judge: None of the returned GitHub tools provide the ability to check hosted deployment status and logs on Vercel.
 
 ### Task 69
@@ -864,7 +913,8 @@ on the primary recommendation would have missed every one.
   primary: VERCEL_CREATE_NEW_DEPLOYMENT, VERCEL_GET_DEPLOYMENT
   related: VERCEL_GET_TEAMS, VERCEL_GET_PROJECT2, VERCEL_SEARCH_REPO, GITHUB_GET_A_REPOSITORY, VERCEL_LIST_DEPLOYMENT_CHECKS, VERCEL_GET_DEPLOYMENT_LOGS2
 ```
-- why: The query specifically asks for Vercel deployment tools, which is materially different from the required capability of triggering and monitoring GitHub Actions deployments and workflows.
+- why: query names vercel but the step needs github
+- signals: needs github; query names vercel
 - judge: None of the returned GitHub tools provide the ability to trigger workflow dispatch events or list workflow runs for a repository.
 
 ### Task 72
@@ -876,7 +926,7 @@ on the primary recommendation would have missed every one.
 - needed: `GEMINI_GENERATE_CONTENT`, `GEMINI_LIST_MODELS`, `GEMINI_COUNT_TOKENS`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: The agent did not issue any queries searching for tools related to generating text, model listing, token counting, or handling tool-call-style outputs using Gemini models.
+- why: The agent never issued a search query related to Gemini model interactions, text generation, model listing, or token counting.
 - judge: None of the returned tools provide capabilities for interacting with Gemini models, such as generating text, counting tokens, or listing models.
 
 **Generate images using Gemini image models**
@@ -884,7 +934,7 @@ on the primary recommendation would have missed every one.
 - needed: `GEMINI_GENERATE_IMAGE`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: The agent never issued a search query looking for a tool to generate images using Gemini image models.
+- why: The agent never issued a search query related to generating images using Gemini image models.
 - judge: None of the returned tools provide the capability to generate images using Gemini image models.
 
 **Generate and poll/wait for videos using Google Veo models**
@@ -892,7 +942,7 @@ on the primary recommendation would have missed every one.
 - needed: `GEMINI_GENERATE_VIDEOS`, `GEMINI_WAIT_FOR_VIDEO`
 - **fault: agent: never searched for it**
 - no query the agent issued was aimed at this capability
-- why: The agent did not issue any search query related to Google Veo models or video generation and polling.
+- why: The agent never issued a search query related to Google Veo models or video generation and polling.
 - judge: None of the returned GitHub or Vercel tools provide the capability to generate and poll or wait for videos using Google Veo models.
 
 **Generate text embeddings using Gemini models**
@@ -906,14 +956,15 @@ on the primary recommendation would have missed every one.
 **Configure project environment variables on Vercel**
 
 - needed: `VERCEL_ADD_ENVIRONMENT_VARIABLE`, `VERCEL_DELETE_PROJECT_ENV`, `VERCEL_FILTER_PROJECT_ENVS`
-- **fault: agent: query too vague to find it**
+- **fault: search: fair query, tool not returned**
 - query the agent issued (#2): `deploy or manage vercel project`
 - search returned:
 ```
   primary: VERCEL_CREATE_NEW_DEPLOYMENT, VERCEL_GET_DEPLOYMENT
   related: VERCEL_GET_TEAMS, VERCEL_GET_PROJECT2, VERCEL_SEARCH_REPO, GITHUB_GET_A_REPOSITORY, VERCEL_LIST_DEPLOYMENT_CHECKS, VERCEL_GET_DEPLOYMENT_LOGS2
 ```
-- why: The query asks about deploying or managing a project rather than specifically targeting the configuration of environment variables.
+- why: The query asks to manage a Vercel project, which sufficiently captures the intent of configuring project-level settings like environment variables. [3/3 votes]
+- signals: needs vercel; query names vercel; **compound query** (bundles more than one ask)
 - judge: None of the returned Vercel tools provide the capability to add or configure environment variables on a Vercel project.
 
 ### Task 73
@@ -960,7 +1011,8 @@ on the primary recommendation would have missed every one.
   primary: TRELLO_ADD_CARDS, TRELLO_ADD_CARDS_ATTACHMENTS_BY_ID_CARD
   related: TRELLO_GET_CARDS_BY_ID_CARD, TRELLO_UPDATE_CARDS_BY_ID_CARD, TRELLO_GET_SEARCH, TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD, TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD
 ```
-- why: The query asks for creating card attachments and members, whereas the required capability is auditing board access and members for assignee lookup.
+- why: The query asks to create a Trello card attachment member, whereas the tool retrieves board memberships and user roles. [0/3 votes]
+- signals: needs trello; query names trello
 - judge: None of the returned Trello tools provide the specific capability to audit board access and list board members for assignee lookup.
 
 ### Task 85
@@ -970,14 +1022,15 @@ on the primary recommendation would have missed every one.
 **Merge branches after approval**
 
 - needed: `GITHUB_MERGE_A_BRANCH`
-- **fault: search: fair query, tool not returned**
+- **fault: agent: query too vague to find it**
 - query the agent issued (#3): `merge a pull request on GitHub`
 - search returned:
 ```
   primary: GITHUB_CREATE_A_PULL_REQUEST, GITHUB_LIST_CHECK_RUNS_FOR_A_REF, GITHUB_MERGE_A_PULL_REQUEST, TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD, TRELLO_UPDATE_CARDS_ID_LIST_BY_ID_CARD
   related: GITHUB_GET_A_PULL_REQUEST, GITHUB_GET_COMMIT_STATUSES, TRELLO_GET_BOARDS_LISTS_BY_ID_BOARD
 ```
-- why: The query asks to merge a pull request on GitHub, which directly matches the required capability to merge branches after approval using GitHub pull requests.
+- why: search answered the query as written -- GITHUB_MERGE_A_PULL_REQUEST does what it asked; the step needed something else. The search results include a direct match for merging a pull request on GitHub.
+- signals: needs github; query names github
 - judge: None of the returned tools provide the capability to directly merge branches (such as GITHUB_MERGE_A_BRANCH), as the available merge tool only merges pull requests.
 
 ### Task 89

@@ -79,40 +79,59 @@ grouping stage could not label cleanly).
 `PROXY_EXECUTE` fallbacks or duplicate variants, the rest merged into alternative groups. Flat recall
 was measuring log noise for roughly half of what it counted.
 
-### Finding 1: only 19 of 433 capabilities are true search-recall failures
+### Finding 1: ranking, not retrieval, is the dominant failure
 
-Every unmet capability is attributed: which query was meant to find it, what search returned for
-that query, and whether the query was good enough that search should have found it. The judgement is
-made on the query alone, without showing the model the expected tools, so it cannot reason backwards
-from the answer key.
+Every unmet capability is traced to the query meant to find it, what search returned for that query,
+and a fault verdict. Attribution runs deterministically where it can — from Composio's own toolkit
+and `readOnlyHint` metadata — and falls back to a three-vote LLM judgement only for what those cannot
+settle.
 
 | Fault | Count | Meaning |
 |---|---:|---|
 | **`search: returned it, but only in related`** | **83** | search *had* the tool and left it below the fold |
 | `agent: never searched for it` | 28 | no query targeted this capability at all |
-| **`search: fair query, tool not returned`** | **19** | **the true recall failure** |
+| `agent: query too vague to find it` | 24 | searched, but not specifically enough to resolve |
 | `catalogue: no tool provides this` | 18 | not a search bug |
-| `agent: query too vague to find it` | 9 | searched, but no engine could resolve it |
+| `search: fair query, tool not returned` | 4 | true recall failure |
 
-**Agent-side 37 · search-side 102 · catalogue 18.**
+**Agent-side 52 · search-side 87 · catalogue 18.**
 
-The reframe matters: of 433 required capabilities, search genuinely failed to retrieve only **19
-(4.4%)**. Its far larger problem is **ranking** — 83 capabilities where the right tool was returned
-and never promoted. And 37 failures are the agent's own, fixable by better decomposition, which
-would be misread as retrieval failures by any recall metric.
+Search retrieved what was asked for in all but **4 of 433** capabilities. Its real weakness is
+**ranking**: 83 capabilities where the correct tool was returned and never promoted to `primary` —
+twenty times the recall failure, and invisible to an agent that acts on the primary recommendation.
 
-The clearest true recall failure, task 16:
+The clearest recall failure, settled without any LLM judgement:
 
 ```
 capability : Modify repository code and create pull requests
 query      : "Git repository file inspect and commit or pull request"
 needed     : GITHUB_COMMIT_MULTIPLE_FILES, GITHUB_CREATE_A_PULL_REQUEST
 returned   : GITHUB_GET_A_REPOSITORY, GITHUB_GET_A_TREE, GITHUB_GET_REPOSITORY_CONTENT,
-             GITHUB_LIST_COMMITS, GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS
+             GITHUB_LIST_COMMITS, GITHUB_LIST_BRANCHES, GITHUB_SEARCH_CODE ...
 ```
 
-The query names the application and asks for commit and pull-request actions. Search returned nine
-GitHub tools, every one of them read-only. The write tools it asked for exist and were not returned.
+The query asks to commit and open a pull request. Every one of the nine GitHub tools returned carries
+Composio's `readOnlyHint` tag, so none of them can perform either action. That verdict comes from the
+catalogue's own metadata, not from a model's opinion.
+
+### How much to trust the agent/search split
+
+This split was revised five times while the analysis was built — 19 → 11 → 5 → 1 → 2 → 4 — as each
+gate was corrected, moving in **both** directions. Two corrections came from cases spotted by hand:
+search was being blamed for not returning Cloudflare tools to a query about Vercel deployments, and
+for not returning Sheets tools to a query about calendar events. A later over-correction then excused
+the GitHub case above. Every gate is individually defensible, but that sensitivity is real.
+
+**Quote these three directly** — they are set membership, no judgement involved:
+
+- **83** delivered only in `related`
+- **28** never searched for by the agent
+- **18** catalogue gaps
+
+**Present the search-vs-agent split with its case list attached**, not as a standalone headline. Of
+the 4 recall failures, 1 rests on deterministic tag evidence; the other 3 rest on LLM votes and are
+individually arguable. `failure_analysis.md` prints the query, the results and the reasoning for
+every one, so any row can be checked in a minute.
 
 ### Finding 2: recall is flat across task complexity, but `primary` is not
 

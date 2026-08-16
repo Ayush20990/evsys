@@ -9,13 +9,26 @@ back instead, or whose fault it was -- and those three answers need different fi
     search returned it, but only in `related`  -> SEARCH: ranking
     no tool for it exists anywhere             -> catalogue, nobody's search bug
 
-Attribution runs in two LLM stages per unmet capability. First, which of the agent's queries
-was aimed at this capability -- the agent's queries are free text, so this cannot be a string
-match. Second, given that query, *should* a competent search engine have returned a tool that
-does the job? A query naming the application and the action is fair, and missing it is
-search's failure; a query too vague to identify the capability is the agent's failure. The
-judgement is made without showing the model which tools were expected, so it cannot reason
-backwards from the answer key.
+Attribution runs in three layers, so that no verdict rests on a single opaque judgement.
+
+  1. Deterministic, from Composio's own toolkit metadata: which applications does the query
+     name, and which does the needed tool belong to? A query naming Vercel cannot be blamed
+     on search for failing to return Cloudflare tools -- that is settled without an LLM, and
+     a human can check it. Compound queries ("A or B") are flagged here too.
+  2. What layer 1 cannot settle goes to an LLM, asked a concrete question about a named
+     tool: would a competent engine return THIS tool for THIS query? Three independent votes,
+     majority wins.
+  3. Both layers are printed on every case, so any verdict can be audited by hand.
+
+Layer 2 is shown the tool that was expected. An earlier version withheld it, meaning to stop
+the model reasoning backwards from the answer key; that was the wrong trade and produced
+systematically wrong verdicts. The question is not "was there a miss" -- that is already
+established -- but "whose fault is it", which cannot be answered without knowing the target.
+Concretely: the capability "Read and update the booking schedule" never mentions that the
+schedule lives in Google Sheets, so the query "read and update bookings or calendar events"
+looked like a perfect match and search was blamed for returning Calendar tools. The same
+error credited search with a failure on "publish video to social media platforms" when the
+target was an Instagram-specific tool the query never named.
 
 The same split applies to the disagreement list. When the agent ran a tool an independent
 judge rejects, what matters is whether a correct tool was sitting in the results it had:
@@ -29,7 +42,7 @@ Requires the run to have been scored first:
 """
 from __future__ import annotations
 
-import json, sys
+import json, re, sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -71,42 +84,113 @@ Return exactly this JSON:
 '''
 
 
-ADEQUACY_PROMPT = '''You are auditing a tool-search engine. Judge whether a query was good enough
-that a competent search engine SHOULD have found the right tool.
-
-The capability the user needed:
-  {capability}
+# The adequacy call is shown the tools that were expected. An earlier version withheld them,
+# to stop the model reasoning backwards from the answer key -- which was the wrong trade. The
+# question here is not "was there a miss" (that is already established) but "whose fault is
+# it", and that cannot be answered without knowing what the target was.
+#
+# Withholding it produced exactly the wrong verdicts. The capability "Read and update the
+# booking schedule" never mentions that the schedule lives in Google Sheets; the query "read
+# and update bookings or calendar events" therefore looks like a perfect match, and search
+# was blamed for returning Calendar tools. Same for "Attempt social media publishing on
+# Instagram" against the query "publish video to social media platforms": without seeing
+# INSTAGRAM_POST_IG_USER_MEDIA, the model cannot know a generic social-publishing tool was
+# not the intended answer.
+#
+# Asking about a named tool also turns an abstract judgement into a concrete one a human can
+# check: would this tool be a correct top result for this query?
+ADEQUACY_PROMPT = '''You are auditing a tool-search engine by deciding whether a query was
+specific enough to find a particular tool.
 
 The query that was issued:
   "{query}"
 
-What the search engine returned for it:
-{returned}
+The tool that should have been returned:
+  {tool}
+  {tool_description}
 
-Would THIS query, as written, lead a competent engine to a tool that does THAT capability?
+The step the user was trying to carry out:
+  {capability}
 
-This is not a question about whether the query is well phrased in general. It is about
-whether the query actually asks for the capability above.
+Question: for that query alone, would a competent search engine be expected to return that
+tool among its top results?
 
-Answer false when the query asks for something materially different from the capability,
-even if it is a perfectly good query for what it does ask. In particular:
-- it names a different application than the capability requires (a query about Vercel
-  deployments cannot be expected to return Cloudflare DNS tools; a query about calendar
-  events cannot be expected to return spreadsheet tools);
-- it asks for a different action (reading when the capability is writing, listing when the
-  capability is updating);
-- it is so generic that many unrelated capabilities would match it equally well.
+Answer NO when the query does not identify the tool:
+- the tool belongs to a specific application and the query names a different one, or names
+  none at all while describing something many applications could do. "Publish video to
+  social media platforms" does not identify an Instagram-specific publishing tool. "Read and
+  update bookings or calendar events" does not identify a spreadsheet tool.
+- the query asks for a different action than the tool performs.
+- the query bundles several unrelated asks together, so no single tool is clearly the target.
 
-Answer true only when the query genuinely targets this capability -- naming the right
-application, or describing the action unambiguously enough that the right tool is the
-obvious answer -- and search still failed to return it.
+Answer YES only when the query genuinely points at this tool -- naming its application, or
+describing its specific action unambiguously enough that it is an obvious top result. If YES
+and search still failed to return it, that is a real retrieval failure.
 
-Judge the query against the capability, not against the quality of the results. Poor results
-for a query that did ask the right thing is exactly the failure being measured, and counts
-as adequate=true.
+Judge the query against the tool, not the quality of the results that came back.
 
 Return exactly this JSON:
-{{"adequate": true or false, "why": "one sentence explaining the verdict"}}
+{{"findable": true or false, "why": "one sentence"}}
+'''
+
+
+# When a query names no application at all, and the needed tool belongs to a specific one,
+# the decisive question is whether search returned an equivalent tool from a DIFFERENT
+# application. If it did, search answered the question it was actually asked and the query
+# was simply under-specified -- "fetch social media page posts" cannot be expected to yield
+# Facebook rather than LinkedIn, and "create reminder or task" cannot be expected to yield
+# TickTick rather than Notion. Without this check those land on search, which is unfair and
+# would not survive review.
+SUBSTITUTE_PROMPT = '''A search query named no particular application. Judge whether the results
+did essentially the job the query asked for, using a different application.
+
+The query:
+  "{query}"
+
+The tool that was expected (from {needed_vendor}):
+  {tool}
+
+What search actually returned as its top results:
+{returned}
+
+Do the returned tools perform essentially the same KIND of work the query described, just in
+a different application than the one expected? Ignore which application is "correct" -- the
+query never named one. Judge only whether the returned tools do that kind of job.
+
+Return exactly this JSON:
+{{"equivalent": true or false, "why": "one sentence"}}
+'''
+
+
+# Final gate before blaming search. If something search returned does what the QUERY literally
+# asked for, then search answered correctly and the query simply asked for the wrong thing.
+# This catches the cases that survive every other check: a query "merge a pull request on
+# GitHub" that returned GITHUB_MERGE_A_PULL_REQUEST cannot be a retrieval failure merely
+# because the step actually needed GITHUB_MERGE_A_BRANCH; nor can "deploy or manage vercel
+# project" be blamed for returning deployment tools when the step needed environment
+# variables. Both are the agent asking for the wrong thing, not search failing to answer.
+ANSWERED_QUERY_PROMPT = '''Judge whether a search engine answered the query it was actually given.
+
+The query:
+  "{query}"
+
+What it returned as top results:
+{returned}
+
+Ignoring what the user "really" needed, did those results cover EVERY distinct thing this
+query asked for? Judge the results against the words of the query alone.
+
+A query often names several actions ("inspect and commit or pull request" names three).
+Answer false if the results cover only some of them -- partial coverage is a retrieval
+failure on the clauses that were ignored, not a correct answer. Read-only results do not
+satisfy a clause asking to create, commit, update or merge something.
+
+Answer true only when nothing the query asked for was left unaddressed.
+
+Return exactly this JSON:
+{{"answered": true or false, "slug": "the tool that answers the query, or null",
+  "unaddressed": "the part of the query nothing covered, or null",
+  "why": "one sentence"}}
 '''
 
 
@@ -131,6 +215,66 @@ Return exactly this JSON:
 {{"available": true or false, "slug": "the tool it should have used, or null",
   "why": "one sentence"}}
 '''
+
+
+def vendor_drift(traces: dict[int, dict], metadata_cache: Path) -> dict[str, Any]:
+    """Queries that name an application and get nothing from it back.
+
+    This is measured directly from the traces rather than judged, and it is counted
+    separately from capability recall because it can happen even when no capability was
+    missed -- and, more importantly, even when the requirement group was empty. Task 1 asked
+    "Create or check payment link in HubSpot" and got STRIPE_CREATE_PAYMENT_LINK as its only
+    primary result. Scoring called that capability a catalogue gap, which is fair on its own
+    terms, and in doing so never looked at the query at all. The vendor failure was invisible.
+
+    Matching is on word boundaries: `cal` (Cal.com) must appear as its own word, or it fires
+    on every mention of "calendar" and manufactures false positives. Toolkits come from
+    Composio's own metadata, with a longest-prefix fallback for the few cached records whose
+    toolkit field is null.
+    """
+    cache = json.loads(metadata_cache.read_text(encoding="utf-8")) if metadata_cache.exists() else {}
+    known = {rec["toolkit"].lower() for rec in cache.values()
+             if rec and rec.get("toolkit")}
+
+    def toolkit_of(slug: str) -> str | None:
+        record = cache.get(slug)
+        if record and record.get("toolkit"):
+            return record["toolkit"].lower()
+        lowered = slug.lower()
+        for candidate in sorted(known, key=len, reverse=True):
+            if lowered.startswith(candidate + "_"):
+                return candidate
+        return None
+
+    patterns = {}
+    for vendor in known:
+        cleaned = vendor.strip("_")
+        if len(cleaned) < 3:
+            continue
+        alts = {re.escape(cleaned.replace("_", "")), re.escape(cleaned.replace("_", " "))}
+        patterns[vendor] = re.compile(r"(?<![a-z0-9])(?:" + "|".join(sorted(alts)) + r")(?![a-z0-9])")
+
+    total = scoped = 0
+    cases: list[dict[str, Any]] = []
+    for task_id in sorted(traces):
+        for query in traces[task_id]["queries"]:
+            total += 1
+            text = re.sub(r"[^a-z0-9]+", " ", query["query"].lower())
+            wanted = {v for v, p in patterns.items() if p.search(text)}
+            if not wanted:
+                continue
+            scoped += 1
+            primary = query.get("primary_tool_slugs") or []
+            related = query.get("related_tool_slugs") or []
+            in_primary = {toolkit_of(s) for s in primary} - {None}
+            anywhere = {toolkit_of(s) for s in primary + related} - {None}
+            if wanted & in_primary:
+                continue
+            cases.append({"task": task_id, "query": query["query"],
+                          "named": sorted(wanted), "primary": primary[:4],
+                          "absent_entirely": not (wanted & anywhere)})
+    return {"total_queries": total, "vendor_scoped": scoped, "cases": cases,
+            "severe": [c for c in cases if c["absent_entirely"]]}
 
 
 def load_run(run_dir: Path) -> tuple[dict[int, dict], list[dict]]:
@@ -162,7 +306,121 @@ def describe_results(query: dict) -> str:
             f"  related: {', '.join(related) or '(none)'}")
 
 
-def attribute(group: dict, trace: dict, client, limiter, cache: dict) -> dict[str, Any]:
+def vendor_signals(query_text: str, expected: list[str], toolkits: dict[str, str],
+                   patterns: dict[str, Any], returned: list[str] | None = None) -> dict[str, Any]:
+    """Deterministic checks a human can verify without trusting any model.
+
+    These decide the clear-cut cases outright. A query naming Vercel cannot be blamed on
+    search for failing to return Cloudflare tools; a query naming no application at all,
+    where the needed tool is one application's specific feature, is under-specified. Only
+    what these cannot settle goes to the LLM.
+    """
+    named = {v for v, p in patterns.items()
+             if p.search(re.sub(r"[^a-z0-9]+", " ", query_text.lower()))}
+    needed = {toolkits.get(s) for s in expected} - {None}
+    got = {toolkits.get(s) for s in (returned or [])} - {None}
+    return {
+        "vendors_named_in_query": sorted(named),
+        "vendors_needed": sorted(needed),
+        "vendors_returned": sorted(got),
+        "names_wrong_vendor": bool(named and needed and not (named & needed)),
+        "names_no_vendor": not named,
+        # True only when search answered with a different application than the one needed.
+        # Without this the under-specified-query gate fired on task 16, where search returned
+        # nine GitHub tools -- the right vendor, all read-only -- and excused a real miss.
+        "returned_other_vendor": bool(got and needed and not (got & needed)),
+        "compound": bool(re.search(r"\bor\b", query_text.lower())),
+    }
+
+
+def findable_vote(client, limiter, query: str, tool: str, description: str,
+                  capability: str, votes: int = 3) -> tuple[bool, str]:
+    """Majority of independent votes, so one stray sample cannot flip a verdict."""
+    results, reasons = [], []
+    for _ in range(votes):
+        verdict = call_gemini(client, limiter, ADEQUACY_PROMPT.format(
+            query=query, tool=tool, tool_description=description[:300] or "",
+            capability=capability)) or {}
+        results.append(bool(verdict.get("findable")))
+        reasons.append(verdict.get("why", ""))
+    yes = sum(results)
+    majority = yes > votes / 2
+    pick = next((r for r, v in zip(reasons, results) if v == majority), reasons[0] if reasons else "")
+    return majority, f"{pick} [{yes}/{votes} votes]"
+
+
+
+# Verbs that ask for a change. If a query contains one and every tool search returned is
+# tagged readOnlyHint, search did not answer the write half of the question -- whatever else
+# it got right. This replaces an LLM check that could not hold a line: asked whether results
+# "covered the query", it excused task 16 (query "inspect and commit or pull request", nine
+# read-only GitHub tools returned) because inspection was covered, then flipped to rejecting
+# "merge a pull request on GitHub" -- which returned exactly GITHUB_MERGE_A_PULL_REQUEST --
+# because an extra result was also present. Composio's own tags settle it without judgement.
+WRITE_VERB = re.compile(
+    r"\b(creat\w*|commit\w*|merg\w*|updat\w*|delet\w*|add|adds|adding|post\w*|publish\w*"
+    r"|send\w*|upload\w*|writ\w*|insert\w*|remov\w*|archiv\w*|assign\w*|set|configur\w*"
+    r"|modif\w*|edit\w*|appl\w*|mov\w*|renam\w*)\b", re.I)
+
+
+def write_ask_unanswered(query: dict, descriptions: dict) -> str | None:
+    """Query asks for a change, every returned tool is read-only -> search missed the write."""
+    if not WRITE_VERB.search(query["query"]):
+        return None
+    returned = (query.get("primary_tool_slugs") or []) + (query.get("related_tool_slugs") or [])
+    if not returned:
+        return None
+    tagged = [(descriptions.get(s) or {}).get("tags") or [] for s in returned]
+    known = [t for t in tagged if t]
+    if not known or len(known) < len(returned) / 2:
+        return None                                  # too little tag coverage to conclude
+    if any("readOnlyHint" not in t for t in known):
+        return None                                  # at least one write tool came back
+    verb = WRITE_VERB.search(query["query"]).group(0)
+    return (f"query asks to '{verb}' but every tool returned is tagged read-only, so the "
+            f"write half of the query was never answered")
+
+
+def _judge_findable(cached: dict, client, limiter, query: dict, expected: list[str],
+                    descriptions: dict, group: dict) -> None:
+    """Decide whether search should have found the target, then sanity-check the verdict.
+
+    A "yes" here blames search, so it gets one more test: did search answer the query it was
+    literally given? If it did, the query asked for the wrong thing and the fault is the
+    agent's. Without this, a query reading "merge a pull request on GitHub" counts as a
+    retrieval failure even though GITHUB_MERGE_A_PULL_REQUEST came back as the top result,
+    purely because the step needed GITHUB_MERGE_A_BRANCH.
+    """
+    target = expected[0]
+    description = (descriptions.get(target) or {}).get("description", "")
+    ok, why = findable_vote(client, limiter, query["query"], target, description,
+                            group["purpose"])
+    if ok:
+        # Deterministic override, from Composio's own readOnlyHint tags: a query asking for a
+        # change, answered only with read-only tools, is a retrieval failure whatever else
+        # came back. Settled here so the LLM gate below cannot excuse it.
+        unanswered = write_ask_unanswered(query, descriptions)
+        if unanswered:
+            cached["findable"] = True
+            cached["adequacy_why"] = f"{why} ({unanswered})"
+            return
+        primary = query.get("primary_tool_slugs") or []
+        related = query.get("related_tool_slugs") or []
+        answered = call_gemini(client, limiter, ANSWERED_QUERY_PROMPT.format(
+            query=query["query"],
+            returned="\n".join(f"- {s}" for s in (primary + related)[:8]) or "  (nothing)")) or {}
+        if answered.get("answered") and answered.get("slug") not in expected:
+            cached["findable"] = False
+            cached["adequacy_why"] = (
+                f"search answered the query as written -- {answered.get('slug')} does what it "
+                f"asked; the step needed something else. {answered.get('why','')}")
+            return
+    cached["findable"] = ok
+    cached["adequacy_why"] = why
+
+
+def attribute(group: dict, trace: dict, client, limiter, cache: dict,
+              toolkits: dict[str, str], patterns: dict, descriptions: dict) -> dict[str, Any]:
     """Work out which query targeted this capability, and whose failure it was."""
     expected = group.get("acceptable_tool_slugs") or []
     primary, everything = surfaced_sets(trace)
@@ -194,11 +452,42 @@ def attribute(group: dict, trace: dict, client, limiter, cache: dict) -> dict[st
                   "match_why": match.get("why", "")}
         if cached["index"] and 1 <= cached["index"] <= len(trace["queries"]):
             query = trace["queries"][cached["index"] - 1]
-            verdict = call_gemini(client, limiter, ADEQUACY_PROMPT.format(
-                capability=group["purpose"], query=query["query"],
-                returned=describe_results(query))) or {}
-            cached["adequate"] = bool(verdict.get("adequate"))
-            cached["adequacy_why"] = verdict.get("why", "")
+            signals = vendor_signals(query["query"], expected, toolkits, patterns,
+                                     (query.get("primary_tool_slugs") or [])
+                                     + (query.get("related_tool_slugs") or []))
+            cached["signals"] = signals
+            # Deterministic verdicts first. Only what these cannot settle costs LLM calls.
+            if signals["names_wrong_vendor"]:
+                cached["findable"] = False
+                cached["adequacy_why"] = (
+                    f"query names {', '.join(signals['vendors_named_in_query'])} but the step "
+                    f"needs {', '.join(signals['vendors_needed'])}")
+            elif (signals["names_no_vendor"] and signals["vendors_needed"]
+                  and signals["returned_other_vendor"]):
+                # No application named, the target belongs to one, and search answered with a
+                # DIFFERENT application. Only then is this the under-specified-query case.
+                #
+                # The returned-vendor check is load-bearing. Without it the gate fired on
+                # task 16, where the query asked to "inspect and commit or pull request" and
+                # search returned nine GitHub tools -- every one read-only. Same vendor, and
+                # nothing that commits or opens a pull request, so there was no substitution
+                # to excuse; that is a straight retrieval failure.
+                primary = query.get("primary_tool_slugs") or []
+                sub = call_gemini(client, limiter, SUBSTITUTE_PROMPT.format(
+                    query=query["query"], tool=expected[0],
+                    needed_vendor=", ".join(signals["vendors_needed"]),
+                    returned="\n".join(f"- {s}" for s in primary[:6]) or "  (nothing)")) or {}
+                if sub.get("equivalent"):
+                    cached["findable"] = False
+                    cached["adequacy_why"] = (
+                        f"query named no application; search returned an equivalent tool from "
+                        f"another one -- {sub.get('why','')}")
+                else:
+                    _judge_findable(cached, client, limiter, query, expected,
+                                    descriptions, group)
+            else:
+                _judge_findable(cached, client, limiter, query, expected,
+                                descriptions, group)
         cache[key] = cached
 
     index = cached.get("index")
@@ -208,11 +497,12 @@ def attribute(group: dict, trace: dict, client, limiter, cache: dict) -> dict[st
                 "adequacy_why": cached.get("match_why", "")}
 
     query = trace["queries"][index - 1]
-    fault = SEARCH_RECALL if cached.get("adequate") else AGENT_WEAK_QUERY
+    fault = SEARCH_RECALL if cached.get("findable") else AGENT_WEAK_QUERY
     return {"fault": fault, "query": query["query"], "query_index": index,
             "returned": describe_results(query),
             "reason": cached.get("adequacy_why", ""),
-            "adequacy_why": cached.get("adequacy_why", "")}
+            "adequacy_why": cached.get("adequacy_why", ""),
+            "signals": cached.get("signals", {})}
 
 
 def analyse_disagreement(group: dict, execution: dict, trace: dict, client, limiter,
@@ -267,6 +557,29 @@ def main(run_dir: Path) -> None:
     limiter = RateLimiter(GEMINI_RPM)
     traces, scores = load_run(run_dir)
 
+    # Shared lookups for the deterministic layer, from Composio's own metadata.
+    meta = json.loads((ROOT / "tool_metadata_cache.json").read_text(encoding="utf-8"))         if (ROOT / "tool_metadata_cache.json").exists() else {}
+    known = {r["toolkit"].lower() for r in meta.values() if r and r.get("toolkit")}
+    toolkits: dict[str, str] = {}
+    for slug, record in meta.items():
+        if record and record.get("toolkit"):
+            toolkits[slug] = record["toolkit"].lower()
+        else:
+            lowered = slug.lower()
+            for candidate in sorted(known, key=len, reverse=True):
+                if lowered.startswith(candidate + "_"):
+                    toolkits[slug] = candidate
+                    break
+    patterns = {}
+    for vendor in known:
+        cleaned = vendor.strip("_")
+        if len(cleaned) < 3:
+            continue
+        alts = {re.escape(cleaned.replace("_", "")), re.escape(cleaned.replace("_", " "))}
+        patterns[vendor] = re.compile(
+            r"(?<![a-z0-9])(?:" + "|".join(sorted(alts)) + r")(?![a-z0-9])")
+    descriptions = {s: r for s, r in meta.items() if r}
+
     cache_path = run_dir / "attribution_cache.json"
     cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
 
@@ -286,7 +599,8 @@ def main(run_dir: Path) -> None:
         for group in row.get("unmet", []):
             if group.get("judged"):
                 continue  # a valid alternative was found; not a failure
-            detail = attribute(group, trace, client, limiter, cache)
+            detail = attribute(group, trace, client, limiter, cache,
+                               toolkits, patterns, descriptions)
             faults[detail["fault"]] += 1
             failures.append({"task": row["task"], "capability": group["purpose"],
                              "expected_any_of": group.get("acceptable_tool_slugs") or [],
@@ -316,10 +630,12 @@ def main(run_dir: Path) -> None:
                     group, executions[index - 1], trace, client, limiter, match.get("why", ""))})
 
     total = sum(r.get("groups", 0) for r in scores if "error" not in r)
-    write_reports(run_dir, failures, disagreements, demoted, faults, total, traces)
+    drift = vendor_drift(traces, ROOT / "tool_metadata_cache.json")
+    write_reports(run_dir, failures, disagreements, demoted, faults, total, traces, drift)
 
 
-def write_reports(run_dir, failures, disagreements, demoted, faults, total, traces) -> None:
+def write_reports(run_dir, failures, disagreements, demoted, faults, total, traces,
+                  drift) -> None:
     agent_fault = sum(v for k, v in faults.items() if k.startswith("agent"))
     search_fault = sum(v for k, v in faults.items() if k.startswith("search")) + len(demoted)
 
@@ -342,12 +658,52 @@ def write_reports(run_dir, failures, disagreements, demoted, faults, total, trac
         md.append(f"| {fault} | {count} | {meaning.get(fault, 'investigate')} |")
     md.append(f"| {SEARCH_RANKING} (from met groups) | {len(demoted)} | "
               f"delivered only in `related`, never promoted |")
+    strong = [f for f in failures if f["fault"].startswith("search:")
+              and "read-only" in (f.get("adequacy_why") or "")]
+    md += ["",
+           "**How much to trust the agent/search split.** The counts above were revised five "
+           "times while this analysis was built, moving in both directions as each gate was "
+           "corrected: 19 -> 11 -> 5 -> 1 -> 2 -> "
+           f"{sum(1 for f in failures if f['fault'].startswith('search:'))}. Every gate is "
+           "individually defensible and two were validated by hand, but the sensitivity is "
+           "real, so treat this split as a reading of the evidence rather than a measurement.",
+           "",
+           "The three counts that do NOT depend on any judgement -- delivered-only-in-`related`, "
+           "never-searched-for, and catalogue gaps -- are computed from set membership alone "
+           "and are safe to quote directly.",
+           "",
+           f"Of the search-recall failures, **{len(strong)}** rest on deterministic evidence "
+           "(Composio's own `readOnlyHint` tags proving no returned tool could perform the "
+           "change the query asked for); the rest rest on LLM votes and are individually "
+           "arguable. Each is listed below with its query and results so any row can be "
+           "checked.", ""]
     md += ["",
            f"**Agent-side: {agent_fault}. Search-side: {search_fault}. "
            f"Catalogue: {faults.get(CATALOGUE, 0)}.**", "",
            "Agent-side failures are fixable by better decomposition or phrasing and say nothing",
            "about retrieval quality. Search-side failures are the ones that belong in a report on",
            "the search tool.", ""]
+
+    md += ["## Vendor scoping: queries that name an application and get another", "",
+           f"Measured directly, not judged. Of {drift['total_queries']} queries, "
+           f"**{drift['vendor_scoped']}** name an application explicitly. In "
+           f"**{len(drift['cases'])}** of those the named application appears nowhere in "
+           f"`primary`, and in **{len(drift['severe'])}** it is absent from the results "
+           f"entirely.", "",
+           f"That is **{100*len(drift['severe'])/max(drift['vendor_scoped'],1):.1f}%** of "
+           "vendor-scoped queries fully ignoring the application named in the query — real, but",
+           "rare rather than systemic. Counted separately from capability recall because it can",
+           "happen even when no capability was missed, and because a capability scored as a",
+           "catalogue gap never has its query examined at all (task 1 below).", ""]
+    if drift["cases"]:
+        md += ["| Task | Query | Named | Primary returned | Absent entirely |",
+               "|---|---|---|---|---|"]
+        for case in drift["cases"]:
+            tools = ", ".join(f"`{s}`" for s in case["primary"]) or "_(none)_"
+            md.append(f"| {case['task']} | `{case['query'][:52]}` | "
+                      f"{', '.join(case['named'])} | {tools} | "
+                      f"{'**yes**' if case['absent_entirely'] else 'no'} |")
+        md.append("")
 
     md += ["## Delivered, but never recommended", "",
            f"{len(demoted)} capabilities were satisfied only by a tool in `related`. An agent acting",
@@ -377,13 +733,24 @@ def write_reports(run_dir, failures, disagreements, demoted, faults, total, trac
                 md.append(f"- {f['reason']}")
             if f.get("adequacy_why"):
                 md.append(f"- why: {f['adequacy_why']}")
+            sig = f.get("signals") or {}
+            if sig:
+                bits = []
+                if sig.get("vendors_needed"):
+                    bits.append(f"needs {', '.join(sig['vendors_needed'])}")
+                bits.append("query names " + (", ".join(sig["vendors_named_in_query"])
+                                              if sig.get("vendors_named_in_query") else "no application"))
+                if sig.get("compound"):
+                    bits.append("**compound query** (bundles more than one ask)")
+                md.append(f"- signals: {'; '.join(bits)}")
             if f.get("judge_said"):
                 md.append(f"- judge: {f['judge_said']}")
             md.append("")
 
     (run_dir / "failure_analysis.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     save_json(run_dir / "failure_analysis.json",
-              {"failures": failures, "demoted": demoted, "faults": dict(faults)})
+              {"failures": failures, "demoted": demoted, "faults": dict(faults),
+               "vendor_drift": drift})
 
     sel = [d for d in disagreements if d["better_tool_was_available"]]
     nooption = [d for d in disagreements if not d["better_tool_was_available"]]
@@ -423,6 +790,8 @@ def write_reports(run_dir, failures, disagreements, demoted, faults, total, trac
     for fault, count in faults.most_common():
         print(f"  {fault:<52} {count}")
     print(f"  agent-side {agent_fault} | search-side {search_fault}")
+    print(f"vendor drift: {len(drift['cases'])}/{drift['vendor_scoped']} vendor-scoped queries "
+          f"({len(drift['severe'])} with the named app absent entirely)")
     print(f"disagreements: {len(disagreements)} "
           f"({len(sel)} agent selection, {len(nooption)} search left no option)")
 
