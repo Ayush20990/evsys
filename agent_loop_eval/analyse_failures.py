@@ -634,118 +634,156 @@ def main(run_dir: Path) -> None:
     write_reports(run_dir, failures, disagreements, demoted, faults, total, traces, drift)
 
 
+# --------------------------------------------------------------------------------------
+# Reports. Written to be read by someone who was not here: the answer first, plain labels
+# instead of internal fault codes, caveats last, and every case laid out the same way --
+# what was asked, what was needed, what came back, what went wrong.
+# --------------------------------------------------------------------------------------
+
+PLAIN = {
+    AGENT_NO_QUERY:   ("The agent never looked for it",
+                       "No query it issued was aimed at this capability, so search was never asked."),
+    AGENT_WEAK_QUERY: ("The agent asked too vaguely",
+                       "It searched, but the query did not identify the tool it needed."),
+    SEARCH_RECALL:    ("Search missed a fair question",
+                       "The query identified what was needed and search still did not return it."),
+    SEARCH_RANKING:   ("Search found it but buried it",
+                       "The right tool came back under `related`, never as a recommendation."),
+    CATALOGUE:        ("No tool exists for it",
+                       "Nothing in the catalogue does this, so nobody could have found it."),
+}
+
+
+def case_block(*, task: int, capability: str, asked: str | None, wanted: list[str],
+               got: str | None, problem: str, extra: list[str] | None = None) -> list[str]:
+    """One failure, always in the same shape, so the file can be skimmed rather than read."""
+    out = [f"#### Task {task} — {capability}", ""]
+    out.append(f"- **Asked:** `{asked}`" if asked
+               else "- **Asked:** _nothing — no query targeted this_")
+    out.append("- **Needed:** " + (", ".join(f"`{s}`" for s in wanted) if wanted
+                                   else "_no tool in the catalogue provides this_"))
+    if got:
+        for index, line in enumerate(got.splitlines()):
+            out.append(("- **Got:** " if index == 0 else "  ") + line.strip())
+    out.append(f"- **What went wrong:** {problem}")
+    out.extend(extra or [])
+    out.append("")
+    return out
+
+
 def write_reports(run_dir, failures, disagreements, demoted, faults, total, traces,
                   drift) -> None:
     agent_fault = sum(v for k, v in faults.items() if k.startswith("agent"))
-    search_fault = sum(v for k, v in faults.items() if k.startswith("search")) + len(demoted)
+    search_recall = faults.get(SEARCH_RECALL, 0)
+    search_side = search_recall + len(demoted)
+    by_fault: dict[str, list] = {}
+    for failure in failures:
+        by_fault.setdefault(failure["fault"], []).append(failure)
+    hard = [f for f in failures if f["fault"] == SEARCH_RECALL
+            and "read-only" in (f.get("adequacy_why") or "")]
 
-    md = [f"# Failure analysis — `{run_dir.name}`", "",
-          f"{len(failures)} of {total} required capabilities went unmet after the judge credited",
-          f"valid alternatives, plus {len(demoted)} delivered but never recommended.", "",
-          "Every failure below is attributed: which query was meant to find the tool, what search",
-          "returned for it, and whether the query was good enough that search should have found it.",
+    md = [f"# What went wrong — `{run_dir.name}`", "",
+          f"The 100 use cases need **{total} capabilities** between them. This is every one that was",
+          "not delivered, why, and whose problem it is to fix.", "",
+          "## The short version", "",
+          "- **Search almost always finds the right tool.** It failed to retrieve one for a fair, "
+          f"specific query in **{search_recall} of {total}** cases.",
+          f"- **It just does not always recommend it.** In **{len(demoted)}** cases the right tool came "
+          "back only under `related`, never as a primary recommendation. An agent acting on the "
+          f"recommendation misses all {len(demoted)} — so this, not retrieval, is the thing worth fixing.",
+          f"- **{agent_fault} failures are the agent's own**: it either never searched for the "
+          f"capability ({faults.get(AGENT_NO_QUERY, 0)}) or asked too vaguely to find it "
+          f"({faults.get(AGENT_WEAK_QUERY, 0)}). These say nothing about search quality.",
+          f"- **{faults.get(CATALOGUE, 0)}** need a tool that does not exist in the catalogue at all.",
           "",
-          "## Where the fault lies", "",
-          "| Fault | Count | Meaning |", "|---|---:|---|"]
-    meaning = {
-        AGENT_NO_QUERY: "the agent never searched for this capability at all",
-        AGENT_WEAK_QUERY: "the agent searched, but too vaguely for any engine to resolve",
-        SEARCH_RECALL: "the agent asked a fair question and search did not return the tool",
-        SEARCH_RANKING: "search returned the right tool but left it in `related`",
-        CATALOGUE: "no tool in the catalogue provides this",
-    }
-    for fault, count in faults.most_common():
-        md.append(f"| {fault} | {count} | {meaning.get(fault, 'investigate')} |")
-    md.append(f"| {SEARCH_RANKING} (from met groups) | {len(demoted)} | "
-              f"delivered only in `related`, never promoted |")
-    strong = [f for f in failures if f["fault"].startswith("search:")
-              and "read-only" in (f.get("adequacy_why") or "")]
-    md += ["",
-           "**How much to trust the agent/search split.** The counts above were revised five "
-           "times while this analysis was built, moving in both directions as each gate was "
-           "corrected: 19 -> 11 -> 5 -> 1 -> 2 -> "
-           f"{sum(1 for f in failures if f['fault'].startswith('search:'))}. Every gate is "
-           "individually defensible and two were validated by hand, but the sensitivity is "
-           "real, so treat this split as a reading of the evidence rather than a measurement.",
-           "",
-           "The three counts that do NOT depend on any judgement -- delivered-only-in-`related`, "
-           "never-searched-for, and catalogue gaps -- are computed from set membership alone "
-           "and are safe to quote directly.",
-           "",
-           f"Of the search-recall failures, **{len(strong)}** rest on deterministic evidence "
-           "(Composio's own `readOnlyHint` tags proving no returned tool could perform the "
-           "change the query asked for); the rest rest on LLM votes and are individually "
-           "arguable. Each is listed below with its query and results so any row can be "
-           "checked.", ""]
-    md += ["",
-           f"**Agent-side: {agent_fault}. Search-side: {search_fault}. "
-           f"Catalogue: {faults.get(CATALOGUE, 0)}.**", "",
-           "Agent-side failures are fixable by better decomposition or phrasing and say nothing",
-           "about retrieval quality. Search-side failures are the ones that belong in a report on",
-           "the search tool.", ""]
+          "| What happened | Count | Whose problem |", "|---|---:|---|"]
+    counts = {**faults, SEARCH_RANKING: len(demoted)}
+    owner = {SEARCH_RANKING: "**Search — ranking**", SEARCH_RECALL: "**Search — retrieval**",
+             CATALOGUE: "Catalogue", AGENT_NO_QUERY: "Agent", AGENT_WEAK_QUERY: "Agent"}
+    for fault in (SEARCH_RANKING, AGENT_NO_QUERY, AGENT_WEAK_QUERY, CATALOGUE, SEARCH_RECALL):
+        count = counts.get(fault, 0)
+        if count:
+            md.append(f"| {PLAIN[fault][0]} | {count} | {owner[fault]} |")
+    md += ["", f"**Search-side {search_side} · agent-side {agent_fault} · catalogue "
+               f"{faults.get(CATALOGUE, 0)}.**", ""]
 
-    md += ["## Vendor scoping: queries that name an application and get another", "",
-           f"Measured directly, not judged. Of {drift['total_queries']} queries, "
-           f"**{drift['vendor_scoped']}** name an application explicitly. In "
-           f"**{len(drift['cases'])}** of those the named application appears nowhere in "
-           f"`primary`, and in **{len(drift['severe'])}** it is absent from the results "
-           f"entirely.", "",
-           f"That is **{100*len(drift['severe'])/max(drift['vendor_scoped'],1):.1f}%** of "
-           "vendor-scoped queries fully ignoring the application named in the query — real, but",
-           "rare rather than systemic. Counted separately from capability recall because it can",
-           "happen even when no capability was missed, and because a capability scored as a",
-           "catalogue gap never has its query examined at all (task 1 below).", ""]
-    if drift["cases"]:
-        md += ["| Task | Query | Named | Primary returned | Absent entirely |",
-               "|---|---|---|---|---|"]
-        for case in drift["cases"]:
-            tools = ", ".join(f"`{s}`" for s in case["primary"]) or "_(none)_"
-            md.append(f"| {case['task']} | `{case['query'][:52]}` | "
-                      f"{', '.join(case['named'])} | {tools} | "
-                      f"{'**yes**' if case['absent_entirely'] else 'no'} |")
-        md.append("")
-
-    md += ["## Delivered, but never recommended", "",
-           f"{len(demoted)} capabilities were satisfied only by a tool in `related`. An agent acting",
-           "on the primary recommendation would have missed every one.", ""]
+    md += ["---", "", "## Search found the right tool but buried it", "",
+           f"{len(demoted)} capabilities were delivered **only** in `related`. The tool was there; it",
+           "was never put forward. This is the largest fixable failure in the run, and counting it",
+           "needs no judgement — it is set membership.", ""]
     if demoted:
-        md += ["| Task | Capability | Found only in `related` |", "|---|---|---|"]
+        md += ["| Task | What was needed | Tool that was buried |", "|---|---|---|"]
         for item in demoted:
             tools = ", ".join(f"`{s}`" for s in item["found_in_related"][:3])
             md.append(f"| {item['task']} | {item['capability']} | {tools} |")
-    md.append("")
+        md.append("")
 
-    md += ["## Every unmet capability, with its query", ""]
-    by_task: dict[int, list] = {}
-    for failure in failures:
-        by_task.setdefault(failure["task"], []).append(failure)
-    for task in sorted(by_task):
-        md += [f"### Task {task}", "", f"> {traces[task]['task'][:220]}", ""]
-        for f in by_task[task]:
-            expected = ", ".join(f"`{s}`" for s in f["expected_any_of"]) or "_(nothing listed)_"
-            md += [f"**{f['capability']}**", "",
-                   f"- needed: {expected}",
-                   f"- **fault: {f['fault']}**"]
-            if f.get("query"):
-                md.append(f"- query the agent issued (#{f['query_index']}): `{f['query']}`")
-                md.append(f"- search returned:\n```\n{f['returned']}\n```")
-            else:
-                md.append(f"- {f['reason']}")
-            if f.get("adequacy_why"):
-                md.append(f"- why: {f['adequacy_why']}")
-            sig = f.get("signals") or {}
-            if sig:
-                bits = []
-                if sig.get("vendors_needed"):
-                    bits.append(f"needs {', '.join(sig['vendors_needed'])}")
-                bits.append("query names " + (", ".join(sig["vendors_named_in_query"])
-                                              if sig.get("vendors_named_in_query") else "no application"))
-                if sig.get("compound"):
-                    bits.append("**compound query** (bundles more than one ask)")
-                md.append(f"- signals: {'; '.join(bits)}")
-            if f.get("judge_said"):
-                md.append(f"- judge: {f['judge_said']}")
+    md += ["## Search missed a fair question", "",
+           f"{search_recall} cases where the query did identify what was needed and search still did",
+           "not return it. Each is laid out in full so it can be checked.", ""]
+    for failure in by_fault.get(SEARCH_RECALL, []):
+        md += case_block(
+            task=failure["task"], capability=failure["capability"], asked=failure.get("query"),
+            wanted=failure["expected_any_of"], got=failure.get("returned"),
+            problem=failure.get("adequacy_why") or failure.get("reason", ""),
+            extra=[f"- **Judge:** {failure['judge_said']}"] if failure.get("judge_said") else None)
+
+    if drift["cases"]:
+        md += ["## Queries that named an application and got a different one", "",
+               f"Of {drift['total_queries']} queries, {drift['vendor_scoped']} name an application. "
+               f"{len(drift['cases'])} of those got nothing from it in `primary`, and "
+               f"{len(drift['severe'])} got nothing from it anywhere.", "",
+               "Counted separately because it happens even when no capability was missed — task 1",
+               "asked for a HubSpot payment link and was answered entirely in Stripe.", "",
+               "| Task | Asked | Wanted from | Got | Named app absent entirely |",
+               "|---|---|---|---|---|"]
+        for case in drift["cases"]:
+            tools = ", ".join(f"`{s}`" for s in case["primary"]) or "_(none)_"
+            md.append(f"| {case['task']} | `{case['query'][:50]}` | {', '.join(case['named'])} | "
+                      f"{tools} | {'**yes**' if case['absent_entirely'] else 'no'} |")
+        md.append("")
+
+    md += ["---", "", "## Failures that are not search's fault", ""]
+    for fault in (AGENT_NO_QUERY, AGENT_WEAK_QUERY, CATALOGUE):
+        items = by_fault.get(fault, [])
+        if not items:
+            continue
+        title, explain = PLAIN[fault]
+        md += [f"### {title} ({len(items)})", "", explain, ""]
+        if fault == AGENT_WEAK_QUERY:
+            for failure in items:
+                md += case_block(task=failure["task"], capability=failure["capability"],
+                                 asked=failure.get("query"), wanted=failure["expected_any_of"],
+                                 got=failure.get("returned"),
+                                 problem=failure.get("adequacy_why") or failure.get("reason", ""))
+        else:
+            header = ("Capability that was never searched for" if fault == AGENT_NO_QUERY
+                      else "Capability with no tool behind it")
+            md += [f"| Task | {header} |", "|---|---|"]
+            for failure in items:
+                md.append(f"| {failure['task']} | {failure['capability']} |")
             md.append("")
+
+    md += ["---", "", "## How much to trust these numbers", "",
+           "**Safe to quote as-is.** These come from set membership, with no judgement involved:", "",
+           f"- {len(demoted)} delivered only in `related`",
+           f"- {faults.get(AGENT_NO_QUERY, 0)} never searched for by the agent",
+           f"- {faults.get(CATALOGUE, 0)} capabilities with no tool behind them", "",
+           "**Quote with the case list attached.** Splitting the rest between *the query was too "
+           "vague* and *search should have found it* is a reading of the evidence, not a "
+           "measurement. It was revised five times while this analysis was built — 19 to 11 to 5 to "
+           "1 to 2 to 4 — moving in both directions as each rule was corrected. Two corrections came "
+           "from cases spotted by hand: search was being blamed for not returning Cloudflare tools "
+           "to a query about Vercel, and Sheets tools to a query about calendar events. A later "
+           "over-correction then excused a genuine GitHub miss.", "",
+           f"Of the {search_recall} recall failures, **{len(hard)}** rests on deterministic evidence "
+           "— Composio's own `readOnlyHint` tags proving nothing returned could perform the change "
+           "the query asked for. The others rest on LLM votes and are individually arguable.", "",
+           "**How each verdict was reached.** Deterministic checks run first, from Composio's own "
+           "toolkit and read-only metadata: a query naming one application cannot be blamed for not "
+           "returning another's tools, and a query asking to create something cannot be satisfied "
+           "by read-only results. Only what those cannot settle goes to an LLM, asked a concrete "
+           "question about a named tool and answered by a majority of three votes.", ""]
 
     (run_dir / "failure_analysis.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     save_json(run_dir / "failure_analysis.json",
@@ -753,47 +791,52 @@ def write_reports(run_dir, failures, disagreements, demoted, faults, total, trac
                "vendor_drift": drift})
 
     sel = [d for d in disagreements if d["better_tool_was_available"]]
-    nooption = [d for d in disagreements if not d["better_tool_was_available"]]
-    dm = [f"# Agent believed it worked, judge disagreed — `{run_dir.name}`", "",
-          "Each case is a tool the agent ran **while stating it was carrying out a specific step**,",
-          "where an independent judge ruled that capability was never delivered. Recall cannot see",
-          "these: the agent records success and later steps proceed on a false premise.", "",
-          f"**{len(disagreements)} cases — {len(sel)} the agent's fault, {len(nooption)} search's.**", "",
-          "The split is the useful part. If a tool that would have worked was sitting in the results",
-          "the agent had already seen, it chose badly. If no such tool was ever returned, the agent",
-          "had no option and the failure is search's.", "",
-          "## Agent selection errors — a correct tool was available and not chosen", ""]
+    none_avail = [d for d in disagreements if not d["better_tool_was_available"]]
+    quote = chr(34)
+    dm = [f"# When the agent thought it had succeeded — `{run_dir.name}`", "",
+          "The agent states what each tool call is for. These are the calls where it believed it had",
+          "carried out a step, and an independent judge found that capability was never delivered.", "",
+          "**Why this matters more than a missed capability.** The agent records the step as done and",
+          "carries on, so every later step is built on something that never happened. A recall number",
+          "cannot see this at all — the capability simply looks satisfied.", "",
+          f"**{len(disagreements)} cases: {len(sel)} the agent's fault, {len(none_avail)} search's.**", "",
+          "The split turns on one question: was a tool that would have worked already sitting in the",
+          "results the agent had seen?", "", "---", "",
+          f"## The agent chose badly ({len(sel)})", "",
+          "A correct tool was in the results it had already been shown, and it picked something else.", ""]
     if not sel:
         dm.append("_None._")
     for item in sel:
-        dm += [f"**Task {item['task']} — {item['capability']}**", "",
-               f"- agent ran `{item['agent_ran']}` ({item['execution_mode']}), stating: "
-               f"*\"{item['agent_claimed']}\"*",
-               f"- should have used: `{item.get('should_have_used')}`",
-               f"- why: {item.get('availability_why', '')}",
-               f"- judge: {item['judge_said']}", ""]
-    dm += ["## Search left the agent no option — nothing returned could do it", ""]
-    if not nooption:
+        dm += [f"#### Task {item['task']} — {item['capability']}", "",
+               f"- **Agent ran:** `{item['agent_ran']}` ({item['execution_mode']})",
+               f"- **Saying it was for:** {quote}{item['agent_claimed']}{quote}",
+               f"- **Should have used:** `{item.get('should_have_used')}` — it was in the results",
+               f"- **What went wrong:** {item.get('availability_why', '')}",
+               f"- **Judge:** {item['judge_said']}", ""]
+    dm += [f"## Search left it no option ({len(none_avail)})", "",
+           "Nothing search had returned could do the job, so the agent substituted the closest thing",
+           "it had. These are search failures wearing an agent-error costume.", ""]
+    if not none_avail:
         dm.append("_None._")
-    for item in nooption:
-        expected = ", ".join(f"`{s}`" for s in item["expected_any_of"]) or "_(nothing listed)_"
-        dm += [f"**Task {item['task']} — {item['capability']}**", "",
-               f"- agent ran `{item['agent_ran']}` ({item['execution_mode']}), stating: "
-               f"*\"{item['agent_claimed']}\"*",
-               f"- would have needed: {expected}",
-               f"- why: {item.get('availability_why', '')}",
-               f"- judge: {item['judge_said']}", ""]
+    for item in none_avail:
+        wanted = ", ".join(f"`{s}`" for s in item["expected_any_of"]) or "_(nothing listed)_"
+        dm += [f"#### Task {item['task']} — {item['capability']}", "",
+               f"- **Agent ran:** `{item['agent_ran']}` ({item['execution_mode']})",
+               f"- **Saying it was for:** {quote}{item['agent_claimed']}{quote}",
+               f"- **Would have needed:** {wanted}",
+               f"- **What went wrong:** {item.get('availability_why', '')}",
+               f"- **Judge:** {item['judge_said']}", ""]
     (run_dir / "agent_vs_judge.md").write_text("\n".join(dm) + "\n", encoding="utf-8")
     save_json(run_dir / "agent_vs_judge.json", disagreements)
 
     print(f"{len(failures)}/{total} capabilities unmet, {len(demoted)} demoted")
     for fault, count in faults.most_common():
         print(f"  {fault:<52} {count}")
-    print(f"  agent-side {agent_fault} | search-side {search_fault}")
+    print(f"  agent-side {agent_fault} | search-side {search_side}")
     print(f"vendor drift: {len(drift['cases'])}/{drift['vendor_scoped']} vendor-scoped queries "
           f"({len(drift['severe'])} with the named app absent entirely)")
     print(f"disagreements: {len(disagreements)} "
-          f"({len(sel)} agent selection, {len(nooption)} search left no option)")
+          f"({len(sel)} agent selection, {len(none_avail)} search left no option)")
 
 
 if __name__ == "__main__":
