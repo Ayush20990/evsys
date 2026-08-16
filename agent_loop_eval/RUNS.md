@@ -1,6 +1,6 @@
 # Run index
 
-`run6_descriptions_20tasks/` is current — see `README.md` for its results. Earlier runs are kept only
+`run7_continue_after_stuck/` is current — see `README.md` for its results. Earlier runs are kept only
 because each one established something that shaped the current design.
 
 | Run | Change from previous | What it established |
@@ -11,6 +11,7 @@ because each one established something that shaped the current design.
 | 4 | real reads, 9 toolkits connected | Real data makes the agent search less, breaking cross-run recall comparisons |
 | 5 | 20 tasks, completion tracking | Query count does not scale with task complexity |
 | 6 | tool descriptions + schemas returned | Descriptions fix tool choice and argument construction |
+| 7 | stuck step abandons capability, not task; agent states a `purpose` per call | Every task finishes; agent/judge disagreements become measurable |
 
 ## What each run established
 
@@ -66,3 +67,22 @@ opposite to agent quality, which is what prompted the switch to group-based scor
 Each run directory holds per-task traces (`task-0NN.json`), `agent_queries.json`, the generated
 reports, and the run log. Runs scored with `score_with_groups.py` also carry `group_scoring_report.md`,
 `group_scores.json` and `group_cache.json`.
+
+**Run 7 — a stuck step no longer ends the task, and the agent states its intent.** Two changes.
+Tripping the thrashing breaker now abandons the capability and lets the task continue; previously it
+returned, killing the task and leaving every later step unsearched. And `execute_tool` now requires a
+`purpose` — the agent's own claim about which step a call carries out — which is what makes
+`agent_vs_judge.md` possible: without it, a call can only be matched to a capability by toolkit, and
+that pairs every HubSpot call with every unmet HubSpot capability.
+
+| | Run 6 | Run 7 |
+|---|---:|---:|
+| Judged group recall | 70% | **75%** |
+| Strict group recall | 61% | **67%** |
+| Tasks reaching a clean finish | 19/20 | **20/20** |
+| Capabilities abandoned | n/a | 0 |
+
+Run 7 made 21 write-tool calls against run 6's fewer, which is why its real-execution count is lower
+(13 vs 34) and its mock-rejections higher (13 vs 2): writes are mocked by design and create-tools
+have complex required parameters. Every read-only call on a connected toolkit still ran for real,
+13 of 13, so the gate is behaving.

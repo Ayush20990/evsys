@@ -7,8 +7,9 @@ agent issues, and a prediction never sees a search result so it can never react 
 Tasks come from the first 20 entries of `../src/top-100-eval-use-cases.md`.
 
 ```powershell
-python agent_loop_evaluation.py                    # run the loop, writes traces/
-python score_with_groups.py run6_descriptions_20tasks   # score an existing run
+python agent_loop_evaluation.py                        # run the loop, writes traces/
+python score_with_groups.py run7_continue_after_stuck  # requirement-group + judge scoring
+python analyse_failures.py run7_continue_after_stuck   # failure classes + agent/judge conflicts
 ```
 
 ## How it works
@@ -59,52 +60,64 @@ Scoring recall against those lists is wrong in three ways at once:
 
 It reads saved traces, so re-scoring any completed run costs no agent quota.
 
-## Current results — `run6_descriptions_20tasks`
+## Current results — `run7_continue_after_stuck`
 
-| Metric | Value |
-|---|---:|
-| **Judged group recall** | **62/88 (70%)** |
-| Strict group recall | 54/88 (61%) |
-| Groups delivered as `primary` | 40/88 (45%) |
-| *Flat union recall (superseded metric)* | *106/229 (46%)* |
-| Queries | 73 across 20 tasks, 6.4 words each |
-| Executions | 34 real, 20 mocked, 2 rejected |
-| Tasks completed | 11/19 reporting; 8 blocked by `data_absent` |
-| Search-failure stops | 0 |
+| Metric | Run 6 | Run 7 |
+|---|---:|---:|
+| **Judged group recall** | 70% | **63/84 (75%)** |
+| Strict group recall | 61% | **56/84 (67%)** |
+| Groups delivered as `primary` | 45% | 39/84 (46%) |
+| *Flat union recall (superseded)* | *46%* | *119/229 (52%)* |
+| Queries | 73 | 82 |
+| Tasks reaching a clean finish | 19/20 | **20/20** |
+| Capabilities abandoned | n/a | 0 |
 
-229 logged tools collapse to **88 real capabilities**. Task 13 is typical: flat recall 3/13, group
-recall 3/4 — ten of those thirteen entries were never requirements.
+229 logged tools collapse to **84 real capabilities**. Every task ended with the agent calling
+`finish_task` — no step ceilings, no quota stops, no search-failure stops.
+
+Failure breakdown, from `failure_analysis.md`:
+
+| Outcome | Count | Meaning |
+|---|---:|---|
+| Delivered on `primary` | 39 | search recommended the right tool |
+| **Delivered only in `related`** | **17** | search *held* the right tool and never promoted it |
+| Credited alternative | 7 | judge accepted a tool the logged list never named |
+| `never-returned` | 16 | no acceptable tool appeared in any result |
+| `catalogue-gap` | 5 | the task needs this and no logged tool provides it either |
 
 ### Finding 1: found, but not recommended
 
-70% of required capabilities were delivered, but only **45%** arrived as a `primary` recommendation —
-the rest were demoted to `related`. The gap has held across every run and both scoring methods, so it
-is a property of the ranking, not of query phrasing. For an agent that acts on the primary
-recommendation, a demoted correct answer costs about what a miss costs. **This is the strongest
-finding here.**
+75% of required capabilities were delivered; only **46%** arrived as a `primary` recommendation. The
+17 demoted capabilities are the single largest correctable failure class — search already has those
+tools, it just ranks them below the fold. An agent acting on the primary recommendation misses them.
+The gap has held across every run and both scoring methods.
 
-### Finding 2: naming the vendor does not scope the search
+### Finding 2: the agent cannot tell it picked wrong
+
+`agent_vs_judge.md` lists calls where the agent **stated** it was carrying out a step, and an
+independent judge ruled that capability was never delivered. Seven cases in run 7. These are
+invisible to recall — the agent records success and later steps build on a false premise:
+
+- Task 1 — stated *"Assess payment-link feasibility in HubSpot"*, ran
+  `HUBSPOT_CREATE_FEEDBACK_SUBMISSION`.
+- Task 16 — stated *"Get Vercel deployments"* for a capability requiring Cloudflare zones and DNS.
+- Task 17 — ran `LINKEDIN_CREATE_LINKED_IN_POST` for a capability requiring Instagram publishing,
+  and `GOOGLECALENDAR_CREATE_EVENT` for a spreadsheet-backed booking schedule.
+
+The pattern is cross-vendor substitution: a plausible tool from the wrong application. Mocked
+execution cannot correct this without consulting the ground truth, which would leak the answer key,
+so it can only be detected after the fact by comparing the agent's own claim against the judge.
+
+### Finding 3: naming the vendor does not scope the search
 
 `"HubSpot list payment links ecommerce"` returned `STRIPE_LIST_PAYMENT_LINKS` as its primary result;
-the next query, `"HubSpot list payment links"`, returned `HUBSPOT_LIST_EMAILS`. Explicit vendor
-scoping in the query text is not reliably respected.
-
-### Finding 3: confirmed capability gaps
-
-Groups the judge confirmed search never delivered, having checked every tool actually returned:
-
-- **Task 5** — fetching and reading Gmail messages. Returned Gmail tools were, in the judge's words,
-  "strictly limited to managing drafts".
-- **Task 4** — three Trello capabilities: add a comment to a card, move a card between lists, add a
-  list to a board.
-- **Task 6** — bulk record creation in Salesforce (`POST_COMPOSITE_SOBJECTS`).
+the next query, `"HubSpot list payment links"`, returned `HUBSPOT_LIST_EMAILS`.
 
 ### Finding 4: a catalogue defect
 
 `HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUBSPOT_ACCOUNT` and
 `HUBSPOT_GET_ALL_MARKETING_EMAILS_FOR_A_HUB_SPOT_ACCOUNT` are both live and non-deprecated with
-identical display names and descriptions. A curated list can therefore name a slug search will never
-return, because search surfaces the twin. Worth reporting upstream.
+identical display names and descriptions, so a curated list can name a slug search will never return.
 
 ### On comparing runs
 
@@ -119,19 +132,19 @@ throughout. An emergent query count under-samples exactly the hardest tasks, whi
 coverage failure the primary benchmark fixed with its dynamic cap. The two benchmarks fail in
 opposite directions.
 
-## Known issue: the circuit breaker ends the whole task
+## Search failure, and why a stuck step no longer ends the task
 
-Thrashing — repeatedly searching for one capability that never returns anything usable — trips a
-breaker that stops the task. **It should skip that capability and continue to the next step, but
-currently it returns and the runner moves to the next task.**
+Two behaviours look alike from outside. **Front-loading** — several searches for *different*
+capabilities before any execution — is healthy and explicitly asked for. **Thrashing** — re-asking
+the same capability because nothing usable comes back — is not. A search counts as unproductive only
+when it returns nothing or repeats a capability already asked; four consecutive of those, or a query
+repeated past the limit, trips a breaker.
 
-This is the same defect already fixed for absent data, arriving through a different door: steps after
-the stuck one are never searched for, and then score as retrieval misses although search was never
-asked. Nothing reported here is affected — the breaker fired zero times in run 6 — but it must be
-fixed before a run where it does fire.
-
-The fix is to inject a corrective message ("stop searching for this capability, record it unmet, move
-on") instead of returning, keeping a hard stop only as a much higher backstop.
+Tripping it **abandons that capability, not the task**: the agent is told to stop searching for it,
+record it as unmet, and move to the next step. Only a task that stalls three times is stopped
+outright. An earlier version returned immediately, which killed the task and skipped every remaining
+step — the same defect already fixed for absent data, arriving by a different route, where unsearched
+steps then scored as retrieval misses. The breaker fired zero times in run 7.
 
 ## Other limitations
 
@@ -151,8 +164,13 @@ on") instead of returning, keeping a hard stop only as a much higher backstop.
 |---|---|
 | `agent_loop_evaluation.py` | the loop |
 | `score_with_groups.py` | requirement-group + judge scoring |
-| `run6_descriptions_20tasks/` | **current run** — traces, queries, reports |
+| `analyse_failures.py` | failure classification and agent/judge disagreements |
+| `run7_continue_after_stuck/` | **current run** — traces, queries, all reports |
 | `RUNS.md` | run index and what each earlier run established |
+
+Each scored run carries `group_scoring_report.md` (recall), `failure_analysis.md` (why each
+capability was missed, plus the demoted list) and `agent_vs_judge.md` (calls the agent believed
+worked that the judge rejected).
 
 Each run directory holds per-task traces, captured queries, the generated reports, and the run log.
 A new run writes to `traces/` and overwrites the top-level report files, so archive them into a

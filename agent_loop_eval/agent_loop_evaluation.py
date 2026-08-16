@@ -96,8 +96,22 @@ DESCRIPTION_CHARS = 400   # per-tool description budget returned to the agent
 # is UNPRODUCTIVE only when it returns nothing at all, or repeats a capability already
 # searched for. Consecutive unproductive searches mean the agent is stuck, and that is a
 # SEARCH FAILURE -- recorded as such rather than left to spin to the step ceiling.
-MAX_UNPRODUCTIVE_SEARCHES = 4   # consecutive empty-or-repeated searches -> stop
-MAX_QUERY_REPEATS = 2           # same normalised query issued this many times -> stop
+MAX_UNPRODUCTIVE_SEARCHES = 4   # consecutive empty-or-repeated searches -> abandon capability
+MAX_QUERY_REPEATS = 2           # same normalised query issued this many times -> abandon
+MAX_ABANDONED_CAPABILITIES = 3  # after this many, the task itself is unworkable -> stop
+
+# Tripping a breaker abandons the CAPABILITY, not the task. An earlier version returned
+# immediately, which killed the whole task and moved the runner to the next one -- so every
+# step after the stuck one was never searched for, and then scored as a retrieval miss
+# although search had never been asked. That is the same defect already fixed for absent
+# data, arriving by a different route. The agent is now told to give up on this one thing
+# and carry on, and only a task that stalls repeatedly is stopped outright.
+GIVE_UP_INSTRUCTION = (
+    "You have searched for this capability {count} times without finding a tool you would "
+    "use. Stop searching for it -- the catalogue does not appear to have it. Record it as "
+    "an unmet step when you call finish_task, and move on to the NEXT step of the task now. "
+    "Do not rephrase this same search again."
+)
 
 
 def normalise_query(query: str) -> str:
@@ -372,6 +386,7 @@ class TaskTrace:
     blocked_by: str = ""
     completion_source: str = ""            # "self-report" | "" when unreported
     search_failed: bool = False            # stopped by a search circuit breaker
+    abandoned_capabilities: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
 
 
@@ -389,6 +404,11 @@ class AgentSession:
         self.pending_slugs: set[str] = set()  # slugs offered by searches not yet acted on
         self.pending_indexes: list[int] = []   # their positions in trace.queries
         self.query_counts: Counter[str] = Counter()
+
+    def reset_streak(self) -> None:
+        self.unproductive_streak = 0
+        self.pending_slugs.clear()
+        self.pending_indexes.clear()
 
     def note_search_outcome(self, slug_called: str) -> None:
         """Mark the searches that offered this slug as productive."""
@@ -472,12 +492,13 @@ class AgentSession:
                 "related_tools": [describe(s) for s in related],
                 "recommended_plan_steps": plan[:6]}
 
-    def execute_tool(self, tool_slug: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def execute_tool(self, tool_slug: str, arguments: dict[str, Any],
+                     purpose: str = "") -> dict[str, Any]:
         self.note_search_outcome(tool_slug)
         read_only = self.metadata.is_read_only(tool_slug)
         toolkit = self.metadata.toolkit_of(tool_slug, self.connected)
         live = toolkit in self.connected
-        record = {"tool_slug": tool_slug, "arguments": arguments,
+        record = {"tool_slug": tool_slug, "arguments": arguments, "purpose": purpose,
                   "read_only": read_only, "toolkit": toolkit, "toolkit_connected": live}
         if read_only and live:
             try:
@@ -629,8 +650,16 @@ EXECUTE_DECLARATION = types.FunctionDeclaration(
             "tool_slug": types.Schema(type=types.Type.STRING, description="Exact tool slug."),
             "arguments_json": types.Schema(type=types.Type.STRING,
                                            description="JSON object of arguments for the tool."),
+            # The agent's own claim about what this call achieves. Recorded so analysis can
+            # separate "search returned nothing" from "the agent was satisfied by a tool an
+            # independent judge rejects" -- two failures that look identical in recall.
+            "purpose": types.Schema(
+                type=types.Type.STRING,
+                description=("Which step of the task this call carries out, in a short phrase. "
+                             "State what you expect it to accomplish."),
+            ),
         },
-        required=["tool_slug", "arguments_json"],
+        required=["tool_slug", "arguments_json", "purpose"],
     ),
 )
 
@@ -723,22 +752,34 @@ def run_task(client, session, metadata: ToolMetadata, limiter: RateLimiter,
             if function_call.name == "search_tools":
                 result = agent.search_tools(str(arguments.get("query", "")).strip(),
                                             str(arguments.get("intent", "")).strip())
-                # Circuit breakers. Without these the agent can spin until the step
-                # ceiling re-issuing variants of a query that never returns anything it
-                # will use -- burning quota and inflating the query count with noise.
+                # Circuit breakers. Without these the agent can spin until the step ceiling
+                # re-issuing variants of a query that never returns anything it will use.
+                # Tripping one abandons the capability and lets the task continue; only a
+                # task that stalls MAX_ABANDONED_CAPABILITIES times is stopped outright.
                 last = agent.trace.queries[-1] if agent.trace.queries else {}
+                reason = None
                 if last.get("repeat_number", 0) > MAX_QUERY_REPEATS:
-                    trace.stop_reason = (f"search failure: query repeated "
-                                         f"{last['repeat_number']} times without progress")
-                    trace.search_failed = True
-                    print(f"    STOP: {trace.stop_reason}")
-                    return trace
-                if agent.unproductive_streak >= MAX_UNPRODUCTIVE_SEARCHES:
-                    trace.stop_reason = (f"search failure: {agent.unproductive_streak} consecutive "
-                                         f"searches returned nothing the agent would use")
-                    trace.search_failed = True
-                    print(f"    STOP: {trace.stop_reason}")
-                    return trace
+                    reason = f"query repeated {last['repeat_number']} times"
+                elif agent.unproductive_streak >= MAX_UNPRODUCTIVE_SEARCHES:
+                    reason = (f"{agent.unproductive_streak} consecutive searches returned "
+                              f"nothing usable")
+                if reason:
+                    count = last.get("repeat_number") or agent.unproductive_streak
+                    trace.abandoned_capabilities.append({
+                        "query": last.get("query", ""),
+                        "intent": last.get("intent", ""),
+                        "reason": reason,
+                    })
+                    agent.reset_streak()
+                    print(f"    ABANDON capability ({reason}): {last.get('query','')!r}")
+                    if len(trace.abandoned_capabilities) >= MAX_ABANDONED_CAPABILITIES:
+                        trace.stop_reason = (f"search failure: {len(trace.abandoned_capabilities)} "
+                                             f"capabilities abandoned, task not progressing")
+                        trace.search_failed = True
+                        print(f"    STOP: {trace.stop_reason}")
+                        return trace
+                    result = {"search_abandoned": True,
+                              "instruction": GIVE_UP_INSTRUCTION.format(count=count)}
             elif function_call.name == "execute_tool":
                 try:
                     parsed = json.loads(arguments.get("arguments_json") or "{}")
@@ -746,7 +787,8 @@ def run_task(client, session, metadata: ToolMetadata, limiter: RateLimiter,
                         parsed = {}
                 except json.JSONDecodeError:
                     parsed = {}
-                result = agent.execute_tool(str(arguments.get("tool_slug", "")).strip(), parsed)
+                result = agent.execute_tool(str(arguments.get("tool_slug", "")).strip(), parsed,
+                                            str(arguments.get("purpose", "")).strip())
             elif function_call.name == "finish_task":
                 trace.completed = bool(arguments.get("completed"))
                 trace.final_message = str(arguments.get("summary", "")).strip()
