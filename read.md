@@ -216,15 +216,37 @@ See `manual_audit_workflows_1_5.md` for real examples and what's actually happen
 
 ### Corroborated independently by the agent-loop benchmark
 
-`agent_loop_eval/` runs a real tool-calling loop and scores it with requirement groups plus an LLM
-judge. Three findings there are measured on live agent-issued queries rather than predicted ones,
-which makes them hard to dismiss as artefacts of how this benchmark phrases things.
+`agent_loop_eval/` runs a real tool-calling loop over all 100 use cases and scores it with
+requirement groups plus an LLM judge. Its findings are measured on live agent-issued queries rather
+than predicted ones, which makes them hard to dismiss as artefacts of how this benchmark phrases
+things. It also attributes every failure, which turns out to matter more than the recall number.
 
-**Found, but not recommended.** Over all 100 use cases, 83% of required capabilities were delivered
-but only 56% arrived as a `primary` recommendation. 83 capabilities were held in `related` and never
-promoted — more than the 56 search missed outright, making demotion the largest correctable failure
-class rather than a footnote. The gap has held across every run, both scoring methods, and a fivefold
-increase in sample size.
+**Most "search failures" are not search failures.** Of 433 required capabilities across the 100 use
+cases, each unmet one was traced back to the query that was meant to find it and given a verdict:
+
+| Fault | Count |
+|---|---:|
+| search returned the right tool but only in `related` | 83 |
+| the agent never searched for the capability at all | 28 |
+| **search failed a fair query — the true recall failure** | **19** |
+| no tool in the catalogue provides it | 18 |
+| the agent's query was too vague for any engine to resolve | 9 |
+
+Agent-side 37, search-side 102, catalogue 18. **Search genuinely failed to retrieve 19 of 433
+capabilities — 4.4%.** A flat recall metric reports all 157 identically, which is why the earlier
+numbers in this repo overstated retrieval failure.
+
+**Found, but not recommended, is the real problem.** 83% of required capabilities were delivered but
+only 56% arrived as a `primary` recommendation. Demotion outnumbers true recall failures more than
+four to one, and it is a ranking defect rather than a retrieval one: search already holds those
+tools. An agent acting on the primary recommendation misses every one. The gap has held across every
+run, both scoring methods, and a fivefold increase in sample size.
+
+**When the agent picks the wrong tool, it usually had no better option.** Of 17 cases where the agent
+stated it was carrying out a step and an independent judge ruled the capability undelivered, only 6
+were selection errors with a correct tool sitting in the results; in 11 nothing returned could do the
+job. These are invisible to recall — the agent records success and later steps build on a false
+premise.
 
 **Naming the vendor does not scope the search.** `"HubSpot list payment links ecommerce"` returned
 `STRIPE_LIST_PAYMENT_LINKS` as its primary result; the next query, `"HubSpot list payment links"`,
@@ -251,12 +273,20 @@ and too *generous* when the list omits a capability the task genuinely needs.
 ### What the agent loop says about this benchmark's query cap
 
 The dynamic cap here — `ceil(pool_size / TOOLS_PER_QUERY_TARGET)` — replaced a fixed 2-4 cap that left
-most of a large pool untested. The agent loop lets query count emerge instead, with no cap, which
-sounds strictly better and is not. Grouping its tasks by reference-list size gave 69% recall at ≤6
-tools, 59% at 7-13, and 38% at ≥14, while queries per task stayed near 4-6 throughout. A real agent
-does not search harder when there is more to find, so an emergent count under-samples precisely the
-hardest tasks. The formula here scales coverage with pool size; the agent loop does not. The two
-benchmarks fail in opposite directions, which is the argument for keeping both.
+most of a large pool untested. The agent loop lets query count emerge instead, with no cap.
+
+On 20 tasks that looked clearly worse: flat recall fell from 69% on small tasks to 38% on large ones
+while queries per task stayed near 4-6, which read as an emergent count under-sampling the hardest
+tasks. **Repeating it over all 100 use cases with requirement-group scoring showed that collapse was
+an artefact of flat scoring, not a property of search** — judged recall barely moves with task size
+(84%, 83%, 82% across ≤6, 7-13 and ≥14 reference tools). Larger tasks carry more logged-but-
+unnecessary tools, so flat recall accumulates more phantom misses on them; the effect disappears once
+capabilities replace log entries.
+
+Query count still does not scale with complexity — 2.9 to 4.9 queries per task across that range —
+but it costs far less than the flat numbers implied. The formula here scales coverage with pool size
+and the agent loop does not, which remains a real difference between the two; it is simply not the
+dominant one.
 
 Session recall is also confounded by query count, so it cannot be compared across runs whose
 execution policy differs — a better agent searches less and scores lower. Report hits-per-query, or
@@ -286,8 +316,12 @@ agent_loop_eval/
   RUNS.md                          run index and what each earlier run established
   agent_loop_evaluation.py         the loop
   score_with_groups.py             requirement-group + LLM-judge scoring
-  run6_descriptions_20tasks/       current run: traces, queries, reports
+  analyse_failures.py              fault attribution and agent/judge disagreements
+  run8_full_100tasks/              current run: all 100 use cases
 ```
 
-Earlier run directories are kept for the comparisons documented in `RUNS.md`.
+Each scored run carries `group_scoring_report.md` (recall per task), `failure_analysis.md` (every
+unmet capability with the query meant to find it, what search returned, and a fault verdict) and
+`agent_vs_judge.md` (calls the agent believed worked that the judge rejected). Earlier run
+directories are kept for the comparisons documented in `RUNS.md`.
 
