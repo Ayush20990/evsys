@@ -208,6 +208,13 @@ steps then scored as retrieval misses. The breaker fired zero times in run 7.
   cannot know a tool is the wrong tool without consulting the ground truth being evaluated, and
   consulting it would leak the answer key. Real execution exposes this on the read path; the write
   path stays blind.
+- **The agent never retries, so every failure is a first-attempt failure.** Across 384 queries in
+  run 8 there was not one near-duplicate re-ask: the agent searches once per capability and moves on,
+  because nothing ever signals that a tool choice was wrong. Two consequences. Search might recover
+  on a rephrase, so the recall failures are an upper bound on one-shot performance rather than on
+  what search can do. And retry behaviour — which a production agent hitting real API errors would
+  show constantly — is not sampled here at all. Connecting more toolkits is the only fix, since real
+  errors are the only honest source of that signal.
 - **Self-reported completion is weak.** In run 5 one task reported `no_suitable_tool` after finding
   suitable tools for four of its five steps. Read completion alongside recall, never instead of it.
 - **The accounts are not the tasks' accounts**, so correct tools often return empty. The agent is

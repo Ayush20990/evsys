@@ -720,7 +720,13 @@ def write_reports(run_dir, failures, disagreements, demoted, faults, total, trac
 
     md += ["## Search missed a fair question", "",
            f"{search_recall} cases where the query did identify what was needed and search still did",
-           "not return it. Each is laid out in full so it can be checked.", ""]
+           "not return it. Each is laid out in full so it can be checked.", "",
+           "**These are first-attempt failures.** Across all 384 queries in this run the agent never",
+           "re-asked for a capability once -- not a single near-duplicate query. It searches once per",
+           "step and moves on, because mocked execution succeeds on any well-formed call and nothing",
+           "ever tells it a tool was wrong. So each case below is one shot, and search might well",
+           "recover on a rephrase; equally, this benchmark produces no evidence about retry",
+           "behaviour at all, which a production agent hitting real errors would exhibit.", ""]
     for failure in by_fault.get(SEARCH_RECALL, []):
         md += case_block(
             task=failure["task"], capability=failure["capability"], asked=failure.get("query"),
