@@ -100,6 +100,55 @@ MAX_UNPRODUCTIVE_SEARCHES = 4   # consecutive empty-or-repeated searches -> aban
 MAX_QUERY_REPEATS = 2           # same normalised query issued this many times -> abandon
 MAX_ABANDONED_CAPABILITIES = 3  # after this many, the task itself is unworkable -> stop
 
+# --- retrying a step whose tool did not do the job -----------------------------------
+#
+# Run 8 produced no retries at all: 384 queries, not one re-ask. The agent searched once per
+# step, ran whatever came back, and moved on -- because a mock succeeds on any well-formed
+# call, so nothing ever told it the tool was wrong. Every failure measured was therefore a
+# first-attempt failure, and the benchmark said nothing about whether search recovers when
+# asked again.
+#
+# The agent now judges the result of each call against the step it was for, and searches
+# again when the tool did not accomplish it. Four attempts per step, then it records the step
+# unmet and moves on, so a step that cannot be satisfied cannot spin.
+#
+# It declares the attempt number itself rather than having the harness infer it: a real retry
+# is usually worded quite differently from the attempt it replaces, so query similarity would
+# miss exactly the retries worth counting.
+MAX_STEP_ATTEMPTS = 4
+
+# Verbs that ask for a change. When the step asked for one and the tool that ran is tagged
+# readOnlyHint, the harness says so in the tool's response instead of leaving the agent to
+# infer it. This is the tool's own Composio metadata -- the same tags the agent already sees
+# in search results -- so it leaks nothing about which tool was expected.
+#
+# Without it the retry path never fires. A mock returns well-formed data for any valid call,
+# so a read tool run against a write step looks like success; in smoke tests the agent judged
+# such steps done and moved on, exactly as it did in run 8. Telling it plainly that a
+# read-only tool cannot have made a change is the smallest honest nudge that turns the retry
+# budget from dead code into something the agent uses.
+#
+# Anchored to the START of the purpose, because the agent writes it as an imperative --
+# "Create a pull request", "List commits". An unanchored match reads the noun in "list
+# commits" as the verb "commit" and would flag a perfectly correct read as a failed write.
+STEP_WRITE_VERB = re.compile(
+    r"^\s*(?:attempt\s+to\s+|try\s+to\s+|to\s+)?"
+    r"(creat\w*|commit\w*|merg\w*|updat\w*|delet\w*|add\w*|post\w*|publish\w*"
+    r"|send\w*|upload\w*|writ\w*|insert\w*|remov\w*|archiv\w*|assign\w*|configur\w*"
+    r"|modif\w*|edit\w*|mov\w*|renam\w*|set\w*)\b", re.I)
+
+READ_ONLY_WARNING = (
+    "NOTE: this tool is read-only and cannot {verb} anything. If the step you are on requires "
+    "that change to be made, this call did NOT accomplish it -- search again for a tool that "
+    "performs the action, and set attempt to {next_attempt}."
+)
+
+STEP_EXHAUSTED = (
+    "You have now searched {attempts} times for this step and none of the tools you ran "
+    "accomplished it. Stop searching for this step. Record it as an unmet step when you call "
+    "finish_task, and move on to the next part of the task."
+)
+
 # Tripping a breaker abandons the CAPABILITY, not the task. An earlier version returned
 # immediately, which killed the whole task and moved the runner to the next one -- so every
 # step after the stuck one was never searched for, and then scored as a retrieval miss
@@ -387,6 +436,8 @@ class TaskTrace:
     completion_source: str = ""            # "self-report" | "" when unreported
     search_failed: bool = False            # stopped by a search circuit breaker
     abandoned_capabilities: list[dict[str, Any]] = field(default_factory=list)
+    exhausted_steps: list[dict[str, Any]] = field(default_factory=list)
+    read_only_warnings: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
 
 
@@ -421,12 +472,13 @@ class AgentSession:
             self.pending_slugs.clear()
             self.pending_indexes.clear()
 
-    def search_tools(self, query: str, intent: str = "") -> dict[str, Any]:
+    def search_tools(self, query: str, intent: str = "", attempt: int = 1) -> dict[str, Any]:
         started = time.monotonic()
         try:
             response = self.session.execute("COMPOSIO_SEARCH_TOOLS", arguments={"query": query})
         except Exception as exc:
-            self.trace.queries.append({"query": query, "intent": intent, "error": repr(exc)})
+            self.trace.queries.append({"query": query, "intent": intent, "attempt": attempt,
+                                       "error": repr(exc)})
             return {"error": f"search failed: {exc!r}"}
         latency = time.monotonic() - started
         data = to_plain(getattr(response, "data", response)) or {}
@@ -438,6 +490,8 @@ class AgentSession:
         self.trace.queries.append({
             "query": query,
             "intent": intent,
+            "attempt": attempt,
+            "is_retry": attempt > 1,
             "primary_tool_slugs": primary,
             "related_tool_slugs": related,
             "latency_sec": round(latency, 3),
@@ -491,6 +545,20 @@ class AgentSession:
         return {"primary_tools": [describe(s) for s in primary],
                 "related_tools": [describe(s) for s in related],
                 "recommended_plan_steps": plan[:6]}
+
+    def read_only_warning(self, tool_slug: str, purpose: str) -> str | None:
+        """Flag a read-only tool run against a step that asked for a change.
+
+        Uses only Composio's readOnlyHint tag and the agent's own stated purpose, so it
+        tells the agent nothing about which tool was expected.
+        """
+        if not purpose or not self.metadata.is_read_only(tool_slug):
+            return None
+        match = STEP_WRITE_VERB.search(purpose)
+        if not match:
+            return None
+        self.trace.read_only_warnings.append({"tool_slug": tool_slug, "purpose": purpose})
+        return READ_ONLY_WARNING.format(verb=match.group(0).lower(), next_attempt=2)
 
     def execute_tool(self, tool_slug: str, arguments: dict[str, Any],
                      purpose: str = "") -> dict[str, Any]:
@@ -554,7 +622,11 @@ class AgentSession:
         record["mode"] = "mocked"
         self.trace.executions.append(record)
         print(f"    exec[mock] {tool_slug}")
-        return {"successful": True, "data": mocked.get("data", mocked), "error": None}
+        payload = {"successful": True, "data": mocked.get("data", mocked), "error": None}
+        warning = self.read_only_warning(tool_slug, purpose)
+        if warning:
+            payload["warning"] = warning
+        return payload
 
 
 # Mirrors the one-shot DECOMPOSE_PROMPT in the primary benchmark, which gets well-formed
@@ -591,8 +663,17 @@ SEARCH_DECLARATION = types.FunctionDeclaration(
                 description=("The search query. A concrete, realistic description of that "
                              "capability. Do not use internal tool or API names."),
             ),
+            # Declared by the agent so retries can be counted deterministically. Inferring
+            # them from query similarity does not work: a genuine retry is usually worded
+            # quite differently from the attempt it replaces, which is the whole point of
+            # retrying.
+            "attempt": types.Schema(
+                type=types.Type.INTEGER,
+                description=("1 when starting a new step. 2, 3 or 4 when retrying the SAME "
+                             "step because the tool you ran did not actually accomplish it."),
+            ),
         },
-        required=["intent", "query"],
+        required=["intent", "query", "attempt"],
     ),
 )
 
@@ -668,8 +749,10 @@ application tools. You do NOT know what tools or APIs exist -- your only way to 
 to call search_tools once you know what you need.
 
 How to work:
-- Work out what the task requires, then search for a tool for each genuine, distinct
-  sub-intent, in the order you need them.
+- Work out what the task requires, then take its steps ONE AT A TIME. For each step:
+  search for a tool, run it, judge whether it did the job, and only then move to the next
+  step. Do not search for every step up front -- you cannot tell whether a search was any
+  good until you have run what it returned, and by then it is too late to try again.
 - Search the way you would describe the capability to a colleague: name the application and
   the specific action or lookup you need. The catalogue matches on meaning, so a bare word
   like "email" finds the wrong application entirely.
@@ -679,8 +762,25 @@ How to work:
   search again with different wording rather than calling a tool that does not fit.
 - Build execute_tool arguments from the required_parameters listed in the search result,
   not from memory of how that product's API usually looks.
-- Use what each result actually gives you to decide your next move. If a call fails
-  because the tool was the wrong choice, search for a better-suited tool.
+- After running a tool, judge it against the step you were on: did this tool actually do what
+  the step needed? A call can return successfully and still be the wrong tool. Two checks are
+  worth making every time, from the descriptions you were already shown:
+    * If the step required something to be created, changed, sent or deleted, a tool that
+      only reads, lists, gets or searches cannot have accomplished it -- no matter what it
+      returned.
+    * If the step named an application, a tool belonging to a different application has not
+      accomplished it either, however similar the two look.
+  A result being well-formed is not evidence that the tool was the right one.
+- When the tool did NOT accomplish the step, search again for that same step with different
+  wording, and set `attempt` to 2, 3 or 4. You get four attempts per step. If the fourth
+  still has not produced a tool that does the job, record the step as unmet in finish_task
+  and move on. Do not keep going past four.
+- The same applies when a search returns nothing you are willing to run. Not running anything
+  is itself a judgement that the search failed, so retry that step with different wording
+  and a higher `attempt` -- do not quietly move to a different step instead. Abandoning a
+  step without either running something for it or spending your four attempts is the one
+  thing to avoid.
+- Set `attempt` to 1 whenever you begin a NEW step.
 - The accounts you are working against are NOT the accounts this task was written for.
   The specific spreadsheet, board, database or message the task mentions will usually not
   exist here, so correct tools will often return empty results or "not found". That means
@@ -750,8 +850,27 @@ def run_task(client, session, metadata: ToolMetadata, limiter: RateLimiter,
                 return trace
             arguments = dict(function_call.args or {})
             if function_call.name == "search_tools":
+                try:
+                    attempt = int(arguments.get("attempt") or 1)
+                except (TypeError, ValueError):
+                    attempt = 1
+                attempt = max(1, attempt)
+                if attempt > MAX_STEP_ATTEMPTS:
+                    # The agent overshot its own budget. Tell it to stop on this step rather
+                    # than answering the search, so a hopeless step cannot spin.
+                    trace.exhausted_steps.append(
+                        {"intent": str(arguments.get("intent", "")).strip(),
+                         "query": str(arguments.get("query", "")).strip(),
+                         "attempts": attempt})
+                    print(f"    step exhausted after {attempt} attempts, moving on")
+                    result = {"search_skipped": True,
+                              "instruction": STEP_EXHAUSTED.format(attempts=attempt)}
+                    replies.append(types.Part.from_function_response(
+                        name=function_call.name, response=result))
+                    continue
                 result = agent.search_tools(str(arguments.get("query", "")).strip(),
-                                            str(arguments.get("intent", "")).strip())
+                                            str(arguments.get("intent", "")).strip(),
+                                            attempt)
                 # Circuit breakers. Without these the agent can spin until the step ceiling
                 # re-issuing variants of a query that never returns anything it will use.
                 # Tripping one abandons the capability and lets the task continue; only a
