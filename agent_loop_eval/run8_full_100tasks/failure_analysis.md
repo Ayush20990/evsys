@@ -164,103 +164,90 @@ behaviour at all, which a production agent hitting real errors would exhibit.
 
 ---
 
-# Search failures in detail: every phrasing tried
+# Search failures in detail: 80 phrasings against four tools
 
-The four cases above each failed on one query -- the one the agent actually issued. Each
-was then probed with more phrasings, some hand-written and some produced by the agent when
-the tasks were re-run with permission to retry. All are in the agent's register: short,
-action-first, no tool names, none deliberately bad.
+Each of the four cases above failed on one query -- the one the agent actually issued.
+Each capability was then probed with twenty more phrasings, all asking for that same
+capability, in the agent's register: short, action-first, no tool names.
 
-**14 of 34 on-target queries failed to return the needed tool (41%).**
+**36 of 80 on-target queries failed to return the needed tool (45%).**
 
-Only queries that actually asked for the capability are counted. The retry rerun had the
-agent working the whole task, so many of its queries aimed at other steps -- on task 16 it
-searched for analytics reports and deployment status. Counting those here would pad the
-number with queries that never asked for the tool.
+| Task | Capability | Tried | Failed | Failure rate |
+|---|---|---:|---:|---:|
+| 16 | Modify repository code and create pull r | 20 | **4** | 20% |
+| 18 | Search and extract recent job listings f | 20 | **13** | 65% |
+| 28 | Generate AI text-to-speech audio for the | 20 | **6** | 30% |
+| 72 | Configure project environment variables  | 20 | **13** | 65% |
 
-| Task | Capability | On-target queries | Failed | Reachable at all? |
-|---|---|---:|---:|---|
-| 16 | Modify repository code and create pull r | 9 | **1** | yes |
-| 18 | Search and extract recent job listings f | 8 | **5** | yes |
-| 28 | Generate AI text-to-speech audio for the | 8 | **3** | yes |
-| 72 | Configure project environment variables  | 9 | **5** | yes |
+**Every tool is reachable by some phrasing**, so none is missing from the index. What
+fails is the mapping from an ordinary description of the job to the tool that does it.
+That is ranking and synonym coverage -- the same defect behind the 83 capabilities that
+were found but left in `related`.
 
-**All four tools are reachable.** Every one was returned by at least one phrasing, so
-none is missing from the index. What fails is the mapping from an ordinary description of
-the job to the tool that does it -- ranking and synonym coverage, the same defect behind
-the 83 capabilities found but left in `related`.
+The per-capability spread matters as much as the total. Task 16 fails on 20% of phrasings
+and task 28 on 30%, so those tools are mostly findable. Tasks 18 and 72 fail on 65% --
+two thirds of reasonable ways to ask do not work, which is a genuine coverage weakness.
 
-The spread matters as much as the total. Task 16 failed on its original wording and on
-nothing else, so that capability is well covered and the agent simply phrased it badly
-once. Tasks 18 and 72 failed on most phrasings tried, which is a real coverage weakness.
+## Four failing queries per capability
 
-## Every failing query, by capability
-
-What was asked, what the task needed, and what came back instead.
+Sixteen examples. Each shows the query, what the task needed, and what search returned
+instead. The failure rates above are the denominator for these.
 
 ### Task 16 — Modify repository code and create pull requests
 
 **Needed:** `GITHUB_COMMIT_MULTIPLE_FILES`, `GITHUB_CREATE_A_PULL_REQUEST`, `GITHUB_UPDATE_A_PULL_REQUEST`, `GITHUB_MERGE_A_BRANCH`
+  ·  *4 of 20 phrasings failed*
 
-**1 of 9 on-target phrasings failed.**
+| # | Query tried | What came back instead |
+|---|---|---|
+| 1 | `Git repository file inspect and commit or pull request` | `GITHUB_GET_A_REPOSITORY`, `GITHUB_GET_A_TREE`, `GITHUB_GET_REPOSITORY_CONTENT` |
+| 2 | `submit code changes for review` | `GITHUB_SUBMIT_A_REVIEW_FOR_A_PULL_REQUEST`, `GITHUB_CREATE_A_REVIEW_FOR_A_PULL_REQUEST` |
+| 3 | `check in code to version control` | `SHARE_POINT_CHECK_IN_FILE`, `ONE_DRIVE_CHECKIN_ITEM` |
+| 4 | `record file edits in version control` | `GITHUB_LIST_COMMITS`, `GITHUB_LIST_REPOSITORY_CONTRIBUTORS` |
 
-1. **`Git repository file inspect and commit or pull request`**
-   - returned instead: `GITHUB_GET_A_REPOSITORY`, `GITHUB_GET_A_TREE`, `GITHUB_GET_REPOSITORY_CONTENT`, `GITHUB_LIST_COMMITS`
-
-Phrasings that did work: `commit code and open pull request`, `push code changes to repository branch`, `GitHub commit and pull request`, `create pull request on github`, `modify files in a repository`.
+Phrasings that did work, for contrast: `commit code and open pull request`, `push code changes to repository branch`, `GitHub commit and pull request`, `create pull request on github`.
 
 ### Task 18 — Search and extract recent job listings from web sources or job boards
 
 **Needed:** `BROWSER_TOOL_CREATE_TASK`
+  ·  *13 of 20 phrasings failed*
 
-**5 of 8 on-target phrasings failed.**
+| # | Query tried | What came back instead |
+|---|---|---|
+| 1 | `Search job listings or job boards for remote hybrid contract data engineering jobs` | `COMPOSIO_SEARCH_WEB` |
+| 2 | `extract job listings from job boards` | `COMPOSIO_SEARCH_WEB`, `COMPOSIO_SEARCH_FETCH_URL_CONTENT` |
+| 3 | `scrape listings from a website` | `HYPERBROWSER_START_EXTRACT_JOB`, `HYPERBROWSER_GET_EXTRACT_JOB_STATUS`, `HYPERBROWSER_GET_EXTRACT_JOB_RESULT` |
+| 4 | `open a web page and read its contents` | `COMPOSIO_SEARCH_FETCH_URL_CONTENT` |
 
-1. **`Search job listings or job boards for remote hybrid contract data engineering jobs`**
-   - returned instead: `COMPOSIO_SEARCH_WEB`
-2. **`extract job listings from job boards`**
-   - returned instead: `COMPOSIO_SEARCH_WEB`, `COMPOSIO_SEARCH_FETCH_URL_CONTENT`
-3. **`scrape listings from a website`**
-   - returned instead: `FIRECRAWL_SCRAPE`, `FIRECRAWL_CRAWL_V2`, `FIRECRAWL_CRAWL_GET`
-4. **`open a web page and read its contents`**
-   - returned instead: `COMPOSIO_SEARCH_FETCH_URL_CONTENT`
-5. **`crawl a site for structured data`**
-   - returned instead: `FIRECRAWL_CRAWL_V2`, `FIRECRAWL_EXTRACT`, `FIRECRAWL_SCRAPE`, `FIRECRAWL_BATCH_SCRAPE`
-
-Phrasings that did work: `browse web pages and collect data`, `automate a browser session`, `run a headless browser task`.
+Phrasings that did work, for contrast: `browse web pages and collect data`, `automate a browser session`, `run a headless browser task`, `navigate a website and extract fields`.
 
 ### Task 28 — Generate AI text-to-speech audio for the video voiceover
 
 **Needed:** `ELEVENLABS_TEXT_TO_SPEECH`
+  ·  *6 of 20 phrasings failed*
 
-**3 of 8 on-target phrasings failed.**
+| # | Query tried | What came back instead |
+|---|---|---|
+| 1 | `Generate AI video or text to speech voice` | `GEMINI_GENERATE_VIDEOS` |
+| 2 | `AI voice narration for a video` | `GEMINI_GENERATE_VIDEOS`, `GEMINI_WAIT_FOR_VIDEO` |
+| 3 | `create an audio narration track` | `ELEVENREADER_CREATE_AUDIO_NATIVE_PROJECT`, `ELEVENREADER_UPDATE_AUDIO_NATIVE_PROJECT_CONTENT` |
+| 4 | `voice synthesis for a video` | `HEYGEN_GENERATE_TEXT_TO_SPEECH`, `HEYGEN_GENERATE_VOICE_AUDIO_PREVIEW`, `HEYGEN_LIST_TTS_VOICES` |
 
-1. **`Generate AI video or text to speech voice`**
-   - returned instead: `GEMINI_GENERATE_VIDEOS`, `GEMINI_WAIT_FOR_VIDEO`
-2. **`AI voice narration for a video`**
-   - returned instead: `GEMINI_GENERATE_VIDEOS`, `GEMINI_WAIT_FOR_VIDEO`
-3. **`create an audio narration track`**
-   - returned instead: `OPENAI_CREATE_SPEECH`, `ELEVENREADER_CREATE_AUDIO_NATIVE_PROJECT`, `ELEVENREADER_UPDATE_AUDIO_NATIVE_PROJECT_CONTENT`
-
-Phrasings that did work: `generate voiceover audio`, `text to speech voice`, `synthesize speech from text`, `turn a script into spoken audio`, `generate a voice clip for a reel`.
+Phrasings that did work, for contrast: `generate voiceover audio`, `text to speech voice`, `synthesize speech from text`, `turn a script into spoken audio`.
 
 ### Task 72 — Configure project environment variables on Vercel
 
 **Needed:** `VERCEL_ADD_ENVIRONMENT_VARIABLE`, `VERCEL_DELETE_PROJECT_ENV`, `VERCEL_FILTER_PROJECT_ENVS`, `VERCEL_GET_PROJECT_ENV`
+  ·  *13 of 20 phrasings failed*
 
-**5 of 9 on-target phrasings failed.**
+| # | Query tried | What came back instead |
+|---|---|---|
+| 1 | `deploy or manage vercel project` | `VERCEL_CREATE_NEW_DEPLOYMENT`, `VERCEL_GET_DEPLOYMENT` |
+| 2 | `vercel project settings` | `VERCEL_GET_PROJECT`, `VERCEL_UPDATE_PROJECT` |
+| 3 | `manage vercel project configuration` | `VERCEL_GET_PROJECTS`, `VERCEL_GET_DEPLOYMENTS` |
+| 4 | `store deployment secrets` | `DOPPLER_SECRETS_UPDATE`, `DOPPLER_SECRETS_DOWNLOAD` |
 
-1. **`deploy or manage vercel project`**
-   - returned instead: `VERCEL_CREATE_NEW_DEPLOYMENT`, `VERCEL_GET_DEPLOYMENT`
-2. **`vercel project settings`**
-   - returned instead: `VERCEL_GET_PROJECT`, `VERCEL_UPDATE_PROJECT`
-3. **`manage vercel project configuration`**
-   - returned instead: `VERCEL_GET_PROJECT2`, `VERCEL_UPDATE_PROJECT2`
-4. **`store deployment secrets`**
-   - returned instead: `DOPPLER_SECRETS_UPDATE`, `DOPPLER_SECRETS_DOWNLOAD`
-5. **`read project config values`**
-   - returned instead: `CLICKUP_GET_SPACES`
-
-Phrasings that did work: `vercel project environment`, `set environment variables for a deployment`, `update env vars on a hosting project`, `Vercel create project`.
+Phrasings that did work, for contrast: `vercel project environment`, `set environment variables for a deployment`, `update env vars on a hosting project`, `set a config variable on the deployment platform`.
 
 ## Queries that named an application and got a different one
 

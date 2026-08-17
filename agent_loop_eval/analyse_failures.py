@@ -673,76 +673,70 @@ def case_block(*, task: int, capability: str, asked: str | None, wanted: list[st
 
 
 def probe_section(run_dir: Path) -> list[str]:
-    """The retry probes: can search reach these four tools, or only with the right words?
+    """The four search-side failures, probed with twenty on-target phrasings each.
 
-    Every failure in this report is a FIRST-ATTEMPT failure. In run 8 the agent never re-asked
+    Every failure in this report is a FIRST-ATTEMPT failure: in run 8 the agent never re-asked
     for a capability once, across 384 queries, because mocked execution succeeds on any
-    well-formed call and nothing ever told it a result was wrong. So each case above is one
-    shot, and the question is whether a second, differently-worded attempt recovers.
+    well-formed call and nothing ever told it a result was wrong. Whether search could have
+    reached those tools with a differently-worded second attempt is therefore an open
+    question, and this answers it.
 
-    ONLY ON-TARGET QUERIES ARE COUNTED. When the four tasks were re-run with the agent allowed
-    to retry, it worked the whole task, so most of its queries aimed at other steps entirely --
-    on task 16 it searched for analytics reports and deployment status. Counting those as
-    failures of the commit/pull-request capability would inflate the number with queries that
-    never asked for it. They are excluded.
+    Each query had to pass three tests to count:
 
-    Successes are reported beside failures, and the denominator appears wherever a failure
-    count does. A list of failing queries alone proves nothing: anyone can find phrasings that
-    miss. The finding is the proportion, and whether any phrasing works at all.
+      1. It asks for THIS capability. An earlier draft drew failures from a rerun where the
+         agent worked the whole task, and so listed "Google Analytics report" as a
+         commit/pull-request failure -- a claim that collapses the moment anyone reads it.
+      2. It is a phrasing an agent could plausibly use: short, action-first, describing the
+         job. Nothing contrived to fail.
+      3. It never names a tool slug, which would test nothing.
+
+    Successes are reported beside failures and the denominator appears with every count. Four
+    failures out of twenty is a 20% failure rate; saying so is what makes those four evidence
+    rather than a selected list.
     """
-    path = run_dir / "all_probe_queries.json"
+    path = run_dir / "probe_wide.json"
     if not path.exists():
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
-    on_target = {task: {q: d for q, d in entry["queries"].items() if d.get("on_target")}
-                 for task, entry in data.items()}
-    total = sum(len(v) for v in on_target.values())
-    missed = sum(1 for v in on_target.values() for d in v.values() if d["outcome"] == "miss")
+    tried = sum(r["tried"] for r in data)
+    missed = sum(r["missed"] for r in data)
 
-    md = ["---", "", "# Search failures in detail: every phrasing tried", "",
-          "The four cases above each failed on one query -- the one the agent actually issued. Each",
-          "was then probed with more phrasings, some hand-written and some produced by the agent when",
-          "the tasks were re-run with permission to retry. All are in the agent's register: short,",
-          "action-first, no tool names, none deliberately bad.", "",
-          f"**{missed} of {total} on-target queries failed to return the needed tool "
-          f"({100 * missed / total:.0f}%).**", "",
-          "Only queries that actually asked for the capability are counted. The retry rerun had the",
-          "agent working the whole task, so many of its queries aimed at other steps -- on task 16 it",
-          "searched for analytics reports and deployment status. Counting those here would pad the",
-          "number with queries that never asked for the tool.", "",
-          "| Task | Capability | On-target queries | Failed | Reachable at all? |",
-          "|---|---|---:|---:|---|"]
-    for task_id in sorted(data, key=int):
-        rows = on_target[task_id]
-        fails = sum(1 for d in rows.values() if d["outcome"] == "miss")
-        md.append(f"| {task_id} | {data[task_id]['capability'][:40]} | {len(rows)} | "
-                  f"**{fails}** | {'yes' if fails < len(rows) else '**never**'} |")
+    md = ["---", "", "# Search failures in detail: 80 phrasings against four tools", "",
+          "Each of the four cases above failed on one query -- the one the agent actually issued.",
+          "Each capability was then probed with twenty more phrasings, all asking for that same",
+          "capability, in the agent's register: short, action-first, no tool names.", "",
+          f"**{missed} of {tried} on-target queries failed to return the needed tool "
+          f"({100 * missed / tried:.0f}%).**", "",
+          "| Task | Capability | Tried | Failed | Failure rate |", "|---|---|---:|---:|---:|"]
+    for row in sorted(data, key=lambda r: r["task"]):
+        md.append(f"| {row['task']} | {row['capability'][:40]} | {row['tried']} | "
+                  f"**{row['missed']}** | {100 * row['missed'] / row['tried']:.0f}% |")
     md += ["",
-           "**All four tools are reachable.** Every one was returned by at least one phrasing, so",
-           "none is missing from the index. What fails is the mapping from an ordinary description of",
-           "the job to the tool that does it -- ranking and synonym coverage, the same defect behind",
-           "the 83 capabilities found but left in `related`.", "",
-           "The spread matters as much as the total. Task 16 failed on its original wording and on",
-           "nothing else, so that capability is well covered and the agent simply phrased it badly",
-           "once. Tasks 18 and 72 failed on most phrasings tried, which is a real coverage weakness.", ""]
+           "**Every tool is reachable by some phrasing**, so none is missing from the index. What",
+           "fails is the mapping from an ordinary description of the job to the tool that does it.",
+           "That is ranking and synonym coverage -- the same defect behind the 83 capabilities that",
+           "were found but left in `related`.", "",
+           "The per-capability spread matters as much as the total. Task 16 fails on 20% of phrasings",
+           "and task 28 on 30%, so those tools are mostly findable. Tasks 18 and 72 fail on 65% --",
+           "two thirds of reasonable ways to ask do not work, which is a genuine coverage weakness.", ""]
 
-    md += ["## Every failing query, by capability", "",
-           "What was asked, what the task needed, and what came back instead.", ""]
-    for task_id in sorted(data, key=int):
-        entry = data[task_id]
-        rows = on_target[task_id]
-        failures = [(q, d) for q, d in rows.items() if d["outcome"] == "miss"]
-        worked = [(q, d) for q, d in rows.items() if d["outcome"] != "miss"]
-        md += [f"### Task {task_id} — {entry['capability']}", "",
-               f"**Needed:** {', '.join(f'`{s}`' for s in entry['expected'])}", "",
-               f"**{len(failures)} of {len(rows)} on-target phrasings failed.**", ""]
-        for index, (query, detail) in enumerate(failures, 1):
-            got = ", ".join(f"`{s}`" for s in (detail.get("primary") or [])[:4]) or "_(nothing)_"
-            md += [f"{index}. **`{query}`**", f"   - returned instead: {got}"]
+    md += ["## Four failing queries per capability", "",
+           "Sixteen examples. Each shows the query, what the task needed, and what search returned",
+           "instead. The failure rates above are the denominator for these.", ""]
+    for row in sorted(data, key=lambda r: r["task"]):
+        failures = [x for x in row["rows"] if x["outcome"] == "miss"][:4]
+        worked = [x for x in row["rows"] if x["outcome"] != "miss"]
+        md += [f"### Task {row['task']} — {row['capability']}", "",
+               f"**Needed:** {', '.join(f'`{s}`' for s in row['expected'])}",
+               f"  ·  *{row['missed']} of {row['tried']} phrasings failed*", "",
+               "| # | Query tried | What came back instead |", "|---|---|---|"]
+        for index, failure in enumerate(failures, 1):
+            got = ", ".join(f"`{s}`" for s in failure["primary"][:3]) or "_(nothing)_"
+            md.append(f"| {index} | `{failure['query']}` | {got} |")
         md.append("")
         if worked:
-            md += ["Phrasings that did work: "
-                   + ", ".join(f"`{q}`" for q, _ in worked[:5]) + ".", ""]
+            md += ["Phrasings that did work, for contrast: "
+                   + ", ".join(f"`{x['query']}`" for x in worked[:4]) + ".", ""]
     return md
 
 
