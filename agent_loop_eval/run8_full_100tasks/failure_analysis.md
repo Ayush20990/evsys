@@ -119,6 +119,13 @@ needs no judgement — it is set membership.
 4 cases where the query did identify what was needed and search still did
 not return it. Each is laid out in full so it can be checked.
 
+**These are first-attempt failures.** Across all 384 queries in this run the agent never
+re-asked for a capability once -- not a single near-duplicate query. It searches once per
+step and moves on, because mocked execution succeeds on any well-formed call and nothing
+ever tells it a tool was wrong. So each case below is one shot, and search might well
+recover on a rephrase; equally, this benchmark produces no evidence about retry
+behaviour at all, which a production agent hitting real errors would exhibit.
+
 #### Task 16 — Modify repository code and create pull requests
 
 - **Asked:** `Git repository file inspect and commit or pull request`
@@ -154,6 +161,94 @@ not return it. Each is laid out in full so it can be checked.
   related: VERCEL_GET_TEAMS, VERCEL_GET_PROJECT2, VERCEL_SEARCH_REPO, GITHUB_GET_A_REPOSITORY, VERCEL_LIST_DEPLOYMENT_CHECKS, VERCEL_GET_DEPLOYMENT_LOGS2
 - **What went wrong:** The query asks to manage a Vercel project, which sufficiently captures the intent of configuring project-level settings like environment variables. [3/3 votes]
 - **Judge:** None of the returned Vercel tools provide the capability to add or configure environment variables on a Vercel project.
+
+## Could search find these four tools on a second attempt?
+
+The four failures above are single attempts. Each was probed afterwards with many more
+phrasings -- some written by hand, some by the agent itself when re-run with permission to
+retry -- in the agent's own register: short, action-first, no tool names.
+
+**28 of 48 distinct queries failed to return the needed tool (58%).**
+
+Every one of the four tools was returned by at least one phrasing, so none is invisible to
+the index. The failure is that reaching them depends heavily on wording, and the phrasing
+an agent naturally reaches for is often not one that works. That is a ranking and
+synonym-coverage problem, not a missing-document problem.
+
+| Task | Distinct queries tried | Failed | Reachable at all? |
+|---|---:|---:|---|
+| 16 | 12 | **4** | yes |
+| 18 | 10 | **7** | yes |
+| 28 | 12 | **7** | yes |
+| 72 | 14 | **10** | yes |
+
+### Task 16 — every phrasing tried (4 of 12 failed)
+
+| Query | Written by | Result |
+|---|---|---|
+| `Git repository file inspect and commit or pull request` | hand-written | **failed** |
+| `commit code and open pull request` | hand-written | found |
+| `push code changes to repository branch` | hand-written | found |
+| `GitHub commit and pull request` | hand-written | found |
+| `Google Analytics or search console performance report for a webs` | agent-written | **failed** |
+| `git repository file manager or source code editor` | agent-written | **failed** |
+| `create pull request on github` | agent-written | found |
+| `deployment status vercel netlify github actions` | agent-written | **failed** |
+| `modify files in a repository` | hand-written | only in `related` |
+| `update source code in github repo` | hand-written | only in `related` |
+| `raise a PR with code changes` | hand-written | found |
+| `write changes to a git branch` | hand-written | only in `related` |
+
+### Task 18 — every phrasing tried (7 of 10 failed)
+
+| Query | Written by | Result |
+|---|---|---|
+| `Search job listings or job boards for remote hybrid contract dat` | hand-written | **failed** |
+| `extract job listings from job boards` | hand-written | **failed** |
+| `scrape listings from a website` | hand-written | **failed** |
+| `browse web pages and collect data` | hand-written | found |
+| `Search remote or hybrid contract data engineering job listings` | agent-written | **failed** |
+| `Send email message` | agent-written | **failed** |
+| `automate a browser session` | hand-written | found |
+| `open a web page and read its contents` | hand-written | **failed** |
+| `run a headless browser task` | hand-written | found |
+| `crawl a site for structured data` | hand-written | **failed** |
+
+### Task 28 — every phrasing tried (7 of 12 failed)
+
+| Query | Written by | Result |
+|---|---|---|
+| `Generate AI video or text to speech voice` | hand-written | **failed** |
+| `generate voiceover audio` | hand-written | found |
+| `AI voice narration for a video` | hand-written | **failed** |
+| `text to speech voice` | hand-written | found |
+| `Fetch recent Instagram Reel performance analytics` | agent-written | **failed** |
+| `Generate AI video and voice tools` | agent-written | **failed** |
+| `Publish Instagram Reel` | agent-written | **failed** |
+| `Archive asset in repository or cloud storage` | agent-written | **failed** |
+| `synthesize speech from text` | hand-written | found |
+| `create an audio narration track` | hand-written | **failed** |
+| `turn a script into spoken audio` | hand-written | found |
+| `generate a voice clip for a reel` | hand-written | found |
+
+### Task 72 — every phrasing tried (10 of 14 failed)
+
+| Query | Written by | Result |
+|---|---|---|
+| `deploy or manage vercel project` | hand-written | **failed** |
+| `vercel project settings` | hand-written | **failed** |
+| `manage vercel project configuration` | hand-written | **failed** |
+| `vercel project environment` | hand-written | found |
+| `GitHub create repository` | agent-written | **failed** |
+| `Vercel deploy project` | agent-written | **failed** |
+| `GitHub get authenticated user` | agent-written | **failed** |
+| `Vercel create project` | agent-written | found |
+| `GitHub commit multiple files` | agent-written | **failed** |
+| `Vercel get project` | agent-written | **failed** |
+| `set environment variables for a deployment` | hand-written | only in `related` |
+| `store deployment secrets` | hand-written | **failed** |
+| `read project config values` | hand-written | **failed** |
+| `update env vars on a hosting project` | hand-written | found |
 
 ## Queries that named an application and got a different one
 

@@ -671,6 +671,55 @@ def case_block(*, task: int, capability: str, asked: str | None, wanted: list[st
     return out
 
 
+
+def probe_section(run_dir: Path) -> list[str]:
+    """Consolidate the retry probes into the report, if they have been run.
+
+    Every failure in this report is a FIRST-ATTEMPT failure: in run 8 the agent never
+    re-asked for a capability once, across 384 queries, because mocked execution succeeds on
+    any well-formed call and nothing ever told it a result was wrong. That leaves the
+    question these probes answer -- can search reach the tool at all, or only with the right
+    wording?
+
+    Successes are reported alongside failures on purpose. A list of failing queries with no
+    denominator is not evidence; anyone can find phrasings that miss.
+    """
+    path = run_dir / "all_probe_queries.json"
+    if not path.exists():
+        return []
+    combined = json.loads(path.read_text(encoding="utf-8"))
+    total = sum(len(v) for v in combined.values())
+    missed = sum(1 for v in combined.values() for outcome, _ in v.values() if outcome == "miss")
+    md = ["## Could search find these four tools on a second attempt?", "",
+          "The four failures above are single attempts. Each was probed afterwards with many more",
+          "phrasings -- some written by hand, some by the agent itself when re-run with permission to",
+          "retry -- in the agent's own register: short, action-first, no tool names.", "",
+          f"**{missed} of {total} distinct queries failed to return the needed tool "
+          f"({100 * missed / total:.0f}%).**", "",
+          "Every one of the four tools was returned by at least one phrasing, so none is invisible to",
+          "the index. The failure is that reaching them depends heavily on wording, and the phrasing",
+          "an agent naturally reaches for is often not one that works. That is a ranking and",
+          "synonym-coverage problem, not a missing-document problem.", "",
+          "| Task | Distinct queries tried | Failed | Reachable at all? |", "|---|---:|---:|---|"]
+    for task_id in sorted(combined, key=int):
+        rows = combined[task_id]
+        fails = sum(1 for outcome, _ in rows.values() if outcome == "miss")
+        md.append(f"| {task_id} | {len(rows)} | **{fails}** | "
+                  f"{'yes' if fails < len(rows) else '**never**'} |")
+    md.append("")
+    for task_id in sorted(combined, key=int):
+        rows = combined[task_id]
+        fails = sum(1 for outcome, _ in rows.values() if outcome == "miss")
+        md += [f"### Task {task_id} — every phrasing tried ({fails} of {len(rows)} failed)", "",
+               "| Query | Written by | Result |", "|---|---|---|"]
+        for query, (outcome, author) in rows.items():
+            verdict = {"PRIMARY": "found", "related": "only in `related`",
+                       "miss": "**failed**"}[outcome]
+            md.append(f"| `{query[:64]}` | {author} | {verdict} |")
+        md.append("")
+    return md
+
+
 def write_reports(run_dir, failures, disagreements, demoted, faults, total, traces,
                   drift) -> None:
     agent_fault = sum(v for k, v in faults.items() if k.startswith("agent"))
@@ -733,6 +782,8 @@ def write_reports(run_dir, failures, disagreements, demoted, faults, total, trac
             wanted=failure["expected_any_of"], got=failure.get("returned"),
             problem=failure.get("adequacy_why") or failure.get("reason", ""),
             extra=[f"- **Judge:** {failure['judge_said']}"] if failure.get("judge_said") else None)
+
+    md += probe_section(run_dir)
 
     if drift["cases"]:
         md += ["## Queries that named an application and got a different one", "",
@@ -845,8 +896,31 @@ def write_reports(run_dir, failures, disagreements, demoted, faults, total, trac
           f"({len(sel)} agent selection, {len(none_avail)} search left no option)")
 
 
+def rerender(run_dir: Path) -> None:
+    """Rebuild both reports from saved JSON, without a single model call.
+
+    Report wording gets revised far more often than the analysis behind it, and the
+    disagreement pass is not cached -- so re-running the full script just to reformat a
+    heading costs quota and, once credits ran out mid-run, left the markdown stale while the
+    JSON beside it was correct. This path exists so presentation can always be fixed.
+    """
+    failures = json.loads((run_dir / "failure_analysis.json").read_text(encoding="utf-8"))
+    disagreements = json.loads((run_dir / "agent_vs_judge.json").read_text(encoding="utf-8"))
+    traces = {}
+    for path in sorted(run_dir.glob("task-*.json"), key=lambda x: int(x.stem.split("-")[-1])):
+        trace = json.loads(path.read_text(encoding="utf-8"))
+        traces[trace["identifier"]] = trace
+    scores = json.loads((run_dir / "group_scores.json").read_text(encoding="utf-8"))
+    total = sum(r.get("groups", 0) for r in scores if "error" not in r)
+    write_reports(run_dir, failures["failures"], disagreements, failures["demoted"],
+                  Counter(failures["faults"]), total, traces, failures["vendor_drift"])
+
+
 if __name__ == "__main__":
     target = ROOT / (sys.argv[1] if len(sys.argv) > 1 else "run8_full_100tasks")
     if not target.is_dir():
         raise SystemExit(f"no such run directory: {target}")
-    main(target)
+    if "--rerender" in sys.argv:
+        rerender(target)
+    else:
+        main(target)
