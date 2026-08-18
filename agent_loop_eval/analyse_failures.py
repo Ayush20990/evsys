@@ -76,10 +76,13 @@ Queries the agent issued, in order:
 {queries}
 
 Match on what the query was looking for. Several queries may mention the same application
-while targeting completely different steps -- pick the one aimed at THIS capability.
+while targeting completely different steps.
+
+The agent is allowed to RETRY a step it judged unsatisfied, rewording the query each time, so
+more than one query may be aimed at this same capability. List every one that is.
 
 Return exactly this JSON:
-{{"index": <1-based index of the query aimed at this capability, or null if none was>,
+{{"indexes": [1-based indexes of every query aimed at this capability, in order; empty if none],
   "why": "one sentence"}}
 '''
 
@@ -334,19 +337,19 @@ def vendor_signals(query_text: str, expected: list[str], toolkits: dict[str, str
 
 
 def findable_vote(client, limiter, query: str, tool: str, description: str,
-                  capability: str, votes: int = 3) -> tuple[bool, str]:
-    """Majority of independent votes, so one stray sample cannot flip a verdict."""
-    results, reasons = [], []
-    for _ in range(votes):
-        verdict = call_gemini(client, limiter, ADEQUACY_PROMPT.format(
-            query=query, tool=tool, tool_description=description[:300] or "",
-            capability=capability)) or {}
-        results.append(bool(verdict.get("findable")))
-        reasons.append(verdict.get("why", ""))
-    yes = sum(results)
-    majority = yes > votes / 2
-    pick = next((r for r, v in zip(reasons, results) if v == majority), reasons[0] if reasons else "")
-    return majority, f"{pick} [{yes}/{votes} votes]"
+                  capability: str) -> tuple[bool, str]:
+    """One judgement per case.
+
+    An earlier version took the majority of three samples. Testing showed the samples almost
+    never disagreed -- five identical runs on the case that motivated the change -- so the
+    extra two calls bought nothing but tripled the quota cost of the slowest stage. What
+    actually moved verdicts was the wording of the prompt and the deterministic gates around
+    it, not the sampling.
+    """
+    verdict = call_gemini(client, limiter, ADEQUACY_PROMPT.format(
+        query=query, tool=tool, tool_description=description[:300] or "",
+        capability=capability)) or {}
+    return bool(verdict.get("findable")), verdict.get("why", "")
 
 
 
@@ -447,8 +450,13 @@ def attribute(group: dict, trace: dict, client, limiter, cache: dict,
         listing = "\n".join(f"{i}. \"{q['query']}\"" for i, q in enumerate(trace["queries"], 1))
         match = call_gemini(client, limiter, MATCH_QUERY_PROMPT.format(
             task=trace["task"][:400], capability=group["purpose"], queries=listing)) or {}
-        index = match.get("index")
-        cached = {"index": index if isinstance(index, int) else None,
+        raw = match.get("indexes")
+        if not isinstance(raw, list):
+            raw = [raw] if isinstance(raw, int) else []
+        indexes = [i for i in raw
+                   if isinstance(i, int) and 1 <= i <= len(trace["queries"])]
+        cached = {"index": indexes[0] if indexes else None,
+                  "indexes": indexes,
                   "match_why": match.get("why", "")}
         if cached["index"] and 1 <= cached["index"] <= len(trace["queries"]):
             query = trace["queries"][cached["index"] - 1]
@@ -498,11 +506,29 @@ def attribute(group: dict, trace: dict, client, limiter, cache: dict,
 
     query = trace["queries"][index - 1]
     fault = SEARCH_RECALL if cached.get("findable") else AGENT_WEAK_QUERY
+
+    # Every attempt at this capability, so the report can say whether the agent retried or
+    # took the first answer and moved on. The distinction is the point of the retry budget:
+    # a step the agent tried four ways and still could not satisfy is a different finding
+    # from one it never questioned.
+    attempts = []
+    for position in cached.get("indexes") or [index]:
+        item = trace["queries"][position - 1]
+        attempts.append({"attempt": item.get("attempt", 1),
+                         "query": item["query"],
+                         "returned": describe_results(item),
+                         "primary": (item.get("primary_tool_slugs") or [])[:4]})
+    ran_for_step = [e["tool_slug"] for e in trace.get("executions", [])
+                    if e.get("purpose") and e["tool_slug"] in
+                    {s for a in attempts for s in a["primary"]}]
     return {"fault": fault, "query": query["query"], "query_index": index,
             "returned": describe_results(query),
             "reason": cached.get("adequacy_why", ""),
             "adequacy_why": cached.get("adequacy_why", ""),
-            "signals": cached.get("signals", {})}
+            "signals": cached.get("signals", {}),
+            "attempts": attempts,
+            "retried": len(attempts) > 1 or max((a["attempt"] for a in attempts), default=1) > 1,
+            "ran_a_returned_tool": ran_for_step}
 
 
 def analyse_disagreement(group: dict, execution: dict, trace: dict, client, limiter,
@@ -655,7 +681,8 @@ PLAIN = {
 
 
 def case_block(*, task: int, capability: str, asked: str | None, wanted: list[str],
-               got: str | None, problem: str, extra: list[str] | None = None) -> list[str]:
+               got: str | None, problem: str, extra: list[str] | None = None,
+               attempts: list[dict] | None = None, ran: list[str] | None = None) -> list[str]:
     """One failure, always in the same shape, so the file can be skimmed rather than read."""
     out = [f"#### Task {task} — {capability}", ""]
     out.append(f"- **Asked:** `{asked}`" if asked
@@ -666,6 +693,18 @@ def case_block(*, task: int, capability: str, asked: str | None, wanted: list[st
         for index, line in enumerate(got.splitlines()):
             out.append(("- **Got:** " if index == 0 else "  ") + line.strip())
     out.append(f"- **What went wrong:** {problem}")
+    if attempts and len(attempts) > 1:
+        out.append(f"- **The agent retried this step {len(attempts)} times:**")
+        for item in attempts:
+            got = ", ".join(f"`{s}`" for s in item["primary"][:3]) or "_(nothing)_"
+            out.append(f"    - attempt {item['attempt']}: `{item['query']}` → {got}")
+    elif attempts is not None:
+        out.append("- **Did the agent retry?** No — it accepted the first result for this "
+                   "step and moved on.")
+    if ran is not None:
+        out.append("- **Did it run one of the returned tools?** "
+                   + (", ".join(f"`{s}`" for s in ran) if ran
+                      else "No — it ran nothing for this step."))
     out.extend(extra or [])
     out.append("")
     return out
@@ -801,6 +840,7 @@ def write_reports(run_dir, failures, disagreements, demoted, faults, total, trac
             task=failure["task"], capability=failure["capability"], asked=failure.get("query"),
             wanted=failure["expected_any_of"], got=failure.get("returned"),
             problem=failure.get("adequacy_why") or failure.get("reason", ""),
+            attempts=failure.get("attempts"), ran=failure.get("ran_a_returned_tool"),
             extra=[f"- **Judge:** {failure['judge_said']}"] if failure.get("judge_said") else None)
 
     md += probe_section(run_dir)
@@ -832,7 +872,9 @@ def write_reports(run_dir, failures, disagreements, demoted, faults, total, trac
                 md += case_block(task=failure["task"], capability=failure["capability"],
                                  asked=failure.get("query"), wanted=failure["expected_any_of"],
                                  got=failure.get("returned"),
-                                 problem=failure.get("adequacy_why") or failure.get("reason", ""))
+                                 problem=failure.get("adequacy_why") or failure.get("reason", ""),
+                                 attempts=failure.get("attempts"),
+                                 ran=failure.get("ran_a_returned_tool"))
         else:
             header = ("Capability that was never searched for" if fault == AGENT_NO_QUERY
                       else "Capability with no tool behind it")
