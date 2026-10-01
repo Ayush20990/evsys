@@ -61,8 +61,26 @@ from google import genai
 
 from agent_loop_evaluation import (
     COMPOSIO_API_KEY, GEMINI_API_KEY, GEMINI_MODEL, GEMINI_RPM, ROOT,
-    QuotaExhaustedError, RateLimiter, ToolMetadata, load_json, retry, save_json,
+    KeyRotator, QuotaExhaustedError, RateLimiter, ToolMetadata, load_json, retry, save_json,
 )
+
+# One rotator shared by every call in this process, so a key that runs dry is replaced once
+# rather than re-discovered on each call.
+_ROTATOR: KeyRotator | None = None
+
+
+def _rotator() -> KeyRotator:
+    """Shared key rotation for scoring and attribution.
+
+    Verified on creation, like the agent loop's: scoring and analysis run as their own
+    subprocesses, so a key disabled since the last pass is otherwise discovered only by
+    failing calls -- which is how an attribution pass came back with six verdicts invented
+    by a key answering 401 to everything.
+    """
+    global _ROTATOR
+    if _ROTATOR is None:
+        _ROTATOR = KeyRotator(verify=True)
+    return _ROTATOR
 
 DESCRIPTION_CHARS = 300
 MAX_GROUPS = 12          # complex tasks legitimately need more; 8 rejected 3 of 100
@@ -135,16 +153,49 @@ Return exactly this JSON:
 
 
 def call_gemini(client, limiter: RateLimiter, prompt: str) -> dict[str, Any] | None:
+    """One judged answer, tolerant of the SDK closing its transport mid-run.
+
+    The google-genai client's underlying HTTP transport can close partway through a long
+    run, after which every call on that client raises "Cannot send a request, as the client
+    has been closed" -- permanently, since the object is reused. That is not a quota error
+    and retrying the same client cannot fix it, so a fresh client is built and the call
+    retried. Left unhandled it silently poisoned a whole scoring pass: all 22 judge verdicts
+    came back empty and were cached as negatives, dropping judged recall from 37/55 to 33/55
+    with no error visible in the output.
+    """
+    state = {"client": client}
+
     def once():
         limiter.wait()
-        return (client.models.generate_content(model=GEMINI_MODEL, contents=prompt).text or "").strip()
-    try:
-        return json.loads(strip_json(retry(once, max_retries=4, base_delay=3.0)))
-    except QuotaExhaustedError:
-        raise
-    except Exception as exc:
-        print(f"    [gemini] failed: {exc!r}")
-        return None
+        try:
+            response = state["client"].models.generate_content(
+                model=GEMINI_MODEL, contents=prompt)
+        except Exception as exc:
+            if "client has been closed" not in str(exc):
+                raise
+            # Read the key at call time rather than trusting the value captured at import:
+            # .env may have been corrected mid-session, and a rebuild against a stale key
+            # turns a recoverable transport failure into a permanent auth failure.
+            state["client"] = _rotator().client()
+            response = state["client"].models.generate_content(
+                model=GEMINI_MODEL, contents=prompt)
+        return (response.text or "").strip()
+
+    # Walk the remaining keys rather than trying only the next one. Keys fail in runs --
+    # several were minted together and Google disabled that whole batch at once -- so a
+    # single hop lands on another dead key and abandons the pass with usable keys still
+    # parked in .env.
+    while True:
+        try:
+            return json.loads(strip_json(retry(once, max_retries=4, base_delay=3.0)))
+        except QuotaExhaustedError:
+            rotator = _rotator()
+            if not rotator.rotate():
+                raise                              # genuinely out of keys
+            state["client"] = rotator.client()
+        except Exception as exc:
+            print(f"    [gemini] failed: {exc!r}")
+            return None
 
 
 def describe(metadata: ToolMetadata, slugs: list[str]) -> str:
@@ -195,6 +246,8 @@ def score_run(run_dir: Path) -> None:
 
     cache_path = run_dir / "group_cache.json"
     cache = load_json(cache_path, {})
+    judge_cache_path = run_dir / "judge_cache.json"
+    judge_cache = load_json(judge_cache_path, {})
     rows: list[dict[str, Any]] = []
 
     traces = sorted(run_dir.glob("task-*.json"), key=lambda p: int(p.stem.split("-")[-1]))
@@ -232,16 +285,34 @@ def score_run(run_dir: Path) -> None:
             (met if hit else unmet).append({**group, "matched": hit})
 
         # ---- Stage C: judge only the groups nothing expected satisfied -------------------
+        #
+        # Cached per (task, capability), like Stage A above. Without this the judge re-ran on
+        # every invocation for every task already scored -- and this script is re-run after
+        # each chunk, so the waste grew with the run: about 25 redundant calls at 13 tasks,
+        # and roughly 150 per chunk by task 90. The verdict depends only on the task, the
+        # capability and what search returned, none of which change once a trace is written.
         judged = []
         extra = sorted(surfaced - set(reference))
         for group in unmet:
             if not extra:
                 judged.append({**group, "judged": False, "why": "search returned no other candidate"})
                 continue
-            verdict = call_gemini(client, limiter, JUDGE_PROMPT.format(
-                task=trace["task"], purpose=group["purpose"],
-                expected=", ".join(group["acceptable_tool_slugs"]) or "(none listed)",
-                returned=describe(metadata, extra[:25])))
+            judge_key = f"{task_id}::{group['purpose']}"
+            if judge_key in judge_cache:
+                verdict = judge_cache[judge_key]
+            else:
+                verdict = call_gemini(client, limiter, JUDGE_PROMPT.format(
+                    task=trace["task"], purpose=group["purpose"],
+                    expected=", ".join(group["acceptable_tool_slugs"]) or "(none listed)",
+                    returned=describe(metadata, extra[:25])))
+                # Only cache a real verdict. Caching a failed call as {} turns a transient
+                # error into a permanent "not satisfied" -- which is exactly what happened
+                # on the first cached re-run: all 22 entries were empty and judged recall
+                # silently fell from 37/55 to 33/55.
+                if verdict and "satisfied" in verdict:
+                    judge_cache[judge_key] = verdict
+                    save_json(judge_cache_path, judge_cache)
+                verdict = verdict or {}
             ok = bool(verdict and verdict.get("satisfied"))
             judged.append({**group, "judged": ok,
                            "judged_slug": (verdict or {}).get("slug"),

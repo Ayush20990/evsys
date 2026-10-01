@@ -59,7 +59,7 @@ COMPOSIO_API_KEY = os.getenv("COMPOSIO_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 GEMINI_MODEL = "gemini-3.5-flash-lite"
-GEMINI_RPM = 15
+GEMINI_RPM = 8            # below the free-tier per-minute ceiling; 15 tripped it constantly
 USER_ID = "agent-loop-eval-user"
 
 NUM_TASKS = 100         # full set; quota, not this number, is the real limit
@@ -219,13 +219,164 @@ def is_empty_payload(payload: Any) -> bool:
     return all(v in (None, [], {}, "") for v in meaningful)
 
 
+
+# --- rotating through several API keys ------------------------------------------------
+#
+# A run of 100 tasks costs more than one free-tier key holds, so spare keys are parked in
+# .env as comment lines and used in turn. Only genuine credit exhaustion advances the
+# rotation -- rate limits are waited out on the current key, because rotating on those
+# would burn every key in minutes and leave none for the tasks that follow.
+GEMINI_KEY_PATTERN = re.compile(r"AQ\.[A-Za-z0-9_\-]{20,}")
+
+
+def gemini_keys(env_path: Path | None = None) -> list[str]:
+    """Every key in .env, the active one first, then those parked as comments."""
+    path = env_path or (ROOT.parent / ".env")
+    if not path.exists():
+        return [GEMINI_API_KEY] if GEMINI_API_KEY else []
+    active, parked = [], []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        found = GEMINI_KEY_PATTERN.findall(line)
+        if not found:
+            continue
+        (active if line.strip().startswith("GEMINI_API_KEY") else parked).extend(found)
+    ordered, seen = [], set()
+    for key in active + parked:
+        if key not in seen:
+            seen.add(key)
+            ordered.append(key)
+    return ordered
+
+
+def live_keys(keys: list[str]) -> list[str]:
+    """Drop keys whose credit is gone, before any task depends on them.
+
+    Rotation otherwise discovers a dead key only by failing a task on it, and a spent key
+    stays spent -- prepaid credit does not come back on its own, so it is worth one cheap
+    call each to find out now. Asked over plain REST rather than through the SDK: the SDK
+    closes its transport in short-lived use and reports every key as unusable, which is what
+    made a single depleted key look like seven.
+
+    Anything other than depleted credit -- a rate limit, a network blip -- keeps the key.
+    The run's own backoff handles those, and wrongly discarding a good key is the more
+    expensive mistake.
+    """
+    import urllib.error
+    import urllib.request
+
+    url = ("https://generativelanguage.googleapis.com/v1beta/models/"
+           f"{GEMINI_MODEL}:generateContent")
+    body = json.dumps({"contents": [{"parts": [{"text": "hi"}]}]}).encode()
+
+    alive = []
+    for position, key in enumerate(keys):
+        request = urllib.request.Request(
+            f"{url}?key={key}", data=body,
+            headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(request, timeout=30).read()
+            alive.append(key)
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", "replace")
+            if is_quota_error(detail):
+                print(f"    [keys] key {position} ...{key[-6:]} has no credit left; skipping")
+                continue
+            if is_dead_key(detail):
+                print(f"    [keys] key {position} ...{key[-6:]} is disabled or invalid; skipping")
+                continue
+            alive.append(key)                      # rate limited or transient: still good
+        except Exception:
+            alive.append(key)                      # network trouble is not the key's fault
+
+    print(f"    [keys] {len(alive)} of {len(keys)} usable")
+    return alive
+
+
+class KeyRotator:
+    """Hands out a Gemini client, moving to the next key when one runs out of credit."""
+
+    def __init__(self, keys: list[str] | None = None, verify: bool = False):
+        self.keys = keys if keys is not None else gemini_keys()
+        if verify:
+            self.keys = live_keys(self.keys)
+        self.index = 0
+        self._client = None
+        if not self.keys:
+            raise ValueError("no Gemini keys found in .env")
+
+    @property
+    def key(self) -> str:
+        return self.keys[self.index]
+
+    def client(self):
+        if self._client is None:
+            self._client = genai.Client(api_key=self.key)
+        return self._client
+
+    def rotate(self) -> bool:
+        """Advance to the next key. False when they are all spent."""
+        if self.index + 1 >= len(self.keys):
+            return False
+        self.index += 1
+        self._client = None
+        print(f"    [keys] key {self.index} of {len(self.keys)} exhausted; "
+              f"switching to ...{self.key[-6:]}")
+        return True
+
+
 class QuotaExhaustedError(RuntimeError):
     """Raised when the LLM provider's quota is gone; retrying only burns wall-clock."""
 
 
+# Google answers 429/RESOURCE_EXHAUSTED for two completely different situations, and only
+# one of them is worth stopping for:
+#
+#   credits depleted   the account is out of money. Retrying cannot help, and hammering a
+#                      dead key wastes wall-clock on every remaining task.
+#   rate limited       too many requests this minute. Waiting a few seconds fixes it.
+#
+# Treating both as fatal is what made a healthy key look exhausted: at 15 requests/minute
+# and up to MAX_STEPS calls per task, a chunk of 10 tasks reliably trips the per-minute
+# limit, and every remaining task was then abandoned as "quota exhausted" without a single
+# retry. A key that answered six consecutive calls a moment later was written off entirely.
+# "billing" is NOT a marker here, though it looks like one. Google's ordinary rate-limit
+# message reads "check your plan and billing details", so matching it classified every
+# per-minute limit as terminal -- tasks 15-18 and 22-23 were abandoned as exhausted while
+# tasks 24 and 25 ran fine moments later on the same key.
+FATAL_QUOTA = ("credits are depleted", "prepayment credits", "quota_exceeded_forever")
+
+# A key can also stop working without ever running out of credit: Google disables the
+# service account behind it, or the key is malformed (a `#` carried over from the parked
+# comment lines in .env). Both answer 401/400, which is neither a quota error nor a rate
+# limit, so without this the retry path treats them as transient and retries a permanently
+# dead key until the attempt budget runs out -- silently, on every call. That is what wiped
+# out an entire attribution pass: eleven failed judge calls, no rotation, no visible stop.
+DEAD_KEY = ("service account is deleted or disabled", "account_state_invalid",
+            "api key not valid", "api_key_invalid", "unauthenticated",
+            "permission_denied")
+
+
 def is_quota_error(exc: Exception) -> bool:
+    """Only credit exhaustion. Rate limits are transient and belong to the retry path."""
     text = repr(exc).lower()
-    return any(marker in text for marker in ("resource_exhausted", "429", "quota", "rate limit"))
+    return any(marker in text for marker in FATAL_QUOTA)
+
+
+def is_dead_key(exc: Exception) -> bool:
+    """The key will never work again. Rotate to the next one rather than retrying it."""
+    text = repr(exc).lower()
+    return any(marker in text for marker in DEAD_KEY)
+
+
+def key_is_finished(exc: Exception) -> bool:
+    """Either way of being done with a key: no credit left, or no longer valid at all."""
+    return is_quota_error(exc) or is_dead_key(exc)
+
+
+def is_rate_limited(exc: Exception) -> bool:
+    text = repr(exc).lower()
+    return ("429" in text or "resource_exhausted" in text or "rate limit" in text) \
+        and not is_quota_error(exc)
 
 
 class RateLimiter:
@@ -236,16 +387,31 @@ class RateLimiter:
         self.last = time.monotonic()
 
 
-def retry(call, *args, max_retries: int = 4, base_delay: float = 2.0, **kwargs):
+def retry(call, *args, max_retries: int = 6, base_delay: float = 2.0, **kwargs):
+    """Retry with backoff. A finished key aborts to the caller; rate limits wait it out.
+
+    Rate limits get a longer, separate backoff because the limit they trip is per MINUTE --
+    the ordinary exponential schedule tops out around 30 seconds, which is not long enough
+    for the window to reset, so a run would burn its retries and give up anyway.
+
+    "Finished" covers a disabled or invalid key as well as a spent one. Retrying either is
+    pure waste, and worse, it hides the problem: the call eventually fails like any other
+    error and the caller records an empty result instead of switching keys.
+    """
     for attempt in range(max_retries):
         try:
             return call(*args, **kwargs)
         except Exception as exc:
-            if is_quota_error(exc):
+            if key_is_finished(exc):
                 raise QuotaExhaustedError(str(exc)) from exc
             if attempt == max_retries - 1:
                 raise
-            time.sleep(base_delay * (2 ** attempt))
+            if is_rate_limited(exc):
+                wait = min(70.0, 20.0 * (attempt + 1))
+                print(f"    [rate limited] waiting {wait:.0f}s for the window to reset")
+                time.sleep(wait)
+            else:
+                time.sleep(base_delay * (2 ** attempt))
 
 
 def save_json(path: Path, payload: Any) -> None:
@@ -823,8 +989,11 @@ def run_task(client, session, metadata: ToolMetadata, limiter: RateLimiter,
         try:
             response = retry(call)
         except QuotaExhaustedError:
+            # Deliberately NOT swallowed. main() owns the key rotation, and catching this
+            # here meant it never saw an exhausted key -- the run recorded task after task
+            # as "quota exhausted" while seven unused keys sat in .env.
             trace.stop_reason, trace.error = "quota exhausted", "gemini quota exhausted"
-            return trace
+            raise
         except Exception as exc:
             trace.stop_reason, trace.error = "model error", repr(exc)[:400]
             return trace
@@ -1038,7 +1207,9 @@ def main() -> None:
 
     cases = parse_use_cases(USE_CASES_FILE)[:NUM_TASKS]
     composio = Composio(api_key=COMPOSIO_API_KEY)
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    rotator = KeyRotator(verify=True)
+    print(f"[keys] {len(rotator.keys)} Gemini key(s) available")
+    client = rotator.client()
     metadata = ToolMetadata(composio)
     limiter = RateLimiter(GEMINI_RPM)
     connected, account_ids = connected_toolkits(composio)
@@ -1064,8 +1235,31 @@ def main() -> None:
         try:
             trace = run_task(client, session, metadata, limiter, case, connected)
         except QuotaExhaustedError as exc:
-            print(f"  quota exhausted, stopping early: {exc}")
-            break
+            # This key is finished -- spent, disabled or invalid. Work down the remaining
+            # keys retrying the SAME task rather than losing it; the trace it would have
+            # written is empty and would be deleted on the next pass anyway.
+            #
+            # Every remaining key is tried, not just the next one. Keys fail in batches:
+            # two minted together were disabled by Google within the same run, so a single
+            # hop lands on another dead key and gives up with usable keys still in .env.
+            trace = None
+            while rotator.rotate():
+                client = rotator.client()
+                try:
+                    trace = run_task(client, session, metadata, limiter, case, connected)
+                    break
+                except QuotaExhaustedError:
+                    continue                       # that one is finished too; keep going
+                except Exception as inner:
+                    print(f"  TASK FAILED after key switch: {inner!r}")
+                    trace = TaskTrace(identifier=case.identifier, task=case.task,
+                                      reference_tools=case.tools)
+                    trace.stop_reason, trace.error = "harness error", repr(inner)[:400]
+                    break
+            if trace is None:
+                print(f"  every key is spent or disabled, stopping at task "
+                      f"{case.identifier}: {exc}")
+                break
         except Exception as exc:
             # One task's failure must not cost the other 99. Record it and continue.
             print(f"  TASK FAILED: {exc!r}")

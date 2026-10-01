@@ -449,7 +449,15 @@ def attribute(group: dict, trace: dict, client, limiter, cache: dict,
     else:
         listing = "\n".join(f"{i}. \"{q['query']}\"" for i, q in enumerate(trace["queries"], 1))
         match = call_gemini(client, limiter, MATCH_QUERY_PROMPT.format(
-            task=trace["task"][:400], capability=group["purpose"], queries=listing)) or {}
+            task=trace["task"][:400], capability=group["purpose"], queries=listing))
+        if match is None:
+            # The call failed rather than answering "no query matched". Coercing that to {}
+            # yields no indexes, which reads as "the agent never searched for this" and gets
+            # cached as a permanent verdict -- eleven of these were written by a dead key
+            # answering 401 to every call. Fail loudly instead; the cache stays clean and a
+            # later pass fills the entry in.
+            raise RuntimeError(
+                f"attribution call failed for {key}; refusing to cache a verdict from it")
         raw = match.get("indexes")
         if not isinstance(raw, list):
             raw = [raw] if isinstance(raw, int) else []
@@ -608,6 +616,9 @@ def main(run_dir: Path) -> None:
 
     cache_path = run_dir / "attribution_cache.json"
     cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
+    disagree_path = run_dir / "disagreement_cache.json"
+    disagree_cache = (json.loads(disagree_path.read_text(encoding="utf-8"))
+                      if disagree_path.exists() else {})
 
     faults: Counter[str] = Counter()
     failures: list[dict[str, Any]] = []
@@ -646,14 +657,32 @@ def main(run_dir: Path) -> None:
         if unmet and executions:
             calls = "\n".join(f"{i}. ran {e['tool_slug']} -- purpose: \"{e['purpose']}\""
                               for i, e in enumerate(executions, 1))
+            # Cached per (task, capability), for the same reason Stage A and the adequacy
+            # judge are. This script re-runs after every chunk, so without a cache each
+            # already-analysed task paid two more calls per unmet capability on every
+            # invocation -- waste that grows with the run rather than staying flat.
             for group in unmet:
+                key = f"{row['task']}::{group['purpose']}"
+                if key in disagree_cache:
+                    entry = disagree_cache[key]
+                    if entry:
+                        disagreements.append({"task": row["task"], **entry})
+                    continue
                 match = call_gemini(client, limiter, MATCH_CALL_PROMPT.format(
                     task=trace["task"][:400], capability=group["purpose"], calls=calls)) or {}
                 index = match.get("index")
                 if not isinstance(index, int) or not 1 <= index <= len(executions):
+                    disagree_cache[key] = None      # no call aimed at it; remember that too
+                    save_json(disagree_path, disagree_cache)
                     continue
-                disagreements.append({"task": row["task"], **analyse_disagreement(
-                    group, executions[index - 1], trace, client, limiter, match.get("why", ""))})
+                entry = analyse_disagreement(group, executions[index - 1], trace, client,
+                                             limiter, match.get("why", ""))
+                # Same rule as the judge cache: a verdict built from a failed call must not
+                # be persisted, or a transient error becomes a permanent finding.
+                if entry.get("availability_why"):
+                    disagree_cache[key] = entry
+                    save_json(disagree_path, disagree_cache)
+                disagreements.append({"task": row["task"], **entry})
 
     total = sum(r.get("groups", 0) for r in scores if "error" not in r)
     drift = vendor_drift(traces, ROOT / "tool_metadata_cache.json")

@@ -19,8 +19,10 @@ current for the tasks that exist, rather than only appearing at the end.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import agent_loop_evaluation as loop
@@ -28,6 +30,10 @@ from agent_loop_evaluation import ROOT, USE_CASES_FILE, parse_use_cases
 
 RUN_DIR = ROOT / "run9_retry_loop"
 CHUNK = 10
+
+# A lock older than this belonged to a run that was killed before it could clean up. Set
+# well above the slowest observed chunk so a live run is never mistaken for a dead one.
+STALE_LOCK_SECONDS = 2 * 60 * 60
 
 
 def done_tasks() -> set[int]:
@@ -78,12 +84,53 @@ def score_and_analyse() -> None:
             return
 
 
+def acquire_lock() -> Path | None:
+    """Refuse to start while another run9 is working the same directory.
+
+    Two concurrent runs corrupt each other rather than going faster: `done_tasks` deletes
+    any trace that looks unfinished, so one process deletes the file the other is midway
+    through writing, and both then redo the same task against a shared per-minute rate
+    limit. This happened -- a supervisor script's `pgrep` guard silently matched nothing on
+    Windows and started a second run alongside the first.
+
+    O_EXCL makes the check and the claim one step, so two processes starting together
+    cannot both win.
+    """
+    lock = RUN_DIR / "run9.lock"
+    try:
+        handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        age = time.time() - lock.stat().st_mtime
+        if age < STALE_LOCK_SECONDS:
+            owner = lock.read_text(encoding="utf-8").strip()
+            print(f"[run9] another run is active (lock held by {owner}, "
+                  f"{age / 60:.0f} min old); exiting rather than corrupting its traces")
+            return None
+        print(f"[run9] clearing stale lock ({age / 60:.0f} min old)")
+        lock.unlink(missing_ok=True)
+        handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    os.write(handle, f"pid {os.getpid()}".encode())
+    os.close(handle)
+    return lock
+
+
 def main() -> None:
     RUN_DIR.mkdir(parents=True, exist_ok=True)
     size = CHUNK
     if len(sys.argv) > 1:
         size = int(sys.argv[1])
 
+    lock = acquire_lock()
+    if lock is None:
+        sys.exit(1)
+    try:
+        run(size)
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def run(size: int) -> None:
+    """Work the next `size` unfinished tasks, then rebuild the reports over everything done."""
     before = len(done_tasks())
     if size:
         run_chunk(size)
